@@ -52,6 +52,7 @@
 #include "BKE_global.h"
 #include "BKE_group.h"
 #include "BKE_library.h"
+#include "BKE_library_query.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
 #include "BKE_modifier.h"
@@ -3597,19 +3598,19 @@ static void foreachIDLink(ModifierData *md, Object *ob,
 	FractureModifierData *fmd = (FractureModifierData *) md;
 	FractureSetting *fs;
 
-	walk(userData, ob, (ID **)&fmd->inner_material);
-	walk(userData, ob, (ID **)&fmd->extra_group);
-	walk(userData, ob, (ID **)&fmd->dm_group);
-	walk(userData, ob, (ID **)&fmd->cluster_group);
-	walk(userData, ob, (ID **)&fmd->cutter_group);
-	walk(userData, ob, (ID **)&fmd->autohide_filter_group);
+	walk(userData, ob, (ID **)&fmd->inner_material, IDWALK_NOP);
+	walk(userData, ob, (ID **)&fmd->extra_group, IDWALK_NOP);
+	walk(userData, ob, (ID **)&fmd->dm_group, IDWALK_NOP);
+	walk(userData, ob, (ID **)&fmd->cluster_group, IDWALK_NOP);
+	walk(userData, ob, (ID **)&fmd->cutter_group, IDWALK_NOP);
+	walk(userData, ob, (ID **)&fmd->autohide_filter_group, IDWALK_NOP);
 
 	for (fs = fmd->fracture_settings.first; fs; fs = fs->next)
 	{
-		walk(userData, ob, (ID **)&fs->inner_material);
-		walk(userData, ob, (ID **)&fs->extra_group);
-		walk(userData, ob, (ID **)&fs->cluster_group);
-		walk(userData, ob, (ID **)&fs->cutter_group);
+		walk(userData, ob, (ID **)&fs->inner_material, IDWALK_NOP);
+		walk(userData, ob, (ID **)&fs->extra_group, IDWALK_NOP);
+		walk(userData, ob, (ID **)&fs->cluster_group, IDWALK_NOP);
+		walk(userData, ob, (ID **)&fs->cutter_group, IDWALK_NOP);
 	}
 }
 

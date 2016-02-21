@@ -85,6 +85,7 @@ endif()
 
 if(WITH_VORO)
 	add_subdirectory(voro++)
+endif()
 
 if(WITH_LIBMV)
 	add_subdirectory(ceres)

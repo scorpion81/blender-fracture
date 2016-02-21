@@ -5362,7 +5362,7 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "type");
-	RNA_def_property_enum_items(prop, rigidbody_constraint_type_items);
+	RNA_def_property_enum_items(prop, rna_enum_rigidbody_constraint_type_items);
 	//RNA_def_property_enum_funcs(prop, NULL, "rna_MeshCon_type_set", NULL);
 	RNA_def_property_ui_text(prop, "Type", "Type of Rigid Body Constraint");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
@@ -5745,7 +5745,7 @@ static void rna_def_fracture_meshconstraints(BlenderRNA *brna, PropertyRNA *cpro
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 	parm = RNA_def_pointer(func, "mi_second", "MeshIsland", "", "Second mesh island");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm = RNA_def_enum(func, "type", rigidbody_constraint_type_items, RBC_TYPE_FIXED, "Constraint Type", "Type of constraint");
+	parm = RNA_def_enum(func, "type", rna_enum_rigidbody_constraint_type_items, RBC_TYPE_FIXED, "Constraint Type", "Type of constraint");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 
 	//RNA_def_int(func, "index", -1, -1, INT_MAX, "Index", "Optional index for mesh constraint, -1 for automatic", -1, INT_MAX);
@@ -6213,7 +6213,7 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "cluster_constraint_type", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "cluster_constraint_type");
-	RNA_def_property_enum_items(prop, rigidbody_constraint_type_items);
+	RNA_def_property_enum_items(prop, rna_enum_rigidbody_constraint_type_items);
 	RNA_def_property_enum_funcs(prop, NULL, "rna_FractureModifier_cluster_constraint_type_set", NULL);
 	RNA_def_property_ui_text(prop, "Cluster Constraint Type", "Type of Rigid Body Constraint between clusters");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);

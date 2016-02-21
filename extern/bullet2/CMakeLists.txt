@@ -130,6 +130,7 @@ set(SRC
 	src/BulletCollision/NarrowPhaseCollision/btVoronoiSimplexSolver.cpp
 
 	src/BulletDynamics/Character/btKinematicCharacterController.cpp
+	src/BulletDynamics/ConstraintSolver/btCompoundConstraint.cpp
 	src/BulletDynamics/ConstraintSolver/btConeTwistConstraint.cpp
 	src/BulletDynamics/ConstraintSolver/btContactConstraint.cpp
 	src/BulletDynamics/ConstraintSolver/btFixedConstraint.cpp

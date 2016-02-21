@@ -3102,12 +3102,12 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 		ED_base_object_free_and_unlink(bmain, scene, bas);
 
 		/* delete has to handle all open scenes, copied from delete operator */
-		BKE_main_id_flag_listbase(&bmain->scene, LIB_DOIT, 1);
+		BKE_main_id_flag_listbase(&bmain->scene, LIB_TAG_DOIT, 1);
 		for (win = wm->windows.first; win; win = win->next) {
 			scene = win->screen->scene;
 
-			if (scene->id.flag & LIB_DOIT) {
-				scene->id.flag &= ~LIB_DOIT;
+			if (scene->id.flag & LIB_TAG_DOIT) {
+				scene->id.flag &= ~LIB_TAG_DOIT;
 
 				DAG_relations_tag_update(bmain);
 

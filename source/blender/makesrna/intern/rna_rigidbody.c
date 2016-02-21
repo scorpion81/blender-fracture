@@ -337,7 +337,13 @@ static void rna_RigidBodyOb_type_set(PointerRNA *ptr, int value)
 	foreach_shard_int(ob, value, set_type);
 }
 
+static void rna_RigidBodyOb_shape_set(PointerRNA *ptr, int value)
+{
+  RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
 
+  rbo->shape = value;
+  rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+}
 
 static void set_disabled(RigidBodyOb* rbo, int value) {
 
