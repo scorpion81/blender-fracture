@@ -5091,7 +5091,7 @@ static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MV
                                  Shard* s)
 {
 	MVert *mv;
-	int k = 0;
+	int k = 0, j = 0;
 	MeshIsland* mi = *mii;
 
 	mi->vertices_cached = MEM_mallocN(sizeof(MVert*) * mi->vertex_count, "mi->vertices_cached readfile");
@@ -5127,6 +5127,11 @@ static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MV
 	}
 
 	mi->physics_mesh = BKE_shard_create_dm(s, true);
+
+	for (mv = s->mvert, j = 0; j < s->totvert; j++, mv++)
+	{
+		add_v3_v3(mv->co, s->centroid);
+	}
 
 	return mi->vertex_count;
 }
@@ -5258,7 +5263,12 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			i = 0;
 			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 				Shard *sh = NULL;
-				sh = shards[i];
+				sh = shards[i]; //skip "empty" shards
+				while (sh->shard_id < mi->id)
+				{
+					sh = sh->next;
+				}
+
 				if (sh)
 				{
 					read_meshIsland(fd, &mi);
@@ -5324,9 +5334,11 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 				link_list(fd, &msq->meshIslands);
 				for (mi = msq->meshIslands.first; mi; mi = mi->next) {
 					read_meshIsland(fd, &mi);
-					mi->physics_mesh = BKE_shard_create_dm(sh, true);
+					while (sh->shard_id < mi->id)
+					{
+						sh = sh->next;
+					}
 					vertstart += initialize_meshisland(fmd, &mi, mverts, vertstart, sh);
-					sh = sh->next;
 				}
 
 				fmd->current_shard_entry = fmd->current_shard_entry->next;
