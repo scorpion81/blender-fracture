@@ -153,9 +153,9 @@ static void do_unwrap(MPoly *mp, MVert *mvert, MLoop* mloop, int i, MLoopUV **ml
 	angle = BLI_convexhull_aabb_fit_points_2d((const float (*)[2])uv, mp->totloop);
 
 	if (angle != 0.0f) {
-		float mat[2][2];
-		angle_to_mat2(mat, angle);
-		uv_transform((float (*)[2])uv, mp->totloop, mat);
+		float matt[2][2];
+		angle_to_mat2(matt, angle);
+		uv_transform((float (*)[2])uv, mp->totloop, matt);
 	}
 
 	/* prepare box packing... one poly is a box */
@@ -528,7 +528,7 @@ static bool do_check_watertight(DerivedMesh **output_dm, BMesh** bm, DerivedMesh
 	return do_return;
 }
 
-static void do_set_inner_material(Shard **other, float mat[4][4], DerivedMesh* left_dm, short inner_material_index)
+static void do_set_inner_material(Shard **other, float mat[4][4], DerivedMesh* left_dm, short inner_material_index, Shard* s)
 {
 	MPoly *mpoly, *mp;
 	int totpoly, i = 0;
@@ -543,6 +543,8 @@ static void do_set_inner_material(Shard **other, float mat[4][4], DerivedMesh* l
 				mp->mat_nr = inner_material_index;
 			}
 			mp->flag |= ME_FACE_SEL;
+			//set flag on shard too to have it available on load
+			s->mpoly[i].flag |= ME_FACE_SEL;
 		}
 	}
 }
@@ -566,7 +568,7 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 
 	unwrap_shard_dm(left_dm, uv_layer);
 
-	do_set_inner_material(other, mat, left_dm, inner_material_index);
+	do_set_inner_material(other, mat, left_dm, inner_material_index, child);
 
 	right_dm = dm_parent;
 	output_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1); /*1 == intersection, 3 == difference*/

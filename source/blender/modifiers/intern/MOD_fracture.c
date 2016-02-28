@@ -1693,7 +1693,7 @@ static void do_rigidbody(FractureModifierData *fmd, MeshIsland* mi, Object* ob, 
 
 static short do_vert_index_map(FractureModifierData *fmd, MeshIsland *mi)
 {
-	short rb_type = mi->ground_weight > 0.0f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
+	short rb_type = mi->ground_weight > 0.01f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 
 	if (fmd->vert_index_map && fmd->dm_group && fmd->cluster_count == 0 && mi->vertex_indices)
 	{
@@ -2639,7 +2639,7 @@ static DerivedMesh *createCache(FractureModifierData *fmd, Object *ob, DerivedMe
 
 		/*disable for dm_group, cannot paint onto this mesh at all */
 		if (mi->rigidbody != NULL && fmd->dm_group == NULL) {
-			mi->rigidbody->type = mi->ground_weight > 0.0f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
+			mi->rigidbody->type = mi->ground_weight > 0.01f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 		}
 
 		/* use fallback over inner material*/
@@ -3342,10 +3342,10 @@ static void do_post_island_creation(FractureModifierData *fmd, Object *ob, Deriv
 		 * although this might not be directly visible due to complex logic */
 
 		MDeformVert* dvert = NULL;
-		if (fmd->visible_mesh_cached)
+		if (fmd->visible_mesh_cached) {
 			dvert = fmd->visible_mesh_cached->getVertDataArray(fmd->visible_mesh_cached, CD_MDEFORMVERT);
-		if ((dvert != NULL) && (dvert->dw == NULL))
 			fill_vgroup(fmd, fmd->visible_mesh_cached, dvert, ob);
+		}
 	}
 
 	if (fmd->refresh_images && fmd->visible_mesh_cached) {

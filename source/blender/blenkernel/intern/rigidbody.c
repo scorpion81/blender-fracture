@@ -2296,7 +2296,7 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, Object *target
 	{
 		/* regular FM case */
 		rbo = BKE_rigidbody_copy_object(ob);
-		rbo->type = mi->ground_weight > 0.0f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
+		rbo->type = mi->ground_weight > 0.01f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 	}
 
 	/* set initial transform */
