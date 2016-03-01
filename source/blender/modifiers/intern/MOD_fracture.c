@@ -2242,7 +2242,7 @@ static void do_constraint(FractureModifierData* fmd, MeshIsland *mi1, MeshIsland
 		rbsc->flag &= ~RBC_FLAG_USE_BREAKING;
 	}
 
-	rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
+	//rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
 
 	if ((mi1->particle_index != -1) && (mi2->particle_index != -1) &&
 		(mi1->particle_index == mi2->particle_index))

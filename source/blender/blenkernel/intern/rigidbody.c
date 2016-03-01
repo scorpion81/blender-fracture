@@ -2572,7 +2572,7 @@ RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, short typ
 	 */
 
 	/* create new settings data, and link it up */
-	rbc = MEM_callocN(sizeof(RigidBodyShardCon), "RigidBodyCon");
+	rbc = MEM_callocN(sizeof(RigidBodyShardCon), "RigidBodyShardCon");
 
 	/* set default settings */
 	rbc->type = type;
@@ -3173,7 +3173,7 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 	/* calc ratio of broken cons here, per MeshIsland and flag the rest to be broken too*/
 	for (i = 0; i < cons; i++) {
 		con = mi->participating_constraints[i];
-		if (con && con->physics_constraint) {
+		if (con) {
 			if (fmd->cluster_breaking_percentage > 0)
 			{
 				/*only count as broken if between clusters!*/
@@ -3181,13 +3181,16 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 				{
 					cluster_cons++;
 
-					if (!RB_constraint_is_enabled(con->physics_constraint)) {
-						broken_cluster_cons++;
+					if (con->physics_constraint)
+					{
+						if (!RB_constraint_is_enabled(con->physics_constraint)) {
+							broken_cluster_cons++;
+						}
 					}
 				}
 			}
 
-			if (!RB_constraint_is_enabled(con->physics_constraint)) {
+			if (con->physics_constraint && !RB_constraint_is_enabled(con->physics_constraint)) {
 				broken_cons++;
 			}
 		}
@@ -3200,8 +3203,8 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 				if (con && con->mi1->particle_index != con->mi2->particle_index) {
 					if (fmd->use_breaking)
 					{
-						//con->flag &= ~RBC_FLAG_ENABLED;
-						//con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+						con->flag &= ~RBC_FLAG_ENABLED;
+						con->flag |= RBC_FLAG_NEEDS_VALIDATE;
 
 						if (con->physics_constraint) {
 							RB_constraint_set_enabled(con->physics_constraint, false);
@@ -3222,8 +3225,8 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 				con = mi->participating_constraints[i];
 				if (con && fmd->use_breaking)
 				{
-					//con->flag &= ~RBC_FLAG_ENABLED;
-					//con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+					con->flag &= ~RBC_FLAG_ENABLED;
+					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
 
 					if (con->physics_constraint) {
 						RB_constraint_set_enabled(con->physics_constraint, false);
@@ -3248,8 +3251,8 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 		{
 			if (fmd->use_breaking)
 			{
-				//rbsc->flag &= ~RBC_FLAG_ENABLED;
-				//rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+				rbsc->flag &= ~RBC_FLAG_ENABLED;
+				rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 
 				if (rbsc->physics_constraint) {
 					RB_constraint_set_enabled(rbsc->physics_constraint, false);
@@ -3265,8 +3268,8 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 	{
 		if (fmd->use_breaking)
 		{
-			//rbsc->flag &= ~RBC_FLAG_ENABLED;
-			//rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+			rbsc->flag &= ~RBC_FLAG_ENABLED;
+			rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 
 			if (rbsc->physics_constraint) {
 				RB_constraint_set_enabled(rbsc->physics_constraint, false);
@@ -4199,139 +4202,6 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 
 	return did_it;
 }
-
-#if 0
-static void resetPrefractured(RigidBodyWorld *rbw)
-{
-	GroupObject *go;
-	if (!rbw->group)
-		return;
-
-	for (go = rbw->group->gobject.first; go; go = go->next)
-	{
-		Object *ob = go->ob;
-		FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
-
-		if (fmd && (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED || fmd->fracture_mode == MOD_FRACTURE_EXTERNAL))
-		{
-			MeshIsland* mi;
-			RigidBodyShardCon *con;
-			Scene *scene = fmd->modifier.scene;
-
-			for (con = fmd->meshConstraints.first; con; con = con->next)
-			{
-				BKE_rigidbody_remove_shard_con(scene, con);
-				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-				//BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, con, false);
-			}
-
-			for (mi = fmd->meshIslands.first; mi; mi = mi->next)
-			{
-				BKE_rigidbody_remove_shard(scene, mi);
-				if (mi->rigidbody)
-				{
-					mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-					//validateShard(rbw, mi, ob, false, false);
-				}
-			}
-
-			//BKE_rigidbody_update_ob_array(rbw);
-		}
-	}
-}
-
-static void resetExternal(RigidBodyWorld *rbw)
-{
-	GroupObject *go;
-
-	for (go = rbw->group->gobject.first; go; go = go->next)
-	{
-		Object *ob = go->ob;
-		FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
-
-		if (fmd && fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
-		{
-			RigidBodyShardCon *rbsc;
-			MeshIsland *mi;
-			Scene *scene = fmd->modifier.scene;
-			float frame = BKE_scene_frame_get(scene);
-
-			for (mi = fmd->meshIslands.first; mi; mi = mi->next)
-			{
-				float loc[3], rot[4], quat[4] = {1.0f, 0.0f, 0.0f, 0.0f};
-
-				copy_v3_v3(loc, mi->centroid);
-				copy_qt_qt(rot, mi->rot);
-
-				if (mi->rigidbody)
-				{
-					int i;
-					float loc2[3] = {0.0f, 0.0f, 0.0f};
-					float size[3] = {1.0f, 1.0f, 1.0};
-					float mat[4][4], imat[4][4];
-					loc_quat_size_to_mat4(mat, loc2, mi->rot, size);
-					invert_m4_m4(imat, mat);
-
-					copy_v3_v3(mi->rigidbody->pos, loc);
-					copy_qt_qt(mi->rigidbody->orn, rot);
-					BKE_rigidbody_remove_shard(scene, mi);
-					validateShard(rbw, mi, ob, false, false);
-					//BKE_rigidbody_update_cell(mi, ob, mi->centroid, quat, fmd, (int)frame);
-
-					for (i = 0; i < mi->vertex_count; i++)
-					{
-						MVert *v = mi->vertices_cached[i];
-						if (v)
-						{
-							//dont change initial meshislands
-							sub_v3_v3(v->co, mi->centroid);
-							mul_m4_v3(imat, v->co);
-							add_v3_v3(v->co, mi->centroid);
-						}
-					}
-				}
-			}
-
-			//BKE_object_where_is_calc(scene, ob);
-
-			for (rbsc = fmd->meshConstraints.first; rbsc; rbsc = rbsc->next)
-			{
-				if (rbsc->type == RBC_TYPE_6DOF_SPRING)
-				{
-					if (rbsc->plastic_angle >= 0.0f || rbsc->plastic_dist >= 0.0f)
-					{
-						/*reset plastic constraints with immediate activation*/
-						if (rbsc->flag & RBC_FLAG_USE_PLASTIC)
-						{
-							rbsc->flag |= RBC_FLAG_PLASTIC_ACTIVE;
-							rigidbody_set_springs_active(rbsc, true);
-							if (rbsc->physics_constraint)
-							{
-								RB_constraint_set_enabled(rbsc->physics_constraint, true);
-								RB_constraint_set_equilibrium_6dof_spring(rbsc->physics_constraint);
-							}
-						}
-						else
-						{
-							rigidbody_set_springs_active(rbsc, false);
-							rbsc->flag &= ~RBC_FLAG_PLASTIC_ACTIVE;
-							if (rbsc->physics_constraint)
-								RB_constraint_set_enabled(rbsc->physics_constraint, false);
-						}
-					}
-				}
-				else
-				{
-					if (rbsc->physics_constraint)
-						RB_constraint_set_enabled(rbsc->physics_constraint, rbsc->flag & RBC_FLAG_ENABLED);
-				}
-
-				rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-			}
-		}
-	}
-}
-#endif
 
 static ThreadMutex reset_lock = BLI_MUTEX_INITIALIZER;
 static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
