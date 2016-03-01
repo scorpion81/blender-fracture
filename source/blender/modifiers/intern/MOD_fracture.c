@@ -3489,9 +3489,11 @@ static void do_refresh(FractureModifierData *fmd, Object *ob, DerivedMesh* dm, D
 			fill_vgroup(fmd, fmd->visible_mesh_cached, ivert, ob);
 		}
 		else {
-			if (fmd->visible_mesh == NULL) {
-				do_halving(fmd, ob, dm, orig_dm, false);
+			if (fmd->visible_mesh != NULL) {
+				BM_mesh_free(fmd->visible_mesh);
+				fmd->visible_mesh = NULL;
 			}
+			do_halving(fmd, ob, dm, orig_dm, false);
 			fmd->explo_shared = false;
 		}
 	}
