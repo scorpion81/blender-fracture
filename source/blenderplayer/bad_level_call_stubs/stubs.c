@@ -407,7 +407,6 @@ int	WM_keymap_map_type_get(struct wmKeyMapItem *kmi) RET_ZERO
 
 /* rna editors */
 
-struct bAction *verify_adt_action(struct ID *id, short add) RET_NULL
 struct FCurve *verify_fcurve(struct bAction *act, const char group[], struct PointerRNA *ptr, const char rna_path[], const int array_index, short add) RET_NULL
 int insert_vert_fcurve(struct FCurve *fcu, float x, float y, short flag) RET_ZERO
 void delete_fcurve_key(struct FCurve *fcu, int index, bool do_recalc) RET_NONE
