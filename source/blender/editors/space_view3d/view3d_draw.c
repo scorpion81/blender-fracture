@@ -2066,7 +2066,6 @@ static void draw_dupli_objects_color(
 	short transflag;
 	bool use_displist = false;  /* -1 is initialize */
 	char dt;
-	bool testbb = false;
 	short dtx;
 	DupliApplyData *apply_data;
 
@@ -2090,10 +2089,11 @@ static void draw_dupli_objects_color(
 	if (dob) dob_next = dupli_step(dob->next);
 
 	for (; dob; dob_prev = dob, dob = dob_next, dob_next = dob_next ? dupli_step(dob_next->next) : NULL) {
+		bool testbb = false;
+
 		tbase.object = dob->ob;
 
 		/* Make sure lod is updated from dupli's position */
-
 		savedlod = dob->ob->currentlod;
 
 #ifdef WITH_GAMEENGINE

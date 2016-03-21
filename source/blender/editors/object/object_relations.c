@@ -1339,7 +1339,7 @@ static int move_to_layer_invoke(bContext *C, wmOperator *op, const wmEvent *even
 {
 	View3D *v3d = CTX_wm_view3d(C);
 	if (v3d && v3d->localvd) {
-		return WM_operator_confirm_message(C, op, "Move from localview");
+		return WM_operator_confirm_message(C, op, "Move out of Local View");
 	}
 	else {
 		move_to_layer_init(C, op);
@@ -1755,7 +1755,7 @@ static void single_object_users(Main *bmain, Scene *scene, View3D *v3d, const in
 		ob = base->object;
 
 		if ((base->flag & flag) == flag) {
-			if (ob->id.lib == NULL && ob->id.us > 1) {
+			if (ob->id.lib == NULL && ID_REFCOUNT_USERS(ob) > 1) {
 				/* base gets copy of object */
 				obn = BKE_object_copy(ob);
 				base->object = obn;

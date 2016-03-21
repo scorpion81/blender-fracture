@@ -502,40 +502,23 @@ endif()
 # Apple
 
 if(APPLE)
-	if(${CMAKE_VERSION} VERSION_LESS 3.0) # else breaks setting CMP0043 policy
-		cmake_minimum_required(VERSION 2.8.8)
-		cmake_policy(VERSION 2.8.8)
-	endif()
+	# require newer cmake on osx because of version handling,
+	# older cmake cannot handle 2 digit subversion!
+	cmake_minimum_required(VERSION 3.0.0)
 
 	if(NOT CMAKE_OSX_ARCHITECTURES)
 		set(CMAKE_OSX_ARCHITECTURES x86_64 CACHE STRING
 		"Choose the architecture you want to build Blender for: i386, x86_64 or ppc"
 		FORCE)
 	endif()
-	
-	execute_process(COMMAND uname -r OUTPUT_VARIABLE MAC_SYS) # check for actual system-version
-	if(${MAC_SYS} MATCHES 15)
-		set(OSX_SYSTEM 10.11)
-		# throw an error here, older cmake cannot handle 2 digit subversion!
-		cmake_minimum_required(VERSION 3.0.0)
-	elseif(${MAC_SYS} MATCHES 14)
-		set(OSX_SYSTEM 10.10)
-		# throw an error here, older cmake cannot handle 2 digit subversion!
-		cmake_minimum_required(VERSION 3.0.0)
-	elseif(${MAC_SYS} MATCHES 13)
-		set(OSX_SYSTEM 10.9)
-	elseif(${MAC_SYS} MATCHES 12)
-		set(OSX_SYSTEM 10.8)
-	elseif(${MAC_SYS} MATCHES 11)
-		set(OSX_SYSTEM 10.7)
-	elseif(${MAC_SYS} MATCHES 10)
-		set(OSX_SYSTEM 10.6)
-	elseif(${MAC_SYS} MATCHES 9)
-		set(OSX_SYSTEM 10.5)
-	else()
-		set(OSX_SYSTEM unsupported)
+
+	if(NOT DEFINED OSX_SYSTEM)
+		execute_process(
+		        COMMAND xcodebuild -version -sdk macosx SDKVersion
+		        OUTPUT_VARIABLE OSX_SYSTEM
+		        OUTPUT_STRIP_TRAILING_WHITESPACE)
 	endif()
-	
+
 	# workaround for incorrect cmake xcode lookup for developer previews - XCODE_VERSION does not take xcode-select path into accout
 	# but would always look into /Applications/Xcode.app while dev versions are named Xcode<version>-DP<preview_number>
 	execute_process(COMMAND xcode-select --print-path  OUTPUT_VARIABLE XCODE_CHECK OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -1243,6 +1226,14 @@ elseif(WIN32)
 	add_definitions(-DWIN32)
 
 	if(MSVC)
+		# Minimum MSVC Version
+		set(_min_ver "18.0.31101")
+		if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS ${_min_ver})
+			message(FATAL_ERROR
+			        "Visual Studio 2013 (Update 4, ${_min_ver}) required, "
+			        "found (${CMAKE_CXX_COMPILER_VERSION})")
+		endif()
+		unset(_min_ver)
 
 		# needed for some MSVC installations
 		set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SAFESEH:NO")
@@ -1321,7 +1312,10 @@ elseif(WIN32)
 				set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/${LIBDIR_BASE}_vc12)
 			endif()
 		else()
-			message(STATUS using LIBDIR  ${LIBDIR})
+			message(STATUS "Using pre-compiled LIBDIR: ${LIBDIR}")
+		endif()
+		if(NOT EXISTS "${LIBDIR}/")
+			message(FATAL_ERROR "Windows requires pre-compiled libs at: '${LIBDIR}'")
 		endif()
 
 		# Add each of our libraries to our cmake_prefix_path so find_package() could work
@@ -1577,11 +1571,12 @@ elseif(WIN32)
 		endif()
 
 		if(WITH_OPENVDB)
+			set(BLOSC_LIBRARIES ${LIBDIR}/blosc/lib/libblosc.lib)
 			set(TBB_LIBRARIES ${LIBDIR}/tbb/lib/tbb.lib)
 			set(TBB_INCLUDE_DIR ${LIBDIR}/tbb/include)
 			set(OPENVDB ${LIBDIR}/openvdb)
 			set(OPENVDB_INCLUDE_DIRS ${OPENVDB}/include ${TBB_INCLUDE_DIR})
-			set(OPENVDB_LIBRARIES openvdb ${TBB_LIBRARIES})
+			set(OPENVDB_LIBRARIES openvdb ${TBB_LIBRARIES} ${BLOSC_LIBRARIES})
 			set(OPENVDB_LIBPATH ${LIBDIR}/openvdb/lib)
 		endif()
 
@@ -1640,18 +1635,25 @@ elseif(WIN32)
 			" 
 			WITH_MINGW64)
 		
-		if(WITH_MINGW64)
-			message(STATUS "Compiling for 64 bit with MinGW-w64.")
-			set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/mingw64)
-		else()
-			message(STATUS "Compiling for 32 bit with MinGW-w32.")
-			set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/mingw32)
-			
-			if(WITH_RAYOPTIMIZATION)
-				message(WARNING "MinGW-w32 is known to be unstable with 'WITH_RAYOPTIMIZATION' option enabled.")
+		if(NOT DEFINED LIBDIR)
+			if(WITH_MINGW64)
+				message(STATUS "Compiling for 64 bit with MinGW-w64.")
+				set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/mingw64)
+			else()
+				message(STATUS "Compiling for 32 bit with MinGW-w32.")
+				set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/mingw32)
+
+				if(WITH_RAYOPTIMIZATION)
+					message(WARNING "MinGW-w32 is known to be unstable with 'WITH_RAYOPTIMIZATION' option enabled.")
+				endif()
 			endif()
+		else()
+			message(STATUS "Using pre-compiled LIBDIR: ${LIBDIR}")
 		endif()
-		
+		if(NOT EXISTS "${LIBDIR}/")
+			message(FATAL_ERROR "Windows requires pre-compiled libs at: '${LIBDIR}'")
+		endif()
+
 		list(APPEND PLATFORM_LINKLIBS -lshell32 -lshfolder -lgdi32 -lmsvcrt -lwinmm -lmingw32 -lm -lws2_32 -lz -lstdc++ -lole32 -luuid -lwsock32 -lpsapi -ldbghelp)
 
 		if(WITH_INPUT_IME)
@@ -1926,16 +1928,22 @@ elseif(APPLE)
 		set(WITH_LIBS10.5 ON CACHE BOOL "Use 10.5 libs" FORCE) # valid also for 10.6/7/8/9
 	endif()
 
-	if(WITH_LIBS10.5)
-		set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/darwin-9.x.universal)
-	else()
-		if(CMAKE_OSX_ARCHITECTURES MATCHES i386)
-			set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/darwin-8.x.i386)
+	if(NOT DEFINED LIBDIR)
+		if(WITH_LIBS10.5)
+			set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/darwin-9.x.universal)
 		else()
-			set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/darwin-8.0.0-powerpc)
+			if(CMAKE_OSX_ARCHITECTURES MATCHES i386)
+				set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/darwin-8.x.i386)
+			else()
+				set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/darwin-8.0.0-powerpc)
+			endif()
 		endif()
+	else()
+		message(STATUS "Using pre-compiled LIBDIR: ${LIBDIR}")
 	endif()
-
+	if(NOT EXISTS "${LIBDIR}/")
+		message(FATAL_ERROR "Mac OSX requires pre-compiled libs at: '${LIBDIR}'")
+	endif()
 
 	if(WITH_OPENAL)
 		find_package(OpenAL)
@@ -2285,12 +2293,6 @@ endif()
 
 #-----------------------------------------------------------------------------
 # Common.
-
-if(APPLE OR WIN32)
-	if(NOT EXISTS "${LIBDIR}/")
-		message(FATAL_ERROR "Apple and Windows require pre-compiled libs at: '${LIBDIR}'")
-	endif()
-endif()
 
 if(NOT WITH_FFTW3 AND WITH_MOD_OCEANSIM)
 	message(FATAL_ERROR "WITH_MOD_OCEANSIM requires WITH_FFTW3 to be ON")

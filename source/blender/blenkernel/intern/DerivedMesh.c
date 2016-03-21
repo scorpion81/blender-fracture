@@ -808,10 +808,12 @@ void DM_to_mesh(DerivedMesh *dm, Mesh *me, Object *ob, CustomDataMask mask, bool
 	}
 
 	/* Clear selection history */
-	tmp.mselect = NULL;
+	MEM_SAFE_FREE(tmp.mselect);
 	tmp.totselect = 0;
-	if (me->mselect) {
-		MEM_freeN(me->mselect);
+	BLI_assert(ELEM(tmp.bb, NULL, me->bb));
+	if (me->bb) {
+		MEM_freeN(me->bb);
+		tmp.bb = NULL;
 	}
 
 	/* skip the listbase */
@@ -3653,6 +3655,8 @@ void DM_set_object_boundbox(Object *ob, DerivedMesh *dm)
 		ob->bb = MEM_callocN(sizeof(BoundBox), "DM-BoundBox");
 
 	BKE_boundbox_init_from_minmax(ob->bb, min, max);
+
+	ob->bb->flag &= ~BOUNDBOX_DIRTY;
 }
 
 /* --- NAVMESH (begin) --- */
