@@ -148,6 +148,7 @@ struct rbRigidBody {
 	int linear_index;
 	void *meshIsland;
 	void *blenderOb;
+	btVector3 *bbox;
 	rbDynamicsWorld *world;
 };
 
@@ -189,12 +190,111 @@ class TickDiscreteDynamicsWorld : public btFractureDynamicsWorld
 		virtual void debugDrawWorld(draw_string str_callback);
 };
 
+btScalar connection_dist(btFractureBody *fbody, int index, btVector3 impact)
+{
+	btConnection& con = fbody->m_connections[index];
+	btVector3 con_posA = fbody->getWorldTransform().inverse() * con.m_obA->getWorldTransform().getOrigin();
+	btVector3 con_posB = fbody->getWorldTransform().inverse() * con.m_obB->getWorldTransform().getOrigin();
+	btVector3 con_pos = (con_posA + con_posB) * 0.5f;
+
+	return impact.distance(con_pos);
+}
+
+//KDTree needed here, we need a range search of which points are closer than distance x to the impact point
+int connection_binary_search(btFractureBody *fbody, btVector3 impact, btScalar range)
+{
+	int mid, low = 0, high = fbody->m_connections.size();
+
+	while (low <= high) {
+		mid = (low + high)/2;
+
+		if (mid == high-1)
+			return mid;
+
+		btScalar dist = connection_dist(fbody, mid, impact);
+		btScalar dist1 = connection_dist(fbody, mid+1, impact);
+
+		if (dist < range && range <= dist1)
+		{
+			return mid;
+		}
+
+		if (dist >= range)
+			high= mid - 1;
+		else if (dist < range)
+			low= mid + 1;
+		else
+			return mid;
+	}
+
+	return low;
+}
+
+bool weakenCompound(const btCollisionObject *body, btScalar force, btVector3 impact, btFractureDynamicsWorld *world)
+{
+	//just weaken strengths of this obA and obB according to force !
+	if (body->getInternalType() & CUSTOM_FRACTURE_TYPE && force > 0.0f)
+	{
+		btFractureBody *fbody = (btFractureBody*)body;
+		int size = fbody->m_connections.size();
+		bool needs_break = false;
+
+		if (size == 0)
+			return false;
+
+		btVector3 *bbox = ((rbRigidBody*)fbody->getUserPointer())->bbox;
+		btScalar dim = (*bbox)[bbox->maxAxis()] * 2;
+
+		//stop at this limit, distances are sorted... so no closer object will come later
+		//int mid = connection_binary_search(fbody, impact, dim * (1.0f - fbody->m_propagationParameter.m_stability_factor));
+		for (int i = 0; i < size; i++)
+		{
+			btVector3 imp = fbody->getWorldTransform().inverse() * impact;
+			btScalar dist = connection_dist(fbody, i, imp);
+			btConnection& con = fbody->m_connections[i];
+			btScalar lforce = force; //* (1.0f - fbody->m_propagationParameter.m_stability_factor);
+			if (dist > 0.0f)
+				lforce = lforce / dist; // the closer, the higher the force
+
+			if (lforce > fbody->m_propagationParameter.m_minimum_impulse)
+			{
+				if (con.m_strength > 0.0f)
+				{
+					con.m_strength -= lforce;
+					//printf("Damaged connection %d %d with %f\n", fbody->m_connections[i].m_childIndex0,
+					//   fbody->m_connections[i].m_childIndex1, force);
+
+					if (con.m_strength <= 0)
+					{
+						con.m_strength = 0;
+						needs_break = true;
+					}
+				}
+			}
+
+			btScalar pdist = connection_dist(fbody, i, fbody->getWorldTransform().getOrigin());
+			if (pdist > (dim * (1.0f - fbody->m_propagationParameter.m_stability_factor)))
+			{
+				break;
+			}
+		}
+
+		if (needs_break)
+			world->breakDisconnectedParts(fbody);
+
+		return needs_break;
+	}
+
+	return false;
+}
+
 void tickCallback(btDynamicsWorld *world, btScalar timeStep)
 {
 	btFractureDynamicsWorld *fworld = (btFractureDynamicsWorld*)world;
 	fworld->updateBodies();
 
 	TickDiscreteDynamicsWorld* tworld = (TickDiscreteDynamicsWorld*)world;
+	bool broken = false;
 
 	int numManifolds = world->getDispatcher()->getNumManifolds();
 	for (int i=0;i<numManifolds;i++)
@@ -216,12 +316,21 @@ void tickCallback(btDynamicsWorld *world, btScalar timeStep)
 				//TickDiscreteDynamicsWorld* tworld = (TickDiscreteDynamicsWorld*)world;
 				if (tworld->m_contactCallback)
 				{
+
 					rbContactPoint* cp = tworld->make_contact_point(pt, obA, obB);
+					broken = weakenCompound(obA, cp->contact_force, pt.getPositionWorldOnA(), fworld);
+					broken = broken || weakenCompound(obB, cp->contact_force, pt.getPositionWorldOnB(), fworld);
 					tworld->m_contactCallback(cp, tworld->m_bworld);
 					delete cp;
 				}
+
+				//if (broken)
+				//	break;
 			}
 		}
+
+		if (broken)
+			break;
 	}
 
 	if (tworld->m_tickCallback)
@@ -995,7 +1104,7 @@ void RB_world_convex_sweep_test(
 /* ............ */
 
 rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const float rot[4], bool use_compounds, float dampening, float factor,
-                         float min_impulse, float stability_factor)
+                         float min_impulse, float stability_factor, const float bbox[3])
 {
 	rbRigidBody *object = new rbRigidBody;
 	/* current transform */
@@ -1023,6 +1132,8 @@ rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const floa
 		object->body = new btRigidBody(rbInfo);
 	}
 	
+	object->bbox = new btVector3(bbox[0], bbox[1], bbox[2]);
+
 	/* user pointers */
 	object->body->setUserPointer(object);
 	shape->cshape->setUserPointer(object);
@@ -1051,6 +1162,8 @@ void RB_body_delete(rbRigidBody *object)
 	}
 	
 	delete body;
+
+	delete object->bbox;
 	delete object;
 }
 

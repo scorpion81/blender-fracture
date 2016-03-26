@@ -7,6 +7,32 @@
 #include "BulletDynamics/Dynamics/btFractureDynamicsWorld.h"
 
 
+class btConnectionSortPredicate
+{
+	public:
+
+		bool operator() ( const btConnection& lhs, const btConnection& rhs ) const
+		{
+			btVector3 locLhsA = lhs.m_parent->getWorldTransform().inverse() * lhs.m_obA->getWorldTransform().getOrigin();
+			btVector3 locLhsB = lhs.m_parent->getWorldTransform().inverse() * lhs.m_obB->getWorldTransform().getOrigin();
+
+			btVector3 locRhsA = rhs.m_parent->getWorldTransform().inverse() * rhs.m_obA->getWorldTransform().getOrigin();
+			btVector3 locRhsB = rhs.m_parent->getWorldTransform().inverse() * rhs.m_obB->getWorldTransform().getOrigin();
+
+			btVector3 locLhs = (locLhsA + locLhsB) * 0.5f;
+			btVector3 locRhs = (locRhsA + locRhsB) * 0.5f;
+
+			//lhs.parent should match rhs.parent... same object
+			btScalar dLhs = lhs.m_parent->getWorldTransform().getOrigin().distance(locLhs);
+			btScalar dRhs = rhs.m_parent->getWorldTransform().getOrigin().distance(locRhs);
+			//btTransform id = btTransform::getIdentity();
+			//btScalar dLhs = id.getOrigin().distance(locLhs);
+			//btScalar dRhs = id.getOrigin().distance(locRhs);
+
+			return dLhs < dRhs;
+		}
+};
+
 
 void	btFractureBody::recomputeConnectivity(btCollisionWorld* world)
 {
@@ -58,8 +84,6 @@ void	btFractureBody::recomputeConnectivity(btCollisionWorld* world)
 			}
 		}
 	}
-	
-
 }
 
 void btFractureBody::recomputeConnectivityByConstraints(btCollisionWorld *world1)
@@ -99,6 +123,10 @@ void btFractureBody::recomputeConnectivityByConstraints(btCollisionWorld *world1
 						tmp.m_childShape0 = obA->getCollisionShape();
 						tmp.m_childShape1 = obB->getCollisionShape();
 						tmp.m_strength = con->getBreakingImpulseThreshold();
+						tmp.m_obA = obA;
+						tmp.m_obB = obB;
+						tmp.m_parent = this;
+						tmp.m_id = i;
 						m_connections.push_back(tmp);
 					}
 
@@ -107,6 +135,7 @@ void btFractureBody::recomputeConnectivityByConstraints(btCollisionWorld *world1
 			}
 		}
 
+		m_connections.quickSort(btConnectionSortPredicate());
 		//build a connection map
 		m_connection_map->clear();
 

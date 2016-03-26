@@ -867,6 +867,7 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 
 #include <stdio.h>
 
+#if 0
 void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *impulse, int connection_index,
                                               bool* needsBreakingCheck, const btVector3& direction, int* depth)
 {
@@ -958,6 +959,7 @@ void btFractureDynamicsWorld::breakNeighborhood(btFractureBody *body, int connec
 		}
 	}
 }
+#endif
 
 void btFractureDynamicsWorld::fractureCallback( )
 {
@@ -1176,7 +1178,7 @@ void btFractureDynamicsWorld::fractureCallback( )
 												needsBreakingCheck = true;
 												sFracturePairs[i].m_fracObj->m_connections.remove(connection);
 
-												breakNeighborhood(sFracturePairs[i].m_fracObj, pt.m_index0);
+											//	breakNeighborhood(sFracturePairs[i].m_fracObj, pt.m_index0);
 											}
 										}
 									}
@@ -1198,7 +1200,7 @@ void btFractureDynamicsWorld::fractureCallback( )
 												needsBreakingCheck = true;
 												sFracturePairs[i].m_fracObj->m_connections.remove(connection);
 
-												breakNeighborhood(sFracturePairs[i].m_fracObj, pt.m_index1);
+											//	breakNeighborhood(sFracturePairs[i].m_fracObj, pt.m_index1);
 											}
 										}
 									}

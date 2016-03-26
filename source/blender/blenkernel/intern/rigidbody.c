@@ -221,12 +221,13 @@ void BKE_rigidbody_calc_threshold(float max_con_mass, FractureModifierData *rmd,
 
 		if (rmd->use_compounds)
 		{
-			float min_mass = MIN2(con->mi1->rigidbody->mass, con->mi2->rigidbody->mass);
+			/*float min_mass = MIN2(con->mi1->rigidbody->mass, con->mi2->rigidbody->mass);
 			float max_mass = MAX2(con->mi1->rigidbody->mass, con->mi2->rigidbody->mass);
 
-			thresh = ((min_mass + (rmd->mass_threshold_factor * max_mass)) / (min_mass + max_mass)) * max_thresh;
+			thresh = ((min_mass + (rmd->mass_threshold_factor * max_mass)) / (min_mass + max_mass)) * max_thresh;*/
+			thresh = max_thresh;
 		}
-		else
+		else;
 		{
 			con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
 			if (rmd->use_mass_dependent_thresholds)
@@ -1225,6 +1226,8 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 	}
 	if (!rbo->physics_object || rebuild) {
+		float locbb[3], size[3];
+
 		/* remove rigid body if it already exists before creating a new one */
 		if (rbo->physics_object) {
 			RB_body_delete(rbo->physics_object);
@@ -1243,8 +1246,10 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		}
 #endif
 
+		DM_mesh_boundbox(ob->derivedFinal, locbb, size);
+		mul_v3_v3(size, ob->size);
 		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, fmd->use_compounds, fmd->impulse_dampening,
-		                                  fmd->directional_factor, fmd->minimum_impulse, fmd->mass_threshold_factor);
+		                                  fmd->directional_factor, fmd->minimum_impulse, fmd->mass_threshold_factor, size);
 
 		RB_body_set_friction(rbo->physics_object, rbo->friction);
 		RB_body_set_restitution(rbo->physics_object, rbo->restitution);
@@ -1323,14 +1328,18 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 		RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 	}
 	if (!rbo->physics_object || rebuild) {
+
+		float locbb[3], size[3];
 		/* remove rigid body if it already exists before creating a new one */
 		if (rbo->physics_object) {
 			RB_body_delete(rbo->physics_object);
 		}
 
 		mat4_to_loc_quat(loc, rot, ob->obmat);
+		DM_mesh_boundbox(ob->derivedFinal, locbb, size);
+		mul_v3_v3(size, ob->size);
 
-		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, false, 0.0f, 0.0f, 0.0f, 0.0f);
+		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, false, 0.0f, 0.0f, 0.0f, 0.0f, size);
 
 		RB_body_set_friction(rbo->physics_object, rbo->friction);
 		RB_body_set_restitution(rbo->physics_object, rbo->restitution);
@@ -3418,7 +3427,7 @@ static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, Rigid
 		rbsc->num_solver_iterations = iterations;
 	}
 
-	if ((fmd->use_mass_dependent_thresholds || fmd->mass_threshold_factor > 0.0f)) {
+	if ((fmd->use_mass_dependent_thresholds || fmd->use_compounds /*|| fmd->mass_threshold_factor > 0.0f*/)) {
 		BKE_rigidbody_calc_threshold(max_con_mass, fmd, rbsc);
 	}
 
