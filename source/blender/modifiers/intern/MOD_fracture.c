@@ -2335,6 +2335,7 @@ static void search_tree_based(FractureModifierData *rmd, MeshIsland *mi, MeshIsl
 	dist = rmd->contact_dist;
 	factor = rmd->mass_threshold_factor;
 
+#if 0
 	if (factor > 0.0f && rmd->use_compounds) {
 		if (mi->rigidbody->mass > 0.0f && max_mass > 0.0f) {
 			float ratio = mi->rigidbody->mass / max_mass;
@@ -2342,6 +2343,7 @@ static void search_tree_based(FractureModifierData *rmd, MeshIsland *mi, MeshIsl
 			limit *= (factor * ratio);
 		}
 	}
+#endif
 
 	if (rmd->constraint_target == MOD_FRACTURE_CENTROID) {
 		mul_v3_m4v3(obj_centr, rmd->origmat, mi->centroid);

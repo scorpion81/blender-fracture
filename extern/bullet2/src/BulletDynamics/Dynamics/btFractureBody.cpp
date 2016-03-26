@@ -23,6 +23,8 @@ class btConnectionSortPredicate
 			btVector3 locRhs = (locRhsA + locRhsB) * 0.5f;
 
 			//lhs.parent should match rhs.parent... same object
+			btAssert(lhs.m_parent == rhs.m_parent);
+
 			btScalar dLhs = lhs.m_parent->getWorldTransform().getOrigin().distance(locLhs);
 			btScalar dRhs = rhs.m_parent->getWorldTransform().getOrigin().distance(locRhs);
 			//btTransform id = btTransform::getIdentity();

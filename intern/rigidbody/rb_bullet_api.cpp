@@ -193,8 +193,8 @@ class TickDiscreteDynamicsWorld : public btFractureDynamicsWorld
 btScalar connection_dist(btFractureBody *fbody, int index, btVector3 impact)
 {
 	btConnection& con = fbody->m_connections[index];
-	btVector3 con_posA = fbody->getWorldTransform().inverse() * con.m_obA->getWorldTransform().getOrigin();
-	btVector3 con_posB = fbody->getWorldTransform().inverse() * con.m_obB->getWorldTransform().getOrigin();
+	btVector3 con_posA = con.m_parent->getWorldTransform().inverse() * con.m_obA->getWorldTransform().getOrigin();
+	btVector3 con_posB = con.m_parent->getWorldTransform().inverse() * con.m_obB->getWorldTransform().getOrigin();
 	btVector3 con_pos = (con_posA + con_posB) * 0.5f;
 
 	return impact.distance(con_pos);
@@ -252,9 +252,14 @@ bool weakenCompound(const btCollisionObject *body, btScalar force, btVector3 imp
 			btVector3 imp = fbody->getWorldTransform().inverse() * impact;
 			btScalar dist = connection_dist(fbody, i, imp);
 			btConnection& con = fbody->m_connections[i];
-			btScalar lforce = force; //* (1.0f - fbody->m_propagationParameter.m_stability_factor);
+			btScalar lforce = force;
 			if (dist > 0.0f)
+			{
 				lforce = lforce / dist; // the closer, the higher the force
+				//printf("lforce %f\n", lforce);
+				lforce *= (1.0f - fbody->m_propagationParameter.m_stability_factor);
+				//printf("lforce2 %f\n", lforce);
+			}
 
 			if (lforce > fbody->m_propagationParameter.m_minimum_impulse)
 			{
@@ -272,7 +277,7 @@ bool weakenCompound(const btCollisionObject *body, btScalar force, btVector3 imp
 				}
 			}
 
-			btScalar pdist = connection_dist(fbody, i, fbody->getWorldTransform().getOrigin());
+			btScalar pdist = connection_dist(fbody, i, con.m_parent->getWorldTransform().getOrigin());
 			if (pdist > (dim * (1.0f - fbody->m_propagationParameter.m_stability_factor)))
 			{
 				break;
