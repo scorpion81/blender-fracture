@@ -33,6 +33,7 @@
 #include "DNA_group_types.h"
 #include "DNA_material_types.h"
 #include "DNA_mesh_types.h"
+#include "DNA_curve_types.h"
 #include "DNA_object_force.h"
 #include "DNA_object_types.h"
 #include "DNA_property_types.h"
@@ -1514,6 +1515,91 @@ static void rna_Object_lod_distance_update(Main *UNUSED(bmain), Scene *UNUSED(sc
 	(void)ob;
 #endif
 }
+
+#ifdef WITH_ALEMBIC
+#include "../../alembic/ABC_alembic.h"
+static void rna_Object_from_alembic(
+        Object *bob, ReportList *reports,
+        const char* filepath, const char* subobject, int apply_materials)
+{
+	Mesh *mesh;
+	Curve *curve, *old;
+	ID* data;
+	bool p_only = true;
+
+	data = (ID*)bob->data;
+
+	if (GS(data->name) == ID_ME){
+		abcMutexLock();
+        mesh = abcGetMesh(filepath, 0., NULL, apply_materials, subobject, &p_only);
+		abcMutexUnlock();
+
+		if (!mesh){
+			return;
+		}
+
+		mesh = BKE_mesh_copy(mesh);
+		data = &mesh->id;
+
+		BKE_mesh_assign_object(bob, mesh);
+
+		if (apply_materials){
+			abcApplyMaterials(bob, NULL);
+		}
+
+		mesh->id.us--;
+
+		abcDestroyKey(0);
+	} else if (GS(data->name) == ID_CU){
+		abcMutexLock();
+
+		curve = abcGetNurbs(filepath, 0., subobject);
+
+		if (bob->type == OB_SURF && curve) {
+			old = bob->data;
+			if (old)
+				old->id.us--;
+			bob->data = curve;
+			id_us_plus((ID *)curve);
+		} else {
+			printf("Cannot assign nurbs data to object\n");
+		}
+
+		curve->id.us--;
+	}
+
+	UNUSED_VARS(reports);
+}
+
+static void rna_Object_set_alembic_props(
+        Object *bob, ReportList *reports)
+{
+	ABC_setCustomProperties(bob);
+	UNUSED_VARS(reports);
+}
+
+static void rna_Object_apply_abc(Object *bob, ReportList *reports)
+{
+	float abc_mat[4][4];
+	float rot[3][3];
+	ABC_getTransform(bob->abc_file, bob->abc_subobject, 0., abc_mat, bob->parent == NULL);
+	mat4_to_loc_rot_size(bob->loc, rot, bob->size, abc_mat);
+	BKE_object_mat3_to_rot(bob, rot, false);
+	bob->abc_file[0] = '\0';
+	bob->abc_subobject[0] = '\0';
+	UNUSED_VARS(reports);
+}
+
+static void rna_Object_matrix_abc_get(PointerRNA *ptr, float values[16])
+{
+	Object *ob = ptr->id.data;
+	float abc_mat[4][4];
+	ABC_getTransform(ob->abc_file, ob->abc_subobject, 0., abc_mat, ob->parent == NULL);
+	copy_m4_m4((float(*)[4])values, abc_mat);
+}
+
+#endif //WITH_ALEMBIC
+
 #else
 
 static void rna_def_vertex_group(BlenderRNA *brna)
@@ -2159,6 +2245,8 @@ static void rna_def_object(BlenderRNA *brna)
 {
 	StructRNA *srna;
 	PropertyRNA *prop;
+	FunctionRNA *func;
+	PropertyRNA *parm;
 
 	static EnumPropertyItem up_items[] = {
 		{OB_POSX, "X", 0, "X", ""},
@@ -2482,6 +2570,15 @@ static void rna_def_object(BlenderRNA *brna)
 	                         "you get a matrix relative to the Armature object, not to the actual parent bone");
 	RNA_def_property_float_funcs(prop, "rna_Object_matrix_local_get", "rna_Object_matrix_local_set", NULL);
 	RNA_def_property_update(prop, NC_OBJECT | ND_TRANSFORM, NULL);
+
+#ifdef WITH_ALEMBIC
+	prop = RNA_def_property(srna, "matrix_abc", PROP_FLOAT, PROP_MATRIX);
+	RNA_def_property_multi_array(prop, 2, rna_matrix_dimsize_4x4);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_ui_text(prop, "Alembic Matrix", "Alembic local transformation matrix");
+	RNA_def_property_float_funcs(prop, "rna_Object_matrix_abc_get", "rna_Object_matrix_local_set", NULL);
+	RNA_def_property_update(prop, NC_OBJECT | ND_TRANSFORM, NULL);
+#endif
 
 	prop = RNA_def_property(srna, "matrix_basis", PROP_FLOAT, PROP_MATRIX);
 	RNA_def_property_multi_array(prop, 2, rna_matrix_dimsize_4x4);
@@ -2834,6 +2931,37 @@ static void rna_def_object(BlenderRNA *brna)
 	RNA_def_property_struct_type(prop, "LodLevel");
 	RNA_def_property_ui_text(prop, "Level of Detail Levels", "A collection of detail levels to automatically switch between");
 	RNA_def_property_update(prop, NC_OBJECT | ND_LOD, NULL);
+
+#ifdef WITH_ALEMBIC
+	prop = RNA_def_property(srna, "abc_file", PROP_STRING, PROP_FILEPATH);
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, NULL);
+
+	prop = RNA_def_property(srna, "abc_subobject", PROP_STRING, PROP_NONE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, NULL);
+
+	prop = RNA_def_property(srna, "use_abc_xform", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "abc_flag", 0);
+	RNA_def_property_ui_text(prop, "Use Alembic transform", NULL);
+	RNA_def_property_update(prop, 0, "rna_Object_internal_update_data");
+
+	func = RNA_def_function(srna, "from_alembic", "rna_Object_from_alembic");
+	RNA_def_function_ui_description(func, "Add a new object created from Alembic file");
+	RNA_def_function_flag(func, FUNC_USE_REPORTS);
+	parm = RNA_def_string(func, "filepath", "File path", 1024, "", "Alembic file");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_string(func, "subobject", "Sub object", 1024, "", "Alembic's sub-object");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_boolean(func, "apply_materials", 0, "", "Apply materials");
+    RNA_def_property_flag(parm, PROP_REQUIRED);
+
+	func = RNA_def_function(srna, "set_alembic_props", "rna_Object_set_alembic_props");
+	RNA_def_function_ui_description(func, "Set customs attributes from Alembic file");
+	RNA_def_function_flag(func, FUNC_USE_REPORTS);
+
+	func = RNA_def_function(srna, "apply_abc_xform", "rna_Object_apply_abc");
+	RNA_def_function_ui_description(func, "Apply tranforms from Alembic cache");
+	RNA_def_function_flag(func, FUNC_USE_REPORTS);
+#endif
 
 	RNA_api_object(srna);
 }

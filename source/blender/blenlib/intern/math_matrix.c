@@ -2509,3 +2509,55 @@ void BLI_space_transform_invert_normal(const SpaceTransform *data, float no[3])
 	mul_mat3_m4_v3(((SpaceTransform *)data)->target2local, no);
 	normalize_v3(no);
 }
+
+void rotate_m3_yup_zup(float rot_x_mat[3][3], float rot_y_mat[3][3], float rot_z_mat[3][3], const float euler[3])
+{
+    float Rx = euler[0];
+    float Ry = -euler[2];
+    float Rz = euler[1];
+
+    unit_m3(rot_x_mat);
+    unit_m3(rot_y_mat);
+    unit_m3(rot_z_mat);
+
+    rot_x_mat[1][1] = cosf(Rx);
+    rot_x_mat[2][1] = -sinf(Rx);
+    rot_x_mat[1][2] = sinf(Rx);
+    rot_x_mat[2][2] = cosf(Rx);
+
+    rot_y_mat[2][2] = cosf(Ry);
+    rot_y_mat[0][2] = -sinf(Ry);
+    rot_y_mat[2][0] = sinf(Ry);
+    rot_y_mat[0][0] = cosf(Ry);
+
+    rot_z_mat[0][0] = cosf(Rz);
+    rot_z_mat[1][0] = -sinf(Rz);
+    rot_z_mat[0][1] = sinf(Rz);
+    rot_z_mat[1][1] = cosf(Rz);
+}
+
+void rotate_m3_zup_yup(float rot_x_mat[3][3], float rot_y_mat[3][3], float rot_z_mat[3][3], const float euler[3])
+{
+    float Rx = euler[0];
+    float Ry = euler[2];
+    float Rz = -euler[1];
+
+    unit_m3(rot_x_mat);
+    unit_m3(rot_y_mat);
+    unit_m3(rot_z_mat);
+
+    rot_x_mat[1][1] = cosf(Rx);
+    rot_x_mat[2][1] = -sinf(Rx);
+    rot_x_mat[1][2] = sinf(Rx);
+    rot_x_mat[2][2] = cosf(Rx);
+
+    rot_y_mat[2][2] = cosf(Ry);
+    rot_y_mat[0][2] = -sinf(Ry);
+    rot_y_mat[2][0] = sinf(Ry);
+    rot_y_mat[0][0] = cosf(Ry);
+
+    rot_z_mat[0][0] = cosf(Rz);
+    rot_z_mat[1][0] = -sinf(Rz);
+    rot_z_mat[0][1] = sinf(Rz);
+    rot_z_mat[1][1] = cosf(Rz);
+}

@@ -1386,6 +1386,13 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         sub = row.row(align=True)
         sub.active = bool(md.vertex_group)
         sub.prop(md, "invert_vertex_group", text="", icon='ARROW_LEFTRIGHT')
+        
+    def ALEMBIC(self, layout, ob, md):
+        split = layout.split()
+        col = split.column()
+        col.prop(md, "filepath", text="Alembic cache file")
+        col.prop(md, "subobject", text="Alembic sub object")
+        col.prop(md, "startframe", text="Start:")
 
     def NORMAL_EDIT(self, layout, ob, md):
         has_vgroup = bool(md.vertex_group)

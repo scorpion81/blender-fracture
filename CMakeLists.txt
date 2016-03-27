@@ -314,6 +314,27 @@ option(WITH_CODEC_AVI           "Enable Blenders own AVI file support (raw/jpeg)
 option(WITH_CODEC_FFMPEG        "Enable FFMPeg Support (http://ffmpeg.org)" ${_init_CODEC_FFMPEG})
 option(WITH_CODEC_SNDFILE       "Enable libsndfile Support (http://www.mega-nerd.com/libsndfile)" OFF)
 
+# Alembic support
+option(WITH_ALEMBIC     		"Enable Alembic Support" OFF)
+if(WITH_HDF5)
+	find_package(HDF5)
+
+	if(NOT HDF5_FOUND)
+		set(WITH_HDF5 OFF)
+		set(WITH_ALEMBIC OFF)
+	endif()
+endif()
+
+# alembic
+if(WITH_ALEMBIC)
+	find_package(ALEMBIC)
+
+    if(NOT ALEMBIC_FOUND)
+		set(WITH_ALEMBIC OFF)
+   endif()
+endif()
+
+
 if(APPLE)
 	option(WITH_CODEC_QUICKTIME     "Enable Quicktime Support" ON)
 endif()
@@ -3041,6 +3062,7 @@ if(FIRST_RUN)
 	info_cfg_option(WITH_FREESTYLE)
 	info_cfg_option(WITH_OPENCOLORIO)
 	info_cfg_option(WITH_OPENVDB)
+	info_cfg_option(WITH_ALEMBIC)
 
 	info_cfg_text("Compiler Options:")
 	info_cfg_option(WITH_BUILDINFO)

@@ -163,6 +163,60 @@ static void rna_Scene_ray_cast(
 	}
 }
 
+#ifdef WITH_ALEMBIC
+#include "../../alembic/ABC_alembic.h"
+
+static void rna_Alembic_meshes_get(Scene *sce, const char* filepath, char *result)
+{
+	ABC_getObjects(filepath, result);
+	UNUSED_VARS(sce);
+}
+
+static void rna_Alembic_nurbs_get(Scene *sce, const char* filepath, char *result)
+{
+	ABC_getNurbs(filepath, result);
+	UNUSED_VARS(sce);
+}
+
+static void rna_Alembic_cameras_get(Scene *sce, const char* filepath, char *result)
+{
+	ABC_getCamera(filepath, result);
+	UNUSED_VARS(sce);
+}
+
+static void rna_Scene_alembic_export( Scene *sce, const char *filepath,
+										int start, int end,
+										int xformsamples, int geomsamples,
+										float shutter_open, float shutter_close,
+										int selected_only,
+										int uvs, int normals,
+										int vcolors,
+										int force_meshes,
+										int flatten_hierarchy,
+										int custom_props_as_geodata,
+										int vislayers, int renderable,
+										int facesets, int matindices, int subdiv_schema,
+										int ogawa, int packuv
+										)
+{
+// We have to enable allow_threads, because we may change scene frame number during export
+#ifdef WITH_PYTHON
+	BPy_BEGIN_ALLOW_THREADS;
+#endif
+
+	ABC_export( sce, filepath, start, end, 1.0 / xformsamples, 1.0 / geomsamples,
+				shutter_open, shutter_close,
+				selected_only, uvs, normals, vcolors,
+				force_meshes, flatten_hierarchy, custom_props_as_geodata,
+				vislayers, renderable, facesets, matindices, subdiv_schema, ogawa, packuv);
+
+#ifdef WITH_PYTHON
+	BPy_END_ALLOW_THREADS;
+#endif
+}
+
+#endif
+
 #ifdef WITH_COLLADA
 /* don't remove this, as COLLADA exporting cannot be done through operators in render() callback. */
 #include "../../collada/collada.h"
@@ -284,6 +338,72 @@ void RNA_api_scene(StructRNA *srna)
 
 	RNA_def_function_ui_description(func, "Export to collada file");
 #endif
+
+#ifdef WITH_ALEMBIC
+	func = RNA_def_function(srna, "alembic_export", "rna_Scene_alembic_export");
+	RNA_def_function_ui_description(func, "Export to Alembic file");
+
+	parm = RNA_def_string(func, "filepath", NULL, FILE_MAX, "File Path", "File path to write Alembic file");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_property_subtype(parm, PROP_FILEPATH); /* allow non utf8 */
+
+	RNA_def_int(func, "start", 1, INT_MIN, INT_MAX, "Start", "Start Frame", INT_MIN, INT_MAX);
+	RNA_def_int(func, "end", 1, INT_MIN, INT_MAX, "End", "End Frame", INT_MIN, INT_MAX);
+	RNA_def_int(func, "xformsamples", 1, 1, 128, "Xform samples", "Transform samples per frame", 1, 128);
+	RNA_def_int(func, "geomsamples", 1, 1, 128, "Geom samples", "Geometry samples per frame", 1, 128);
+	RNA_def_float(func, "sh_open", 0.0f, -1.0f, 1.0f, "Shutter open", "", -1.0f, 1.0f);
+	RNA_def_float(func, "sh_close", 1.0f, -1.0f, 1.0f, "Shutter close", "", -1.0f, 1.0f);
+	RNA_def_boolean(func, "selected_only"	, 0, "Selected only", "Export only selected objects");
+	RNA_def_boolean(func, "uvs"			, 1, "UVs", "Export UVs");
+	RNA_def_boolean(func, "normals"		, 1, "Normals", "Export cormals");
+	RNA_def_boolean(func, "vcolors"		, 0, "Vertex colors", "Export vertex colors");
+	RNA_def_boolean(func, "forcemeshes"	, 1, "Subsurfs as meshes", "Export subdivision surfaces as meshes");
+	RNA_def_boolean(func, "flatten"		, 0, "Flatten hierarchy", "Flatten hierarchy");
+	RNA_def_boolean(func, "geoprops"	, 1, "Custom props as geom data", "Write custom properties as geometry props");
+	RNA_def_boolean(func, "vislayers"	, 0, "Visible layers only", "Export only objects in visible layers");
+	RNA_def_boolean(func, "renderable"	, 0, "Renderable objects only", "Export only objects marked renderable in the outliner");
+	RNA_def_boolean(func, "facesets"	, 0, "Facesets", "Export facesets");
+	RNA_def_boolean(func, "matindices"	, 0, "Material indices", "Export per face material indices");
+	RNA_def_boolean(func, "subdiv_schema"	, 0, "Use Alembic subdivision Schema", "Use Alembic subdivision Schema");
+	RNA_def_boolean(func, "ogawa"		, 0, "Export Ogawa", "Export as Ogawa format");
+	RNA_def_boolean(func, "packuv"		, 0, "Export with packed UV islands", "Export with packed UV islands");
+
+	func = RNA_def_function(srna, "alembic_get_objects", "rna_Alembic_meshes_get");
+	RNA_def_function_ui_description(func, "Get meshes objects from alembic");
+
+	parm = RNA_def_string(func, "filepath", NULL, FILE_MAX, "File Path", "File path to Alembic file");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_property_subtype(parm, PROP_FILEPATH);
+
+	parm = RNA_def_string(func, "result", NULL, 512*1024, "Result", "Resulting meshes objects");
+	RNA_def_property_flag(parm, PROP_THICK_WRAP); /* needed for string return value */
+	RNA_def_function_output(func, parm);
+
+	func = RNA_def_function(srna, "alembic_get_nurbs", "rna_Alembic_nurbs_get");
+	RNA_def_function_ui_description(func, "Get nurbs objects from alembic");
+
+
+	parm = RNA_def_string(func, "filepath", NULL, FILE_MAX, "File Path", "File path to Alembic file");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_property_subtype(parm, PROP_FILEPATH);
+
+	parm = RNA_def_string(func, "result", NULL, 65535, "Result", "Resulting nurbs objects");
+	RNA_def_property_flag(parm, PROP_THICK_WRAP); /* needed for string return value */
+	RNA_def_function_output(func, parm);
+
+	func = RNA_def_function(srna, "alembic_get_cameras", "rna_Alembic_cameras_get");
+	RNA_def_function_ui_description(func, "Get meshes objects from alembic");
+
+	parm = RNA_def_string(func, "filepath", NULL, FILE_MAX, "File Path", "File path to Alembic file");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_property_subtype(parm, PROP_FILEPATH);
+
+	parm = RNA_def_string(func, "result", NULL, 65535, "Result", "Resulting meshes objects");
+	RNA_def_property_flag(parm, PROP_THICK_WRAP); /* needed for string return value */
+	RNA_def_function_output(func, parm);
+
+#endif
+
 }
 
 

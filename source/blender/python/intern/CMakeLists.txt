@@ -262,6 +262,10 @@ if(WITH_OPENCOLLADA)
 	add_definitions(-DWITH_COLLADA)
 endif()
 
+if(WITH_ALEMBIC)
+	add_definitions(-DWITH_ALEMBIC)
+endif()
+
 if(WITH_OPENCOLORIO)
 	add_definitions(-DWITH_OCIO)
 endif()

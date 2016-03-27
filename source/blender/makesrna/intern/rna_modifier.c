@@ -63,6 +63,7 @@
 
 EnumPropertyItem rna_enum_object_modifier_type_items[] = {
 	{0, "", 0, N_("Modify"), ""},
+	{eModifierType_Alembic, "ALEMBIC", ICON_MOD_MESHDEFORM, "Alembic", ""},
 	{eModifierType_DataTransfer, "DATA_TRANSFER", ICON_MOD_DATA_TRANSFER, "Data Transfer", ""},
 	{eModifierType_MeshCache, "MESH_CACHE", ICON_MOD_MESHDEFORM, "Mesh Cache", ""},
 	{eModifierType_NormalEdit, "NORMAL_EDIT", ICON_MOD_NORMALEDIT, "Normal Edit", ""},
@@ -393,6 +394,8 @@ static StructRNA *rna_Modifier_refine(struct PointerRNA *ptr)
 			return &RNA_LaplacianDeformModifier;
 		case eModifierType_Wireframe:
 			return &RNA_WireframeModifier;
+		case eModifierType_Alembic:
+			return &RNA_AlembicModifier;
 		case eModifierType_DataTransfer:
 			return &RNA_DataTransferModifier;
 		case eModifierType_NormalEdit:
@@ -1608,6 +1611,42 @@ static void rna_def_modifier_decimate(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "face_count", PROP_INT, PROP_NONE);
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 	RNA_def_property_ui_text(prop, "Face Count", "The current number of faces in the decimated mesh");
+}
+
+static void rna_def_modifier_alembic(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna = RNA_def_struct(brna, "AlembicModifier", "Modifier");
+	RNA_def_struct_ui_text(srna, "Alembic Cache Modifier", "Alembic Cache modifier");
+	RNA_def_struct_sdna(srna, "AlembicModifierData");
+	RNA_def_struct_ui_icon(srna, ICON_MOD_MESHDEFORM);
+
+	prop = RNA_def_property(srna, "filepath", PROP_STRING, PROP_FILEPATH);
+	RNA_def_property_string_sdna(prop, NULL, "cache_filename");
+	RNA_def_property_ui_text(prop, "Cache Path", "Path to an Alembic cache");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "subobject", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "sub_object");
+	RNA_def_property_ui_text(prop, "Cache Path", "Path to an Alembic cache");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_vertices", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_ALEMBIC_VERTS);
+	RNA_def_property_ui_text(prop, "Use as cache", "Use input vertices");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_materials", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_ALEMBIC_ASSIGN_MATS);
+	RNA_def_property_ui_text(prop, "Use materials", "Flag face set as new material");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "startframe", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "frame_start");
+	RNA_def_property_ui_text(prop, "Startframe",  "Begin animation cache at this frame");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 static void rna_def_modifier_wave(BlenderRNA *brna)
@@ -4742,6 +4781,7 @@ void RNA_def_modifier(BlenderRNA *brna)
 	rna_def_modifier_meshcache(brna);
 	rna_def_modifier_laplaciandeform(brna);
 	rna_def_modifier_wireframe(brna);
+	rna_def_modifier_alembic(brna);
 	rna_def_modifier_datatransfer(brna);
 	rna_def_modifier_normaledit(brna);
 }

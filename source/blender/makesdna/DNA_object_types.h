@@ -299,6 +299,11 @@ typedef struct Object {
 	LodLevel *currentlod;
 
 	struct PreviewImage *preview;
+
+	char abc_file[1024];
+	char abc_subobject[1024];
+	char abc_flag;
+	char padding[7];
 } Object;
 
 /* Warning, this is not used anymore because hooks are now modifiers */

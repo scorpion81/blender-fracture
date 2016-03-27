@@ -492,6 +492,13 @@ if(WITH_FREESTYLE)
 	add_definitions(-DWITH_FREESTYLE)
 endif()
 
+if(WITH_ALEMBIC)
+	list(APPEND INC
+		../alembic
+	)
+	add_definitions(-DWITH_ALEMBIC)
+endif()
+
 if(WITH_OPENSUBDIV)
 	add_definitions(-DWITH_OPENSUBDIV)
 	list(APPEND INC_SYS

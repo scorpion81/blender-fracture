@@ -28,6 +28,7 @@ set(INC
 	../../makesrna
 	../../windowmanager
 	../../collada
+	../../alembic
 )
 
 set(INC_SYS
@@ -35,15 +36,21 @@ set(INC_SYS
 )
 
 set(SRC
+	io_alembic.c
 	io_collada.c
 	io_ops.c
 
+	io_alembic.h
 	io_collada.h
 	io_ops.h
 )
 
 if(WITH_OPENCOLLADA)
 	add_definitions(-DWITH_COLLADA)
+endif()
+
+if(WITH_ALEMBIC)
+	add_definitions(-DWITH_ALEMBIC)
 endif()
 
 if(WITH_INTERNATIONAL)

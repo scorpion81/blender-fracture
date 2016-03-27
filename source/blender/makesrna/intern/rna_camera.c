@@ -368,6 +368,14 @@ void RNA_def_camera(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "GPU Depth Of Field", "");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, NULL);
 
+#ifdef WITH_ALEMBIC
+	prop = RNA_def_property(srna, "abc_filename", PROP_STRING, PROP_FILEPATH);
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, NULL);
+
+	prop = RNA_def_property(srna, "abc_subobject", PROP_STRING, PROP_NONE);
+	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, NULL);
+#endif
+
 	rna_def_animdata_common(srna);
 
 	/* Nested Data  */

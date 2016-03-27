@@ -58,6 +58,7 @@ extern StructRNA RNA_ActuatorSensor;
 extern StructRNA RNA_Addon;
 extern StructRNA RNA_AddonPreferences;
 extern StructRNA RNA_AdjustmentSequence;
+extern StructRNA RNA_AlembicModifier;
 extern StructRNA RNA_AlwaysSensor;
 extern StructRNA RNA_AndController;
 extern StructRNA RNA_AnimData;

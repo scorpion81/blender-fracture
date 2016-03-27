@@ -36,6 +36,7 @@ set(INC
 	../bmesh
 	../render/extern/include
 	../../../intern/elbeem/extern
+	../alembic
 	../../../intern/guardedalloc
 	../../../intern/eigen
 )
@@ -45,6 +46,7 @@ set(INC_SYS
 )
 
 set(SRC
+	intern/MOD_alembic.c
 	intern/MOD_armature.c
 	intern/MOD_array.c
 	intern/MOD_bevel.c
@@ -111,6 +113,10 @@ set(SRC
 	intern/MOD_util.h
 	intern/MOD_weightvg_util.h
 )
+
+if(WITH_ALEMBIC)
+	add_definitions(-DWITH_ALEMBIC)
+endif()
 
 if(WITH_MOD_BOOLEAN)
 	add_definitions(-DWITH_MOD_BOOLEAN)

@@ -283,6 +283,20 @@ class DATA_PT_camera_safe_areas(CameraButtonsPanel, Panel):
 
         draw_display_safe_settings(layout, safe_data, camera)
 
+class DATA_PT_camera_alembic_stuffs(CameraButtonsPanel, Panel):
+    bl_label = "Alembic stuffs"
+    COMPAT_ENGINES = {'BLENDER_RENDER', 'BLENDER_GAME'}
+        
+    def draw(self, context):
+        layout = self.layout
+
+        cam = context.camera
+
+        split = layout.split()
+
+        col = split.column()
+        col.prop(cam, "abc_filename", text="File")
+        col.prop(cam, "abc_subobject", text="SubObject")
 
 class DATA_PT_custom_props_camera(CameraButtonsPanel, PropertyPanel, Panel):
     COMPAT_ENGINES = {'BLENDER_RENDER', 'BLENDER_GAME'}

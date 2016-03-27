@@ -222,6 +222,71 @@ static Object *rna_Main_objects_new(Main *bmain, ReportList *reports, const char
 	return ob;
 }
 
+#ifdef WITH_ALEMBIC
+#include "../../alembic/ABC_alembic.h"
+static Object *rna_Main_objects_from_alembic(
+        Main *bmain, ReportList *reports,
+        const char* filepath, const char* subobject, const char* name, int apply_materials)
+{
+	Object* ob = NULL;
+	Mesh *mesh = NULL;
+	ID* data;
+    bool p_only = false;
+
+	abcMutexLock();
+    mesh = abcGetMesh(filepath, 0., NULL, apply_materials, subobject, &p_only);
+	abcMutexUnlock();
+
+	if (!mesh){
+        abcDestroyKey(NULL);
+		return NULL;
+	}
+
+	mesh = BKE_mesh_copy(mesh);
+	data = &mesh->id;
+
+	ob = rna_Main_objects_new(bmain, reports, name, data);
+
+	if (apply_materials){
+		abcApplyMaterials(ob, NULL);
+    }
+
+	mesh->id.us--;
+
+	abcDestroyKey(NULL);
+
+	return ob;
+}
+
+static Object *rna_Main_nurbs_from_alembic(
+        Main *bmain, ReportList *reports,
+        const char* filepath, const char* subobject, const char* name, int apply_materials)
+{
+	Object *ob = NULL;
+	Curve *curve = NULL;
+	ID *data;
+
+	abcMutexLock();
+	curve = abcGetNurbs(filepath, 0., subobject);
+	abcMutexUnlock();
+
+	if (!curve){
+		return NULL;
+	}
+
+	curve = BKE_curve_copy(curve);
+	data = &curve->id;
+
+	ob = rna_Main_objects_new(bmain, reports, name, data);
+
+	curve->id.us--;
+
+	return ob;
+
+	UNUSED_VARS(apply_materials);
+}
+#endif
+
 static void rna_Main_objects_remove(Main *bmain, ReportList *reports, PointerRNA *object_ptr)
 {
 	Object *object = object_ptr->data;
@@ -929,6 +994,38 @@ void RNA_def_main_objects(BlenderRNA *brna, PropertyRNA *cprop)
 	/* return type */
 	parm = RNA_def_pointer(func, "object", "Object", "", "New object data-block");
 	RNA_def_function_return(func, parm);
+
+#ifdef WITH_ALEMBIC
+	func = RNA_def_function(srna, "new_from_alembic", "rna_Main_objects_from_alembic");
+	RNA_def_function_ui_description(func, "Add a new mesh object created from Alembic file");
+	RNA_def_function_flag(func, FUNC_USE_REPORTS);
+	parm = RNA_def_string(func, "filepath", "File path", FILE_MAX, "", "Alembic file");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_string(func, "subobject", "Sub object", FILE_MAX, "", "Alembic's sub-object");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_string(func, "name", "Object", 0, "", "New name for the datablock");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_boolean(func, "apply_materials", 0, "", "Apply materials");
+    RNA_def_property_flag(parm, PROP_REQUIRED);
+	/* return type */
+	parm = RNA_def_pointer(func, "object", "Object", "", "New alembic datablock");
+	RNA_def_function_return(func, parm);
+
+	func = RNA_def_function(srna, "new_nurbs_from_alembic", "rna_Main_nurbs_from_alembic");
+	RNA_def_function_ui_description(func, "Add a new nurb object created from Alembic file");
+	RNA_def_function_flag(func, FUNC_USE_REPORTS);
+	parm = RNA_def_string(func, "filepath", "File path", FILE_MAX, "", "Alembic file");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_string(func, "subobject", "Sub object", FILE_MAX, "", "Alembic's sub-object");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_string(func, "name", "Object", 0, "", "New name for the datablock");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_boolean(func, "apply_materials", 0, "", "Apply materials");
+    RNA_def_property_flag(parm, PROP_REQUIRED);
+	/* return type */
+	parm = RNA_def_pointer(func, "object", "Object", "", "New alembic datablock");
+	RNA_def_function_return(func, parm);
+#endif
 
 	func = RNA_def_function(srna, "remove", "rna_Main_objects_remove");
 	RNA_def_function_ui_description(func, "Remove a object from the current blendfile");

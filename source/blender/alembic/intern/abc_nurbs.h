@@ -4,7 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version. 
+ * of the License, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,39 +15,30 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * The Original Code is Copyright (C) 2008 Blender Foundation.
- * All rights reserved.
- *
- * 
- * Contributor(s): Blender Foundation
+ * Contributor(s): Esteban Tovagliari, Cedric Paille, Kevin Dietrich
  *
  * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file blender/editors/io/io_ops.c
- *  \ingroup collada
- */
+#ifndef __ABC_NURBS_WRITER_H__
+#define __ABC_NURBS_WRITER_H__
 
-#include "io_ops.h"  /* own include */
+#include "abc_shape.h"
 
-#include "WM_api.h"
+class AbcNurbsWriter : public AbcShapeWriter {
+	std::vector<Alembic::AbcGeom::ONuPatchSchema> m_nurbs_schema;
+	bool m_is_animated;
 
-#ifdef WITH_COLLADA
-#  include "io_collada.h"
-#endif
+public:
+	AbcNurbsWriter(Scene *sce, Object *obj, AbcTransformWriter *parent, Alembic::Util::uint32_t timeSampling, AbcExportOptions &opts);
+	~AbcNurbsWriter();
 
-#ifdef WITH_ALEMBIC
-#  include "io_alembic.h"
-#endif
+private:
+	virtual void do_write();
 
-void ED_operatortypes_io(void) 
-{
-#ifdef WITH_COLLADA
-	/* Collada operators: */
-	WM_operatortype_append(WM_OT_collada_export);
-	WM_operatortype_append(WM_OT_collada_import);
-#endif
-#ifdef WITH_ALEMBIC
-	WM_operatortype_append(WM_OT_alembic_export);
-#endif
-}
+    bool isAnimated() const;
+
+	void writeNurbs();
+};
+
+#endif  /* __ABC_NURBS_WRITER_H__ */

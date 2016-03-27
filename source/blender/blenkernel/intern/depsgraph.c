@@ -93,6 +93,10 @@
 #include "DEG_depsgraph_debug.h"
 #include "DEG_depsgraph_query.h"
 
+#ifdef WITH_ALEMBIC
+#include "ABC_alembic.h"
+#endif
+
 #ifdef WITH_LEGACY_DEPSGRAPH
 
 static SpinLock threaded_update_lock;
@@ -2185,7 +2189,19 @@ static void dag_object_time_update_flags(Main *bmain, Scene *scene, Object *ob)
 		ob->recalc |= OB_RECALC_OB;
 		ob->adt->recalc |= ADT_RECALC_ANIM;
 	}
-	
+		
+#ifdef WITH_ALEMBIC
+	if (ob->abc_file[0] != '\0') {
+		ob->recalc |= OB_RECALC_OB;
+	}
+	if (ob->type == OB_CAMERA){
+		Camera* bcam = ob->data;
+		float time = BKE_scene_frame_get(scene) / (float)scene->r.frs_sec;
+		if (bcam->abc_filename[0] != '\0' && bcam->abc_subobject[0] != '\0')
+		ABC_set_camera(bcam->abc_filename, bcam->abc_subobject, time, bcam);
+	}
+#endif
+
 	if ((ob->adt) && (ob->type == OB_ARMATURE)) ob->recalc |= OB_RECALC_DATA;
 	
 	if (object_modifiers_use_time(ob)) ob->recalc |= OB_RECALC_DATA;

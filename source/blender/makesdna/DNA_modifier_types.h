@@ -85,6 +85,7 @@ typedef enum ModifierType {
 	eModifierType_DataTransfer      = 49,
 	eModifierType_NormalEdit        = 50,
 	eModifierType_CorrectiveSmooth  = 51,
+	eModifierType_Alembic           = 52,
 	NUM_MODIFIER_TYPES
 } ModifierType;
 
@@ -1272,6 +1273,22 @@ typedef struct TriangulateModifierData {
 	int ngon_method;
 	int pad;
 } TriangulateModifierData;
+
+/* AlembicModifierData.flag */
+enum {
+	MOD_ALEMBIC_VERTS = (1 << 0),
+    MOD_ALEMBIC_ASSIGN_MATS = (1 << 1),
+	MOD_ALEMBIC_DISABLED = (1 << 3),
+};
+
+/* Alembic modifier */
+typedef struct AlembicModifierData {
+	ModifierData modifier;
+
+	int   flag, frame_start;
+	char  cache_filename[1024];
+	char  sub_object[1024];
+} AlembicModifierData;
 
 #ifdef DNA_DEPRECATED
 enum {

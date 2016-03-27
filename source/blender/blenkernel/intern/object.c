@@ -124,6 +124,10 @@
 #include "BPY_extern.h"
 #endif
 
+#ifdef WITH_ALEMBIC
+#include "ABC_alembic.h"
+#endif
+
 #include "CCGSubSurf.h"
 
 #include "GPU_material.h"
@@ -3099,6 +3103,56 @@ bool BKE_object_parent_loop_check(const Object *par, const Object *ob)
 	return BKE_object_parent_loop_check(par->parent, ob);
 }
 
+// recompute transform matrix of object in new coordinate system (from Y-Up to Z-Up)
+static void createTransformMatrix(Object *obj)
+{
+    float rot_mat[3][3], rot[3][3], scale_mat[4][4], invmat[4][4], transform_mat[4][4];
+    float rot_x_mat[3][3], rot_y_mat[3][3], rot_z_mat[3][3];
+    float loc[3], scale[3], euler[3];
+
+    zero_v3(loc);
+    zero_v3(scale);
+    zero_v3(euler);
+    unit_m3(rot);
+    unit_m3(rot_mat);
+    unit_m4(scale_mat);
+    unit_m4(transform_mat);
+    unit_m4(invmat);
+
+    // compute rotation matrix
+    // extract location, rotation, and scale from matrix
+    mat4_to_loc_rot_size(loc, rot, scale, obj->obmat);
+
+    // get euler angles from rotation matrix
+    mat3_to_eulO(euler, ROT_MODE_XYZ, rot);
+
+    // create X, Y, Z rotation matrices from euler angles
+    rotate_m3_yup_zup(rot_x_mat, rot_y_mat, rot_z_mat, euler);
+
+    // concatenate rotation matrices
+    mul_m3_m3m3(rot_mat, rot_mat, rot_y_mat);
+    mul_m3_m3m3(rot_mat, rot_mat, rot_z_mat);
+    mul_m3_m3m3(rot_mat, rot_mat, rot_x_mat);
+
+    // add rotation matrix to transformation matrix
+    copy_m4_m3(transform_mat, rot_mat);
+
+    // add translation to transformation matrix
+    transform_mat[3][0] = loc[0];
+    transform_mat[3][1] = -loc[2];
+    transform_mat[3][2] = loc[1];
+
+    // create scale matrix
+    scale_mat[0][0] = scale[0];
+    scale_mat[1][1] = scale[2];
+    scale_mat[2][2] = scale[1];
+
+    // add scale to transformation matrix
+    mul_m4_m4m4(transform_mat, transform_mat, scale_mat);
+
+    copy_m4_m4(obj->obmat, transform_mat);
+}
+
 /* proxy rule: lib_object->proxy_from == the one we borrow from, only set temporal and cleared here */
 /*           local_object->proxy      == pointer to library object, saved in files and read */
 
@@ -3113,6 +3167,34 @@ void BKE_object_handle_update_ex(EvaluationContext *eval_ctx,
                                  const bool do_proxy_update)
 {
 	if (ob->recalc & OB_RECALC_ALL) {
+		bool abc_xform = false;
+#ifdef  WITH_ALEMBIC
+		float rot[3][3], cam_to_yup[4][4];
+
+		if (((ob->abc_flag & 1) == 1) && ob->abc_file[0] != '\0' && ob->abc_subobject[0] != '\0'){
+			float time = BKE_scene_frame_get(scene) / (float)scene->r.frs_sec;
+			abcMutexLock();
+			ABC_getTransform(ob->abc_file, ob->abc_subobject, time, ob->obmat, ob->parent == NULL);
+			abcMutexUnlock();
+
+            if (ob->type == OB_CAMERA){
+				unit_m4(cam_to_yup);
+                rotate_m4(cam_to_yup, 'X', M_PI_2);
+				mul_m4_m4m4(ob->obmat, ob->obmat, cam_to_yup);
+            }
+
+            createTransformMatrix(ob);
+
+			mat4_to_loc_rot_size(ob->loc, rot, ob->size, ob->obmat);
+			BKE_object_mat3_to_rot(ob, rot, false);
+			if (ob->parent){
+				mul_m4_m4m4(ob->obmat, ob->parent->obmat, ob->obmat);
+			}
+
+			invert_m4_m4(ob->imat, ob->obmat);
+			abc_xform = true;
+		}
+#endif
 		/* speed optimization for animation lookups */
 		if (ob->pose) {
 			BKE_pose_channels_hash_make(ob->pose);
@@ -3155,7 +3237,7 @@ void BKE_object_handle_update_ex(EvaluationContext *eval_ctx,
 				else
 					copy_m4_m4(ob->obmat, ob->proxy_from->obmat);
 			}
-			else
+			else if (!abc_xform)
 				BKE_object_where_is_calc_ex(scene, rbw, ob, NULL);
 		}
 		
