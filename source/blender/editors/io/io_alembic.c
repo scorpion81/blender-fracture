@@ -34,6 +34,7 @@
 #include "BKE_main.h"
 #include "BKE_report.h"
 
+#include "BLI_math_vector.h"
 #include "BLI_path_util.h"
 #include "BLI_string.h"
 #include "BLI_utildefines.h"
@@ -64,7 +65,6 @@ static int wm_alembic_export_invoke(bContext *C, wmOperator *op, const wmEvent *
 	UNUSED_VARS(event);
 }
 
-/* function used for WM_OT_save_mainfile too */
 static int wm_alembic_export_exec(bContext *C, wmOperator *op)
 {
 	if (!RNA_struct_property_is_set(op->ptr, "filepath")) {
@@ -152,3 +152,51 @@ void WM_OT_alembic_export(wmOperatorType *ot)
 }
 
 #endif
+
+static int wm_alembic_import_exec(bContext *C, wmOperator *op)
+{
+	if (!RNA_struct_property_is_set(op->ptr, "filepath")) {
+		BKE_report(op->reports, RPT_ERROR, "No filename given");
+		return OPERATOR_CANCELLED;
+	}
+
+	Scene *scene = CTX_data_scene(C);
+
+	/* TODO: handle cursor */
+	float cursor_location[3];
+	copy_v3_v3(cursor_location, scene->cursor);
+
+	char filename[FILE_MAX];
+	RNA_string_get(op->ptr, "filepath", filename);
+
+#if 0
+	/* get objects strings */
+
+	char objects_str;
+	ABC_getObjects(filename, objects_str);
+
+	char nurbs_str;
+	ABC_getNurbs(filename, nurbs_str);
+
+	char camera_str;
+	ABC_getCamera(filename, camera_str);
+#endif
+
+	/* restore cursor */
+	copy_v3_v3(scene->cursor, cursor_location);
+
+	return OPERATOR_FINISHED;
+}
+
+void WM_OT_alembic_import(wmOperatorType *ot)
+{
+	ot->name = "Import Alembic Archive";
+	ot->idname = "WM_OT_alembic_import";
+
+	ot->invoke = WM_operator_filesel;
+	ot->exec = wm_alembic_import_exec;
+	ot->poll = WM_operator_winactive;
+
+	WM_operator_properties_filesel(ot, 0, FILE_BLENDER, FILE_SAVE, WM_FILESEL_FILEPATH,
+	                               FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
+}

@@ -48,6 +48,7 @@ void ED_operatortypes_io(void)
 	WM_operatortype_append(WM_OT_collada_import);
 #endif
 #ifdef WITH_ALEMBIC
+	WM_operatortype_append(WM_OT_alembic_import);
 	WM_operatortype_append(WM_OT_alembic_export);
 #endif
 }
