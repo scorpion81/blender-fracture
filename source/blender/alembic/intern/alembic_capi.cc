@@ -996,7 +996,6 @@ void abcApplyMaterials(Object *ob, void *key)
 	// Clean up slots
 	while (object_remove_material_slot(ob));
 
-
 	bool can_assign = true;
 	std::map<std::string, int>::iterator it = meshmap.mat_map.begin();
 	int matcount = 0;
@@ -1029,24 +1028,6 @@ void abcApplyMaterials(Object *ob, void *key)
 
 		}
 	}
-}
-
-DerivedMesh *abcGetDerivedMesh(const char *filepath, float time, void *key, Object *ob, int assign_mats, const char *sub_obj)
-{
-	DerivedMesh *dm;
-	Mesh *mesh;
-	bool p_only = true;
-
-	mesh = abcGetMesh(filepath, time, key, assign_mats, sub_obj, &p_only);
-
-	dm = CDDM_from_mesh(mesh);
-
-	if (!p_only && assign_mats) {
-		abcApplyMaterials(ob, key);
-
-	}
-
-	return dm;
 }
 
 void abcGetVertexCache(const char *filepath, float time, void *key, void *verts, int max_verts, const char *sub_obj, int is_mverts)
