@@ -2460,10 +2460,10 @@ static void create_constraints(FractureModifierData *rmd)
 		}
 		else if (rmd->constraint_target == MOD_FRACTURE_VERTEX) {
 			MVert mv;
-			MeshIsland *mi = NULL;
+			MeshIsland *mii = NULL;
 			rmd->visible_mesh_cached->getVert(rmd->visible_mesh_cached, i, &mv);
-			mi = BLI_ghash_lookup(rmd->vertex_island_map, SET_INT_IN_POINTER(i));
-			search_tree_based(rmd, mi, mesh_islands, &coord_tree, mv.co, max_mass);
+			mii = BLI_ghash_lookup(rmd->vertex_island_map, SET_INT_IN_POINTER(i));
+			search_tree_based(rmd, mii, mesh_islands, &coord_tree, mv.co, max_mass);
 		}
 	}
 

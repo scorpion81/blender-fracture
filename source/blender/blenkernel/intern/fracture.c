@@ -1964,6 +1964,11 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 		mul_qt_qtqt(qrot, rot, par->rot);
 		mul_qt_qtqt(qrot, quat, qrot);
 	}
+	else
+	{
+		invert_qt_qt(qrot, par->rot);
+		mul_qt_qtqt(qrot, rot, qrot);
+	}
 
 	if (is_parent)
 	{

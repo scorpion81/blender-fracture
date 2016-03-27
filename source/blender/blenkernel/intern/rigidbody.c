@@ -1934,11 +1934,12 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	int ob_index1 = -1, ob_index2 = -1;
 	bool validOb = true;
 
-	FractureModifierData *fmd1 = (FractureModifierData*)modifiers_findByType((Object*)blenderOb1, eModifierType_Fracture);
-	FractureModifierData *fmd2 = (FractureModifierData*)modifiers_findByType((Object*)blenderOb2, eModifierType_Fracture);
-
 	mi1 = (MeshIsland*)island1;
 	mi2 = (MeshIsland*)island2;
+
+#if 0
+	FractureModifierData *fmd1 = (FractureModifierData*)modifiers_findByType((Object*)blenderOb1, eModifierType_Fracture);
+	FractureModifierData *fmd2 = (FractureModifierData*)modifiers_findByType((Object*)blenderOb2, eModifierType_Fracture);
 
 	if ((fmd1 && fmd1->fracture_mode == MOD_FRACTURE_DYNAMIC) ||
 	   (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC))
@@ -1949,6 +1950,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		ob2 = blenderOb2;
 		return check_colgroup_ghost(ob1, ob2);
 	}
+#endif
 
 	if (rbw == NULL)
 	{
