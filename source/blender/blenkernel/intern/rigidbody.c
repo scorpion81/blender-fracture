@@ -1335,7 +1335,10 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 		}
 
 		mat4_to_loc_quat(loc, rot, ob->obmat);
-		DM_mesh_boundbox(ob->derivedFinal, locbb, size);
+		if (ob->derivedFinal)
+			DM_mesh_boundbox(ob->derivedFinal, locbb, size);
+		else  //fallback
+			BKE_mesh_boundbox_calc((Mesh*)ob->data, locbb, size);
 		mul_v3_v3(size, ob->size);
 
 		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, false, 0.0f, 0.0f, 0.0f, 0.0f, size);
