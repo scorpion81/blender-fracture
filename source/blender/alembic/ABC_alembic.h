@@ -38,7 +38,7 @@ struct Scene;
 #define BL_ABC_NO_ERR 0
 #define BL_ABC_UNKNOWN_ERROR 1
 
-int ABC_export( Scene *sce, const char *filename,
+int ABC_export(struct Scene *sce, const char *filename,
 				double start, double end,
 				double xformstep, double geomstep,
 				double shutter_open, double shutter_close,
@@ -54,17 +54,17 @@ int ABC_export( Scene *sce, const char *filename,
 				bool packuv
 				);
 
-struct DerivedMesh *abcGetDerivedMesh(const char* filepath, float time, void* mesh_data, Object* ob, int assign_mat, const char* sub_obj);
+struct DerivedMesh *abcGetDerivedMesh(const char* filepath, float time, void* mesh_data, struct Object* ob, int assign_mat, const char* sub_obj);
 void 			abcGetVertexCache(const char* filepath, float time, void *key, void* verts, int max_verts, const char* sub_obj, int is_mvert);
-Mesh* 			abcGetMesh(const char* filepath, float time, void *key, int assign_mats, const char* sub_obj, bool *p_only);
-struct Curve* 	abcGetNurbs(const char* filepath, float time, const char* sub_obj);
-void 			abcApplyMaterials(Object *ob, void* key);
+struct Mesh *abcGetMesh(const char* filepath, float time, void *key, int assign_mats, const char* sub_obj, bool *p_only);
+struct Curve *abcGetNurbs(const char* filepath, float time, const char* sub_obj);
+void 			abcApplyMaterials(struct Object *ob, void* key);
 
 void 			ABC_getObjects(const char *filename, char* result);
 void 			ABC_getNurbs(const char *filename, char* result);
 void 			ABC_getCamera(const char *filename, char* result);
 void 			ABC_getTransform(const char *filename, const char* abc_subobject, float time, float mat[][4], int to_y_up);
-void		 	ABC_setCustomProperties(Object* bobj);
+void		 	ABC_setCustomProperties(struct Object* bobj);
 void 			ABC_set_camera(const char* filename, const char* abc_subobject, float time, struct Camera* bcam);
 void 			abcDestroyMeshData(void* key);
 int 			checkSubobjectValid(const char* name, const char* sub_obj);

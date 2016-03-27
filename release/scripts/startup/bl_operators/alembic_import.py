@@ -137,12 +137,12 @@ def _import_abc(filename, sub_object, object_name=None, object_type='mesh', free
     bpy.context.scene.update()
 
     if object_type in ('mesh', 'nurb'):
-        # Set Alembic modifier
-        mod = obj.modifiers.new(type="ALEMBIC", name="Abc")
-        mod.use_materials = 0
-        mod.use_vertices = 1
+        # Set cache modifier
+        mod = obj.modifiers.new(type="MESH_CACHE", name="Mesh Cache")
+        mod.cache_format = 'ABC'
+        mod.time_mode = 'TIME'
         mod.filepath = filename
-        mod.subobject = sub_object
+        mod.sub_object = sub_object
 
     if freeze:
         obj.lock_location[0] = True

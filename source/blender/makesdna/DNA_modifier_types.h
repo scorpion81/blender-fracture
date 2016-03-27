@@ -85,7 +85,6 @@ typedef enum ModifierType {
 	eModifierType_DataTransfer      = 49,
 	eModifierType_NormalEdit        = 50,
 	eModifierType_CorrectiveSmooth  = 51,
-	eModifierType_Alembic           = 52,
 	NUM_MODIFIER_TYPES
 } ModifierType;
 
@@ -1274,22 +1273,6 @@ typedef struct TriangulateModifierData {
 	int pad;
 } TriangulateModifierData;
 
-/* AlembicModifierData.flag */
-enum {
-	MOD_ALEMBIC_VERTS = (1 << 0),
-    MOD_ALEMBIC_ASSIGN_MATS = (1 << 1),
-	MOD_ALEMBIC_DISABLED = (1 << 3),
-};
-
-/* Alembic modifier */
-typedef struct AlembicModifierData {
-	ModifierData modifier;
-
-	int   flag, frame_start;
-	char  cache_filename[1024];
-	char  sub_object[1024];
-} AlembicModifierData;
-
 #ifdef DNA_DEPRECATED
 enum {
 	MOD_TRIANGULATE_BEAUTY = (1 << 0), /* deprecated */
@@ -1416,11 +1399,13 @@ typedef struct MeshCacheModifierData {
 	float eval_factor;
 
 	char filepath[1024];  /* FILE_MAX */
+	char sub_object[1024];  /* Alembic sub object */
 } MeshCacheModifierData;
 
 enum {
 	MOD_MESHCACHE_TYPE_MDD  = 1,
 	MOD_MESHCACHE_TYPE_PC2  = 2,
+	MOD_MESHCACHE_TYPE_ABC  = 3,
 };
 
 enum {

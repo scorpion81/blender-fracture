@@ -46,7 +46,6 @@ set(INC_SYS
 )
 
 set(SRC
-	intern/MOD_alembic.c
 	intern/MOD_armature.c
 	intern/MOD_array.c
 	intern/MOD_bevel.c
@@ -71,6 +70,7 @@ set(SRC
 	intern/MOD_lattice.c
 	intern/MOD_mask.c
 	intern/MOD_meshcache.c
+	intern/MOD_meshcache_abc.c
 	intern/MOD_meshcache_mdd.c
 	intern/MOD_meshcache_pc2.c
 	intern/MOD_meshcache_util.c

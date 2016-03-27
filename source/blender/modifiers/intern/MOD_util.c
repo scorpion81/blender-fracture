@@ -283,7 +283,6 @@ void modifier_type_init(ModifierTypeInfo *types[])
 	INIT_TYPE(MeshCache);
 	INIT_TYPE(LaplacianDeform);
 	INIT_TYPE(Wireframe);
-	INIT_TYPE(Alembic);
 	INIT_TYPE(DataTransfer);
 	INIT_TYPE(NormalEdit);
 	INIT_TYPE(CorrectiveSmooth);
