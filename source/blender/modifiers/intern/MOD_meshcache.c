@@ -80,7 +80,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 static void freeData(ModifierData *md)
 {
 #ifdef WITH_ALEMBIC
-	abcDestroyMeshData(md);
+	ABC_destroy_mesh_data(md);
 #else
 	UNUSED_VARS(md);
 #endif

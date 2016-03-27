@@ -233,12 +233,12 @@ static Object *rna_Main_objects_from_alembic(
 	ID* data;
     bool p_only = false;
 
-	abcMutexLock();
-    mesh = abcGetMesh(filepath, 0., NULL, apply_materials, subobject, &p_only);
-	abcMutexUnlock();
+	ABC_mutex_lock();
+    mesh = ABC_get_mesh(filepath, 0., NULL, apply_materials, subobject, &p_only);
+	ABC_mutex_unlock();
 
 	if (!mesh){
-        abcDestroyKey(NULL);
+        ABC_destroy_key(NULL);
 		return NULL;
 	}
 
@@ -248,12 +248,12 @@ static Object *rna_Main_objects_from_alembic(
 	ob = rna_Main_objects_new(bmain, reports, name, data);
 
 	if (apply_materials){
-		abcApplyMaterials(ob, NULL);
+		ABC_apply_materials(ob, NULL);
     }
 
 	mesh->id.us--;
 
-	abcDestroyKey(NULL);
+	ABC_destroy_key(NULL);
 
 	return ob;
 }
@@ -266,9 +266,9 @@ static Object *rna_Main_nurbs_from_alembic(
 	Curve *curve = NULL;
 	ID *data;
 
-	abcMutexLock();
-	curve = abcGetNurbs(filepath, 0., subobject);
-	abcMutexUnlock();
+	ABC_mutex_lock();
+	curve = ABC_get_nurbs(filepath, 0., subobject);
+	ABC_mutex_unlock();
 
 	if (!curve){
 		return NULL;

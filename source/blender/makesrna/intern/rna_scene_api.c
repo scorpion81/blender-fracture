@@ -168,19 +168,19 @@ static void rna_Scene_ray_cast(
 
 static void rna_Alembic_meshes_get(Scene *sce, const char* filepath, char *result)
 {
-	ABC_getObjects(filepath, result);
+	ABC_get_objects_names(filepath, result);
 	UNUSED_VARS(sce);
 }
 
 static void rna_Alembic_nurbs_get(Scene *sce, const char* filepath, char *result)
 {
-	ABC_getNurbs(filepath, result);
+	ABC_get_nurbs_names(filepath, result);
 	UNUSED_VARS(sce);
 }
 
 static void rna_Alembic_cameras_get(Scene *sce, const char* filepath, char *result)
 {
-	ABC_getCamera(filepath, result);
+	ABC_get_camera_names(filepath, result);
 	UNUSED_VARS(sce);
 }
 

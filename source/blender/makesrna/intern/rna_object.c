@@ -1530,9 +1530,9 @@ static void rna_Object_from_alembic(
 	data = (ID*)bob->data;
 
 	if (GS(data->name) == ID_ME){
-		abcMutexLock();
-        mesh = abcGetMesh(filepath, 0., NULL, apply_materials, subobject, &p_only);
-		abcMutexUnlock();
+		ABC_mutex_lock();
+        mesh = ABC_get_mesh(filepath, 0., NULL, apply_materials, subobject, &p_only);
+		ABC_mutex_unlock();
 
 		if (!mesh){
 			return;
@@ -1544,16 +1544,16 @@ static void rna_Object_from_alembic(
 		BKE_mesh_assign_object(bob, mesh);
 
 		if (apply_materials){
-			abcApplyMaterials(bob, NULL);
+			ABC_apply_materials(bob, NULL);
 		}
 
 		mesh->id.us--;
 
-		abcDestroyKey(0);
+		ABC_destroy_key(0);
 	} else if (GS(data->name) == ID_CU){
-		abcMutexLock();
+		ABC_mutex_lock();
 
-		curve = abcGetNurbs(filepath, 0., subobject);
+		curve = ABC_get_nurbs(filepath, 0., subobject);
 
 		if (bob->type == OB_SURF && curve) {
 			old = bob->data;
@@ -1574,7 +1574,7 @@ static void rna_Object_from_alembic(
 static void rna_Object_set_alembic_props(
         Object *bob, ReportList *reports)
 {
-	ABC_setCustomProperties(bob);
+	ABC_set_custom_properties(bob);
 	UNUSED_VARS(reports);
 }
 
@@ -1582,7 +1582,7 @@ static void rna_Object_apply_abc(Object *bob, ReportList *reports)
 {
 	float abc_mat[4][4];
 	float rot[3][3];
-	ABC_getTransform(bob->abc_file, bob->abc_subobject, 0., abc_mat, bob->parent == NULL);
+	ABC_get_transform(bob->abc_file, bob->abc_subobject, 0., abc_mat, bob->parent == NULL);
 	mat4_to_loc_rot_size(bob->loc, rot, bob->size, abc_mat);
 	BKE_object_mat3_to_rot(bob, rot, false);
 	bob->abc_file[0] = '\0';
@@ -1594,7 +1594,7 @@ static void rna_Object_matrix_abc_get(PointerRNA *ptr, float values[16])
 {
 	Object *ob = ptr->id.data;
 	float abc_mat[4][4];
-	ABC_getTransform(ob->abc_file, ob->abc_subobject, 0., abc_mat, ob->parent == NULL);
+	ABC_get_transform(ob->abc_file, ob->abc_subobject, 0., abc_mat, ob->parent == NULL);
 	copy_m4_m4((float(*)[4])values, abc_mat);
 }
 

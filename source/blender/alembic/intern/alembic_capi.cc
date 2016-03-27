@@ -298,7 +298,8 @@ struct alembicManager {
 	MeshMap 				  mesh_map_cache;
 };
 
-static struct alembicManager *abc_manager = new alembicManager();
+/* TODO */
+static alembicManager *abc_manager = new alembicManager();
 
 static Material *findMaterial(const char *name)
 {
@@ -316,12 +317,12 @@ static Material *findMaterial(const char *name)
 	return found_material;
 }
 
-void abcMutexLock()
+void ABC_mutex_lock()
 {
 	BLI_mutex_lock(abc_manager->mutex);
 }
 
-void abcMutexUnlock()
+void ABC_mutex_unlock()
 {
 	BLI_mutex_unlock(abc_manager->mutex);
 }
@@ -738,7 +739,6 @@ static void getIObjectAsMesh(std::pair<IPolyMeshSchema, IObject> schema, const I
 	}
 }
 
-
 static size_t updatePoints(std::pair<IPolyMeshSchema, IObject> schema, const ISampleSelector &sample_sel, MVert *verts, size_t vtx_start, int max_verts = -1, float (*vcos)[3] = 0) {
 
 	if (!schema.first.valid()) {
@@ -782,7 +782,7 @@ static size_t updatePoints(std::pair<IPolyMeshSchema, IObject> schema, const ISa
 	return vtx_start + vertex_count;
 }
 
-void abcDestroyMeshData(void *key)
+void ABC_destroy_mesh_data(void *key)
 {
 	if (abc_manager->mesh_map.find(key) != abc_manager->mesh_map.end()) {
 		AbcInfo *info = &abc_manager->mesh_map[key];
@@ -796,7 +796,7 @@ void abcDestroyMeshData(void *key)
 	}
 }
 
-void abcDestroyKey(void *key)
+void ABC_destroy_key(void *key)
 {
 	MeshMap::iterator it;
 	if ((it = abc_manager->mesh_map.find(key)) != abc_manager->mesh_map.end()) {
@@ -810,7 +810,7 @@ void abcDestroyKey(void *key)
 	}
 }
 
-Mesh *abcGetMesh(const char *filepath, float time, void *key, int assign_mats, const char *sub_obj, bool *p_only)
+Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assign_mats, const char *sub_obj, bool *p_only)
 {
 	Mesh *mesh = NULL;
 	std::string file_path = filepath;
@@ -885,7 +885,7 @@ Mesh *abcGetMesh(const char *filepath, float time, void *key, int assign_mats, c
 	return mesh;
 }
 
-Curve *abcGetNurbs(const char *filepath, float time, const char *sub_obj)
+Curve *ABC_get_nurbs(const char *filepath, float time, const char *sub_obj)
 {
 	Curve *cu = NULL;
 	std::string file_path = filepath;
@@ -989,7 +989,7 @@ Curve *abcGetNurbs(const char *filepath, float time, const char *sub_obj)
 	return cu;
 }
 
-void abcApplyMaterials(Object *ob, void *key)
+void ABC_apply_materials(Object *ob, void *key)
 {
 	AbcInfo &meshmap = abc_manager->mesh_map[key];
 
@@ -1030,7 +1030,7 @@ void abcApplyMaterials(Object *ob, void *key)
 	}
 }
 
-void abcGetVertexCache(const char *filepath, float time, void *key, void *verts, int max_verts, const char *sub_obj, int is_mverts)
+void ABC_get_vertex_cache(const char *filepath, float time, void *key, void *verts, int max_verts, const char *sub_obj, int is_mverts)
 {
 	std::string file_path = filepath;
 	std::string sub_object = sub_obj;
@@ -1085,7 +1085,7 @@ void abcGetVertexCache(const char *filepath, float time, void *key, void *verts,
 	}
 }
 
-void ABC_getObjects(const char *filename, char *result)
+void ABC_get_objects_names(const char *filename, char *result)
 {
 	std::vector<std::string> strings;
 	IArchive *archive = abc_manager->getArchive(filename);
@@ -1104,7 +1104,7 @@ void ABC_getObjects(const char *filename, char *result)
 	BLI_strncpy(result, final.c_str(), final.length()+1);
 }
 
-void ABC_getNurbs(const char *filename, char *result)
+void ABC_get_nurbs_names(const char *filename, char *result)
 {
 	std::vector<std::string> strings;
 	IArchive *archive = abc_manager->getArchive(filename);
@@ -1123,7 +1123,7 @@ void ABC_getNurbs(const char *filename, char *result)
 	BLI_strncpy(result, final.c_str(), 65535);
 }
 
-void ABC_getCamera(const char *filename, char *result)
+void ABC_get_camera_names(const char *filename, char *result)
 {
 	std::vector<std::string> strings;
 	IArchive *archive = abc_manager->getArchive(filename);
@@ -1142,7 +1142,7 @@ void ABC_getCamera(const char *filename, char *result)
 	BLI_strncpy(result, final.c_str(), 65535);
 }
 
-int checkSubobjectValid(const char *name, const char *sub_obj)
+int ABC_check_subobject_valid(const char *name, const char *sub_obj)
 {
 	if (name[0] == '\0')
 		return 0;
@@ -1227,7 +1227,7 @@ static void getProperties(Object *bobj, IXformSchema object, ICompoundProperty c
 	}
 }
 
-void ABC_setCustomProperties(Object *bobj)
+void ABC_set_custom_properties(Object *bobj)
 {
 	bool found;
 
@@ -1255,7 +1255,7 @@ void ABC_setCustomProperties(Object *bobj)
 
 }
 
-void ABC_getTransform(const char *filename, const char *abc_subobject, float time, float mat[][4], int to_y_up)
+void ABC_get_transform(const char *filename, const char *abc_subobject, float time, float mat[][4], int to_y_up)
 {
 	std::vector<std::string> strings;
 

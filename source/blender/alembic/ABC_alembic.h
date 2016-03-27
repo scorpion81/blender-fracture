@@ -54,22 +54,24 @@ int ABC_export(struct Scene *sce, const char *filename,
 				bool packuv
 				);
 
-void 			abcGetVertexCache(const char* filepath, float time, void *key, void* verts, int max_verts, const char* sub_obj, int is_mvert);
-struct Mesh *abcGetMesh(const char* filepath, float time, void *key, int assign_mats, const char* sub_obj, bool *p_only);
-struct Curve *abcGetNurbs(const char* filepath, float time, const char* sub_obj);
-void 			abcApplyMaterials(struct Object *ob, void* key);
+void ABC_get_vertex_cache(const char *filepath, float time, void *key, void *verts, int max_verts, const char *sub_obj, int is_mvert);
+struct Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assign_mats, const char *sub_obj, bool *p_only);
+struct Curve *ABC_get_nurbs(const char *filepath, float time, const char *sub_obj);
+void ABC_apply_materials(struct Object *ob, void *key);
 
-void 			ABC_getObjects(const char *filename, char* result);
-void 			ABC_getNurbs(const char *filename, char* result);
-void 			ABC_getCamera(const char *filename, char* result);
-void 			ABC_getTransform(const char *filename, const char* abc_subobject, float time, float mat[][4], int to_y_up);
-void		 	ABC_setCustomProperties(struct Object* bobj);
-void 			ABC_set_camera(const char* filename, const char* abc_subobject, float time, struct Camera* bcam);
-void 			abcDestroyMeshData(void* key);
-int 			checkSubobjectValid(const char* name, const char* sub_obj);
-void			abcDestroyKey(void*);
-void 			abcMutexLock(void);
-void 			abcMutexUnlock(void);
+void ABC_get_objects_names(const char *filename, char *result);
+void ABC_get_nurbs_names(const char *filename, char *result);
+void ABC_get_camera_names(const char *filename, char *result);
+
+void ABC_get_transform(const char *filename, const char *abc_subobject, float time, float mat[][4], int to_y_up);
+void ABC_set_custom_properties(struct Object *bobj);
+void ABC_set_camera(const char *filename, const char *abc_subobject, float time, struct Camera *bcam);
+void ABC_destroy_mesh_data(void *key);
+int ABC_check_subobject_valid(const char *name, const char *sub_obj);
+void ABC_destroy_key(void *);
+
+void ABC_mutex_lock(void);
+void ABC_mutex_unlock(void);
 
 #ifdef __cplusplus
 }

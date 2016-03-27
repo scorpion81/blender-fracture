@@ -173,13 +173,13 @@ static int wm_alembic_import_exec(bContext *C, wmOperator *op)
 	/* get objects strings */
 
 	char objects_str;
-	ABC_getObjects(filename, objects_str);
+	ABC_get_objects_names(filename, objects_str);
 
 	char nurbs_str;
-	ABC_getNurbs(filename, nurbs_str);
+	ABC_get_nurbs_names(filename, nurbs_str);
 
 	char camera_str;
-	ABC_getCamera(filename, camera_str);
+	ABC_get_camera_names(filename, camera_str);
 #endif
 
 	/* restore cursor */

@@ -3173,9 +3173,9 @@ void BKE_object_handle_update_ex(EvaluationContext *eval_ctx,
 
 		if (((ob->abc_flag & 1) == 1) && ob->abc_file[0] != '\0' && ob->abc_subobject[0] != '\0'){
 			float time = BKE_scene_frame_get(scene) / (float)scene->r.frs_sec;
-			abcMutexLock();
-			ABC_getTransform(ob->abc_file, ob->abc_subobject, time, ob->obmat, ob->parent == NULL);
-			abcMutexUnlock();
+			ABC_mutex_lock();
+			ABC_get_transform(ob->abc_file, ob->abc_subobject, time, ob->obmat, ob->parent == NULL);
+			ABC_mutex_unlock();
 
             if (ob->type == OB_CAMERA){
 				unit_m4(cam_to_yup);

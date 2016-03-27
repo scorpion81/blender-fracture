@@ -39,7 +39,7 @@ bool MOD_meshcache_read_abc_index(const char *filepath, const char *sub_object,
                                   const int index, const float factor,
                                   const char **err_str, ModifierData *md)
 {
-    abcGetVertexCache(filepath, factor, (void *)md, vertexCos, verts_tot, sub_object, 0);
+    ABC_get_vertex_cache(filepath, factor, (void *)md, vertexCos, verts_tot, sub_object, 0);
 
 	UNUSED_VARS(index, err_str);
 	return true;
@@ -58,7 +58,7 @@ bool MOD_meshcache_read_abc_times(const char *filepath, const char *sub_object,
                                   const float time, const float fps, const char time_mode,
                                   const char **err_str, ModifierData *md)
 {
-	if (!checkSubobjectValid(filepath, sub_object)) {
+	if (!ABC_check_subobject_valid(filepath, sub_object)) {
 		return false;
 	}
 
