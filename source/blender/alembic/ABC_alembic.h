@@ -27,6 +27,7 @@
 extern "C" {
 #endif
 
+struct bContext;
 struct Camera;
 struct Curve;
 struct DerivedMesh;
@@ -51,8 +52,9 @@ int ABC_export(struct Scene *sce, const char *filename,
 				int vislayers, int renderable,
 				int facesets, int matindices,
 				int geogroups, bool ogawa,
-				bool packuv
-				);
+				bool packuv);
+
+void ABC_import(struct bContext *C, const char *filename);
 
 void ABC_get_vertex_cache(const char *filepath, float time, void *key, void *verts, int max_verts, const char *sub_obj, int is_mvert);
 struct Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assign_mats, const char *sub_obj, bool *p_only);

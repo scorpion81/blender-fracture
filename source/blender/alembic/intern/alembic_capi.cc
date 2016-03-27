@@ -49,6 +49,56 @@ extern "C" {
 #include "BLI_threads.h"
 }
 
+#include <algorithm>
+
+extern "C" {
+#include "DNA_object_types.h"
+#include "DNA_scene_types.h"
+
+#include "BKE_context.h"
+#include "BKE_object.h"
+#include "BKE_scene.h"
+}
+
+static void split(const std::string &s, const char *delim, std::vector<std::string> &v)
+{
+	/* to avoid modifying original string first duplicate the original string
+	 *  and return a char pointer then free the memory */
+	char *dup = strdup(s.c_str());
+	char *token = strtok(dup, delim);
+
+	while (token != NULL) {
+		v.push_back(std::string(token));
+		/* the call is treated as a subsequent calls to strtok: the function
+		 * continues from where it left in previous invocation */
+		token = strtok(NULL, delim);
+	}
+
+	free(dup);
+}
+
+static Object *find_object(Scene *scene, const std::string &sub_object, Object */*parent*/)
+{
+	Object *ret = NULL;
+
+	std::vector<std::string> parts;
+	split(sub_object, "/", parts);
+
+	for (Base *base = static_cast<Base *>(scene->base.first); base; base = base->next) {
+		Object *ob = base->object;
+
+		if (ob->id.name == sub_object) {
+			ret = ob;
+		}
+	}
+
+	if (parts.size() == 1) {
+		return ret;
+	}
+
+	return find_object(scene, sub_object, ret);
+}
+
 using namespace Alembic::AbcGeom;
 
 static const int max_alembic_files = 300;
@@ -87,23 +137,6 @@ struct AbcNuInfo {
 
 typedef std::map<void *, AbcInfo> MeshMap;
 
-static void split(const std::string &s, const char *delim, std::vector<std::string> &v)
-{
-	/* to avoid modifying original string first duplicate the original string
-	 *  and return a char pointer then free the memory */
-	char *dup = strdup(s.c_str());
-	char *token = strtok(dup, delim);
-
-	while (token != NULL) {
-		v.push_back(std::string(token));
-		/* the call is treated as a subsequent calls to strtok: the function
-		 * continues from where it left in previous invocation */
-		token = strtok(NULL, delim);
-	}
-
-	free(dup);
-}
-
 struct alembicManager {
 	alembicManager()
 	{
@@ -129,7 +162,7 @@ struct alembicManager {
 		BLI_mutex_free(mutex);
 	}
 
-	IArchive *getArchive(std::string filename)
+	IArchive *getArchive(const std::string &filename)
 	{
 		std::tr1::unordered_map<std::string, IArchive*>::iterator it = archives.find(filename);
 		std::tr1::unordered_map< IArchive*, std::tr1::unordered_map<std::string, IObject> >::iterator it_ob;
@@ -1398,4 +1431,142 @@ int ABC_export(Scene *sce, const char *filename,
 	}
 
 	return BL_ABC_NO_ERR;
+}
+
+enum {
+	OBJECT_TYPE_MESH = 0,
+	OBJECT_TYPE_NURBS = 1,
+	OBJECT_TYPE_CAMERA = 2,
+};
+
+static Object *create_hierarchy(bContext *C, const std::string &/*filename*/, const std::vector<std::string> &parts)
+{
+	Object *parent = NULL;
+	std::string sub_object;
+
+	std::vector<std::string>::const_iterator iter;
+	for (iter = parts.begin(); iter != parts.end(); ++iter) {
+		sub_object = "/" + *iter;
+
+		Object *ob = find_object(CTX_data_scene(C), sub_object, parent);
+
+		if (ob) {
+			parent = ob;
+		}
+
+		if (sub_object == "/") {
+			parent = NULL;
+			continue;
+		}
+
+		Object *empty = BKE_object_add(CTX_data_main(C), CTX_data_scene(C), OB_EMPTY, sub_object.c_str());
+		//empty->abc_file = filename;
+		//empty->abc_subobject = sub_object;
+		empty->parent = parent;
+	}
+
+	return parent;
+}
+
+static void import_object(bContext *C, const std::string &filename, const std::string &obname, int object_type, Object *parent)
+{
+	Object *ob = NULL;
+
+	switch (object_type) {
+		case OBJECT_TYPE_MESH:
+		{
+			bool apply_materials = false;
+			bool p_only = false;
+
+			ABC_mutex_lock();
+			Mesh *mesh = ABC_get_mesh(filename.c_str(), 0.0f, NULL, apply_materials, obname.c_str(), &p_only);
+			ABC_mutex_unlock();
+
+			if (!mesh) {
+		        ABC_destroy_key(NULL);
+				return;
+			}
+
+			mesh = BKE_mesh_copy(mesh);
+
+			ob = BKE_object_add(CTX_data_main(C), CTX_data_scene(C), OB_MESH, obname.c_str());
+			ob->data = mesh;
+
+			if (apply_materials) {
+				ABC_apply_materials(ob, NULL);
+		    }
+
+			ABC_destroy_key(NULL);
+
+			break;
+		}
+		case OBJECT_TYPE_NURBS:
+		{
+			ABC_mutex_lock();
+			Curve *curve = ABC_get_nurbs(filename.c_str(), 0.0f, obname.c_str());
+			ABC_mutex_unlock();
+
+			if (!curve) {
+				return;
+			}
+
+			curve = BKE_curve_copy(curve);
+
+			ob = BKE_object_add(CTX_data_main(C), CTX_data_scene(C), OB_CURVE, obname.c_str());
+			ob->data = curve;
+
+			break;
+		}
+		case OBJECT_TYPE_CAMERA:
+		{
+			/* TODO */
+			break;
+		}
+	}
+
+	if (ob == NULL) {
+		return;
+	}
+
+	ob->parent = parent;
+}
+
+static void import_objects(bContext *C, const std::string &filename, int object_type)
+{
+	/* get objects strings */
+	IArchive *archive = abc_manager->getArchive(filename);
+
+	if (!archive || !archive->valid()) {
+		return;
+	}
+
+	std::vector<std::string> strings;
+	visitObjectString(archive->getTop(), strings, object_type);
+
+	/* Reverse list to go from top to bottom. */
+	std::reverse(strings.begin(), strings.end());
+
+	/* Remove empty strings. */
+	strings.erase(std::remove(strings.begin(), strings.end(), std::string("")),
+	              strings.end());
+
+	std::vector<std::string>::iterator iter;
+	for (iter = strings.begin(); iter != strings.end(); ++iter) {
+		std::vector<std::string> parts;
+		split(*iter, "/", parts);
+
+		/* Remove empty strings. */
+		strings.erase(std::remove(parts.begin(), parts.end(), std::string("")),
+		              parts.end());
+
+		Object *parent = create_hierarchy(C, filename, parts);
+		import_object(C, filename, *iter, object_type, parent);
+	}
+}
+
+void ABC_import(bContext *C, const char *filename)
+{
+	import_objects(C, filename, OBJECT_TYPE_MESH);
+	import_objects(C, filename, OBJECT_TYPE_NURBS);
+	import_objects(C, filename, OBJECT_TYPE_CAMERA);
 }

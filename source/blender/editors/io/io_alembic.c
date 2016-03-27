@@ -169,18 +169,7 @@ static int wm_alembic_import_exec(bContext *C, wmOperator *op)
 	char filename[FILE_MAX];
 	RNA_string_get(op->ptr, "filepath", filename);
 
-#if 0
-	/* get objects strings */
-
-	char objects_str;
-	ABC_get_objects_names(filename, objects_str);
-
-	char nurbs_str;
-	ABC_get_nurbs_names(filename, nurbs_str);
-
-	char camera_str;
-	ABC_get_camera_names(filename, camera_str);
-#endif
+	ABC_import(C, filename);
 
 	/* restore cursor */
 	copy_v3_v3(scene->cursor, cursor_location);
