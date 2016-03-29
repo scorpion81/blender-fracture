@@ -56,36 +56,6 @@ extern "C" {
 #include "BLI_threads.h"
 }
 
-enum {
-	OBJECT_TYPE_MESH = 0,
-	OBJECT_TYPE_NURBS = 1,
-	OBJECT_TYPE_CAMERA = 2,
-};
-
-#if 0
-static Object *find_object(Scene *scene, const std::string &sub_object, Object */*parent*/)
-{
-	Object *ret = NULL;
-
-	std::vector<std::string> parts;
-	split(sub_object, "/", parts);
-
-	for (Base *base = static_cast<Base *>(scene->base.first); base; base = base->next) {
-		Object *ob = base->object;
-
-		if (ob->id.name == sub_object) {
-			ret = ob;
-		}
-	}
-
-	if (parts.size() == 1) {
-		return ret;
-	}
-
-	return find_object(scene, sub_object, ret);
-}
-#endif
-
 using namespace Alembic::AbcGeom;
 
 static const int max_alembic_files = 300;
@@ -344,88 +314,6 @@ static void ABC_mutex_unlock()
 }
 #endif
 
-#if 0
-// Some helpers for mesh generation
-namespace mesh_utils {
-
-static void mesh_add_verts(Mesh *mesh, size_t len)
-{
-	if (len == 0) {
-		return;
-	}
-
-	int totvert = mesh->totvert + len;
-	CustomData vdata;
-	CustomData_copy(&mesh->vdata, &vdata, CD_MASK_MESH, CD_DEFAULT, totvert);
-	CustomData_copy_data(&mesh->vdata, &vdata, 0, 0, mesh->totvert);
-
-	if (!CustomData_has_layer(&vdata, CD_MVERT))
-		CustomData_add_layer(&vdata, CD_MVERT, CD_CALLOC, NULL, totvert);
-
-	CustomData_free(&mesh->vdata, mesh->totvert);
-	mesh->vdata = vdata;
-	BKE_mesh_update_customdata_pointers(mesh, false);
-
-	/* set final vertex list size */
-	mesh->totvert = totvert;
-}
-
-static void mesh_add_mloops(Mesh *mesh, size_t len)
-{
-	if (len == 0) {
-		return;
-	}
-
-	/* new face count */
-	const int totloops = mesh->totloop + len;
-
-	CustomData ldata;
-	CustomData_copy(&mesh->ldata, &ldata, CD_MASK_MESH, CD_DEFAULT, totloops);
-	CustomData_copy_data(&mesh->ldata, &ldata, 0, 0, mesh->totloop);
-
-	if (!CustomData_has_layer(&ldata, CD_MLOOP)) {
-		CustomData_add_layer(&ldata, CD_MLOOP, CD_CALLOC, NULL, totloops);
-	}
-
-	if (!CustomData_has_layer(&ldata, CD_MLOOPUV)) {
-		CustomData_add_layer(&ldata, CD_MLOOPUV, CD_CALLOC, NULL, totloops);
-	}
-
-	CustomData_free(&mesh->ldata, mesh->totloop);
-	mesh->ldata = ldata;
-	BKE_mesh_update_customdata_pointers(mesh, false);
-
-	mesh->totloop = totloops;
-}
-
-static void mesh_add_mpolygons(Mesh *mesh, size_t len)
-{
-	if (len == 0) {
-		return;
-	}
-
-	const int totpolys = mesh->totpoly + len;   /* new face count */
-
-	CustomData pdata;
-	CustomData_copy(&mesh->pdata, &pdata, CD_MASK_MESH, CD_DEFAULT, totpolys);
-	CustomData_copy_data(&mesh->pdata, &pdata, 0, 0, mesh->totpoly);
-
-	if (!CustomData_has_layer(&pdata, CD_MPOLY))
-		CustomData_add_layer(&pdata, CD_MPOLY, CD_CALLOC, NULL, totpolys);
-
-	if (!CustomData_has_layer(&pdata, CD_MTEXPOLY))
-		CustomData_add_layer(&pdata, CD_MTEXPOLY, CD_CALLOC, NULL, totpolys);
-
-	CustomData_free(&mesh->pdata, mesh->totpoly);
-	mesh->pdata = pdata;
-	BKE_mesh_update_customdata_pointers(mesh, false);
-
-	mesh->totpoly = totpolys;
-}
-
-} /* mesh_utils */
-#endif
-
 static void visitObject(IObject iObj, std::vector< std::pair<IPolyMeshSchema, IObject> > &schemas, std::string sub_obj)
 {
 	if (!iObj.valid())
@@ -442,60 +330,9 @@ static void visitObject(IObject iObj, std::vector< std::pair<IPolyMeshSchema, IO
 		IPolyMeshSchema schem = abc_mesh.getSchema();
 		schemas.push_back(std::pair<IPolyMeshSchema, IObject>(schem, ret));
 	}
+}
 
 #if 0
-	for (int i = 0;i < iObj.getNumChildren(); ++i) {
-		bool ok = true;
-		IObject child(iObj, iObj.getChildHeader(i).getName());
-
-		if (!sub_obj.empty() && child.valid() && !begins_with(child.getFullName(), sub_obj)) {
-			ok = false;
-		}
-
-		if (!child.valid())
-			continue;
-
-		const MetaData &md = child.getMetaData();
-
-		if (IPolyMesh::matches(md) && ok) {
-			IPolyMesh abc_mesh(child, kWrapExisting);
-			IPolyMeshSchema schem = abc_mesh.getSchema();
-			schemas.push_back(std::pair<IPolyMeshSchema, IObject>(schem, child));
-		}
-
-		visitObject(IObject(child), schemas, sub_obj);
-	}
-#endif
-}
-
-static void visitObjectString(IObject iObj, std::vector<std::string> &objects, int type)
-{
-	if (!iObj.valid()) {
-		return;
-	}
-
-	for (int i = 0;i < iObj.getNumChildren(); ++i) {
-		IObject child(iObj, iObj.getChildHeader(i).getName());
-
-		if (!child.valid())
-			continue;
-
-		const MetaData &md = child.getMetaData();
-
-		if (IPolyMesh::matches(md) && type == OBJECT_TYPE_MESH) {
-			objects.push_back(child.getFullName());
-		}
-		else if (INuPatch::matches(md) && type == OBJECT_TYPE_NURBS) {
-			objects.push_back(child.getFullName());
-		}
-		else if (ICameraSchema::matches(md) && type == OBJECT_TYPE_CAMERA) {
-			objects.push_back(child.getFullName());
-		}
-
-		visitObjectString(IObject(child), objects, type);
-	}
-}
-
 static void visitObjectMatrix(IObject iObj, std::string abc_subobject, float time, float mat[][4])
 {
 	if (!iObj.valid())
@@ -526,9 +363,6 @@ static void visitObjectMatrix(IObject iObj, std::string abc_subobject, float tim
 	}
 }
 
-#include "BLI_math.h"
-
-#if 0
 static void getIObjectAsMesh(std::pair<IPolyMeshSchema, IObject> schema,
                              const ISampleSelector &sample_sel, Mesh *blender_mesh,
                              void *key, bool assign_mat, int from_forward, int from_up)
@@ -799,7 +633,6 @@ static Mesh *ABC_get_mesh(IArchive *archive, float time, void *key, int assign_m
 	return mesh;
 }
 
-
 static void ABC_apply_materials(Object *ob, void *key)
 {
 	AbcInfo &meshmap = abc_manager->mesh_map[key];
@@ -1010,114 +843,6 @@ static Object *create_hierarchy(bContext *C, IArchive */*archive*/, const std::v
 }
 #endif
 
-static void import_object(bContext *C, IArchive *archive,
-                          const std::string &sub_object, int object_type,
-                          Object *parent, int from_forward, int from_up)
-{
-	Object *ob = NULL;
-
-	switch (object_type) {
-		case OBJECT_TYPE_MESH:
-		{
-#if 0
-			bool apply_materials = false;
-			bool p_only = false;
-
-			ABC_mutex_lock();
-			Mesh *mesh = ABC_get_mesh(archive, 0.0f, NULL, apply_materials, sub_object.c_str(), &p_only, from_forward, from_up);
-			ABC_mutex_unlock();
-
-			if (!mesh) {
-		        ABC_destroy_key(NULL);
-				return;
-			}
-
-			mesh = BKE_mesh_copy(mesh);
-			BLI_strncpy(mesh->id.name + 2, data_name.c_str(), data_name.size() + 1);
-
-			ob = BKE_object_add(CTX_data_main(C), CTX_data_scene(C), OB_MESH, object_name.c_str());
-			ob->data = mesh;
-
-			if (apply_materials) {
-				ABC_apply_materials(ob, NULL);
-		    }
-
-			ABC_destroy_key(NULL);
-#else
-			AbcObjectReader *reader = new AbcMeshReader(archive->getTop(), from_forward, from_up);
-
-			if (reader->valid()) {
-				reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f);
-			}
-
-			delete reader;
-#endif
-
-			break;
-		}
-		case OBJECT_TYPE_NURBS:
-		{
-			AbcObjectReader *reader = new AbcNurbsReader(archive->getTop(), from_forward, from_up);
-
-			if (reader->valid()) {
-				reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f);
-			}
-
-			delete reader;
-
-			break;
-		}
-		case OBJECT_TYPE_CAMERA:
-		{
-			AbcObjectReader *reader = new AbcCameraReader(archive->getTop(), from_forward, from_up);
-
-			if (reader->valid()) {
-				reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f);
-			}
-
-			delete reader;
-
-			break;
-		}
-	}
-
-	if (ob == NULL) {
-		return;
-	}
-
-	ob->parent = parent;
-	DAG_id_tag_update(&ob->id, OB_RECALC_OB);
-}
-
-static void import_objects(bContext *C, IArchive *archive,
-                           int object_type, int from_forward, int from_up)
-{
-	std::vector<std::string> strings;
-	visitObjectString(archive->getTop(), strings, object_type);
-
-	/* Reverse list to go from top to bottom. */
-	std::reverse(strings.begin(), strings.end());
-
-	/* Remove empty strings. */
-	strings.erase(std::remove(strings.begin(), strings.end(), std::string("")),
-	              strings.end());
-
-	std::vector<std::string>::iterator iter;
-	for (iter = strings.begin(); iter != strings.end(); ++iter) {
-		std::cerr << *iter << '\n';
-
-		std::vector<std::string> parts;
-		split(*iter, "/", parts);
-
-		/* Remove empty strings. */
-		strings.erase(std::remove(parts.begin(), parts.end(), std::string("")),
-		              parts.end());
-
-		Object *parent = NULL; // create_hierarchy(C, archive, parts);
-		import_object(C, archive, *iter, object_type, parent, from_forward, from_up);
-	}
-}
-
 static void visit_object(const IObject &object, std::vector<AbcObjectReader *> &readers,
                          int from_forward, int from_up)
 {
@@ -1163,7 +888,6 @@ void ABC_import(bContext *C, const char *filename, int from_forward, int from_up
 		return;
 	}
 
-#if 1
 	std::vector<AbcObjectReader *> readers;
 	create_readers(archive, readers, from_forward, from_up);
 
@@ -1180,10 +904,4 @@ void ABC_import(bContext *C, const char *filename, int from_forward, int from_up
 	for (iter = readers.begin(); iter != readers.end(); ++iter) {
 		delete *iter;
 	}
-
-#else
-	import_objects(C, archive, OBJECT_TYPE_MESH, from_forward, from_up);
-	import_objects(C, archive, OBJECT_TYPE_NURBS, from_forward, from_up);
-	import_objects(C, archive, OBJECT_TYPE_CAMERA, from_forward, from_up);
-#endif
 }

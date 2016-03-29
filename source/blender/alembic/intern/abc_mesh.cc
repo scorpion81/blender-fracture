@@ -991,6 +991,48 @@ static void mesh_add_mpolygons(Mesh *mesh, size_t len)
 
 } /* mesh_utils */
 
+#if 0
+static void ABC_apply_materials(Object *ob, void *key)
+{
+	AbcInfo &meshmap = abc_manager->mesh_map[key];
+
+	// Clean up slots
+	while (object_remove_material_slot(ob));
+
+	bool can_assign = true;
+	std::map<std::string, int>::iterator it = meshmap.mat_map.begin();
+	int matcount = 0;
+	for (; it != abc_manager->mesh_map[key].mat_map.end(); ++it, matcount++) {
+		Material *curmat = give_current_material(ob, matcount);
+		if (curmat == NULL) {
+			if (!object_add_material_slot(ob)) {
+				can_assign = false;
+				break;
+			}
+		}
+	}
+
+	if (can_assign) {
+		it = abc_manager->mesh_map[key].mat_map.begin();
+		for (; it != meshmap.mat_map.end(); ++it) {
+
+			Material *assigned_name;
+			std::string mat_name = it->first;
+
+			if (findMaterial(mat_name.c_str()) != NULL) {//meshmap.materials.find(mat_name) != meshmap.materials.end()) {
+				assigned_name = findMaterial(mat_name.c_str());//meshmap.materials[mat_name];
+			}
+			else {
+				assigned_name = BKE_material_add(G.main, mat_name.c_str());
+				meshmap.materials[mat_name] = assigned_name;
+			}
+
+			assign_material(ob, assigned_name, it->second, BKE_MAT_ASSIGN_OBJECT);
+		}
+	}
+}
+#endif
+
 AbcMeshReader::AbcMeshReader(const Alembic::Abc::IObject &object, int from_forward, int from_up)
     : AbcObjectReader(object, from_forward, from_up)
 {
@@ -1124,4 +1166,11 @@ void AbcMeshReader::readObject(Main *bmain, Scene *scene, float time)
 
 	m_object = BKE_object_add(bmain, scene, OB_MESH, m_object_name.c_str());
 	m_object->data = blender_mesh;
+
+	// TODO
+#if 0
+	if (apply_materials) {
+		ABC_apply_materials(m_object, NULL);
+    }
+#endif
 }
