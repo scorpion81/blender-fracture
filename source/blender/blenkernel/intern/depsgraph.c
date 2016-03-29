@@ -93,10 +93,6 @@
 #include "DEG_depsgraph_debug.h"
 #include "DEG_depsgraph_query.h"
 
-#ifdef WITH_ALEMBIC
-#include "ABC_alembic.h"
-#endif
-
 #ifdef WITH_LEGACY_DEPSGRAPH
 
 static SpinLock threaded_update_lock;
@@ -2189,7 +2185,7 @@ static void dag_object_time_update_flags(Main *bmain, Scene *scene, Object *ob)
 		ob->recalc |= OB_RECALC_OB;
 		ob->adt->recalc |= ADT_RECALC_ANIM;
 	}
-
+	
 	if ((ob->adt) && (ob->type == OB_ARMATURE)) ob->recalc |= OB_RECALC_DATA;
 	
 	if (object_modifiers_use_time(ob)) ob->recalc |= OB_RECALC_DATA;

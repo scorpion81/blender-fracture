@@ -124,10 +124,6 @@
 #include "BPY_extern.h"
 #endif
 
-#ifdef WITH_ALEMBIC
-#include "ABC_alembic.h"
-#endif
-
 #include "CCGSubSurf.h"
 
 #include "GPU_material.h"

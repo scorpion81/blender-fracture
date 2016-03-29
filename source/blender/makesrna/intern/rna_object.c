@@ -33,7 +33,6 @@
 #include "DNA_group_types.h"
 #include "DNA_material_types.h"
 #include "DNA_mesh_types.h"
-#include "DNA_curve_types.h"
 #include "DNA_object_force.h"
 #include "DNA_object_types.h"
 #include "DNA_property_types.h"
@@ -1515,7 +1514,6 @@ static void rna_Object_lod_distance_update(Main *UNUSED(bmain), Scene *UNUSED(sc
 	(void)ob;
 #endif
 }
-
 #else
 
 static void rna_def_vertex_group(BlenderRNA *brna)
