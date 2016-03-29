@@ -83,7 +83,6 @@ typedef struct Camera {
 
 	 /* Stereo settings */
 	 struct CameraStereoSettings stereo;
-	 char   abc_filename[1024], abc_subobject[1024];
 } Camera;
 
 /* **************** CAMERA ********************* */

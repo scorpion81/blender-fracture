@@ -67,11 +67,6 @@ class OBJECT_PT_transform(ObjectButtonsPanel, Panel):
         row.column().prop(ob, "scale")
 
         layout.prop(ob, "rotation_mode")
-        if bpy.app.build_options.alembic:
-            row = layout.row()
-            layout.prop(ob, "abc_file", text="Alembic file")
-            layout.prop(ob, "abc_subobject", text="Alembic subobject")
-            layout.prop(ob, "use_abc_xform", text="Use Alembic tranforms")
 
 
 class OBJECT_PT_delta_transform(ObjectButtonsPanel, Panel):

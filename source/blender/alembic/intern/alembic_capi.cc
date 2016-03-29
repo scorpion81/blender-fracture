@@ -1268,31 +1268,31 @@ static void getProperties(Object *bobj, IXformSchema object, ICompoundProperty c
 	}
 }
 
-void ABC_set_custom_properties(Object *bobj)
+void ABC_set_custom_properties(Object */*bobj*/)
 {
-	bool found;
+//	bool found;
 
-	const char *filename 		= bobj->abc_file;
-	const char *abc_subobject 	= bobj->abc_subobject;
+//	const char *filename 		= bobj->abc_file;
+//	const char *abc_subobject 	= bobj->abc_subobject;
 
-	IDProperty *idgroup= IDP_GetProperties(&bobj->id, true);
-	if (!idgroup) {
-		std::cerr << "No idgroup to add" << std::endl;
-		return;
-	}
+//	IDProperty *idgroup= IDP_GetProperties(&bobj->id, true);
+//	if (!idgroup) {
+//		std::cerr << "No idgroup to add" << std::endl;
+//		return;
+//	}
 
-	IXformSchema object = abc_manager->getXFormSchema(filename, abc_subobject, found);
+//	IXformSchema object = abc_manager->getXFormSchema(filename, abc_subobject, found);
 
-	if (!found || !object.valid())
-		return;
+//	if (!found || !object.valid())
+//		return;
 
-	ICompoundProperty customProps = object.getUserProperties();
-	if (customProps.valid())
-		getProperties(bobj, object, customProps, idgroup);
+//	ICompoundProperty customProps = object.getUserProperties();
+//	if (customProps.valid())
+//		getProperties(bobj, object, customProps, idgroup);
 
-	customProps = object.getArbGeomParams();
-	if (customProps.valid())
-		getProperties(bobj, object, customProps, idgroup);
+//	customProps = object.getArbGeomParams();
+//	if (customProps.valid())
+//		getProperties(bobj, object, customProps, idgroup);
 
 }
 
