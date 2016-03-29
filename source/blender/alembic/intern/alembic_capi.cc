@@ -156,9 +156,16 @@ struct alembicManager {
 		object_map.clear();
 		xform_map.clear();
 
-		std::tr1::unordered_map<std::string, IArchive*>::iterator it = archives.begin();
+		std::tr1::unordered_map<std::string, IArchive *>::iterator it = archives.begin();
+
 		for (; it != archives.end(); ++it) {
-			delete it->second;
+			/* XXX */
+			try {
+				delete it->second;
+			}
+			catch (const Alembic::Util::Exception &e) {
+				std::cerr << e.what() << '\n';
+			}
 		}
 
 		BLI_mutex_unlock(mutex);
@@ -169,51 +176,54 @@ struct alembicManager {
 	IArchive *getArchive(const std::string &filename)
 	{
 		std::tr1::unordered_map<std::string, IArchive*>::iterator it = archives.find(filename);
-		std::tr1::unordered_map< IArchive*, std::tr1::unordered_map<std::string, IObject> >::iterator it_ob;
-		std::tr1::unordered_map< IArchive*, std::tr1::unordered_map<std::string, IXformSchema> >::iterator it_xf;
 
-		if (it == archives.end()) {
-			if ((int)archives.size() > max_alembic_files) {
-				it = archives.begin();
-
-				it_ob = object_map.find(it->second);
-				it_xf = xform_map.find(it->second);;
-
-				if (it_ob != object_map.end())
-					object_map.erase(it_ob);
-
-				if (it_xf != xform_map.end())
-					xform_map.erase(it_xf);
-
-				delete it->second;
-				archives.erase(it);
-			}
-
-			IArchive *archive;
-
-			try {
-				archive = new IArchive (Alembic::AbcCoreHDF5::ReadArchive(),
-				                        filename.c_str(), ErrorHandler::kThrowPolicy ,
-				                        cache_ptr);
-			}
-			catch (Exception &e) {
-				try {
-					archive = new IArchive (Alembic::AbcCoreOgawa::ReadArchive(),
-					                        filename.c_str(), ErrorHandler::kThrowPolicy ,
-					                        cache_ptr);
-				}
-				catch (Exception &e) {
-					std::cerr << e.what() << std::endl;
-					return NULL;
-				}
-			}
-
-			archives[filename] = archive;
-			return archive;
+		if (it != archives.end()) {
+			return it->second;
 		}
-		return it->second;
 
-		return NULL;
+		if ((int)archives.size() > max_alembic_files) {
+			std::tr1::unordered_map<IArchive *, std::tr1::unordered_map<std::string, IObject> >::iterator it_ob;
+			std::tr1::unordered_map<IArchive *, std::tr1::unordered_map<std::string, IXformSchema> >::iterator it_xf;
+
+			it = archives.begin();
+
+			it_ob = object_map.find(it->second);
+			it_xf = xform_map.find(it->second);;
+
+			if (it_ob != object_map.end()) {
+				object_map.erase(it_ob);
+			}
+
+			if (it_xf != xform_map.end()) {
+				xform_map.erase(it_xf);
+			}
+
+			delete it->second;
+			archives.erase(it);
+		}
+
+		IArchive *archive;
+
+		try {
+			archive = new IArchive(Alembic::AbcCoreHDF5::ReadArchive(),
+			                       filename.c_str(), ErrorHandler::kThrowPolicy,
+			                       cache_ptr);
+		}
+		catch (const Exception &e) {
+			try {
+				archive = new IArchive(Alembic::AbcCoreOgawa::ReadArchive(),
+				                       filename.c_str(), ErrorHandler::kThrowPolicy,
+				                       cache_ptr);
+			}
+			catch (const Exception &e) {
+				std::cerr << e.what() << std::endl;
+				return NULL;
+			}
+		}
+
+		archives[filename] = archive;
+
+		return archive;
 	}
 
 	void visitObjects(IObject iObj, IObject &ret, std::string path, bool &found)
@@ -336,7 +346,8 @@ struct alembicManager {
 };
 
 /* TODO */
-static alembicManager *abc_manager = new alembicManager();
+static alembicManager __abc_manager;
+static alembicManager *abc_manager = &__abc_manager;// new alembicManager();
 
 static Material *findMaterial(const char *name)
 {
