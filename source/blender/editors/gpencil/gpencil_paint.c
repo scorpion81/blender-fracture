@@ -711,9 +711,10 @@ static void gp_stroke_newfrombuffer(tGPsdata *p)
 		}
 		
 		/* smooth stroke - only if there's something to do */
+		/* NOTE: No pressure smoothing, or else we get annoying thickness changes while drawing... */
 		if (gpl->draw_smoothfac > 0.0f) {
 			for (i = 0; i < gps->totpoints; i++) {
-				gp_smooth_stroke(gps, i, gpl->draw_smoothfac, true);
+				gp_smooth_stroke(gps, i, gpl->draw_smoothfac, false);
 			}
 		}
 		
@@ -1555,24 +1556,24 @@ static void gpencil_draw_status_indicators(tGPsdata *p)
 			/* print status info */
 			switch (p->paintmode) {
 				case GP_PAINTMODE_ERASER:
-					ED_area_headerprint(p->sa, IFACE_("Grease Pencil Erase Session: Hold and drag LMB or RMB to erase |"
-					                                  " ESC/Enter to end"));
+					ED_area_headerprint(p->sa, IFACE_("Grease Pencil Erase Session: Hold and drag LMB or RMB to erase | "
+					                                  "ESC/Enter to end  (or click outside this area)"));
 					break;
 				case GP_PAINTMODE_DRAW_STRAIGHT:
 					ED_area_headerprint(p->sa, IFACE_("Grease Pencil Line Session: Hold and drag LMB to draw | "
-					                                  "ESC/Enter to end"));
+					                                  "ESC/Enter to end  (or click outside this area)"));
 					break;
 				case GP_PAINTMODE_DRAW:
 					ED_area_headerprint(p->sa, IFACE_("Grease Pencil Freehand Session: Hold and drag LMB to draw | "
-					                                  "ESC/Enter to end"));
+					                                  "ESC/Enter to end  (or click outside this area)"));
 					break;
 				case GP_PAINTMODE_DRAW_POLY:
 					ED_area_headerprint(p->sa, IFACE_("Grease Pencil Poly Session: LMB click to place next stroke vertex | "
-					                                  "ESC/Enter to end"));
+					                                  "ESC/Enter to end  (or click outside this area)"));
 					break;
 				
 				default: /* unhandled future cases */
-					ED_area_headerprint(p->sa, IFACE_("Grease Pencil Session: ESC/Enter to end"));
+					ED_area_headerprint(p->sa, IFACE_("Grease Pencil Session: ESC/Enter to end   (or click outside this area)"));
 					break;
 			}
 			break;
