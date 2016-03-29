@@ -57,23 +57,10 @@ int ABC_export(struct Scene *sce, const char *filename,
 void ABC_import(struct bContext *C, const char *filename);
 
 void ABC_get_vertex_cache(const char *filepath, float time, void *key, void *verts, int max_verts, const char *sub_obj, int is_mvert);
-struct Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assign_mats, const char *sub_obj, bool *p_only);
-struct Curve *ABC_get_nurbs(const char *filepath, float time, const char *sub_obj);
-void ABC_apply_materials(struct Object *ob, void *key);
 
-void ABC_get_objects_names(const char *filename, char *result);
-void ABC_get_nurbs_names(const char *filename, char *result);
-void ABC_get_camera_names(const char *filename, char *result);
-
-void ABC_get_transform(const char *filename, const char *abc_subobject, float time, float mat[][4], int to_y_up);
-void ABC_set_custom_properties(struct Object *bobj);
-void ABC_set_camera(const char *filename, const char *abc_subobject, float time, struct Camera *bcam);
 void ABC_destroy_mesh_data(void *key);
-int ABC_check_subobject_valid(const char *name, const char *sub_obj);
-void ABC_destroy_key(void *);
 
-void ABC_mutex_lock(void);
-void ABC_mutex_unlock(void);
+int ABC_check_subobject_valid(const char *name, const char *sub_obj);
 
 #ifdef __cplusplus
 }

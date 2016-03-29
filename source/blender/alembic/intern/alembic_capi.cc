@@ -354,12 +354,12 @@ static Material *findMaterial(const char *name)
 	return found_material;
 }
 
-void ABC_mutex_lock()
+static void ABC_mutex_lock()
 {
 	BLI_mutex_lock(abc_manager->mutex);
 }
 
-void ABC_mutex_unlock()
+static void ABC_mutex_unlock()
 {
 	BLI_mutex_unlock(abc_manager->mutex);
 }
@@ -833,7 +833,7 @@ void ABC_destroy_mesh_data(void *key)
 	}
 }
 
-void ABC_destroy_key(void *key)
+static void ABC_destroy_key(void *key)
 {
 	MeshMap::iterator it;
 	if ((it = abc_manager->mesh_map.find(key)) != abc_manager->mesh_map.end()) {
@@ -847,7 +847,7 @@ void ABC_destroy_key(void *key)
 	}
 }
 
-Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assign_mats, const char *sub_obj, bool *p_only)
+static Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assign_mats, const char *sub_obj, bool *p_only)
 {
 	Mesh *mesh = NULL;
 	std::string file_path = filepath;
@@ -926,7 +926,7 @@ Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assign_mats,
 	return mesh;
 }
 
-Curve *ABC_get_nurbs(const char *filepath, float time, const char *sub_obj)
+static Curve *ABC_get_nurbs(const char *filepath, float time, const char *sub_obj)
 {
 	Curve *cu = NULL;
 	std::string file_path = filepath;
@@ -1030,7 +1030,7 @@ Curve *ABC_get_nurbs(const char *filepath, float time, const char *sub_obj)
 	return cu;
 }
 
-void ABC_apply_materials(Object *ob, void *key)
+static void ABC_apply_materials(Object *ob, void *key)
 {
 	AbcInfo &meshmap = abc_manager->mesh_map[key];
 
@@ -1126,63 +1126,6 @@ void ABC_get_vertex_cache(const char *filepath, float time, void *key, void *ver
 	}
 }
 
-void ABC_get_objects_names(const char *filename, char *result)
-{
-	std::vector<std::string> strings;
-	IArchive *archive = abc_manager->getArchive(filename);
-
-	if (!archive || !archive->valid())
-		return;
-
-	visitObjectString(archive->getTop(), strings, 0);
-
-	std::string final;
-	for (int i = 0; i < strings.size();++i) {
-		final += strings[i];
-		if (i < strings.size()-1)
-			final += ";";
-	}
-	BLI_strncpy(result, final.c_str(), final.length()+1);
-}
-
-void ABC_get_nurbs_names(const char *filename, char *result)
-{
-	std::vector<std::string> strings;
-	IArchive *archive = abc_manager->getArchive(filename);
-	if (!archive || !archive->valid())
-		return;
-
-	visitObjectString(archive->getTop(), strings, 1);
-
-	std::string final;
-	for (int i = 0; i < strings.size();++i) {
-		final += strings[i];
-		if (i < strings.size()-1)
-			final += ";";
-	}
-
-	BLI_strncpy(result, final.c_str(), 65535);
-}
-
-void ABC_get_camera_names(const char *filename, char *result)
-{
-	std::vector<std::string> strings;
-	IArchive *archive = abc_manager->getArchive(filename);
-	if (!archive || !archive->valid())
-		return;
-
-	visitObjectString(archive->getTop(), strings, 2);
-
-	std::string final;
-	for (int i = 0; i < strings.size();++i) {
-		final += strings[i];
-		if (i < strings.size()-1)
-			final += ";";
-	}
-
-	BLI_strncpy(result, final.c_str(), 65535);
-}
-
 int ABC_check_subobject_valid(const char *name, const char *sub_obj)
 {
 	if (name[0] == '\0')
@@ -1202,175 +1145,13 @@ int ABC_check_subobject_valid(const char *name, const char *sub_obj)
 
 	if (sub_obj[0] == '\0') {
 		std::cerr << "Subobject name is empty!\n";
-		return 1;
+		return 0;
 	}
 
 	bool found = false;
 	abc_manager->getObject(name, sub_obj, found);
 
 	return found;
-}
-
-static void getProperties(Object *bobj, IXformSchema object, ICompoundProperty customProps, IDProperty *idgroup)
-{
-	size_t numProps = customProps.getNumProperties();
-
-	for (size_t i = 0; i < numProps; ++i) {
-		const Alembic::AbcGeom::AbcA::PropertyHeader propHeader = customProps.getPropertyHeader(i);
-		std::string name = propHeader.getName();
-		Alembic::AbcGeom::DataType dType = propHeader.getDataType();
-
-		switch (dType.getPod()) {
-			case kBooleanPOD:
-			{
-				IBoolProperty prop(customProps,  name);
-				IDPropertyTemplate val;
-				val.i = prop.getValue();
-				IDProperty *idprop = IDP_New(IDP_INT, &val, name.c_str());
-				IDP_AddToGroup(idgroup, idprop);
-				break;
-			}
-			case  kStringPOD:
-			{
-				IStringProperty prop(customProps,  name);
-				IDPropertyTemplate val;
-				const std::string &str =  prop.getValue();
-				val.string.str = str.c_str();
-				val.string.len = prop.getValue().size();
-				val.string.subtype = IDP_STRING_SUB_UTF8;
-				IDProperty *idprop = IDP_New(IDP_STRING, &val, name.c_str());
-				IDP_AddToGroup(idgroup, idprop);
-				break;
-			}
-			case  kInt32POD:
-			{
-				IInt32Property prop(customProps,  name);
-				IDPropertyTemplate val;
-				val.i = prop.getValue();
-				IDProperty *idprop = IDP_New(IDP_INT, &val, name.c_str());
-				IDP_AddToGroup(idgroup, idprop);
-				break;
-			}
-			case  kFloat32POD:
-			{
-				IFloatProperty prop(customProps,  name);
-				IDPropertyTemplate val;
-				val.f = prop.getValue();
-				IDProperty *idprop = IDP_New(IDP_FLOAT, &val, name.c_str());
-				IDP_AddToGroup(idgroup, idprop);
-				break;
-			}
-			default:
-			{
-				std::cerr << name << "=" << "Unknown Alembic POD id " << dType.getPod() << std::endl;
-			}
-		}
-	}
-}
-
-void ABC_set_custom_properties(Object */*bobj*/)
-{
-//	bool found;
-
-//	const char *filename 		= bobj->abc_file;
-//	const char *abc_subobject 	= bobj->abc_subobject;
-
-//	IDProperty *idgroup= IDP_GetProperties(&bobj->id, true);
-//	if (!idgroup) {
-//		std::cerr << "No idgroup to add" << std::endl;
-//		return;
-//	}
-
-//	IXformSchema object = abc_manager->getXFormSchema(filename, abc_subobject, found);
-
-//	if (!found || !object.valid())
-//		return;
-
-//	ICompoundProperty customProps = object.getUserProperties();
-//	if (customProps.valid())
-//		getProperties(bobj, object, customProps, idgroup);
-
-//	customProps = object.getArbGeomParams();
-//	if (customProps.valid())
-//		getProperties(bobj, object, customProps, idgroup);
-
-}
-
-void ABC_get_transform(const char *filename, const char *abc_subobject, float time, float mat[][4], int to_y_up)
-{
-	bool found = false;
-	IXformSchema xform_schema = abc_manager->getXFormSchema(filename, abc_subobject, found);
-
-	if (found && xform_schema.valid()) {
-		XformSample xs;
-		ISampleSelector sample_sel(time);
-		xform_schema.get(xs, sample_sel);
-
-		Alembic::Abc::M44d final = xs.getMatrix();
-
-		for (int i = 0; i < 4; ++i) {
-			for (int j = 0; j < 4; j++) {
-				mat[i][j] = final[i][j];
-			}
-		}
-	}
-}
-
-void ABC_set_camera(const char *filename, const char *abc_subobject, float time, Camera *bcam)
-{
-	bool found = false;
-
-	IArchive *archive = abc_manager->getArchive(filename);
-
-	if (!archive || !archive->valid()) {
-		std::cerr << "Warning : Camera Alembic archive doesn't exist " << filename << std::endl;
-		return;
-	}
-
-	ICameraSchema cam_obj;
-	getCamera(archive->getTop(), cam_obj, abc_subobject, found);
-
-	if (!cam_obj.valid() || !found) {
-		std::cerr << "Warning : Corrupted Alembic archive " << filename << std::endl;
-		return;
-	}
-
-	ISampleSelector sample_sel(time);
-	CameraSample cam_sample;
-	cam_obj.get(cam_sample, sample_sel);
-
-	ICompoundProperty customDataContainer =  cam_obj.getUserProperties();
-
-	if (customDataContainer.valid() && customDataContainer.getPropertyHeader("stereoDistance") &&
-	    customDataContainer.getPropertyHeader("eyeSeparation")) {
-		Alembic::AbcGeom::IFloatProperty convergence_plane(customDataContainer, "stereoDistance");
-		Alembic::AbcGeom::IFloatProperty eye_separation(customDataContainer, "eyeSeparation");
-
-		bcam->stereo.interocular_distance = eye_separation.getValue(sample_sel);
-		bcam->stereo.convergence_distance = convergence_plane.getValue(sample_sel);;
-	}
-
-	float lens = cam_sample.getFocalLength();
-	float apperture_x = cam_sample.getHorizontalAperture();
-	float apperture_y = cam_sample.getVerticalAperture();
-	float h_film_offset = cam_sample.getHorizontalFilmOffset();
-	float v_film_offset = cam_sample.getVerticalFilmOffset();
-	float film_aspect = apperture_x / apperture_y;
-
-	bcam->lens = lens;
-	bcam->sensor_x = apperture_x * 10;
-	bcam->sensor_y = apperture_y * 10;
-	bcam->shiftx = h_film_offset / apperture_x;
-	bcam->shifty = v_film_offset / (apperture_y * film_aspect);
-	bcam->clipsta = cam_sample.getNearClippingPlane();
-	bcam->clipend = cam_sample.getFarClippingPlane();
-	bcam->gpu_dof.focus_distance = cam_sample.getFocusDistance();
-	bcam->gpu_dof.fstop = cam_sample.getFStop();
-	bcam->shifty = v_film_offset / apperture_y / film_aspect;
-	bcam->clipsta = cam_sample.getNearClippingPlane();
-	bcam->clipend = cam_sample.getFarClippingPlane();
-
-	return;
 }
 
 static Camera *ABC_get_camera(const char *filename, const char *abc_subobject, float time)

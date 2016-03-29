@@ -166,24 +166,6 @@ static void rna_Scene_ray_cast(
 #ifdef WITH_ALEMBIC
 #include "../../alembic/ABC_alembic.h"
 
-static void rna_Alembic_meshes_get(Scene *sce, const char* filepath, char *result)
-{
-	ABC_get_objects_names(filepath, result);
-	UNUSED_VARS(sce);
-}
-
-static void rna_Alembic_nurbs_get(Scene *sce, const char* filepath, char *result)
-{
-	ABC_get_nurbs_names(filepath, result);
-	UNUSED_VARS(sce);
-}
-
-static void rna_Alembic_cameras_get(Scene *sce, const char* filepath, char *result)
-{
-	ABC_get_camera_names(filepath, result);
-	UNUSED_VARS(sce);
-}
-
 static void rna_Scene_alembic_export( Scene *sce, const char *filepath,
 										int start, int end,
 										int xformsamples, int geomsamples,
@@ -367,43 +349,7 @@ void RNA_api_scene(StructRNA *srna)
 	RNA_def_boolean(func, "subdiv_schema"	, 0, "Use Alembic subdivision Schema", "Use Alembic subdivision Schema");
 	RNA_def_boolean(func, "ogawa"		, 0, "Export Ogawa", "Export as Ogawa format");
 	RNA_def_boolean(func, "packuv"		, 0, "Export with packed UV islands", "Export with packed UV islands");
-
-	func = RNA_def_function(srna, "alembic_get_objects", "rna_Alembic_meshes_get");
-	RNA_def_function_ui_description(func, "Get meshes objects from alembic");
-
-	parm = RNA_def_string(func, "filepath", NULL, FILE_MAX, "File Path", "File path to Alembic file");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
-	RNA_def_property_subtype(parm, PROP_FILEPATH);
-
-	parm = RNA_def_string(func, "result", NULL, 512*1024, "Result", "Resulting meshes objects");
-	RNA_def_property_flag(parm, PROP_THICK_WRAP); /* needed for string return value */
-	RNA_def_function_output(func, parm);
-
-	func = RNA_def_function(srna, "alembic_get_nurbs", "rna_Alembic_nurbs_get");
-	RNA_def_function_ui_description(func, "Get nurbs objects from alembic");
-
-
-	parm = RNA_def_string(func, "filepath", NULL, FILE_MAX, "File Path", "File path to Alembic file");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
-	RNA_def_property_subtype(parm, PROP_FILEPATH);
-
-	parm = RNA_def_string(func, "result", NULL, 65535, "Result", "Resulting nurbs objects");
-	RNA_def_property_flag(parm, PROP_THICK_WRAP); /* needed for string return value */
-	RNA_def_function_output(func, parm);
-
-	func = RNA_def_function(srna, "alembic_get_cameras", "rna_Alembic_cameras_get");
-	RNA_def_function_ui_description(func, "Get meshes objects from alembic");
-
-	parm = RNA_def_string(func, "filepath", NULL, FILE_MAX, "File Path", "File path to Alembic file");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
-	RNA_def_property_subtype(parm, PROP_FILEPATH);
-
-	parm = RNA_def_string(func, "result", NULL, 65535, "Result", "Resulting meshes objects");
-	RNA_def_property_flag(parm, PROP_THICK_WRAP); /* needed for string return value */
-	RNA_def_function_output(func, parm);
-
 #endif
-
 }
 
 

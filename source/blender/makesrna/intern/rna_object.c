@@ -1516,70 +1516,6 @@ static void rna_Object_lod_distance_update(Main *UNUSED(bmain), Scene *UNUSED(sc
 #endif
 }
 
-#ifdef WITH_ALEMBIC
-#include "../../alembic/ABC_alembic.h"
-static void rna_Object_from_alembic(
-        Object *bob, ReportList *reports,
-        const char* filepath, const char* subobject, int apply_materials)
-{
-	Mesh *mesh;
-	Curve *curve, *old;
-	ID* data;
-	bool p_only = true;
-
-	data = (ID*)bob->data;
-
-	if (GS(data->name) == ID_ME){
-		ABC_mutex_lock();
-        mesh = ABC_get_mesh(filepath, 0., NULL, apply_materials, subobject, &p_only);
-		ABC_mutex_unlock();
-
-		if (!mesh){
-			return;
-		}
-
-		mesh = BKE_mesh_copy(mesh);
-		data = &mesh->id;
-
-		BKE_mesh_assign_object(bob, mesh);
-
-		if (apply_materials){
-			ABC_apply_materials(bob, NULL);
-		}
-
-		mesh->id.us--;
-
-		ABC_destroy_key(0);
-	} else if (GS(data->name) == ID_CU){
-		ABC_mutex_lock();
-
-		curve = ABC_get_nurbs(filepath, 0., subobject);
-
-		if (bob->type == OB_SURF && curve) {
-			old = bob->data;
-			if (old)
-				old->id.us--;
-			bob->data = curve;
-			id_us_plus((ID *)curve);
-		} else {
-			printf("Cannot assign nurbs data to object\n");
-		}
-
-		curve->id.us--;
-	}
-
-	UNUSED_VARS(reports);
-}
-
-static void rna_Object_set_alembic_props(
-        Object *bob, ReportList *reports)
-{
-	ABC_set_custom_properties(bob);
-	UNUSED_VARS(reports);
-}
-
-#endif //WITH_ALEMBIC
-
 #else
 
 static void rna_def_vertex_group(BlenderRNA *brna)
@@ -2225,8 +2161,6 @@ static void rna_def_object(BlenderRNA *brna)
 {
 	StructRNA *srna;
 	PropertyRNA *prop;
-	FunctionRNA *func;
-	PropertyRNA *parm;
 
 	static EnumPropertyItem up_items[] = {
 		{OB_POSX, "X", 0, "X", ""},
@@ -2902,22 +2836,6 @@ static void rna_def_object(BlenderRNA *brna)
 	RNA_def_property_struct_type(prop, "LodLevel");
 	RNA_def_property_ui_text(prop, "Level of Detail Levels", "A collection of detail levels to automatically switch between");
 	RNA_def_property_update(prop, NC_OBJECT | ND_LOD, NULL);
-
-#ifdef WITH_ALEMBIC
-	func = RNA_def_function(srna, "from_alembic", "rna_Object_from_alembic");
-	RNA_def_function_ui_description(func, "Add a new object created from Alembic file");
-	RNA_def_function_flag(func, FUNC_USE_REPORTS);
-	parm = RNA_def_string(func, "filepath", "File path", 1024, "", "Alembic file");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm = RNA_def_string(func, "subobject", "Sub object", 1024, "", "Alembic's sub-object");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm = RNA_def_boolean(func, "apply_materials", 0, "", "Apply materials");
-    RNA_def_property_flag(parm, PROP_REQUIRED);
-
-	func = RNA_def_function(srna, "set_alembic_props", "rna_Object_set_alembic_props");
-	RNA_def_function_ui_description(func, "Set customs attributes from Alembic file");
-	RNA_def_function_flag(func, FUNC_USE_REPORTS);
-#endif
 
 	RNA_api_object(srna);
 }

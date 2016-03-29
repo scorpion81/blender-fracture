@@ -49,7 +49,6 @@ _modules = [
     "vertexpaint_dirt",
     "view3d",
     "wm",
-    "alembic_import"
     ]
 
 import bpy

@@ -159,7 +159,6 @@ class INFO_MT_file_import(Menu):
         if bpy.app.build_options.collada:
             self.layout.operator("wm.collada_import", text="Collada (Default) (.dae)")
         if bpy.app.build_options.alembic:
-            self.layout.operator("alembic.import", text="Alembic (Python) (.abc)")
             self.layout.operator("wm.alembic_import", text="Alembic (Default) (.abc)")
 
 
