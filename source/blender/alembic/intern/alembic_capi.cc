@@ -742,66 +742,6 @@ static void getIObjectAsMesh(std::pair<IPolyMeshSchema, IObject> schema,
 
 	// Compute edge array is done here
 	BKE_mesh_validate(blender_mesh, false, false);
-
-	ICompoundProperty userProps = schema.first.getUserProperties();
-	if (userProps.valid() && userProps.getPropertyHeader("BkEdgeSharpness") != 0) {
-		blender_mesh->cd_flag |= ME_CDFLAG_EDGE_CREASE;
-
-		bool flt;
-		Alembic::AbcGeom::FloatArraySamplePtr edge_sharpness_values_flt;
-		Alembic::AbcGeom::DoubleArraySamplePtr edge_sharpness_values_dbl;
-
-		if (userProps.getPropertyHeader("BkEdgeSharpness")->getDataType().getPod() == kFloat32POD) {
-			Alembic::AbcGeom::IFloatArrayProperty bk_eds(userProps, "BkEdgeSharpness");
-			bk_eds.get(edge_sharpness_values_flt, sample_sel);
-			flt = true;
-		}
-
-		if (userProps.getPropertyHeader("BkEdgeSharpness")->getDataType().getPod() == kFloat64POD) {
-			Alembic::AbcGeom::IDoubleArrayProperty bk_eds(userProps, "BkEdgeSharpness");
-			bk_eds.get(edge_sharpness_values_dbl, sample_sel);
-			flt = false;
-		}
-
-		size_t indice_size = 0;
-		uint32_t *idx_data =  NULL;
-		if (userProps.getPropertyHeader("BkEdgeIndices")->getDataType().getPod() == kInt32POD) {
-			Alembic::AbcGeom::Int32ArraySamplePtr  edge_sharpness_indices_int;
-			Alembic::AbcGeom::IInt32ArrayProperty bk_edi(userProps, "BkEdgeIndices");
-			bk_edi.get(edge_sharpness_indices_int, sample_sel);
-			indice_size = edge_sharpness_indices_int->size();
-			idx_data = (uint32_t *)&((*edge_sharpness_indices_int)[0]);
-		}
-
-		if (userProps.getPropertyHeader("BkEdgeIndices")->getDataType().getPod() == kUint32POD) {
-			Alembic::AbcGeom::UInt32ArraySamplePtr edge_sharpness_indices_uint;
-			Alembic::AbcGeom::IUInt32ArrayProperty bk_edi(userProps, "BkEdgeIndices");
-			bk_edi.get(edge_sharpness_indices_uint, sample_sel);
-			indice_size = edge_sharpness_indices_uint->size();
-			idx_data = (uint32_t *)&((*edge_sharpness_indices_uint)[0]);
-		}
-
-		const int tot_edges = blender_mesh->totedge;
-
-		for (int e = 0; e < indice_size; ++e) {
-			uint32_t e1 = idx_data[e*2] + vtx_pos;
-			uint32_t e2 = idx_data[e*2+1] + vtx_pos;
-			float value;
-			if (flt)
-				value = (*edge_sharpness_values_flt)[e];
-			else
-				value = (*edge_sharpness_values_dbl)[e];
-
-			for (int z = 0; z < tot_edges; ++z) {
-				MEdge &medge = blender_mesh->medge[z];
-				if ((medge.v1 == e1 && medge.v2 == e2) ||
-				    (medge.v2 == e1 && medge.v1 == e2)) {
-					medge.crease = value * 255.0;
-					medge.flag = ME_EDGEDRAW | ME_EDGERENDER;
-				}
-			}
-		}
-	}
 }
 
 static size_t updatePoints(std::pair<IPolyMeshSchema, IObject> schema, const ISampleSelector &sample_sel, MVert *verts, size_t vtx_start, int max_verts = -1, float (*vcos)[3] = 0) {
