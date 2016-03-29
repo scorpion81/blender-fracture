@@ -1375,6 +1375,67 @@ void ABC_set_camera(const char *filename, const char *abc_subobject, float time,
 	return;
 }
 
+#include "BKE_camera.h"
+
+static Camera *ABC_get_camera(const char *filename, const char *abc_subobject, float time)
+{
+	bool found = false;
+
+	IArchive *archive = abc_manager->getArchive(filename);
+
+	if (!archive || !archive->valid()) {
+		std::cerr << "Warning : Camera Alembic archive doesn't exist " << filename << std::endl;
+		return NULL;
+	}
+
+	ICameraSchema cam_obj;
+	getCamera(archive->getTop(), cam_obj, abc_subobject, found);
+
+	if (!cam_obj.valid() || !found) {
+		std::cerr << "Warning: Corrupted Alembic archive " << filename << std::endl;
+		return NULL;
+	}
+
+	Camera *bcam = static_cast<Camera *>(BKE_camera_add(G.main, "abc_camera"));
+
+	ISampleSelector sample_sel(time);
+	CameraSample cam_sample;
+	cam_obj.get(cam_sample, sample_sel);
+
+	ICompoundProperty customDataContainer =  cam_obj.getUserProperties();
+
+	if (customDataContainer.valid() && customDataContainer.getPropertyHeader("stereoDistance") &&
+	    customDataContainer.getPropertyHeader("eyeSeparation")) {
+		Alembic::AbcGeom::IFloatProperty convergence_plane(customDataContainer, "stereoDistance");
+		Alembic::AbcGeom::IFloatProperty eye_separation(customDataContainer, "eyeSeparation");
+
+		bcam->stereo.interocular_distance = eye_separation.getValue(sample_sel);
+		bcam->stereo.convergence_distance = convergence_plane.getValue(sample_sel);;
+	}
+
+	float lens = cam_sample.getFocalLength();
+	float apperture_x = cam_sample.getHorizontalAperture();
+	float apperture_y = cam_sample.getVerticalAperture();
+	float h_film_offset = cam_sample.getHorizontalFilmOffset();
+	float v_film_offset = cam_sample.getVerticalFilmOffset();
+	float film_aspect = apperture_x / apperture_y;
+
+	bcam->lens = lens;
+	bcam->sensor_x = apperture_x * 10;
+	bcam->sensor_y = apperture_y * 10;
+	bcam->shiftx = h_film_offset / apperture_x;
+	bcam->shifty = v_film_offset / (apperture_y * film_aspect);
+	bcam->clipsta = cam_sample.getNearClippingPlane();
+	bcam->clipend = cam_sample.getFarClippingPlane();
+	bcam->gpu_dof.focus_distance = cam_sample.getFocusDistance();
+	bcam->gpu_dof.fstop = cam_sample.getFStop();
+	bcam->shifty = v_film_offset / apperture_y / film_aspect;
+	bcam->clipsta = cam_sample.getNearClippingPlane();
+	bcam->clipend = cam_sample.getFarClippingPlane();
+
+	return bcam;
+}
+
 int ABC_export(Scene *sce, const char *filename,
                 double start, double end,
                 double xformstep, double geomstep,
@@ -1531,7 +1592,19 @@ static void import_object(bContext *C, const std::string &filename, const std::s
 		}
 		case OBJECT_TYPE_CAMERA:
 		{
-			/* TODO */
+			ABC_mutex_lock();
+			Camera *camera = ABC_get_camera(filename.c_str(), sub_object.c_str(), 0.0f);
+			ABC_mutex_unlock();
+
+			if (!camera) {
+				return;
+			}
+
+			BLI_strncpy(camera->id.name + 2, data_name.c_str(), data_name.size() + 1);
+
+			ob = BKE_object_add(CTX_data_main(C), CTX_data_scene(C), OB_CAMERA, object_name.c_str());
+			ob->data = camera;
+
 			break;
 		}
 	}
