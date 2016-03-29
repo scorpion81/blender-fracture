@@ -1044,8 +1044,7 @@ static void import_object(bContext *C, IArchive *archive,
 
 			ABC_destroy_key(NULL);
 #else
-			AbcObjectReader *reader = new AbcMeshReader(sub_object, from_forward, from_up);
-			reader->init(archive->getTop());
+			AbcObjectReader *reader = new AbcMeshReader(archive->getTop(), from_forward, from_up);
 
 			if (reader->valid()) {
 				reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f);
@@ -1058,8 +1057,7 @@ static void import_object(bContext *C, IArchive *archive,
 		}
 		case OBJECT_TYPE_NURBS:
 		{
-			AbcObjectReader *reader = new AbcNurbsReader(sub_object, from_forward, from_up);
-			reader->init(archive->getTop());
+			AbcObjectReader *reader = new AbcNurbsReader(archive->getTop(), from_forward, from_up);
 
 			if (reader->valid()) {
 				reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f);
@@ -1071,8 +1069,7 @@ static void import_object(bContext *C, IArchive *archive,
 		}
 		case OBJECT_TYPE_CAMERA:
 		{
-			AbcObjectReader *reader = new AbcCameraReader(sub_object, from_forward, from_up);
-			reader->init(archive->getTop());
+			AbcObjectReader *reader = new AbcCameraReader(archive->getTop(), from_forward, from_up);
 
 			if (reader->valid()) {
 				reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f);
@@ -1095,7 +1092,6 @@ static void import_object(bContext *C, IArchive *archive,
 static void import_objects(bContext *C, IArchive *archive,
                            int object_type, int from_forward, int from_up)
 {
-
 	std::vector<std::string> strings;
 	visitObjectString(archive->getTop(), strings, object_type);
 
@@ -1122,6 +1118,42 @@ static void import_objects(bContext *C, IArchive *archive,
 	}
 }
 
+static void visit_object(const IObject &object, std::vector<AbcObjectReader *> &readers,
+                         int from_forward, int from_up)
+{
+	if (!object.valid()) {
+		return;
+	}
+
+	for (int i = 0;i < object.getNumChildren(); ++i) {
+		IObject child(object, object.getChildHeader(i).getName());
+
+		if (!child.valid()) {
+			continue;
+		}
+
+		const MetaData &md = child.getMetaData();
+
+		if (IPolyMesh::matches(md)) {
+			readers.push_back(new AbcMeshReader(child, from_forward, from_up));
+		}
+		else if (INuPatch::matches(md)) {
+			readers.push_back(new AbcNurbsReader(child, from_forward, from_up));
+		}
+		else if (ICameraSchema::matches(md)) {
+			readers.push_back(new AbcCameraReader(child, from_forward, from_up));
+		}
+
+		visit_object(child, readers, from_forward, from_up);
+	}
+}
+
+static void create_readers(IArchive *archive, std::vector<AbcObjectReader *> &readers,
+                           int from_forward, int from_up)
+{
+	visit_object(archive->getTop(), readers, from_forward, from_up);
+}
+
 void ABC_import(bContext *C, const char *filename, int from_forward, int from_up)
 {
 	/* get objects strings */
@@ -1131,7 +1163,27 @@ void ABC_import(bContext *C, const char *filename, int from_forward, int from_up
 		return;
 	}
 
+#if 1
+	std::vector<AbcObjectReader *> readers;
+	create_readers(archive, readers, from_forward, from_up);
+
+	std::vector<AbcObjectReader *>::iterator iter;
+
+	for (iter = readers.begin(); iter != readers.end(); ++iter) {
+		AbcObjectReader *reader = *iter;
+
+		if (reader->valid()) {
+			reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f);
+		}
+	}
+
+	for (iter = readers.begin(); iter != readers.end(); ++iter) {
+		delete *iter;
+	}
+
+#else
 	import_objects(C, archive, OBJECT_TYPE_MESH, from_forward, from_up);
 	import_objects(C, archive, OBJECT_TYPE_NURBS, from_forward, from_up);
 	import_objects(C, archive, OBJECT_TYPE_CAMERA, from_forward, from_up);
+#endif
 }
