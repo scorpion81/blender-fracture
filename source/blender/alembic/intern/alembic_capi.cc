@@ -27,21 +27,21 @@
 #include <algorithm>
 
 #include "abc_exporter.h"
+#include "abc_camera.h"
+#include "abc_mesh.h"
+#include "abc_nurbs.h"
+#include "abc_util.h"
 
 extern "C" {
 #include "MEM_guardedalloc.h"
 
-#include "DNA_camera_types.h"
-#include "DNA_curve_types.h"
 #include "DNA_material_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
-#include "BKE_camera.h"
 #include "BKE_cdderivedmesh.h"
 #include "BKE_context.h"
-#include "BKE_curve.h"
 #include "BKE_depsgraph.h"
 #include "BKE_global.h"
 #include "BKE_idprop.h"
@@ -61,23 +61,6 @@ enum {
 	OBJECT_TYPE_NURBS = 1,
 	OBJECT_TYPE_CAMERA = 2,
 };
-
-static void split(const std::string &s, const char *delim, std::vector<std::string> &v)
-{
-	/* to avoid modifying original string first duplicate the original string
-	 *  and return a char pointer then free the memory */
-	char *dup = strdup(s.c_str());
-	char *token = strtok(dup, delim);
-
-	while (token != NULL) {
-		v.push_back(std::string(token));
-		/* the call is treated as a subsequent calls to strtok: the function
-		 * continues from where it left in previous invocation */
-		token = strtok(NULL, delim);
-	}
-
-	free(dup);
-}
 
 #if 0
 static Object *find_object(Scene *scene, const std::string &sub_object, Object */*parent*/)
@@ -119,22 +102,6 @@ struct AbcInfo {
 
 	AbcInfo()
 	    : mesh(NULL)
-	    , current_mat(0)
-	{}
-};
-
-struct AbcNuInfo {
-	Curve *curve;
-	int current_mat;
-
-	std::string filename, sub_object;
-	std::vector< std::pair<INuPatchSchema, IObject> > nu_schema_cache;
-
-	std::map<std::string, int> mat_map;
-	std::map<std::string, Material*> materials;
-
-	AbcNuInfo()
-	    : curve(NULL)
 	    , current_mat(0)
 	{}
 };
@@ -349,6 +316,7 @@ struct alembicManager {
 static alembicManager __abc_manager;
 static alembicManager *abc_manager = &__abc_manager;// new alembicManager();
 
+#if 0
 static Material *findMaterial(const char *name)
 {
 	Main *bmain = G.main;
@@ -374,7 +342,9 @@ static void ABC_mutex_unlock()
 {
 	BLI_mutex_unlock(abc_manager->mutex);
 }
+#endif
 
+#if 0
 // Some helpers for mesh generation
 namespace mesh_utils {
 
@@ -454,37 +424,7 @@ static void mesh_add_mpolygons(Mesh *mesh, size_t len)
 }
 
 } /* mesh_utils */
-
-template<class TContainer>
-bool begins_with(const TContainer &input, const TContainer &match)
-{
-	return input.size() >= match.size()
-	        && std::equal(match.begin(), match.end(), input.begin());
-}
-
-static void getCamera(IObject iObj, ICameraSchema &schema, std::string sub_obj, bool &found)
-{
-	if (!iObj.valid() || found)
-		return;
-
-	for (int i = 0;i < iObj.getNumChildren(); ++i) {
-		bool ok = true;
-		IObject child(iObj, iObj.getChildHeader(i).getName());
-
-		if (!sub_obj.empty() && child.valid() && child.getFullName() == sub_obj) {
-			const MetaData &md = child.getMetaData();
-
-			if (ICamera::matches(md) && ok) {
-				ICamera abc_cam(child, kWrapExisting);
-				schema = abc_cam.getSchema();
-				found = true;
-				return;
-			}
-		}
-
-		getCamera(child, schema, sub_obj, found);
-	}
-}
+#endif
 
 static void visitObject(IObject iObj, std::vector< std::pair<IPolyMeshSchema, IObject> > &schemas, std::string sub_obj)
 {
@@ -526,34 +466,6 @@ static void visitObject(IObject iObj, std::vector< std::pair<IPolyMeshSchema, IO
 		visitObject(IObject(child), schemas, sub_obj);
 	}
 #endif
-}
-
-static void visitNurbsObject(IObject iObj, std::vector< std::pair<INuPatchSchema, IObject> > &schemas, std::string sub_obj)
-{
-	if (!iObj.valid())
-		return;
-
-	for (int i = 0;i < iObj.getNumChildren(); ++i) {
-		bool ok = true;
-		IObject child(iObj, iObj.getChildHeader(i).getName());
-
-		if (!sub_obj.empty() && child.valid() && !begins_with(child.getFullName(), sub_obj)) {
-			ok = false;
-		}
-
-		if (!child.valid())
-			continue;
-
-		const MetaData &md = child.getMetaData();
-
-		if (INuPatch::matches(md) && ok) {
-			INuPatch abc_nurb(child, kWrapExisting);
-			INuPatchSchema schem = abc_nurb.getSchema();
-			schemas.push_back(std::pair<INuPatchSchema, IObject>(schem, child));
-		}
-
-		visitNurbsObject(IObject(child), schemas, sub_obj);
-	}
 }
 
 static void visitObjectString(IObject iObj, std::vector<std::string> &objects, int type)
@@ -616,6 +528,7 @@ static void visitObjectMatrix(IObject iObj, std::string abc_subobject, float tim
 
 #include "BLI_math.h"
 
+#if 0
 static void getIObjectAsMesh(std::pair<IPolyMeshSchema, IObject> schema,
                              const ISampleSelector &sample_sel, Mesh *blender_mesh,
                              void *key, bool assign_mat, int from_forward, int from_up)
@@ -633,7 +546,6 @@ static void getIObjectAsMesh(std::pair<IPolyMeshSchema, IObject> schema,
 	P3fArraySamplePtr   	positions;
 
 	IV2fGeomParam::Sample::samp_ptr_type uvsamp_vals;
-	Alembic::Abc::UInt32ArraySamplePtr 	 uvsamp_ind;
 
 	smp 		= schema.first.getValue(sample_sel);
 	positions 	= smp.getPositions();
@@ -653,7 +565,6 @@ static void getIObjectAsMesh(std::pair<IPolyMeshSchema, IObject> schema,
 
 	if (uv.valid()) {
 		IV2fGeomParam::Sample uvsamp = uv.getExpandedValue();
-		//uvsamp_ind 	= uvsamp.getIndices();
 		uvsamp_vals = uvsamp.getVals();
 	}
 
@@ -698,10 +609,12 @@ static void getIObjectAsMesh(std::pair<IPolyMeshSchema, IObject> schema,
 		for (int f = face_size; f-- ;) {
 			MLoop &loop 	= blender_mesh->mloop[rev_loop+f];
 			MLoopUV &loopuv = blender_mesh->mloopuv[rev_loop+f];
+
 			if (uvsamp_vals) {
 				loopuv.uv[0] = (*uvsamp_vals)[loopcount][0];
 				loopuv.uv[1] = (*uvsamp_vals)[loopcount][1];
 			}
+
 			loop.v = (*face_indices)[loopcount++];
 		}
 	}
@@ -743,6 +656,7 @@ static void getIObjectAsMesh(std::pair<IPolyMeshSchema, IObject> schema,
 	// Compute edge array is done here
 	BKE_mesh_validate(blender_mesh, false, false);
 }
+#endif
 
 static size_t updatePoints(std::pair<IPolyMeshSchema, IObject> schema, const ISampleSelector &sample_sel, MVert *verts, size_t vtx_start, int max_verts = -1, float (*vcos)[3] = 0) {
 
@@ -801,6 +715,7 @@ void ABC_destroy_mesh_data(void *key)
 	}
 }
 
+#if 0
 static void ABC_destroy_key(void *key)
 {
 	MeshMap::iterator it;
@@ -884,102 +799,6 @@ static Mesh *ABC_get_mesh(IArchive *archive, float time, void *key, int assign_m
 	return mesh;
 }
 
-static Curve *ABC_get_nurbs(IArchive *archive, float time, const char *sub_obj)
-{
-	IObject iObj = archive->getTop();
-
-	if (!iObj.valid()) {
-		std::cerr << "Cannot get top of " << archive->getName() << '\n';
-		return NULL;
-	}
-
-	Curve *cu = BKE_curve_add(G.main, "abc_tmp", OB_SURF);
-
-	AbcNuInfo info;
-	info.filename 	= archive->getName();
-	info.curve 		= cu;
-	info.sub_object = sub_obj;
-	visitNurbsObject(iObj, info.nu_schema_cache, sub_obj);
-
-	std::vector< std::pair<INuPatchSchema, IObject> >::iterator it;
-
-	for (it = info.nu_schema_cache.begin(); it != info.nu_schema_cache.end(); ++it) {
-		Nurb *nu = (Nurb*)MEM_callocN(sizeof(Nurb), "abc_getnurb");
-		nu->flag  = CU_SMOOTH;
-		nu->type = CU_NURBS;
-		nu->resolu = 4;
-		nu->resolv = 4;
-		ISampleSelector sample_sel(time);
-		INuPatchSchema::Sample smp = it->first.getValue(sample_sel);
-
-		P3fArraySamplePtr   positions    = smp.getPositions();
-		FloatArraySamplePtr positionsW   = smp.getPositionWeights();
-		int32_t num_U = smp.getNumU();
-		int32_t num_V = smp.getNumV();
-		int32_t u_order = smp.getUOrder();
-		int32_t v_order = smp.getVOrder();
-		FloatArraySamplePtr u_knot   = smp.getUKnot();
-		FloatArraySamplePtr v_knot   = smp.getVKnot();
-
-		size_t numPt = positions->size();
-		size_t numKnotsU = u_knot->size();
-		size_t numKnotsV = v_knot->size();
-
-
-		nu->orderu = u_order;
-		nu->orderv = v_order;
-		nu->pntsu  = num_U;
-		nu->pntsv  = num_V;
-		nu->bezt = NULL;
-
-		nu->bp = (BPoint*)MEM_callocN(numPt * sizeof(BPoint), "abc_setsplinetype");
-		nu->knotsu = (float*)MEM_callocN(numKnotsU * sizeof(float), "abc_setsplineknotsu");
-		nu->knotsv = (float*)MEM_callocN(numKnotsV * sizeof(float), "abc_setsplineknotsv");
-		nu->bp->radius = 1.0f;
-
-		for (int i = 0; i < numPt; ++i) {
-			V3f pos_in = (*positions)[i];
-			float posw_in = 1.0;
-			if (positionsW && i < positionsW->size())
-				posw_in = (*positionsW)[i];
-
-			// swap from Y-Up to Z-Up
-			nu->bp[i].vec[0] = pos_in[0];
-			nu->bp[i].vec[1] = -pos_in[2];
-			nu->bp[i].vec[2] = pos_in[1];
-			nu->bp[i].vec[3] = posw_in;
-		}
-
-		for (size_t i = 0; i < numKnotsU; i++) {
-			nu->knotsu[i] = (*u_knot)[i];
-		}
-
-		for (size_t i = 0; i < numKnotsV; i++) {
-			nu->knotsv[i] = (*v_knot)[i];
-		}
-
-		ICompoundProperty userProps = it->first.getUserProperties();
-		if (userProps.valid() && userProps.getPropertyHeader("endU") != 0) {
-			IBoolProperty enduProp(userProps, "endU");
-			bool_t endu;
-			enduProp.get(endu, sample_sel);
-			if (endu)
-				nu->flagu = CU_NURB_ENDPOINT;
-		}
-
-		if (userProps.valid() && userProps.getPropertyHeader("endV") != 0) {
-			IBoolProperty endvProp(userProps, "endV");
-			bool_t endv;
-			endvProp.get(endv, sample_sel);
-			if (endv)
-				nu->flagv = CU_NURB_ENDPOINT;
-		}
-
-		BLI_addtail(BKE_curve_nurbs_get(cu), nu);
-	}
-
-	return cu;
-}
 
 static void ABC_apply_materials(Object *ob, void *key)
 {
@@ -1020,6 +839,7 @@ static void ABC_apply_materials(Object *ob, void *key)
 		}
 	}
 }
+#endif
 
 void ABC_get_vertex_cache(const char *filepath, float time, void *key, void *verts, int max_verts, const char *sub_obj, int is_mverts)
 {
@@ -1102,57 +922,6 @@ int ABC_check_subobject_valid(const char *name, const char *sub_obj)
 	abc_manager->getObject(name, sub_obj, found);
 
 	return found;
-}
-
-static Camera *ABC_get_camera(IArchive *archive, const char *abc_subobject, float time)
-{
-	ICameraSchema cam_obj;
-	bool found = false;
-	getCamera(archive->getTop(), cam_obj, abc_subobject, found);
-
-	if (!cam_obj.valid() || !found) {
-		std::cerr << "Warning: Corrupted Alembic archive: " << archive->getName() << '\n';
-		return NULL;
-	}
-
-	Camera *bcam = static_cast<Camera *>(BKE_camera_add(G.main, "abc_camera"));
-
-	ISampleSelector sample_sel(time);
-	CameraSample cam_sample;
-	cam_obj.get(cam_sample, sample_sel);
-
-	ICompoundProperty customDataContainer =  cam_obj.getUserProperties();
-
-	if (customDataContainer.valid() && customDataContainer.getPropertyHeader("stereoDistance") &&
-	    customDataContainer.getPropertyHeader("eyeSeparation")) {
-		Alembic::AbcGeom::IFloatProperty convergence_plane(customDataContainer, "stereoDistance");
-		Alembic::AbcGeom::IFloatProperty eye_separation(customDataContainer, "eyeSeparation");
-
-		bcam->stereo.interocular_distance = eye_separation.getValue(sample_sel);
-		bcam->stereo.convergence_distance = convergence_plane.getValue(sample_sel);;
-	}
-
-	float lens = cam_sample.getFocalLength();
-	float apperture_x = cam_sample.getHorizontalAperture();
-	float apperture_y = cam_sample.getVerticalAperture();
-	float h_film_offset = cam_sample.getHorizontalFilmOffset();
-	float v_film_offset = cam_sample.getVerticalFilmOffset();
-	float film_aspect = apperture_x / apperture_y;
-
-	bcam->lens = lens;
-	bcam->sensor_x = apperture_x * 10;
-	bcam->sensor_y = apperture_y * 10;
-	bcam->shiftx = h_film_offset / apperture_x;
-	bcam->shifty = v_film_offset / (apperture_y * film_aspect);
-	bcam->clipsta = cam_sample.getNearClippingPlane();
-	bcam->clipend = cam_sample.getFarClippingPlane();
-	bcam->gpu_dof.focus_distance = cam_sample.getFocusDistance();
-	bcam->gpu_dof.fstop = cam_sample.getFStop();
-	bcam->shifty = v_film_offset / apperture_y / film_aspect;
-	bcam->clipsta = cam_sample.getNearClippingPlane();
-	bcam->clipend = cam_sample.getFarClippingPlane();
-
-	return bcam;
 }
 
 int ABC_export(Scene *sce, const char *filename,
@@ -1245,17 +1014,12 @@ static void import_object(bContext *C, IArchive *archive,
                           const std::string &sub_object, int object_type,
                           Object *parent, int from_forward, int from_up)
 {
-	std::vector<std::string> parts;
-	split(sub_object, "/", parts);
-
-	const std::string &data_name = parts.back();
-	const std::string &object_name = parts.front();
-
 	Object *ob = NULL;
 
 	switch (object_type) {
 		case OBJECT_TYPE_MESH:
 		{
+#if 0
 			bool apply_materials = false;
 			bool p_only = false;
 
@@ -1279,41 +1043,42 @@ static void import_object(bContext *C, IArchive *archive,
 		    }
 
 			ABC_destroy_key(NULL);
+#else
+			AbcObjectReader *reader = new AbcMeshReader(sub_object, from_forward, from_up);
+			reader->init(archive->getTop());
+
+			if (reader->valid()) {
+				reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f);
+			}
+
+			delete reader;
+#endif
 
 			break;
 		}
 		case OBJECT_TYPE_NURBS:
 		{
-			ABC_mutex_lock();
-			Curve *curve = ABC_get_nurbs(archive, 0.0f, sub_object.c_str());
-			ABC_mutex_unlock();
+			AbcObjectReader *reader = new AbcNurbsReader(sub_object, from_forward, from_up);
+			reader->init(archive->getTop());
 
-			if (!curve) {
-				return;
+			if (reader->valid()) {
+				reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f);
 			}
 
-			curve = BKE_curve_copy(curve);
-			BLI_strncpy(curve->id.name + 2, data_name.c_str(), data_name.size() + 1);
-
-			ob = BKE_object_add(CTX_data_main(C), CTX_data_scene(C), OB_CURVE, object_name.c_str());
-			ob->data = curve;
+			delete reader;
 
 			break;
 		}
 		case OBJECT_TYPE_CAMERA:
 		{
-			ABC_mutex_lock();
-			Camera *camera = ABC_get_camera(archive, sub_object.c_str(), 0.0f);
-			ABC_mutex_unlock();
+			AbcObjectReader *reader = new AbcCameraReader(sub_object, from_forward, from_up);
+			reader->init(archive->getTop());
 
-			if (!camera) {
-				return;
+			if (reader->valid()) {
+				reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f);
 			}
 
-			BLI_strncpy(camera->id.name + 2, data_name.c_str(), data_name.size() + 1);
-
-			ob = BKE_object_add(CTX_data_main(C), CTX_data_scene(C), OB_CAMERA, object_name.c_str());
-			ob->data = camera;
+			delete reader;
 
 			break;
 		}

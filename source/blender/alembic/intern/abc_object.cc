@@ -29,6 +29,7 @@
 extern "C" {
 #include "BKE_idprop.h"
 
+#include "BLI_math.h"
 #include "BLI_utildefines.h"
 }
 
@@ -280,3 +281,26 @@ bool AbcObjectWriter::getPropertyValue(ID *id, const std::string &name, double &
 
 	return false;
 }
+
+/* ****************************** object reader ***************************** */
+
+AbcObjectReader::AbcObjectReader(const std::string &name, int from_forward, int from_up)
+    : m_name(name)
+    , m_object_name("")
+    , m_data_name("")
+    , m_object(NULL)
+    , m_do_convert_mat(false)
+{
+	std::vector<std::string> parts;
+	split(m_name, "/", parts);
+
+	m_object_name = parts.back();
+	m_data_name = parts.front();
+
+	if (mat3_from_axis_conversion(from_forward, from_up, 1, 2, m_conversion_mat)) {
+		m_do_convert_mat = true;
+	}
+}
+
+AbcObjectReader::~AbcObjectReader()
+{}

@@ -28,6 +28,11 @@
 extern "C" {
 #include "DNA_camera_types.h"
 #include "DNA_object_types.h"
+
+#include "BLI_string.h"
+
+#include "BKE_camera.h"
+#include "BKE_object.h"
 }
 
 AbcCameraWriter::AbcCameraWriter(Scene *sce, Object *obj, RenderData *r,
@@ -90,4 +95,88 @@ void AbcCameraWriter::do_write()
 
 	m_camera_sample.setLensSqueezeRatio(1.0);
 	m_camera_schema.set(m_camera_sample);
+}
+
+/* ****************************** camera reader ***************************** */
+
+AbcCameraReader::AbcCameraReader(const std::string &name, int from_forward, int from_up)
+    : AbcObjectReader(name, from_forward, from_up)
+{}
+
+void AbcCameraReader::init(const Alembic::Abc::IObject &object)
+{
+	getCamera(object);
+}
+
+bool AbcCameraReader::valid() const
+{
+	return m_schema.valid();
+}
+
+void AbcCameraReader::readObject(Main *bmain, Scene *scene, float time)
+{
+	Camera *bcam = static_cast<Camera *>(BKE_camera_add(bmain, "abc_camera"));
+
+	Alembic::AbcGeom::ISampleSelector sample_sel(time);
+	Alembic::AbcGeom::CameraSample cam_sample;
+	m_schema.get(cam_sample, sample_sel);
+
+	Alembic::AbcGeom::ICompoundProperty customDataContainer =  m_schema.getUserProperties();
+
+	if (customDataContainer.valid() && customDataContainer.getPropertyHeader("stereoDistance") &&
+	    customDataContainer.getPropertyHeader("eyeSeparation")) {
+		Alembic::AbcGeom::IFloatProperty convergence_plane(customDataContainer, "stereoDistance");
+		Alembic::AbcGeom::IFloatProperty eye_separation(customDataContainer, "eyeSeparation");
+
+		bcam->stereo.interocular_distance = eye_separation.getValue(sample_sel);
+		bcam->stereo.convergence_distance = convergence_plane.getValue(sample_sel);;
+	}
+
+	float lens = cam_sample.getFocalLength();
+	float apperture_x = cam_sample.getHorizontalAperture();
+	float apperture_y = cam_sample.getVerticalAperture();
+	float h_film_offset = cam_sample.getHorizontalFilmOffset();
+	float v_film_offset = cam_sample.getVerticalFilmOffset();
+	float film_aspect = apperture_x / apperture_y;
+
+	bcam->lens = lens;
+	bcam->sensor_x = apperture_x * 10;
+	bcam->sensor_y = apperture_y * 10;
+	bcam->shiftx = h_film_offset / apperture_x;
+	bcam->shifty = v_film_offset / (apperture_y * film_aspect);
+	bcam->clipsta = cam_sample.getNearClippingPlane();
+	bcam->clipend = cam_sample.getFarClippingPlane();
+	bcam->gpu_dof.focus_distance = cam_sample.getFocusDistance();
+	bcam->gpu_dof.fstop = cam_sample.getFStop();
+	bcam->shifty = v_film_offset / apperture_y / film_aspect;
+	bcam->clipsta = cam_sample.getNearClippingPlane();
+	bcam->clipend = cam_sample.getFarClippingPlane();
+
+	BLI_strncpy(bcam->id.name + 2, m_data_name.c_str(), m_data_name.size() + 1);
+
+	m_object = BKE_object_add(bmain, scene, OB_CAMERA, m_object_name.c_str());
+	m_object->data = bcam;
+}
+
+void AbcCameraReader::getCamera(const Alembic::Abc::IObject &iObj)
+{
+	if (!iObj.valid())
+		return;
+
+	for (int i = 0;i < iObj.getNumChildren(); ++i) {
+		bool ok = true;
+		Alembic::Abc::IObject child(iObj, iObj.getChildHeader(i).getName());
+
+		if (!m_name.empty() && child.valid() && child.getFullName() == m_name) {
+			const Alembic::Abc::MetaData &md = child.getMetaData();
+
+			if (Alembic::AbcGeom::ICamera::matches(md) && ok) {
+				Alembic::AbcGeom::ICamera abc_cam(child, Alembic::AbcGeom::kWrapExisting);
+				m_schema = abc_cam.getSchema();
+				return;
+			}
+		}
+
+		getCamera(child);
+	}
 }

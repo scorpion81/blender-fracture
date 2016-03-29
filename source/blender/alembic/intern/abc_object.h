@@ -31,6 +31,8 @@ extern "C" {
 #include "DNA_ID.h"
 }
 
+struct Main;
+
 class AbcObjectWriter {
 protected:
 	Object *m_object;
@@ -71,6 +73,28 @@ protected:
 	void writeProperties(ID *id, Alembic::Abc::OCompoundProperty props, bool writeAsUserData = true);
 
 	bool getPropertyValue(ID *id, const std::string &name, double &val);
+};
+
+class AbcObjectReader {
+protected:
+	std::string m_name;
+	std::string m_object_name;
+	std::string m_data_name;
+	Object *m_object;
+
+	/* TODO(kevin): move this out of here, becomes redundant when importing
+	 * multiple object */
+	bool m_do_convert_mat;
+	float m_conversion_mat[3][3];
+
+public:
+	explicit AbcObjectReader(const std::string &name, int from_forward, int from_up);
+
+	virtual ~AbcObjectReader();
+
+	virtual void init(const Alembic::Abc::IObject &object) = 0;
+	virtual bool valid() const = 0;
+	virtual void readObject(Main *bmain, Scene *scene, float time) = 0;
 };
 
 #endif

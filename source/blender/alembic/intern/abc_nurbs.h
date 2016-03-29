@@ -41,4 +41,20 @@ private:
 	void writeNurbs();
 };
 
+class AbcNurbsReader : public AbcObjectReader {
+	std::vector< std::pair<Alembic::AbcGeom::INuPatchSchema, Alembic::Abc::IObject> > m_schemas;
+
+public:
+	AbcNurbsReader(const std::string &name, int from_forward, int from_up);
+
+	void init(const Alembic::Abc::IObject &object);
+
+	bool valid() const;
+
+	void readObject(Main *bmain, Scene *scene, float time);
+
+private:
+	void getNurbsPatches(const Alembic::Abc::IObject &obj);
+};
+
 #endif  /* __ABC_NURBS_WRITER_H__ */

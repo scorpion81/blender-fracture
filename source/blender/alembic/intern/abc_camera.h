@@ -44,4 +44,21 @@ private:
 	virtual void do_write();
 };
 
+class AbcCameraReader : public AbcObjectReader {
+	Alembic::AbcGeom::ICameraSchema m_schema;
+
+public:
+	AbcCameraReader(const std::string &name, int from_forward, int from_up);
+
+	void init(const Alembic::Abc::IObject &object);
+
+	bool valid() const;
+
+	void readObject(Main *bmain, Scene *scene, float time);
+
+private:
+	void getCamera(const Alembic::Abc::IObject &iObj);
+};
+
+
 #endif  /* __ABC_CAMERA_WRITER_H__ */

@@ -34,4 +34,13 @@ bool objectIsSelected(Object *ob);
 
 Alembic::Abc::M44d convertMatrix(float mat[4][4]);
 
+void split(const std::string &s, const char *delim, std::vector<std::string> &v);
+
+template<class TContainer>
+bool begins_with(const TContainer &input, const TContainer &match)
+{
+	return input.size() >= match.size()
+	        && std::equal(match.begin(), match.end(), input.begin());
+}
+
 #endif  /* __ABC_UTIL_H__ */

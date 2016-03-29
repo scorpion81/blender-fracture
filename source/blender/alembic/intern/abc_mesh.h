@@ -100,4 +100,20 @@ private:
     void getVelocities(DerivedMesh *dm, std::vector<float> &vels);
 };
 
+class AbcMeshReader : public AbcObjectReader {
+	Alembic::AbcGeom::IPolyMeshSchema m_schema;
+
+public:
+	AbcMeshReader(const std::string &name, int from_forward, int from_up);
+
+	void init(const Alembic::Abc::IObject &object);
+
+	bool valid() const;
+
+	void readObject(Main *bmain, Scene *scene, float time);
+
+private:
+	void getMesh(const Alembic::Abc::IObject &object);
+};
+
 #endif  /* __ABC_MESH_WRITER_H__ */

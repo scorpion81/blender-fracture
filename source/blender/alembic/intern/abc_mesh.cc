@@ -38,12 +38,14 @@ extern "C" {
 
 #include "BKE_DerivedMesh.h"
 #include "BKE_material.h"
+#include "BKE_mesh.h"
 #include "BKE_modifier.h"
+#include "BKE_object.h"
 }
 
 AbcMeshWriter::AbcMeshWriter(Scene *sce, Object *obj,
-                                     AbcTransformWriter *parent, Alembic::Util::uint32_t timeSampling,
-                                     AbcExportOptions &opts)
+                             AbcTransformWriter *parent, Alembic::Util::uint32_t timeSampling,
+                             AbcExportOptions &opts)
     : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
 {
 	std::string name = getObjectName(m_object);
@@ -904,5 +906,254 @@ void AbcMeshWriter::getGeoGroups(DerivedMesh *dm,
 		}
 
 		geoGroups[name] = faceArray;
+	}
+}
+
+/* ******************************* mesh reader ****************************** */
+
+// Some helpers for mesh generation
+namespace mesh_utils {
+
+static void mesh_add_verts(Mesh *mesh, size_t len)
+{
+	if (len == 0) {
+		return;
+	}
+
+	int totvert = mesh->totvert + len;
+	CustomData vdata;
+	CustomData_copy(&mesh->vdata, &vdata, CD_MASK_MESH, CD_DEFAULT, totvert);
+	CustomData_copy_data(&mesh->vdata, &vdata, 0, 0, mesh->totvert);
+
+	if (!CustomData_has_layer(&vdata, CD_MVERT))
+		CustomData_add_layer(&vdata, CD_MVERT, CD_CALLOC, NULL, totvert);
+
+	CustomData_free(&mesh->vdata, mesh->totvert);
+	mesh->vdata = vdata;
+	BKE_mesh_update_customdata_pointers(mesh, false);
+
+	/* set final vertex list size */
+	mesh->totvert = totvert;
+}
+
+static void mesh_add_mloops(Mesh *mesh, size_t len)
+{
+	if (len == 0) {
+		return;
+	}
+
+	/* new face count */
+	const int totloops = mesh->totloop + len;
+
+	CustomData ldata;
+	CustomData_copy(&mesh->ldata, &ldata, CD_MASK_MESH, CD_DEFAULT, totloops);
+	CustomData_copy_data(&mesh->ldata, &ldata, 0, 0, mesh->totloop);
+
+	if (!CustomData_has_layer(&ldata, CD_MLOOP)) {
+		CustomData_add_layer(&ldata, CD_MLOOP, CD_CALLOC, NULL, totloops);
+	}
+
+	if (!CustomData_has_layer(&ldata, CD_MLOOPUV)) {
+		CustomData_add_layer(&ldata, CD_MLOOPUV, CD_CALLOC, NULL, totloops);
+	}
+
+	CustomData_free(&mesh->ldata, mesh->totloop);
+	mesh->ldata = ldata;
+	BKE_mesh_update_customdata_pointers(mesh, false);
+
+	mesh->totloop = totloops;
+}
+
+static void mesh_add_mpolygons(Mesh *mesh, size_t len)
+{
+	if (len == 0) {
+		return;
+	}
+
+	const int totpolys = mesh->totpoly + len;   /* new face count */
+
+	CustomData pdata;
+	CustomData_copy(&mesh->pdata, &pdata, CD_MASK_MESH, CD_DEFAULT, totpolys);
+	CustomData_copy_data(&mesh->pdata, &pdata, 0, 0, mesh->totpoly);
+
+	if (!CustomData_has_layer(&pdata, CD_MPOLY))
+		CustomData_add_layer(&pdata, CD_MPOLY, CD_CALLOC, NULL, totpolys);
+
+	if (!CustomData_has_layer(&pdata, CD_MTEXPOLY))
+		CustomData_add_layer(&pdata, CD_MTEXPOLY, CD_CALLOC, NULL, totpolys);
+
+	CustomData_free(&mesh->pdata, mesh->totpoly);
+	mesh->pdata = pdata;
+	BKE_mesh_update_customdata_pointers(mesh, false);
+
+	mesh->totpoly = totpolys;
+}
+
+} /* mesh_utils */
+
+AbcMeshReader::AbcMeshReader(const std::string &name, int from_forward, int from_up)
+    : AbcObjectReader(name, from_forward, from_up)
+{}
+
+void AbcMeshReader::init(const Alembic::Abc::IObject &object)
+{
+	getMesh(object);
+}
+
+bool AbcMeshReader::valid() const
+{
+	return m_schema.valid();
+}
+
+void AbcMeshReader::readObject(Main *bmain, Scene *scene, float time)
+{
+	Mesh *blender_mesh = BKE_mesh_add(bmain, m_data_name.c_str());
+
+	size_t idx_pos  = blender_mesh->totpoly;
+	size_t vtx_pos  = blender_mesh->totvert;
+	size_t loop_pos = blender_mesh->totloop;
+
+	Alembic::AbcGeom::IV2fGeomParam uv = m_schema.getUVsParam();
+	Alembic::Abc::ISampleSelector sample_sel(time);
+
+	Alembic::AbcGeom::IPolyMeshSchema::Sample smp = m_schema.getValue(sample_sel);
+	Alembic::Abc::P3fArraySamplePtr positions = smp.getPositions();
+	Alembic::Abc::Int32ArraySamplePtr face_indices = smp.getFaceIndices();
+	Alembic::Abc::Int32ArraySamplePtr face_counts  = smp.getFaceCounts();
+
+	const size_t vertex_count = positions->size();
+	const size_t num_poly = face_counts->size();
+	const size_t num_loops = face_indices->size();
+
+	std::vector<std::string> face_sets;
+	m_schema.getFaceSetNames(face_sets);
+
+	mesh_utils::mesh_add_verts(blender_mesh, vertex_count);
+	mesh_utils::mesh_add_mpolygons(blender_mesh, num_poly);
+	mesh_utils::mesh_add_mloops(blender_mesh, num_loops);
+
+	Alembic::AbcGeom::IV2fGeomParam::Sample::samp_ptr_type uvsamp_vals;
+
+	if (uv.valid()) {
+		Alembic::AbcGeom::IV2fGeomParam::Sample uvsamp = uv.getExpandedValue();
+		uvsamp_vals = uvsamp.getVals();
+	}
+
+	int j = vtx_pos;
+	for (int i = 0; i < vertex_count; ++i, ++j) {
+		MVert &mvert = blender_mesh->mvert[j];
+		Alembic::Abc::V3f pos_in = (*positions)[i];
+
+		mvert.co[0] = pos_in[0];
+		mvert.co[1] = pos_in[1];
+		mvert.co[2] = pos_in[2];
+
+		mvert.bweight = 0;
+	}
+
+	if (m_do_convert_mat) {
+		j = vtx_pos;
+		for (int i = 0; i < vertex_count; ++i, ++j) {
+			MVert &mvert = blender_mesh->mvert[j];
+			mul_m3_v3(m_conversion_mat, mvert.co);
+		}
+	}
+
+	j = idx_pos;
+	int loopcount = loop_pos;
+	for (int i = 0; i < num_poly; ++i, ++j) {
+		int face_size = (*face_counts)[i];
+		MPoly &poly = blender_mesh->mpoly[j];
+
+		poly.loopstart = loopcount;
+		poly.totloop   = face_size;
+
+		// TODO : reverse
+		int rev_loop = loopcount;
+		for (int f = face_size; f-- ;) {
+			MLoop &loop 	= blender_mesh->mloop[rev_loop+f];
+			MLoopUV &loopuv = blender_mesh->mloopuv[rev_loop+f];
+
+			if (uvsamp_vals) {
+				loopuv.uv[0] = (*uvsamp_vals)[loopcount][0];
+				loopuv.uv[1] = (*uvsamp_vals)[loopcount][1];
+			}
+
+			loop.v = (*face_indices)[loopcount++];
+		}
+	}
+
+	// TODO
+#if 0
+	if (assign_mat) {
+		std::map<std::string, int> &mat_map = abc_manager->mesh_map[key].mat_map;
+		int &current_mat = abc_manager->mesh_map[key].current_mat;
+
+		for (int i = 0; i < face_sets.size(); ++i) {
+			std::string grp_name = face_sets[i];
+
+			if (mat_map.find(grp_name) == mat_map.end()) {
+				mat_map[grp_name] = 1 + current_mat++;
+			}
+
+			int assigned_mat = mat_map[grp_name];
+
+			Alembic::AbcGeom::IFaceSet faceset 					= m_schema.getFaceSet(face_sets[i]);
+			if (!faceset.valid())
+				continue;
+			Alembic::AbcGeom::IFaceSetSchema face_schem 			= faceset.getSchema();
+			Alembic::AbcGeom::IFaceSetSchema::Sample face_sample 	= face_schem.getValue(sample_sel);
+			Alembic::Abc::Int32ArraySamplePtr group_faces 	= face_sample.getFaces();
+			size_t num_group_faces 				= group_faces->size();
+
+			for (size_t l = 0; l < num_group_faces; l++) {
+				size_t pos = (*group_faces)[l]+idx_pos;
+
+				if (pos >= blender_mesh->totpoly) {
+					std::cerr << "Faceset overflow on " << faceset.getName() << std::endl;
+					break;
+				}
+
+				MPoly  &poly = blender_mesh->mpoly[pos];
+				poly.mat_nr = assigned_mat - 1;
+			}
+		}
+	}
+#endif
+
+	// Compute edge array is done here
+	BKE_mesh_validate(blender_mesh, false, false);
+
+	m_object = BKE_object_add(bmain, scene, OB_MESH, m_object_name.c_str());
+	m_object->data = blender_mesh;
+}
+
+void AbcMeshReader::getMesh(const Alembic::Abc::IObject &object)
+{
+	if (!object.valid()) {
+		return;
+	}
+
+	for (int i = 0; i < object.getNumChildren(); ++i) {
+		bool ok = true;
+		Alembic::Abc::IObject child(object, object.getChildHeader(i).getName());
+
+		if (!m_name.empty() && child.valid() && !begins_with(child.getFullName(), m_name)) {
+			ok = false;
+		}
+
+		if (!child.valid()) {
+			continue;
+		}
+
+		const Alembic::Abc::MetaData &md = child.getMetaData();
+
+		if (Alembic::AbcGeom::IPolyMesh::matches(md) && ok) {
+			Alembic::AbcGeom::IPolyMesh abc_mesh(child, Alembic::AbcGeom::kWrapExisting);
+			m_schema = abc_mesh.getSchema();
+			return;
+		}
+
+		getMesh(child);
 	}
 }
