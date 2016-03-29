@@ -84,6 +84,11 @@ bool AbcExportOptions::isAbcRoot(Object *obj) const
 {
 	ID *id = reinterpret_cast<ID *>(obj);
 	IDProperty *xport_props = IDP_GetProperties(id, false);
+
+	if (!xport_props) {
+		return false;
+	}
+
 	IDProperty *enable_xport = IDP_GetPropertyFromGroup(xport_props, "isAbcRoot");
 
 	if (enable_xport) {
