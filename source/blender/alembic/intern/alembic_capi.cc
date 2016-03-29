@@ -815,24 +815,13 @@ static void ABC_destroy_key(void *key)
 	}
 }
 
-static Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assign_mats,
+static Mesh *ABC_get_mesh(IArchive *archive, float time, void *key, int assign_mats,
                           const char *sub_obj, bool *p_only, int from_forward, int from_up)
 {
-	Mesh *mesh = NULL;
-	std::string file_path = filepath;
-
-	if (file_path.empty()) {
-		return NULL;
-	}
-
-	IArchive *archive = abc_manager->getArchive(file_path);
-
-	if (!archive || !archive->valid())
-		return NULL;
-
 	IObject iObj = archive->getTop();
+
 	if (!iObj.valid()) {
-		std::cerr << "Cannot get top of " << file_path << std::endl;
+		std::cerr << "Cannot get top of " << archive->getName() << '\n';
 		return NULL;
 	}
 
@@ -841,21 +830,21 @@ static Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assig
 	if (mit == abc_manager->mesh_map.end()) {
 		Mesh *me = BKE_mesh_add(G.main, "abc_tmp");
 		AbcInfo info;
-		info.filename 	= file_path;
+		info.filename 	= archive->getName();
 		info.mesh 		= me;
 		info.sub_object = sub_obj;
 		visitObject(iObj, info.schema_cache, sub_obj);
 		abc_manager->mesh_map[key] 	= info;
 		*p_only = false;
 	}
-	else if (mit->second.filename != file_path || mit->second.sub_object != sub_obj) {
+	else if (mit->second.filename != archive->getName() || mit->second.sub_object != sub_obj) {
 		if (mit->second.mesh) {
 			BKE_mesh_free(mit->second.mesh, true);
 		}
 
 		Mesh *me = BKE_mesh_add(G.main, "abc_tmp");
 		AbcInfo info;
-		info.filename 	= file_path;
+		info.filename 	= archive->getName();
 		info.mesh 		= me;
 		info.sub_object = sub_obj;
 		visitObject(iObj, info.schema_cache, sub_obj);
@@ -867,7 +856,7 @@ static Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assig
 	}
 
 	AbcInfo &meshmap = abc_manager->mesh_map[key];
-	mesh = meshmap.mesh;
+	Mesh *mesh = meshmap.mesh;
 
 	if (!mesh && *p_only) {
 		return NULL;
@@ -895,26 +884,19 @@ static Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assig
 	return mesh;
 }
 
-static Curve *ABC_get_nurbs(const char *filepath, float time, const char *sub_obj)
+static Curve *ABC_get_nurbs(IArchive *archive, float time, const char *sub_obj)
 {
-	Curve *cu = NULL;
-	std::string file_path = filepath;
+	IObject iObj = archive->getTop();
 
-	if (file_path.empty()) {
+	if (!iObj.valid()) {
+		std::cerr << "Cannot get top of " << archive->getName() << '\n';
 		return NULL;
 	}
 
-	IArchive *archive = abc_manager->getArchive(file_path);
-
-	if (!archive)
-		return NULL;
-
-	IObject iObj = archive->getTop();
-
-	cu = BKE_curve_add(G.main, "abc_tmp", OB_SURF);
+	Curve *cu = BKE_curve_add(G.main, "abc_tmp", OB_SURF);
 
 	AbcNuInfo info;
-	info.filename 	= file_path;
+	info.filename 	= archive->getName();
 	info.curve 		= cu;
 	info.sub_object = sub_obj;
 	visitNurbsObject(iObj, info.nu_schema_cache, sub_obj);
@@ -1035,7 +1017,6 @@ static void ABC_apply_materials(Object *ob, void *key)
 			}
 
 			assign_material(ob, assigned_name, it->second, BKE_MAT_ASSIGN_OBJECT);
-
 		}
 	}
 }
@@ -1123,22 +1104,14 @@ int ABC_check_subobject_valid(const char *name, const char *sub_obj)
 	return found;
 }
 
-static Camera *ABC_get_camera(const char *filename, const char *abc_subobject, float time)
+static Camera *ABC_get_camera(IArchive *archive, const char *abc_subobject, float time)
 {
-	bool found = false;
-
-	IArchive *archive = abc_manager->getArchive(filename);
-
-	if (!archive || !archive->valid()) {
-		std::cerr << "Warning : Camera Alembic archive doesn't exist " << filename << std::endl;
-		return NULL;
-	}
-
 	ICameraSchema cam_obj;
+	bool found = false;
 	getCamera(archive->getTop(), cam_obj, abc_subobject, found);
 
 	if (!cam_obj.valid() || !found) {
-		std::cerr << "Warning: Corrupted Alembic archive " << filename << std::endl;
+		std::cerr << "Warning: Corrupted Alembic archive: " << archive->getName() << '\n';
 		return NULL;
 	}
 
@@ -1238,7 +1211,7 @@ int ABC_export(Scene *sce, const char *filename,
 }
 
 #if 0
-static Object *create_hierarchy(bContext *C, const std::string &/*filename*/, const std::vector<std::string> &parts)
+static Object *create_hierarchy(bContext *C, IArchive */*archive*/, const std::vector<std::string> &parts)
 {
 	Object *parent = NULL;
 	std::string sub_object;
@@ -1268,7 +1241,7 @@ static Object *create_hierarchy(bContext *C, const std::string &/*filename*/, co
 }
 #endif
 
-static void import_object(bContext *C, const std::string &filename,
+static void import_object(bContext *C, IArchive *archive,
                           const std::string &sub_object, int object_type,
                           Object *parent, int from_forward, int from_up)
 {
@@ -1287,7 +1260,7 @@ static void import_object(bContext *C, const std::string &filename,
 			bool p_only = false;
 
 			ABC_mutex_lock();
-			Mesh *mesh = ABC_get_mesh(filename.c_str(), 0.0f, NULL, apply_materials, sub_object.c_str(), &p_only, from_forward, from_up);
+			Mesh *mesh = ABC_get_mesh(archive, 0.0f, NULL, apply_materials, sub_object.c_str(), &p_only, from_forward, from_up);
 			ABC_mutex_unlock();
 
 			if (!mesh) {
@@ -1312,7 +1285,7 @@ static void import_object(bContext *C, const std::string &filename,
 		case OBJECT_TYPE_NURBS:
 		{
 			ABC_mutex_lock();
-			Curve *curve = ABC_get_nurbs(filename.c_str(), 0.0f, sub_object.c_str());
+			Curve *curve = ABC_get_nurbs(archive, 0.0f, sub_object.c_str());
 			ABC_mutex_unlock();
 
 			if (!curve) {
@@ -1330,7 +1303,7 @@ static void import_object(bContext *C, const std::string &filename,
 		case OBJECT_TYPE_CAMERA:
 		{
 			ABC_mutex_lock();
-			Camera *camera = ABC_get_camera(filename.c_str(), sub_object.c_str(), 0.0f);
+			Camera *camera = ABC_get_camera(archive, sub_object.c_str(), 0.0f);
 			ABC_mutex_unlock();
 
 			if (!camera) {
@@ -1354,15 +1327,9 @@ static void import_object(bContext *C, const std::string &filename,
 	DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 }
 
-static void import_objects(bContext *C, const std::string &filename,
+static void import_objects(bContext *C, IArchive *archive,
                            int object_type, int from_forward, int from_up)
 {
-	/* get objects strings */
-	IArchive *archive = abc_manager->getArchive(filename);
-
-	if (!archive || !archive->valid()) {
-		return;
-	}
 
 	std::vector<std::string> strings;
 	visitObjectString(archive->getTop(), strings, object_type);
@@ -1385,14 +1352,21 @@ static void import_objects(bContext *C, const std::string &filename,
 		strings.erase(std::remove(parts.begin(), parts.end(), std::string("")),
 		              parts.end());
 
-		Object *parent = NULL; // create_hierarchy(C, filename, parts);
-		import_object(C, filename, *iter, object_type, parent, from_forward, from_up);
+		Object *parent = NULL; // create_hierarchy(C, archive, parts);
+		import_object(C, archive, *iter, object_type, parent, from_forward, from_up);
 	}
 }
 
 void ABC_import(bContext *C, const char *filename, int from_forward, int from_up)
 {
-	import_objects(C, filename, OBJECT_TYPE_MESH, from_forward, from_up);
-	import_objects(C, filename, OBJECT_TYPE_NURBS, from_forward, from_up);
-	import_objects(C, filename, OBJECT_TYPE_CAMERA, from_forward, from_up);
+	/* get objects strings */
+	IArchive *archive = abc_manager->getArchive(filename);
+
+	if (!archive || !archive->valid()) {
+		return;
+	}
+
+	import_objects(C, archive, OBJECT_TYPE_MESH, from_forward, from_up);
+	import_objects(C, archive, OBJECT_TYPE_NURBS, from_forward, from_up);
+	import_objects(C, archive, OBJECT_TYPE_CAMERA, from_forward, from_up);
 }
