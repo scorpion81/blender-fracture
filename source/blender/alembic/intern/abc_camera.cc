@@ -99,13 +99,11 @@ void AbcCameraWriter::do_write()
 
 /* ****************************** camera reader ***************************** */
 
-AbcCameraReader::AbcCameraReader(const std::string &name, int from_forward, int from_up)
-    : AbcObjectReader(name, from_forward, from_up)
-{}
-
-void AbcCameraReader::init(const Alembic::Abc::IObject &object)
+AbcCameraReader::AbcCameraReader(const Alembic::Abc::IObject &object, int from_forward, int from_up)
+    : AbcObjectReader(object, from_forward, from_up)
 {
-	getCamera(object);
+	Alembic::AbcGeom::ICamera abc_cam(m_iobject, Alembic::AbcGeom::kWrapExisting);
+	m_schema = abc_cam.getSchema();
 }
 
 bool AbcCameraReader::valid() const
@@ -156,27 +154,4 @@ void AbcCameraReader::readObject(Main *bmain, Scene *scene, float time)
 
 	m_object = BKE_object_add(bmain, scene, OB_CAMERA, m_object_name.c_str());
 	m_object->data = bcam;
-}
-
-void AbcCameraReader::getCamera(const Alembic::Abc::IObject &iObj)
-{
-	if (!iObj.valid())
-		return;
-
-	for (int i = 0;i < iObj.getNumChildren(); ++i) {
-		bool ok = true;
-		Alembic::Abc::IObject child(iObj, iObj.getChildHeader(i).getName());
-
-		if (!m_name.empty() && child.valid() && child.getFullName() == m_name) {
-			const Alembic::Abc::MetaData &md = child.getMetaData();
-
-			if (Alembic::AbcGeom::ICamera::matches(md) && ok) {
-				Alembic::AbcGeom::ICamera abc_cam(child, Alembic::AbcGeom::kWrapExisting);
-				m_schema = abc_cam.getSchema();
-				return;
-			}
-		}
-
-		getCamera(child);
-	}
 }

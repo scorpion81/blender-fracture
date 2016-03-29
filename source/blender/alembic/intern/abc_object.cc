@@ -284,13 +284,15 @@ bool AbcObjectWriter::getPropertyValue(ID *id, const std::string &name, double &
 
 /* ****************************** object reader ***************************** */
 
-AbcObjectReader::AbcObjectReader(const std::string &name, int from_forward, int from_up)
-    : m_name(name)
+AbcObjectReader::AbcObjectReader(const Alembic::Abc::IObject &object, int from_forward, int from_up)
+    : m_name("")
     , m_object_name("")
     , m_data_name("")
     , m_object(NULL)
+    , m_iobject(object)
     , m_do_convert_mat(false)
 {
+	m_name = object.getFullName();
 	std::vector<std::string> parts;
 	split(m_name, "/", parts);
 

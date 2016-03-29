@@ -81,6 +81,7 @@ protected:
 	std::string m_object_name;
 	std::string m_data_name;
 	Object *m_object;
+	Alembic::Abc::IObject m_iobject;
 
 	/* TODO(kevin): move this out of here, becomes redundant when importing
 	 * multiple object */
@@ -88,11 +89,10 @@ protected:
 	float m_conversion_mat[3][3];
 
 public:
-	explicit AbcObjectReader(const std::string &name, int from_forward, int from_up);
+	explicit AbcObjectReader(const Alembic::Abc::IObject &object, int from_forward, int from_up);
 
 	virtual ~AbcObjectReader();
 
-	virtual void init(const Alembic::Abc::IObject &object) = 0;
 	virtual bool valid() const = 0;
 	virtual void readObject(Main *bmain, Scene *scene, float time) = 0;
 };

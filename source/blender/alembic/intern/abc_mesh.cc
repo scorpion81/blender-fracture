@@ -991,13 +991,11 @@ static void mesh_add_mpolygons(Mesh *mesh, size_t len)
 
 } /* mesh_utils */
 
-AbcMeshReader::AbcMeshReader(const std::string &name, int from_forward, int from_up)
-    : AbcObjectReader(name, from_forward, from_up)
-{}
-
-void AbcMeshReader::init(const Alembic::Abc::IObject &object)
+AbcMeshReader::AbcMeshReader(const Alembic::Abc::IObject &object, int from_forward, int from_up)
+    : AbcObjectReader(object, from_forward, from_up)
 {
-	getMesh(object);
+	Alembic::AbcGeom::IPolyMesh abc_mesh(m_iobject, Alembic::AbcGeom::kWrapExisting);
+	m_schema = abc_mesh.getSchema();
 }
 
 bool AbcMeshReader::valid() const
@@ -1126,34 +1124,4 @@ void AbcMeshReader::readObject(Main *bmain, Scene *scene, float time)
 
 	m_object = BKE_object_add(bmain, scene, OB_MESH, m_object_name.c_str());
 	m_object->data = blender_mesh;
-}
-
-void AbcMeshReader::getMesh(const Alembic::Abc::IObject &object)
-{
-	if (!object.valid()) {
-		return;
-	}
-
-	for (int i = 0; i < object.getNumChildren(); ++i) {
-		bool ok = true;
-		Alembic::Abc::IObject child(object, object.getChildHeader(i).getName());
-
-		if (!m_name.empty() && child.valid() && !begins_with(child.getFullName(), m_name)) {
-			ok = false;
-		}
-
-		if (!child.valid()) {
-			continue;
-		}
-
-		const Alembic::Abc::MetaData &md = child.getMetaData();
-
-		if (Alembic::AbcGeom::IPolyMesh::matches(md) && ok) {
-			Alembic::AbcGeom::IPolyMesh abc_mesh(child, Alembic::AbcGeom::kWrapExisting);
-			m_schema = abc_mesh.getSchema();
-			return;
-		}
-
-		getMesh(child);
-	}
 }

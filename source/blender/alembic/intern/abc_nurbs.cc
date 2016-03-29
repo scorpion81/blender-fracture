@@ -190,13 +190,10 @@ void AbcNurbsWriter::writeNurbs()
 
 /* ****************************** nurbs reader ****************************** */
 
-AbcNurbsReader::AbcNurbsReader(const std::string &name, int from_forward, int from_up)
-    : AbcObjectReader(name, from_forward, from_up)
-{}
-
-void AbcNurbsReader::init(const Alembic::Abc::v7::IObject &object)
+AbcNurbsReader::AbcNurbsReader(const Alembic::Abc::IObject &object, int from_forward, int from_up)
+    : AbcObjectReader(object, from_forward, from_up)
 {
-	getNurbsPatches(object);
+	getNurbsPatches(m_iobject);
 }
 
 bool AbcNurbsReader::valid() const
