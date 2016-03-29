@@ -24,6 +24,7 @@
 
 #include <Alembic/AbcCoreHDF5/All.h>
 #include <Alembic/AbcCoreOgawa/All.h>
+#include <algorithm>
 
 #include "abc_exporter.h"
 
@@ -35,30 +36,31 @@ extern "C" {
 #include "DNA_material_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_object_types.h"
+#include "DNA_scene_types.h"
 
+#include "BKE_camera.h"
 #include "BKE_cdderivedmesh.h"
+#include "BKE_context.h"
 #include "BKE_curve.h"
+#include "BKE_depsgraph.h"
 #include "BKE_global.h"
 #include "BKE_idprop.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
 #include "BKE_mesh.h"
+#include "BKE_object.h"
+#include "BKE_scene.h"
 
 #include "BLI_listbase.h"
 #include "BLI_string.h"
 #include "BLI_threads.h"
 }
 
-#include <algorithm>
-
-extern "C" {
-#include "DNA_object_types.h"
-#include "DNA_scene_types.h"
-
-#include "BKE_context.h"
-#include "BKE_object.h"
-#include "BKE_scene.h"
-}
+enum {
+	OBJECT_TYPE_MESH = 0,
+	OBJECT_TYPE_NURBS = 1,
+	OBJECT_TYPE_CAMERA = 2,
+};
 
 static void split(const std::string &s, const char *delim, std::vector<std::string> &v)
 {
@@ -77,6 +79,7 @@ static void split(const std::string &s, const char *delim, std::vector<std::stri
 	free(dup);
 }
 
+#if 0
 static Object *find_object(Scene *scene, const std::string &sub_object, Object */*parent*/)
 {
 	Object *ret = NULL;
@@ -98,6 +101,7 @@ static Object *find_object(Scene *scene, const std::string &sub_object, Object *
 
 	return find_object(scene, sub_object, ret);
 }
+#endif
 
 using namespace Alembic::AbcGeom;
 
@@ -555,13 +559,13 @@ static void visitObjectString(IObject iObj, std::vector<std::string> &objects, i
 
 		const MetaData &md = child.getMetaData();
 
-		if (IPolyMesh::matches(md) && type == 0) {
+		if (IPolyMesh::matches(md) && type == OBJECT_TYPE_MESH) {
 			objects.push_back(child.getFullName());
 		}
-		else if (INuPatch::matches(md) && type == 1) {
+		else if (INuPatch::matches(md) && type == OBJECT_TYPE_NURBS) {
 			objects.push_back(child.getFullName());
 		}
-		else if (ICameraSchema::matches(md) && type == 2) {
+		else if (ICameraSchema::matches(md) && type == OBJECT_TYPE_CAMERA) {
 			objects.push_back(child.getFullName());
 		}
 
@@ -874,10 +878,12 @@ Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assign_mats,
 		visitObject(iObj, info.schema_cache, sub_obj);
 		abc_manager->mesh_map[key] 	= info;
 		*p_only = false;
-
-	} else if (mit->second.filename != file_path || mit->second.sub_object != sub_obj) {
-		if (mit->second.mesh)
+	}
+	else if (mit->second.filename != file_path || mit->second.sub_object != sub_obj) {
+		if (mit->second.mesh) {
 			BKE_mesh_free(mit->second.mesh, true);
+		}
+
 		Mesh *me = BKE_mesh_add(G.main, "abc_tmp");
 		AbcInfo info;
 		info.filename 	= file_path;
@@ -886,7 +892,8 @@ Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assign_mats,
 		visitObject(iObj, info.schema_cache, sub_obj);
 		abc_manager->mesh_map[key] 	= info;
 		*p_only = false;
-	} else {
+	}
+	else {
 		return NULL;
 	}
 
@@ -910,8 +917,9 @@ Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assign_mats,
 		}
 	}
 
-	if (!*p_only)
+	if (!*p_only) {
 		BKE_mesh_validate(mesh, false, true);
+	}
 
 	BKE_mesh_calc_normals(mesh);
 
@@ -1290,8 +1298,6 @@ void ABC_set_custom_properties(Object *bobj)
 
 void ABC_get_transform(const char *filename, const char *abc_subobject, float time, float mat[][4], int to_y_up)
 {
-	std::vector<std::string> strings;
-
 	bool found = false;
 	IXformSchema xform_schema = abc_manager->getXFormSchema(filename, abc_subobject, found);
 
@@ -1300,15 +1306,7 @@ void ABC_get_transform(const char *filename, const char *abc_subobject, float ti
 		ISampleSelector sample_sel(time);
 		xform_schema.get(xs, sample_sel);
 
-		Alembic::Abc::M44d rot_xfrom, final;
-		/*if (to_y_up) {
-			rot_xfrom.setEulerAngles(Imath::V3d(90 * 0.0174532925, 0, 0));
-		} else {
-			rot_xfrom.makeIdentity();
-		}*/
-
-		//final = xs.getMatrix() * rot_xfrom;
-		final = xs.getMatrix();
+		Alembic::Abc::M44d final = xs.getMatrix();
 
 		for (int i = 0; i < 4; ++i) {
 			for (int j = 0; j < 4; j++) {
@@ -1374,8 +1372,6 @@ void ABC_set_camera(const char *filename, const char *abc_subobject, float time,
 
 	return;
 }
-
-#include "BKE_camera.h"
 
 static Camera *ABC_get_camera(const char *filename, const char *abc_subobject, float time)
 {
@@ -1480,27 +1476,16 @@ int ABC_export(Scene *sce, const char *filename,
 		AbcExporter exporter(sce, filename, opts);
 		exporter();
 	}
-	catch(std::exception &e) {
-#ifndef NDEBUG
+	catch (const std::exception &e) {
 		std::cout << "Abc Export error: " << e.what() << std::endl;
-#endif
-
 		return BL_ABC_UNKNOWN_ERROR;
 	}
-	catch(...) {
+	catch (...) {
 		return BL_ABC_UNKNOWN_ERROR;
 	}
 
 	return BL_ABC_NO_ERR;
 }
-
-enum {
-	OBJECT_TYPE_MESH = 0,
-	OBJECT_TYPE_NURBS = 1,
-	OBJECT_TYPE_CAMERA = 2,
-};
-
-#include "BKE_depsgraph.h"
 
 #if 0
 static Object *create_hierarchy(bContext *C, const std::string &/*filename*/, const std::vector<std::string> &parts)
