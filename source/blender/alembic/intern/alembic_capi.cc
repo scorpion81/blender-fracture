@@ -1439,6 +1439,9 @@ enum {
 	OBJECT_TYPE_CAMERA = 2,
 };
 
+#include "BKE_depsgraph.h"
+
+#if 0
 static Object *create_hierarchy(bContext *C, const std::string &/*filename*/, const std::vector<std::string> &parts)
 {
 	Object *parent = NULL;
@@ -1460,16 +1463,23 @@ static Object *create_hierarchy(bContext *C, const std::string &/*filename*/, co
 		}
 
 		Object *empty = BKE_object_add(CTX_data_main(C), CTX_data_scene(C), OB_EMPTY, sub_object.c_str());
-		//empty->abc_file = filename;
-		//empty->abc_subobject = sub_object;
 		empty->parent = parent;
+
+		DAG_id_tag_update(&empty->id, OB_RECALC_OB);
 	}
 
 	return parent;
 }
+#endif
 
-static void import_object(bContext *C, const std::string &filename, const std::string &obname, int object_type, Object *parent)
+static void import_object(bContext *C, const std::string &filename, const std::string &sub_object, int object_type, Object *parent)
 {
+	std::vector<std::string> parts;
+	split(sub_object, "/", parts);
+
+	const std::string &data_name = parts.back();
+	const std::string &object_name = parts.front();
+
 	Object *ob = NULL;
 
 	switch (object_type) {
@@ -1479,7 +1489,7 @@ static void import_object(bContext *C, const std::string &filename, const std::s
 			bool p_only = false;
 
 			ABC_mutex_lock();
-			Mesh *mesh = ABC_get_mesh(filename.c_str(), 0.0f, NULL, apply_materials, obname.c_str(), &p_only);
+			Mesh *mesh = ABC_get_mesh(filename.c_str(), 0.0f, NULL, apply_materials, sub_object.c_str(), &p_only);
 			ABC_mutex_unlock();
 
 			if (!mesh) {
@@ -1488,8 +1498,9 @@ static void import_object(bContext *C, const std::string &filename, const std::s
 			}
 
 			mesh = BKE_mesh_copy(mesh);
+			BLI_strncpy(mesh->id.name + 2, data_name.c_str(), data_name.size() + 1);
 
-			ob = BKE_object_add(CTX_data_main(C), CTX_data_scene(C), OB_MESH, obname.c_str());
+			ob = BKE_object_add(CTX_data_main(C), CTX_data_scene(C), OB_MESH, object_name.c_str());
 			ob->data = mesh;
 
 			if (apply_materials) {
@@ -1503,7 +1514,7 @@ static void import_object(bContext *C, const std::string &filename, const std::s
 		case OBJECT_TYPE_NURBS:
 		{
 			ABC_mutex_lock();
-			Curve *curve = ABC_get_nurbs(filename.c_str(), 0.0f, obname.c_str());
+			Curve *curve = ABC_get_nurbs(filename.c_str(), 0.0f, sub_object.c_str());
 			ABC_mutex_unlock();
 
 			if (!curve) {
@@ -1511,8 +1522,9 @@ static void import_object(bContext *C, const std::string &filename, const std::s
 			}
 
 			curve = BKE_curve_copy(curve);
+			BLI_strncpy(curve->id.name + 2, data_name.c_str(), data_name.size() + 1);
 
-			ob = BKE_object_add(CTX_data_main(C), CTX_data_scene(C), OB_CURVE, obname.c_str());
+			ob = BKE_object_add(CTX_data_main(C), CTX_data_scene(C), OB_CURVE, object_name.c_str());
 			ob->data = curve;
 
 			break;
@@ -1529,6 +1541,7 @@ static void import_object(bContext *C, const std::string &filename, const std::s
 	}
 
 	ob->parent = parent;
+	DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 }
 
 static void import_objects(bContext *C, const std::string &filename, int object_type)
@@ -1552,6 +1565,8 @@ static void import_objects(bContext *C, const std::string &filename, int object_
 
 	std::vector<std::string>::iterator iter;
 	for (iter = strings.begin(); iter != strings.end(); ++iter) {
+		std::cerr << *iter << '\n';
+
 		std::vector<std::string> parts;
 		split(*iter, "/", parts);
 
@@ -1559,7 +1574,7 @@ static void import_objects(bContext *C, const std::string &filename, int object_
 		strings.erase(std::remove(parts.begin(), parts.end(), std::string("")),
 		              parts.end());
 
-		Object *parent = create_hierarchy(C, filename, parts);
+		Object *parent = NULL; // create_hierarchy(C, filename, parts);
 		import_object(C, filename, *iter, object_type, parent);
 	}
 }
