@@ -41,6 +41,7 @@
 
 #include "RNA_access.h"
 #include "RNA_define.h"
+#include "RNA_enum_types.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -169,7 +170,10 @@ static int wm_alembic_import_exec(bContext *C, wmOperator *op)
 	char filename[FILE_MAX];
 	RNA_string_get(op->ptr, "filepath", filename);
 
-	ABC_import(C, filename);
+	const int from_forward = RNA_enum_get(op->ptr, "from_forward");
+	const int from_up = RNA_enum_get(op->ptr, "from_up");
+
+	ABC_import(C, filename, from_forward, from_up);
 
 	/* restore cursor */
 	copy_v3_v3(scene->cursor, cursor_location);
@@ -188,4 +192,7 @@ void WM_OT_alembic_import(wmOperatorType *ot)
 
 	WM_operator_properties_filesel(ot, 0, FILE_BLENDER, FILE_SAVE, WM_FILESEL_FILEPATH,
 	                               FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
+
+	RNA_def_enum(ot->srna, "from_forward", rna_enum_object_axis_items, 0, "Forward Axis", "");
+	RNA_def_enum(ot->srna, "from_up", rna_enum_object_axis_items, 0, "Up Axis", "");
 }

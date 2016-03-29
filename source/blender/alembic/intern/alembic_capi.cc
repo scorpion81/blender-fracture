@@ -614,7 +614,11 @@ static void visitObjectMatrix(IObject iObj, std::string abc_subobject, float tim
 	}
 }
 
-static void getIObjectAsMesh(std::pair<IPolyMeshSchema, IObject> schema, const ISampleSelector &sample_sel, Mesh *blender_mesh, void *key, bool assign_mat)
+#include "BLI_math.h"
+
+static void getIObjectAsMesh(std::pair<IPolyMeshSchema, IObject> schema,
+                             const ISampleSelector &sample_sel, Mesh *blender_mesh,
+                             void *key, bool assign_mat, int from_forward, int from_up)
 {
 	size_t idx_pos  = blender_mesh->totpoly;
 	size_t vtx_pos  = blender_mesh->totvert;
@@ -653,18 +657,31 @@ static void getIObjectAsMesh(std::pair<IPolyMeshSchema, IObject> schema, const I
 		uvsamp_vals = uvsamp.getVals();
 	}
 
+	float mat[3][3];
+	bool use_mat = false;
+
+	if (mat3_from_axis_conversion(from_forward, from_up, 1, 2, mat)) {
+		use_mat = true;
+	}
+
 	int j = vtx_pos;
 	for (int i = 0; i < vertex_count; ++i, ++j) {
 		MVert &mvert = blender_mesh->mvert[j];
-
 		V3f pos_in = (*positions)[i];
 
-		// swap from Y-Up to Z-Up
 		mvert.co[0] = pos_in[0];
-		mvert.co[1] = -pos_in[2];
-		mvert.co[2] = pos_in[1];
+		mvert.co[1] = pos_in[1];
+		mvert.co[2] = pos_in[2];
 
 		mvert.bweight = 0;
+	}
+
+	if (use_mat) {
+		j = vtx_pos;
+		for (int i = 0; i < vertex_count; ++i, ++j) {
+			MVert &mvert = blender_mesh->mvert[j];
+			mul_m3_v3(mat, mvert.co);
+		}
 	}
 
 	j = idx_pos;
@@ -858,7 +875,8 @@ static void ABC_destroy_key(void *key)
 	}
 }
 
-static Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assign_mats, const char *sub_obj, bool *p_only)
+static Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assign_mats,
+                          const char *sub_obj, bool *p_only, int from_forward, int from_up)
 {
 	Mesh *mesh = NULL;
 	std::string file_path = filepath;
@@ -924,7 +942,7 @@ static Mesh *ABC_get_mesh(const char *filepath, float time, void *key, int assig
 			vtx_count = updatePoints(*it, sample_sel, mesh->mvert, vtx_count);
 		}
 		else {
-			getIObjectAsMesh(*it, sample_sel, mesh, key, assign_mats);
+			getIObjectAsMesh(*it, sample_sel, mesh, key, assign_mats, from_forward, from_up);
 		}
 	}
 
@@ -1310,7 +1328,9 @@ static Object *create_hierarchy(bContext *C, const std::string &/*filename*/, co
 }
 #endif
 
-static void import_object(bContext *C, const std::string &filename, const std::string &sub_object, int object_type, Object *parent)
+static void import_object(bContext *C, const std::string &filename,
+                          const std::string &sub_object, int object_type,
+                          Object *parent, int from_forward, int from_up)
 {
 	std::vector<std::string> parts;
 	split(sub_object, "/", parts);
@@ -1327,7 +1347,7 @@ static void import_object(bContext *C, const std::string &filename, const std::s
 			bool p_only = false;
 
 			ABC_mutex_lock();
-			Mesh *mesh = ABC_get_mesh(filename.c_str(), 0.0f, NULL, apply_materials, sub_object.c_str(), &p_only);
+			Mesh *mesh = ABC_get_mesh(filename.c_str(), 0.0f, NULL, apply_materials, sub_object.c_str(), &p_only, from_forward, from_up);
 			ABC_mutex_unlock();
 
 			if (!mesh) {
@@ -1394,7 +1414,8 @@ static void import_object(bContext *C, const std::string &filename, const std::s
 	DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 }
 
-static void import_objects(bContext *C, const std::string &filename, int object_type)
+static void import_objects(bContext *C, const std::string &filename,
+                           int object_type, int from_forward, int from_up)
 {
 	/* get objects strings */
 	IArchive *archive = abc_manager->getArchive(filename);
@@ -1425,13 +1446,13 @@ static void import_objects(bContext *C, const std::string &filename, int object_
 		              parts.end());
 
 		Object *parent = NULL; // create_hierarchy(C, filename, parts);
-		import_object(C, filename, *iter, object_type, parent);
+		import_object(C, filename, *iter, object_type, parent, from_forward, from_up);
 	}
 }
 
-void ABC_import(bContext *C, const char *filename)
+void ABC_import(bContext *C, const char *filename, int from_forward, int from_up)
 {
-	import_objects(C, filename, OBJECT_TYPE_MESH);
-	import_objects(C, filename, OBJECT_TYPE_NURBS);
-	import_objects(C, filename, OBJECT_TYPE_CAMERA);
+	import_objects(C, filename, OBJECT_TYPE_MESH, from_forward, from_up);
+	import_objects(C, filename, OBJECT_TYPE_NURBS, from_forward, from_up);
+	import_objects(C, filename, OBJECT_TYPE_CAMERA, from_forward, from_up);
 }
