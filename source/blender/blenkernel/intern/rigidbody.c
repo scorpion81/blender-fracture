@@ -1211,8 +1211,6 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 //	mi->start_frame = rbw->pointcache->startframe;
 //	mi->frame_count = 0;
 
-
-
 	fmd = (FractureModifierData*) modifiers_findByType(ob, eModifierType_Fracture);
 
 	/* make sure collision shape exists */
@@ -1245,7 +1243,15 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		}
 #endif
 
-		DM_mesh_boundbox(ob->derivedFinal, locbb, size);
+		if (ob->derivedFinal)
+		{
+			DM_mesh_boundbox(ob->derivedFinal, locbb, size);
+		}
+		else
+		{
+			BKE_mesh_boundbox_calc((Mesh*)ob->data, locbb, size);
+		}
+
 		mul_v3_v3(size, ob->size);
 		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, fmd->use_compounds, fmd->impulse_dampening,
 		                                  fmd->directional_factor, fmd->minimum_impulse, fmd->mass_threshold_factor, size);
@@ -1983,7 +1989,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		ob_index2 = -1;
 	}
 
-	if (!ob1 || !ob2)
+	if ((!ob1 && ob_index1 == -1) || (!ob2 && ob_index2 == -1))
 		return false;
 
 	if ((mi1 != NULL) && (mi2 != NULL) && ob_index1 != -1 && ob_index2 != -1) {
