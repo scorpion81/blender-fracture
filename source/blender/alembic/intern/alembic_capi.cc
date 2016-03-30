@@ -844,13 +844,13 @@ static Object *create_hierarchy(bContext *C, IArchive */*archive*/, const std::v
 #endif
 
 static void visit_object(const IObject &object, std::vector<AbcObjectReader *> &readers,
-                         int from_forward, int from_up)
+                         AbcObjectReader *reader, int from_forward, int from_up)
 {
 	if (!object.valid()) {
 		return;
 	}
 
-	for (int i = 0;i < object.getNumChildren(); ++i) {
+	for (int i = 0; i < object.getNumChildren(); ++i) {
 		IObject child(object, object.getChildHeader(i).getName());
 
 		if (!child.valid()) {
@@ -860,23 +860,51 @@ static void visit_object(const IObject &object, std::vector<AbcObjectReader *> &
 		const MetaData &md = child.getMetaData();
 
 		if (IPolyMesh::matches(md)) {
-			readers.push_back(new AbcMeshReader(child, from_forward, from_up));
+			if (!reader) {
+				reader = new AbcMeshReader(child, from_forward, from_up);
+				readers.push_back(reader);
+			}
+			else {
+				reader->addChild(new AbcMeshReader(child, from_forward, from_up));
+			}
 		}
 		else if (INuPatch::matches(md)) {
-			readers.push_back(new AbcNurbsReader(child, from_forward, from_up));
+			if (!reader) {
+				reader = new AbcNurbsReader(child, from_forward, from_up);
+				readers.push_back(reader);
+			}
+			else {
+				reader->addChild(new AbcNurbsReader(child, from_forward, from_up));
+			}
 		}
 		else if (ICameraSchema::matches(md)) {
-			readers.push_back(new AbcCameraReader(child, from_forward, from_up));
+			if (!reader) {
+				reader = new AbcCameraReader(child, from_forward, from_up);
+				readers.push_back(reader);
+			}
+			else {
+				reader->addChild(new AbcCameraReader(child, from_forward, from_up));
+			}
 		}
 
-		visit_object(child, readers, from_forward, from_up);
+		visit_object(child, readers, reader, from_forward, from_up);
 	}
 }
 
 static void create_readers(IArchive *archive, std::vector<AbcObjectReader *> &readers,
                            int from_forward, int from_up)
 {
-	visit_object(archive->getTop(), readers, from_forward, from_up);
+	IObject root = archive->getTop();
+
+	std::cerr << "Number of object in archive: " << root.getNumChildren() << "\n";
+
+	for (int i = 0; i < root.getNumChildren(); ++i) {
+		IObject child = IObject(root, root.getChildHeader(i).getName());
+
+		std::cerr << "Object: " << i << ", chlidren: " << child.getNumChildren() << "\n";
+	}
+
+	visit_object(archive->getTop(), readers, NULL, from_forward, from_up);
 }
 
 void ABC_import(bContext *C, const char *filename, int from_forward, int from_up)
@@ -897,7 +925,20 @@ void ABC_import(bContext *C, const char *filename, int from_forward, int from_up
 		AbcObjectReader *reader = *iter;
 
 		if (reader->valid()) {
-			reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f);
+			reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f, NULL);
+		}
+
+		std::vector<AbcObjectReader *> children = reader->children();
+		std::vector<AbcObjectReader *>::iterator child_iter;
+
+		std::cerr << "Number of children: " << children.size() << "\n";
+
+		for (child_iter = children.begin(); child_iter != children.end(); ++child_iter) {
+			AbcObjectReader *child_reader = *iter;
+
+			if (child_reader->valid()) {
+				child_reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f, reader->object());
+			}
 		}
 	}
 

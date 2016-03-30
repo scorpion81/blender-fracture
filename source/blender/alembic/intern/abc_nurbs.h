@@ -49,7 +49,7 @@ public:
 
 	bool valid() const;
 
-	void readObject(Main *bmain, Scene *scene, float time);
+	void readObject(Main *bmain, Scene *scene, float time, Object *parent);
 
 private:
 	void getNurbsPatches(const Alembic::Abc::IObject &obj);

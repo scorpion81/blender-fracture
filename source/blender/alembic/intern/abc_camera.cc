@@ -32,7 +32,11 @@ extern "C" {
 #include "BLI_string.h"
 
 #include "BKE_camera.h"
+#include "BKE_depsgraph.h"
 #include "BKE_object.h"
+
+#include "WM_api.h"
+#include "WM_types.h"
 }
 
 AbcCameraWriter::AbcCameraWriter(Scene *sce, Object *obj, RenderData *r,
@@ -111,7 +115,7 @@ bool AbcCameraReader::valid() const
 	return m_schema.valid();
 }
 
-void AbcCameraReader::readObject(Main *bmain, Scene *scene, float time)
+void AbcCameraReader::readObject(Main *bmain, Scene *scene, float time, Object *parent)
 {
 	Camera *bcam = static_cast<Camera *>(BKE_camera_add(bmain, "abc_camera"));
 
@@ -154,4 +158,12 @@ void AbcCameraReader::readObject(Main *bmain, Scene *scene, float time)
 
 	m_object = BKE_object_add(bmain, scene, OB_CAMERA, m_object_name.c_str());
 	m_object->data = bcam;
+
+	if (parent) {
+		m_object->parent = parent;
+
+		DAG_id_tag_update(&m_object->id, OB_RECALC_OB);
+		DAG_relations_tag_update(bmain);
+		WM_main_add_notifier(NC_OBJECT | ND_PARENT, m_object);
+	}
 }

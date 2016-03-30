@@ -296,8 +296,10 @@ AbcObjectReader::AbcObjectReader(const Alembic::Abc::IObject &object, int from_f
 	std::vector<std::string> parts;
 	split(m_name, "/", parts);
 
-	m_object_name = parts.back();
-	m_data_name = parts.front();
+	assert(parts.size() >= 2);
+
+	m_object_name = parts[parts.size() - 2];
+	m_data_name = parts[parts.size() - 1];
 
 	if (mat3_from_axis_conversion(from_forward, from_up, 1, 2, m_conversion_mat)) {
 		m_do_convert_mat = true;
@@ -306,3 +308,18 @@ AbcObjectReader::AbcObjectReader(const Alembic::Abc::IObject &object, int from_f
 
 AbcObjectReader::~AbcObjectReader()
 {}
+
+std::vector<AbcObjectReader *> AbcObjectReader::children() const
+{
+	return m_children;
+}
+
+void AbcObjectReader::addChild(AbcObjectReader *child)
+{
+	m_children.push_back(child);
+}
+
+Object *AbcObjectReader::object() const
+{
+	return m_object;
+}

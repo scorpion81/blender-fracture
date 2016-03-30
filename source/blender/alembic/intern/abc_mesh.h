@@ -108,7 +108,7 @@ public:
 
 	bool valid() const;
 
-	void readObject(Main *bmain, Scene *scene, float time);
+	void readObject(Main *bmain, Scene *scene, float time, Object *parent);
 };
 
 #endif  /* __ABC_MESH_WRITER_H__ */

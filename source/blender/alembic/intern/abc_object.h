@@ -83,6 +83,8 @@ protected:
 	Object *m_object;
 	Alembic::Abc::IObject m_iobject;
 
+	std::vector<AbcObjectReader *> m_children;
+
 	/* TODO(kevin): move this out of here, becomes redundant when importing
 	 * multiple object */
 	bool m_do_convert_mat;
@@ -93,8 +95,14 @@ public:
 
 	virtual ~AbcObjectReader();
 
+	std::vector<AbcObjectReader *> children() const;
+
+	void addChild(AbcObjectReader *child);
+
+	Object *object() const;
+
 	virtual bool valid() const = 0;
-	virtual void readObject(Main *bmain, Scene *scene, float time) = 0;
+	virtual void readObject(Main *bmain, Scene *scene, float time, Object *parent) = 0;
 };
 
 #endif

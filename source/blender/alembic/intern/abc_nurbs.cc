@@ -35,7 +35,11 @@ extern "C" {
 #include "BLI_string.h"
 
 #include "BKE_curve.h"
+#include "BKE_depsgraph.h"
 #include "BKE_object.h"
+
+#include "WM_api.h"
+#include "WM_types.h"
 }
 
 AbcNurbsWriter::AbcNurbsWriter(Scene *sce, Object *obj, AbcTransformWriter *parent,
@@ -206,7 +210,7 @@ bool AbcNurbsReader::valid() const
 	return m_schemas[0].first.valid();
 }
 
-void AbcNurbsReader::readObject(Main *bmain, Scene *scene, float time)
+void AbcNurbsReader::readObject(Main *bmain, Scene *scene, float time, Object *parent)
 {
 	Curve *cu = static_cast<Curve *>(BKE_curve_add(bmain, "abc_curve", OB_SURF));
 
@@ -297,6 +301,14 @@ void AbcNurbsReader::readObject(Main *bmain, Scene *scene, float time)
 
 	m_object = BKE_object_add(bmain, scene, OB_CURVE, m_object_name.c_str());
 	m_object->data = cu;
+
+	if (parent) {
+		m_object->parent = parent;
+
+		DAG_id_tag_update(&m_object->id, OB_RECALC_OB);
+		DAG_relations_tag_update(bmain);
+		WM_main_add_notifier(NC_OBJECT | ND_PARENT, m_object);
+	}
 }
 
 void AbcNurbsReader::getNurbsPatches(const Alembic::Abc::IObject &obj)
