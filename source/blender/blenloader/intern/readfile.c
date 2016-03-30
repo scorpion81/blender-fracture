@@ -5281,7 +5281,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 				i++;
 			}
 
-			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+			//if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 			{
 				RigidBodyShardCon *con;
 				link_list(fd, &fmd->meshConstraints);
@@ -5292,6 +5292,16 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 					con->mi2 = newdataadr(fd, con->mi2);
 					con->physics_constraint = NULL;
 					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+				}
+
+				if (fmd->meshConstraints.first == NULL)
+				{	//fallback... rebuild constraints from scratch if none are found
+					if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+					{
+						fmd->refresh_constraints = true;
+						fmd->meshConstraints.first = NULL;
+						fmd->meshConstraints.last = NULL;
+					}
 				}
 			}
 
@@ -5372,12 +5382,14 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			}
 		}
 
+#if 0
 		if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
 		{
 			fmd->refresh_constraints = true;
 			fmd->meshConstraints.first = NULL;
 			fmd->meshConstraints.last = NULL;
 		}
+#endif
 
 		fmd->refresh_images = true;
 		fmd->auto_execute = autoexec;
