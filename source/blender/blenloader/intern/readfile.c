@@ -5304,7 +5304,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 
 			MEM_freeN(shards);
 		}
-		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && !fd->memfile)
+		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC /*&& !fd->memfile*/)
 		{
 			ShardSequence *ssq = NULL;
 			MeshIslandSequence *msq = NULL;
@@ -5378,15 +5378,6 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 				fmd->current_mi_entry = msq;
 			}
 		}
-
-#if 0
-		if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
-		{
-			fmd->refresh_constraints = true;
-			fmd->meshConstraints.first = NULL;
-			fmd->meshConstraints.last = NULL;
-		}
-#endif
 
 		fmd->refresh_images = true;
 		fmd->auto_execute = autoexec;

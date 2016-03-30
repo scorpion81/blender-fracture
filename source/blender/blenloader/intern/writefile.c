@@ -1710,6 +1710,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			FracMesh* fm = fmd->frac_mesh;
 			MeshIsland *mi;
 			Shard *s;
+			RigidBodyShardCon *con;
 			bool mode = fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED ||
 			            fmd->fracture_mode == MOD_FRACTURE_EXTERNAL;
 
@@ -1733,18 +1734,14 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 							write_meshIsland(wd, mi);
 						}
 
-						//if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+						for (con = fmd->meshConstraints.first; con; con = con->next)
 						{
-							RigidBodyShardCon *con;
-							for (con = fmd->meshConstraints.first; con; con = con->next)
-							{
-								writestruct(wd, DATA, "RigidBodyShardCon", 1, con);
-							}
+							writestruct(wd, DATA, "RigidBodyShardCon", 1, con);
 						}
 					}
 				}
 			}
-			else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && !wd->current)
+			else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC /*&& !wd->current*/)
 			{
 				ShardSequence *ssq;
 				MeshIslandSequence *msq;
