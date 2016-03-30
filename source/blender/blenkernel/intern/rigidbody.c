@@ -3216,9 +3216,6 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 				if (con && con->mi1->particle_index != con->mi2->particle_index) {
 					if (fmd->use_breaking)
 					{
-						con->flag &= ~RBC_FLAG_ENABLED;
-						con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-
 						if (con->physics_constraint) {
 							RB_constraint_set_enabled(con->physics_constraint, false);
 							activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
@@ -3238,9 +3235,6 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 				con = mi->participating_constraints[i];
 				if (con && fmd->use_breaking)
 				{
-					con->flag &= ~RBC_FLAG_ENABLED;
-					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-
 					if (con->physics_constraint) {
 						RB_constraint_set_enabled(con->physics_constraint, false);
 						activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
@@ -3264,9 +3258,6 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 		{
 			if (fmd->use_breaking)
 			{
-				rbsc->flag &= ~RBC_FLAG_ENABLED;
-				rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-
 				if (rbsc->physics_constraint) {
 					RB_constraint_set_enabled(rbsc->physics_constraint, false);
 					activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
@@ -3281,9 +3272,6 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 	{
 		if (fmd->use_breaking)
 		{
-			rbsc->flag &= ~RBC_FLAG_ENABLED;
-			rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-
 			if (rbsc->physics_constraint) {
 				RB_constraint_set_enabled(rbsc->physics_constraint, false);
 				activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
@@ -3305,9 +3293,6 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 		{
 			if (fmd->use_breaking)
 			{
-				rbsc->flag &= ~RBC_FLAG_ENABLED;
-				rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-
 				if (rbsc->physics_constraint) {
 					RB_constraint_set_enabled(rbsc->physics_constraint, false);
 					activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
@@ -3322,9 +3307,6 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 	{
 		if (fmd->use_breaking)
 		{
-			rbsc->flag &= ~RBC_FLAG_ENABLED;
-			rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-
 			if (rbsc->physics_constraint) {
 				RB_constraint_set_enabled(rbsc->physics_constraint, false);
 				activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
@@ -3435,9 +3417,9 @@ static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, Rigid
 		BKE_rigidbody_calc_threshold(max_con_mass, fmd, rbsc);
 	}
 
-	if (((fmd->breaking_angle) > 0) || (fmd->breaking_angle_weighted && weight > 0) ||
-		(((fmd->breaking_distance > 0) || (fmd->breaking_distance_weighted && weight > 0)) ||
-		 (fmd->cluster_breaking_angle > 0 || fmd->cluster_breaking_distance > 0)) && !rebuild)
+	if ((((fmd->breaking_angle) > 0) || (fmd->breaking_angle_weighted && weight > 0) ||
+		(fmd->breaking_distance > 0) || (fmd->breaking_distance_weighted && weight > 0) ||
+		 (fmd->cluster_breaking_angle > 0 || (fmd->cluster_breaking_distance > 0))) /*&& !rebuild*/)
 	{
 		float dist, angle, distdiff, anglediff;
 		calc_dist_angle(rbsc, &dist, &angle, false);
@@ -3450,7 +3432,6 @@ static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, Rigid
 
 		/* Treat distances here */
 		handle_breaking_distance(fmd, ob, rbsc, rbw, distdiff, weight, breaking_distance);
-
 	}
 }
 
@@ -3573,8 +3554,8 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 
 
 			if (rbsc->physics_constraint && rbw && (rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS) && !rebuild) {
-				printf("Rebuilding constraints\n");
-				//RB_constraint_set_enabled(rbsc->physics_constraint, rbsc->flag & RBC_FLAG_ENABLED);
+				//printf("Rebuilding constraints\n");
+				RB_constraint_set_enabled(rbsc->physics_constraint, rbsc->flag & RBC_FLAG_ENABLED);
 				rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 
 				if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && rbsc->type == RBC_TYPE_6DOF_SPRING)
@@ -3603,7 +3584,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			if (rebuild || rbsc->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD ||
 				rbsc->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD) {
 				/* World has been rebuilt so rebuild constraint */
-				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd,  ob,  rbsc, true);
+				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
 				BKE_rigidbody_start_dist_angle(rbsc, fmd->fracture_mode == MOD_FRACTURE_EXTERNAL);
 				//TODO ensure evaluation on transform change too
 			}
@@ -3614,7 +3595,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				//	BKE_rigidbody_start_dist_angle(rbsc, true);
 			}
 
-			if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+			if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL && !rebuild)
 			{
 				handle_regular_breaking(fmd, ob, rbw, rbsc, max_con_mass, rebuild);
 			}
@@ -3627,20 +3608,6 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			rbsc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
 			lastscale = rbw->time_scale;
 			laststeps = rbw->steps_per_second;
-
-#if 0
-			if (i < 10 && !rebuild)
-			{
-				print_v3("Con Loc", rbsc->pos);
-				print_qt("Con Rot", rbsc->orn);
-
-				print_v3("Mi1 Loc", rbsc->mi1->rigidbody->pos);
-				print_qt("Mi1 Rot", rbsc->mi1->rigidbody->orn);
-
-				print_v3("Mi2 Loc", rbsc->mi2->rigidbody->pos);
-				print_qt("Mi2 Rot", rbsc->mi2->rigidbody->orn);
-			}
-#endif
 
 			i++;
 		}

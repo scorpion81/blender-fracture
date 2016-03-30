@@ -5058,13 +5058,10 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 	mi->vertices = NULL;
 	mi->vertices_cached = NULL;
 	mi->vertco = newdataadr(fd, mi->vertco);
+	//legacy crap...
 	mi->temp = newdataadr(fd, mi->temp);
-#if 0
-	read_shard(fd, &(mi->temp));
-	mi->physics_mesh = BKE_shard_create_dm(mi->temp, true);
-	BKE_shard_free(mi->temp, true);
-#endif
 	mi->temp = NULL;
+	//end legacy crap
 	mi->vertno = newdataadr(fd, mi->vertno);
 
 	mi->rigidbody = newdataadr(fd, mi->rigidbody);
