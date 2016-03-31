@@ -2023,7 +2023,7 @@ void BKE_free_constraints(FractureModifierData *fmd)
 	RigidBodyShardCon *rbsc = NULL;
 
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
-		if (mi->participating_constraints != NULL) {
+		if (mi->participating_constraints != NULL && mi->participating_constraint_count > 0) {
 			MEM_freeN(mi->participating_constraints);
 			mi->participating_constraints = NULL;
 			mi->participating_constraint_count = 0;
@@ -2033,7 +2033,7 @@ void BKE_free_constraints(FractureModifierData *fmd)
 	while (fmd->meshConstraints.first) {
 		rbsc = fmd->meshConstraints.first;
 		BLI_remlink(&fmd->meshConstraints, rbsc);
-		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->modifier.scene)
 		{
 			BKE_rigidbody_remove_shard_con(fmd->modifier.scene, rbsc);
 		}

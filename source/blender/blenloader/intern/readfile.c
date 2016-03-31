@@ -5082,10 +5082,10 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 	mi->locs = newdataadr(fd, mi->locs);
 	mi->rots = newdataadr(fd, mi->rots);
 
-	/* will be refreshed on the fly */
-	mi->participating_constraint_count = 0;
-	mi->participating_constraints = NULL;
-	//mi->particle_index = -1;
+	/* will be refreshed on the fly if not there*/
+	mi->participating_constraints = newdataadr(fd, mi->participating_constraints);
+	if (mi->participating_constraints == NULL)
+		mi->participating_constraint_count = 0;
 }
 
 static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MVert* mverts, int vertstart,
@@ -5157,6 +5157,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 	fmd->defgrp_index_map = NULL;
 	fmd->fracture_ids.first = NULL;
 	fmd->fracture_ids.last = NULL;
+	fmd->update_dynamic = false;
 
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
 	if (fd->fileversion < 275) {
@@ -5211,6 +5212,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			MVert *mverts;
 			int vertstart = 0;
 			Shard *s, **shards = NULL;
+			RigidBodyShardCon *con;
 
 			link_list(fd, &fmd->frac_mesh->shard_map);
 			link_list(fd, &fmd->islandShards);
@@ -5288,33 +5290,29 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 				i++;
 			}
 
-			//if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+			link_list(fd, &fmd->meshConstraints);
+
+			for (con = fmd->meshConstraints.first; con; con = con->next)
 			{
-				RigidBodyShardCon *con;
-				link_list(fd, &fmd->meshConstraints);
+				con->mi1 = newdataadr(fd, con->mi1);
+				con->mi2 = newdataadr(fd, con->mi2);
+				con->physics_constraint = NULL;
+				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+			}
 
-				for (con = fmd->meshConstraints.first; con; con = con->next)
+			if (fmd->meshConstraints.first == NULL || fmd->meshConstraints.last == NULL)
+			{	//fallback... rebuild constraints from scratch if none are found
+				if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
 				{
-					con->mi1 = newdataadr(fd, con->mi1);
-					con->mi2 = newdataadr(fd, con->mi2);
-					con->physics_constraint = NULL;
-					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-				}
-
-				if (fmd->meshConstraints.first == NULL)
-				{	//fallback... rebuild constraints from scratch if none are found
-					if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
-					{
-						fmd->refresh_constraints = true;
-						fmd->meshConstraints.first = NULL;
-						fmd->meshConstraints.last = NULL;
-					}
+					fmd->refresh_constraints = true;
+					fmd->meshConstraints.first = NULL;
+					fmd->meshConstraints.last = NULL;
 				}
 			}
 
 			MEM_freeN(shards);
 		}
-		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC /*&& !fd->memfile*/)
+		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			ShardSequence *ssq = NULL;
 			MeshIslandSequence *msq = NULL;
@@ -5369,11 +5367,11 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			ssq = fmd->shard_sequence.first;
 			msq = fmd->meshIsland_sequence.first;
 
-			while (ssq->frame < fmd->last_frame) {
+			while (ssq && (ssq->frame < fmd->last_frame)) {
 				ssq = ssq->next;
 			}
 
-			while (msq->frame < fmd->last_frame) {
+			while (msq && (msq->frame < fmd->last_frame)) {
 				msq = msq->next;
 			}
 

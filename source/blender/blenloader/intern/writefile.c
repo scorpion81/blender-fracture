@@ -1576,6 +1576,7 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 
 	writedata(wd, DATA, sizeof(float) * 3 * mi->frame_count, mi->locs);
 	writedata(wd, DATA, sizeof(float) * 4 * mi->frame_count, mi->rots);
+	writedata(wd, DATA, sizeof(RigidBodyShardCon*) * mi->participating_constraint_count, mi->participating_constraints);
 }
 
 static void write_modifiers(WriteData *wd, ListBase *modbase)
@@ -1741,7 +1742,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 					}
 				}
 			}
-			else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC /*&& !wd->current*/)
+			else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 			{
 				ShardSequence *ssq;
 				MeshIslandSequence *msq;

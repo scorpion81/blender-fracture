@@ -3996,7 +3996,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 
 				if (count > 0)
 				{
-					BKE_free_constraints(fmd);
+					//BKE_free_constraints(fmd);
 					printf("REFRESH: %s \n", ob->id.name);
 					fmd->modifier.scene->rigidbody_world->flag |= RBW_FLAG_OBJECT_CHANGED;
 					fmd->modifier.scene->rigidbody_world->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;

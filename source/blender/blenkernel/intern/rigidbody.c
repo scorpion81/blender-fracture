@@ -2663,7 +2663,7 @@ RigidBodyWorld *BKE_rigidbody_get_world(Scene *scene)
 void BKE_rigidbody_remove_shard_con(Scene *scene, RigidBodyShardCon *con)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
-	if (rbw && rbw->physics_world && con->physics_constraint) {
+	if (rbw && rbw->physics_world && con && con->physics_constraint) {
 		RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
 		RB_constraint_delete(con->physics_constraint);
 		con->physics_constraint = NULL;
