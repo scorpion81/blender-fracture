@@ -5085,7 +5085,7 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 	/* will be refreshed on the fly */
 	mi->participating_constraint_count = 0;
 	mi->participating_constraints = NULL;
-	mi->particle_index = -1;
+	//mi->particle_index = -1;
 }
 
 static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MVert* mverts, int vertstart,
@@ -5261,7 +5261,15 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			/* re-init cached verts here... */
 			mverts = CDDM_get_verts(fmd->visible_mesh_cached);
 
-			i = 0;
+			if (fmd->shards_to_islands)
+			{
+				i = fm->shard_count;
+			}
+			else
+			{
+				i = 0;
+			}
+
 			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 				Shard *sh = NULL;
 				sh = shards[i]; //skip "empty" shards
