@@ -344,7 +344,7 @@ static void free_simulation(FractureModifierData *fmd, bool do_free_seq, bool do
 			while (fmd->meshIsland_sequence.first) {
 				msq = fmd->meshIsland_sequence.first;
 				BLI_remlink(&fmd->meshIsland_sequence, msq);
-				free_meshislands(fmd, &msq->meshIslands, do_free_rigidbody && (msq == fmd->current_mi_entry));
+				free_meshislands(fmd, &msq->meshIslands, do_free_rigidbody);
 				MEM_freeN(msq);
 				msq = NULL;
 			}
@@ -412,15 +412,6 @@ static void free_shards(FractureModifierData *fmd)
 
 static void free_modifier(FractureModifierData *fmd, bool do_free_seq)
 {
-	/*if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
-	{
-		free_simulation(fmd, false, false);
-	}
-	else if (!do_free_seq)
-	{
-		free_simulation(fmd, true, true);
-	}*/
-
 	free_simulation(fmd, do_free_seq, fmd->fracture_mode == MOD_FRACTURE_DYNAMIC);
 
 	if (fmd->material_index_map)

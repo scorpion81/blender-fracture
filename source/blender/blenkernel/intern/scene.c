@@ -395,7 +395,12 @@ void BKE_scene_free(Scene *sce)
 	BKE_keyingsets_free(&sce->keyingsets);
 	
 	if (sce->rigidbody_world)
+	{
 		BKE_rigidbody_free_world(sce->rigidbody_world);
+		/* might happen that this is used in Fracture Modifier objects still,
+		 * a scene with a freed, but not NULLed rigidbodyworld, so null it here.*/
+		sce->rigidbody_world = NULL;
+	}
 	
 	if (sce->r.avicodecdata) {
 		free_avicodecdata(sce->r.avicodecdata);
