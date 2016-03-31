@@ -5084,8 +5084,7 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 
 	/* will be refreshed on the fly if not there*/
 	mi->participating_constraints = newdataadr(fd, mi->participating_constraints);
-	if (mi->participating_constraints == NULL)
-		mi->participating_constraint_count = 0;
+	mi->participating_constraint_count = 0;
 }
 
 static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MVert* mverts, int vertstart,
@@ -5298,6 +5297,10 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 				con->mi2 = newdataadr(fd, con->mi2);
 				con->physics_constraint = NULL;
 				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+				con->mi1->participating_constraints[con->mi1->participating_constraint_count] = con;
+				con->mi2->participating_constraints[con->mi2->participating_constraint_count] = con;
+				con->mi1->participating_constraint_count++;
+				con->mi2->participating_constraint_count++;
 			}
 
 			if (fmd->meshConstraints.first == NULL || fmd->meshConstraints.last == NULL)
