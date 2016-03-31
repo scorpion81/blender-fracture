@@ -5155,6 +5155,8 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 	fmd->vertex_island_map = NULL;
 	fmd->material_index_map = NULL;
 	fmd->defgrp_index_map = NULL;
+	fmd->fracture_ids.first = NULL;
+	fmd->fracture_ids.last = NULL;
 
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
 	if (fd->fileversion < 275) {
