@@ -1737,6 +1737,7 @@ rbConstraint *RB_constraint_new_point(float pivot[3], rbRigidBody *rb1, rbRigidB
 
 	rbConstraint *rbc = new rbConstraint();
 	rbc->con = con;
+	con->setUserConstraintPtr(rbc);
 
 	btVector3 vec(pivot[0], pivot[1], pivot[2]);
 	rbc->pivot.setOrigin(vec);
