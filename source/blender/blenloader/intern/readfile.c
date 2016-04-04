@@ -5297,10 +5297,17 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 				con->mi2 = newdataadr(fd, con->mi2);
 				con->physics_constraint = NULL;
 				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-				con->mi1->participating_constraints[con->mi1->participating_constraint_count] = con;
-				con->mi2->participating_constraints[con->mi2->participating_constraint_count] = con;
-				con->mi1->participating_constraint_count++;
-				con->mi2->participating_constraint_count++;
+				if (con->mi1->participating_constraints != NULL)
+				{
+					con->mi1->participating_constraints[con->mi1->participating_constraint_count] = con;
+					con->mi1->participating_constraint_count++;
+				}
+
+				if (con->mi2->participating_constraints != NULL)
+				{
+					con->mi2->participating_constraints[con->mi2->participating_constraint_count] = con;
+					con->mi2->participating_constraint_count++;
+				}
 			}
 
 			if (fmd->meshConstraints.first == NULL || fmd->meshConstraints.last == NULL)
