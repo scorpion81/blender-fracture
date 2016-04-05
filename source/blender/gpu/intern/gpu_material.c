@@ -2157,22 +2157,17 @@ static void gpu_lamp_calc_winmat(GPULamp *lamp)
 		wsize = lamp->la->shadow_frustum_size;
 		orthographic_m4(lamp->winmat, -wsize, wsize, -wsize, wsize, lamp->d, lamp->clipend);
 	}
-	else {
+	else if (lamp->type == LA_SPOT) {
 		angle = saacos(lamp->spotsi);
 		temp = 0.5f * lamp->size * cosf(angle) / sinf(angle);
 		pixsize = lamp->d / temp;
 		wsize = pixsize * 0.5f * lamp->size;
-		if (lamp->type & LA_SPOT) {
-			/* compute shadows according to X and Y scaling factors */
-			perspective_m4(
-			        lamp->winmat,
-			        -wsize * lamp->spotvec[0], wsize * lamp->spotvec[0],
-			        -wsize * lamp->spotvec[1], wsize * lamp->spotvec[1],
-			        lamp->d, lamp->clipend);
-		}
-		else {
-			perspective_m4(lamp->winmat, -wsize, wsize, -wsize, wsize, lamp->d, lamp->clipend);
-		}
+		/* compute shadows according to X and Y scaling factors */
+		perspective_m4(
+		        lamp->winmat,
+		        -wsize * lamp->spotvec[0], wsize * lamp->spotvec[0],
+		        -wsize * lamp->spotvec[1], wsize * lamp->spotvec[1],
+		        lamp->d, lamp->clipend);
 	}
 }
 
@@ -2191,12 +2186,16 @@ void GPU_lamp_update(GPULamp *lamp, int lay, int hide, float obmat[4][4])
 	copy_m4_m4(lamp->obmat, mat);
 	invert_m4_m4(lamp->imat, mat);
 
-	/* update spotlamp scale on X and Y axis */
-	lamp->spotvec[0] = obmat_scale[0] / obmat_scale[2];
-	lamp->spotvec[1] = obmat_scale[1] / obmat_scale[2];
+	if (lamp->type == LA_SPOT) {
+		/* update spotlamp scale on X and Y axis */
+		lamp->spotvec[0] = obmat_scale[0] / obmat_scale[2];
+		lamp->spotvec[1] = obmat_scale[1] / obmat_scale[2];
+	}
 
-	/* makeshadowbuf */
-	gpu_lamp_calc_winmat(lamp);
+	if (GPU_lamp_has_shadow_buffer(lamp)) {
+		/* makeshadowbuf */
+		gpu_lamp_calc_winmat(lamp);
+	}
 }
 
 void GPU_lamp_update_colors(GPULamp *lamp, float r, float g, float b, float energy)
