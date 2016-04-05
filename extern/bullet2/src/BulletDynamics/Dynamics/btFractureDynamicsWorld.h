@@ -24,8 +24,6 @@ class btFractureDynamicsWorld : public btDiscreteDynamicsWorld
 {
 	btFractureBody* addNewBody(const btTransform& oldTransform, btScalar* masses, btCompoundShape* oldCompound, btPropagationParameter &param);
 
-	void	breakDisconnectedParts( btFractureBody* fracObj);
-
 	bool	m_addBroadPhaseHandle;
 
 public:
@@ -74,6 +72,8 @@ public:
 	                     const btVector3 &direction, int *depth);
 
 	void breakNeighborhood(btFractureBody *body, int connection_index);
+
+	void	breakDisconnectedParts( btFractureBody* fracObj);
 
 	virtual void updateAabbs();
 };

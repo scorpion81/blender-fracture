@@ -3330,7 +3330,7 @@ static void lib_link_camera(FileData *fd, Main *main)
 			
 			ca->ipo = newlibadr_us(fd, ca->id.lib, ca->ipo); // XXX deprecated - old animation system
 			
-			ca->dof_ob = newlibadr_us(fd, ca->id.lib, ca->dof_ob);
+			ca->dof_ob = newlibadr(fd, ca->id.lib, ca->dof_ob);
 			
 			ca->id.tag &= ~LIB_TAG_NEED_LINK;
 		}
@@ -3859,6 +3859,7 @@ static void direct_link_texture(FileData *fd, Tex *tex)
 		if (tex->pd->falloff_curve) {
 			direct_link_curvemapping(fd, tex->pd->falloff_curve);
 		}
+		tex->pd->point_data = NULL; /* runtime data */
 	}
 	
 	tex->vd = newdataadr(fd, tex->vd);
@@ -4032,7 +4033,7 @@ static void lib_link_partdeflect(FileData *fd, ID *id, PartDeflect *pd)
 	if (pd && pd->tex)
 		pd->tex = newlibadr_us(fd, id->lib, pd->tex);
 	if (pd && pd->f_source)
-		pd->f_source = newlibadr_us(fd, id->lib, pd->f_source);
+		pd->f_source = newlibadr(fd, id->lib, pd->f_source);
 }
 
 static void lib_link_particlesettings(FileData *fd, Main *main)
@@ -5058,13 +5059,10 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 	mi->vertices = NULL;
 	mi->vertices_cached = NULL;
 	mi->vertco = newdataadr(fd, mi->vertco);
+	//legacy crap...
 	mi->temp = newdataadr(fd, mi->temp);
-#if 0
-	read_shard(fd, &(mi->temp));
-	mi->physics_mesh = BKE_shard_create_dm(mi->temp, true);
-	BKE_shard_free(mi->temp, true);
-#endif
 	mi->temp = NULL;
+	//end legacy crap
 	mi->vertno = newdataadr(fd, mi->vertno);
 
 	mi->rigidbody = newdataadr(fd, mi->rigidbody);
@@ -5085,10 +5083,9 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 	mi->locs = newdataadr(fd, mi->locs);
 	mi->rots = newdataadr(fd, mi->rots);
 
-	/* will be refreshed on the fly */
+	/* will be refreshed on the fly if not there*/
+	mi->participating_constraints = newdataadr(fd, mi->participating_constraints);
 	mi->participating_constraint_count = 0;
-	mi->participating_constraints = NULL;
-	mi->particle_index = -1;
 }
 
 static int initialize_meshisland(FractureModifierData* fmd, MeshIsland** mii, MVert* mverts, int vertstart,
@@ -5158,6 +5155,9 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 	fmd->vertex_island_map = NULL;
 	fmd->material_index_map = NULL;
 	fmd->defgrp_index_map = NULL;
+	fmd->fracture_ids.first = NULL;
+	fmd->fracture_ids.last = NULL;
+	fmd->update_dynamic = false;
 
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
 	if (fd->fileversion < 275) {
@@ -5212,6 +5212,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			MVert *mverts;
 			int vertstart = 0;
 			Shard *s, **shards = NULL;
+			RigidBodyShardCon *con;
 
 			link_list(fd, &fmd->frac_mesh->shard_map);
 			link_list(fd, &fmd->islandShards);
@@ -5264,7 +5265,15 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			/* re-init cached verts here... */
 			mverts = CDDM_get_verts(fmd->visible_mesh_cached);
 
-			i = 0;
+			if (fmd->shards_to_islands)
+			{
+				i = fm->shard_count;
+			}
+			else
+			{
+				i = 0;
+			}
+
 			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 				Shard *sh = NULL;
 				sh = shards[i]; //skip "empty" shards
@@ -5281,23 +5290,40 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 				i++;
 			}
 
-			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
-			{
-				RigidBodyShardCon *con;
-				link_list(fd, &fmd->meshConstraints);
+			link_list(fd, &fmd->meshConstraints);
 
-				for (con = fmd->meshConstraints.first; con; con = con->next)
+			for (con = fmd->meshConstraints.first; con; con = con->next)
+			{
+				con->mi1 = newdataadr(fd, con->mi1);
+				con->mi2 = newdataadr(fd, con->mi2);
+				con->physics_constraint = NULL;
+				con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+				if (con->mi1->participating_constraints != NULL)
 				{
-					con->mi1 = newdataadr(fd, con->mi1);
-					con->mi2 = newdataadr(fd, con->mi2);
-					con->physics_constraint = NULL;
-					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
+					con->mi1->participating_constraints[con->mi1->participating_constraint_count] = con;
+					con->mi1->participating_constraint_count++;
+				}
+
+				if (con->mi2->participating_constraints != NULL)
+				{
+					con->mi2->participating_constraints[con->mi2->participating_constraint_count] = con;
+					con->mi2->participating_constraint_count++;
+				}
+			}
+
+			if (fmd->meshConstraints.first == NULL || fmd->meshConstraints.last == NULL)
+			{	//fallback... rebuild constraints from scratch if none are found
+				if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+				{
+					fmd->refresh_constraints = true;
+					fmd->meshConstraints.first = NULL;
+					fmd->meshConstraints.last = NULL;
 				}
 			}
 
 			MEM_freeN(shards);
 		}
-		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && !fd->memfile)
+		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			ShardSequence *ssq = NULL;
 			MeshIslandSequence *msq = NULL;
@@ -5352,11 +5378,11 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			ssq = fmd->shard_sequence.first;
 			msq = fmd->meshIsland_sequence.first;
 
-			while (ssq->frame < fmd->last_frame) {
+			while (ssq && (ssq->frame < fmd->last_frame)) {
 				ssq = ssq->next;
 			}
 
-			while (msq->frame < fmd->last_frame) {
+			while (msq && (msq->frame < fmd->last_frame)) {
 				msq = msq->next;
 			}
 
@@ -5370,13 +5396,6 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 				fmd->visible_mesh_cached = fmd->dm = msq->visible_dm;
 				fmd->current_mi_entry = msq;
 			}
-		}
-
-		if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
-		{
-			fmd->refresh_constraints = true;
-			fmd->meshConstraints.first = NULL;
-			fmd->meshConstraints.last = NULL;
 		}
 
 		fmd->refresh_images = true;
@@ -6025,7 +6044,7 @@ static void lib_link_scene(FileData *fd, Main *main)
 
 			if (sce->toolsettings->sculpt)
 				sce->toolsettings->sculpt->gravity_object =
-						newlibadr_us(fd, sce->id.lib, sce->toolsettings->sculpt->gravity_object);
+						newlibadr(fd, sce->id.lib, sce->toolsettings->sculpt->gravity_object);
 
 			if (sce->toolsettings->imapaint.stencil)
 				sce->toolsettings->imapaint.stencil =

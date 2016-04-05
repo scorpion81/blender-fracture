@@ -1565,23 +1565,8 @@ static void write_shard(WriteData* wd, Shard* s)
 
 static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 {
-#if 0
-	DerivedMesh *dm = mi->physics_mesh;
-	mi->temp = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
-	                                        dm->getNumVerts(dm), dm->getNumPolys(dm), dm->getNumLoops(dm), true);
-	mi->temp = BKE_custom_data_to_shard(mi->temp, dm);
-#endif
 	writestruct(wd, DATA, "MeshIsland", 1, mi);
 	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertco);
-#if 0
-	/* write derivedmesh as shard... */
-	mi->temp->next = NULL;
-	mi->temp->prev = NULL;
-	write_shard(wd, mi->temp);
-	BKE_shard_free(mi->temp, true);
-	mi->temp = NULL;
-#endif
-
 	writedata(wd, DATA, sizeof(short) * 3 * mi->vertex_count, mi->vertno);
 
 	writestruct(wd, DATA, "RigidBodyOb", 1, mi->rigidbody);
@@ -1591,6 +1576,7 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 
 	writedata(wd, DATA, sizeof(float) * 3 * mi->frame_count, mi->locs);
 	writedata(wd, DATA, sizeof(float) * 4 * mi->frame_count, mi->rots);
+	writedata(wd, DATA, sizeof(RigidBodyShardCon*) * mi->participating_constraint_count, mi->participating_constraints);
 }
 
 static void write_modifiers(WriteData *wd, ListBase *modbase)
@@ -1725,6 +1711,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			FracMesh* fm = fmd->frac_mesh;
 			MeshIsland *mi;
 			Shard *s;
+			RigidBodyShardCon *con;
 			bool mode = fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED ||
 			            fmd->fracture_mode == MOD_FRACTURE_EXTERNAL;
 
@@ -1748,18 +1735,14 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 							write_meshIsland(wd, mi);
 						}
 
-						if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+						for (con = fmd->meshConstraints.first; con; con = con->next)
 						{
-							RigidBodyShardCon *con;
-							for (con = fmd->meshConstraints.first; con; con = con->next)
-							{
-								writestruct(wd, DATA, "RigidBodyShardCon", 1, con);
-							}
+							writestruct(wd, DATA, "RigidBodyShardCon", 1, con);
 						}
 					}
 				}
 			}
-			else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && !wd->current)
+			else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 			{
 				ShardSequence *ssq;
 				MeshIslandSequence *msq;

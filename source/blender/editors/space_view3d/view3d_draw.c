@@ -2511,7 +2511,11 @@ static void gpu_render_lamp_update(Scene *scene, View3D *v3d,
 		if (srl)
 			layers &= srl->lay;
 
-		if (layers && GPU_lamp_override_visible(lamp, srl, NULL) && GPU_lamp_has_shadow_buffer(lamp)) {
+		if (layers &&
+		    GPU_lamp_has_shadow_buffer(lamp) &&
+		    /* keep last, may do string lookup */
+		    GPU_lamp_override_visible(lamp, srl, NULL))
+		{
 			shadow = MEM_callocN(sizeof(View3DShadow), "View3DShadow");
 			shadow->lamp = lamp;
 			BLI_addtail(shadows, shadow);
@@ -3327,13 +3331,19 @@ ImBuf *ED_view3d_draw_offscreen_imbuf(
 {
 	RegionView3D *rv3d = ar->regiondata;
 	ImBuf *ibuf;
-	const bool draw_sky = (alpha_mode == R_ADDSKY) && v3d && (v3d->flag3 & V3D_SHOW_WORLD);
-	const bool own_ofs = (ofs == NULL);
+	const bool draw_sky = (alpha_mode == R_ADDSKY);
 
 	/* view state */
 	GPUFXSettings fx_settings = v3d->fx_settings;
 	bool is_ortho = false;
 	float winmat[4][4];
+
+	if (ofs && ((GPU_offscreen_width(ofs) != sizex) || (GPU_offscreen_height(ofs) != sizey))) {
+		/* sizes differ, can't reuse */
+		ofs = NULL;
+	}
+
+	const bool own_ofs = (ofs == NULL);
 
 	if (own_ofs) {
 		/* bind */

@@ -32,6 +32,12 @@ struct btConnection
 	int	m_childIndex0;
 	int	m_childIndex1;
 	btScalar	m_strength;
+	//btVector3	m_location; //this must be local to the "Parent" compound
+	//better calc this "live" from the objects themselves, so also keep ob pointers here
+	btCollisionObject* m_obA;
+	btCollisionObject* m_obB;
+	btCollisionObject* m_parent;
+	btScalar m_id;
 };
 
 struct btPropagationParameter

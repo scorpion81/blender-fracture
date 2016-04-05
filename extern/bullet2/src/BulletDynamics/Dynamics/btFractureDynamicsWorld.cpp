@@ -867,6 +867,7 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 
 #include <stdio.h>
 
+#if 0
 void btFractureDynamicsWorld::propagateDamage(btFractureBody *body, btScalar *impulse, int connection_index,
                                               bool* needsBreakingCheck, const btVector3& direction, int* depth)
 {
@@ -958,6 +959,7 @@ void btFractureDynamicsWorld::breakNeighborhood(btFractureBody *body, int connec
 		}
 	}
 }
+#endif
 
 void btFractureDynamicsWorld::fractureCallback( )
 {
@@ -1157,6 +1159,7 @@ void btFractureDynamicsWorld::fractureCallback( )
 							for (int k=0;k<manifold->getNumContacts();k++)
 							{
 								btManifoldPoint& pt = manifold->getContactPoint(k);
+								btScalar impulse = pt.m_appliedImpulse * (1.0f - sFracturePairs[i].m_fracObj->m_propagationParameter.m_stability_factor);
 								if (manifold->getBody0()==sFracturePairs[i].m_fracObj)
 								{
 									for (int f=0;f<sFracturePairs[i].m_fracObj->m_connections.size();f++)
@@ -1166,7 +1169,7 @@ void btFractureDynamicsWorld::fractureCallback( )
 										if ((connection.m_childIndex0 == pt.m_index0) ||
 											(connection.m_childIndex1 == pt.m_index0))
 										{
-											connection.m_strength -= pt.m_appliedImpulse;
+											connection.m_strength -= impulse;
 											//printf("strength0=%f\n",connection.m_strength);
 
 											if (connection.m_strength<0)
@@ -1176,7 +1179,7 @@ void btFractureDynamicsWorld::fractureCallback( )
 												needsBreakingCheck = true;
 												sFracturePairs[i].m_fracObj->m_connections.remove(connection);
 
-												breakNeighborhood(sFracturePairs[i].m_fracObj, pt.m_index0);
+											//	breakNeighborhood(sFracturePairs[i].m_fracObj, pt.m_index0);
 											}
 										}
 									}
@@ -1190,7 +1193,7 @@ void btFractureDynamicsWorld::fractureCallback( )
 											   (connection.m_childIndex1 == pt.m_index1))
 										{
 											//printf("strength1=%f\n",connection.m_strength);
-											connection.m_strength -= pt.m_appliedImpulse;
+											connection.m_strength -= impulse;
 											if (connection.m_strength<0)
 											{
 												//remove or set to zero
@@ -1198,7 +1201,7 @@ void btFractureDynamicsWorld::fractureCallback( )
 												needsBreakingCheck = true;
 												sFracturePairs[i].m_fracObj->m_connections.remove(connection);
 
-												breakNeighborhood(sFracturePairs[i].m_fracObj, pt.m_index1);
+											//	breakNeighborhood(sFracturePairs[i].m_fracObj, pt.m_index1);
 											}
 										}
 									}

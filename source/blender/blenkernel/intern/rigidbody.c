@@ -226,7 +226,7 @@ void BKE_rigidbody_calc_threshold(float max_con_mass, FractureModifierData *rmd,
 
 			thresh = ((min_mass + (rmd->mass_threshold_factor * max_mass)) / (min_mass + max_mass)) * max_thresh;
 		}
-		else
+		else;
 		{
 			con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
 			if (rmd->use_mass_dependent_thresholds)
@@ -1211,8 +1211,6 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 //	mi->start_frame = rbw->pointcache->startframe;
 //	mi->frame_count = 0;
 
-
-
 	fmd = (FractureModifierData*) modifiers_findByType(ob, eModifierType_Fracture);
 
 	/* make sure collision shape exists */
@@ -1225,6 +1223,8 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 	}
 	if (!rbo->physics_object || rebuild) {
+		float locbb[3], size[3];
+
 		/* remove rigid body if it already exists before creating a new one */
 		if (rbo->physics_object) {
 			RB_body_delete(rbo->physics_object);
@@ -1243,8 +1243,18 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		}
 #endif
 
+		if (ob->derivedFinal)
+		{
+			DM_mesh_boundbox(ob->derivedFinal, locbb, size);
+		}
+		else
+		{
+			BKE_mesh_boundbox_calc((Mesh*)ob->data, locbb, size);
+		}
+
+		mul_v3_v3(size, ob->size);
 		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, fmd->use_compounds, fmd->impulse_dampening,
-		                                  fmd->directional_factor, fmd->minimum_impulse, fmd->mass_threshold_factor);
+		                                  fmd->directional_factor, fmd->minimum_impulse, fmd->mass_threshold_factor, size);
 
 		RB_body_set_friction(rbo->physics_object, rbo->friction);
 		RB_body_set_restitution(rbo->physics_object, rbo->restitution);
@@ -1323,14 +1333,21 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 		RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 	}
 	if (!rbo->physics_object || rebuild) {
+
+		float locbb[3], size[3];
 		/* remove rigid body if it already exists before creating a new one */
 		if (rbo->physics_object) {
 			RB_body_delete(rbo->physics_object);
 		}
 
 		mat4_to_loc_quat(loc, rot, ob->obmat);
+		if (ob->derivedFinal)
+			DM_mesh_boundbox(ob->derivedFinal, locbb, size);
+		else  //fallback
+			BKE_mesh_boundbox_calc((Mesh*)ob->data, locbb, size);
+		mul_v3_v3(size, ob->size);
 
-		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, false, 0.0f, 0.0f, 0.0f, 0.0f);
+		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, false, 0.0f, 0.0f, 0.0f, 0.0f, size);
 
 		RB_body_set_friction(rbo->physics_object, rbo->friction);
 		RB_body_set_restitution(rbo->physics_object, rbo->restitution);
@@ -1923,11 +1940,12 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	int ob_index1 = -1, ob_index2 = -1;
 	bool validOb = true;
 
-	FractureModifierData *fmd1 = (FractureModifierData*)modifiers_findByType((Object*)blenderOb1, eModifierType_Fracture);
-	FractureModifierData *fmd2 = (FractureModifierData*)modifiers_findByType((Object*)blenderOb2, eModifierType_Fracture);
-
 	mi1 = (MeshIsland*)island1;
 	mi2 = (MeshIsland*)island2;
+
+#if 0
+	FractureModifierData *fmd1 = (FractureModifierData*)modifiers_findByType((Object*)blenderOb1, eModifierType_Fracture);
+	FractureModifierData *fmd2 = (FractureModifierData*)modifiers_findByType((Object*)blenderOb2, eModifierType_Fracture);
 
 	if ((fmd1 && fmd1->fracture_mode == MOD_FRACTURE_DYNAMIC) ||
 	   (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC))
@@ -1938,6 +1956,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		ob2 = blenderOb2;
 		return check_colgroup_ghost(ob1, ob2);
 	}
+#endif
 
 	if (rbw == NULL)
 	{
@@ -1970,7 +1989,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		ob_index2 = -1;
 	}
 
-	if (!ob1 || !ob2)
+	if ((!ob1 && ob_index1 == -1) || (!ob2 && ob_index2 == -1))
 		return false;
 
 	if ((mi1 != NULL) && (mi2 != NULL) && ob_index1 != -1 && ob_index2 != -1) {
@@ -2644,7 +2663,7 @@ RigidBodyWorld *BKE_rigidbody_get_world(Scene *scene)
 void BKE_rigidbody_remove_shard_con(Scene *scene, RigidBodyShardCon *con)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
-	if (rbw && rbw->physics_world && con->physics_constraint) {
+	if (rbw && rbw->physics_world && con && con->physics_constraint) {
 		RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
 		RB_constraint_delete(con->physics_constraint);
 		con->physics_constraint = NULL;
@@ -3203,9 +3222,6 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 				if (con && con->mi1->particle_index != con->mi2->particle_index) {
 					if (fmd->use_breaking)
 					{
-						con->flag &= ~RBC_FLAG_ENABLED;
-						con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-
 						if (con->physics_constraint) {
 							RB_constraint_set_enabled(con->physics_constraint, false);
 							activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
@@ -3225,9 +3241,6 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 				con = mi->participating_constraints[i];
 				if (con && fmd->use_breaking)
 				{
-					con->flag &= ~RBC_FLAG_ENABLED;
-					con->flag |= RBC_FLAG_NEEDS_VALIDATE;
-
 					if (con->physics_constraint) {
 						RB_constraint_set_enabled(con->physics_constraint, false);
 						activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
@@ -3251,9 +3264,6 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 		{
 			if (fmd->use_breaking)
 			{
-				rbsc->flag &= ~RBC_FLAG_ENABLED;
-				rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-
 				if (rbsc->physics_constraint) {
 					RB_constraint_set_enabled(rbsc->physics_constraint, false);
 					activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
@@ -3268,9 +3278,6 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 	{
 		if (fmd->use_breaking)
 		{
-			rbsc->flag &= ~RBC_FLAG_ENABLED;
-			rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-
 			if (rbsc->physics_constraint) {
 				RB_constraint_set_enabled(rbsc->physics_constraint, false);
 				activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
@@ -3292,9 +3299,6 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 		{
 			if (fmd->use_breaking)
 			{
-				rbsc->flag &= ~RBC_FLAG_ENABLED;
-				rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-
 				if (rbsc->physics_constraint) {
 					RB_constraint_set_enabled(rbsc->physics_constraint, false);
 					activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
@@ -3309,9 +3313,6 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 	{
 		if (fmd->use_breaking)
 		{
-			rbsc->flag &= ~RBC_FLAG_ENABLED;
-			rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
-
 			if (rbsc->physics_constraint) {
 				RB_constraint_set_enabled(rbsc->physics_constraint, false);
 				activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
@@ -3418,13 +3419,13 @@ static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, Rigid
 		rbsc->num_solver_iterations = iterations;
 	}
 
-	if ((fmd->use_mass_dependent_thresholds || fmd->mass_threshold_factor > 0.0f)) {
+	if ((fmd->use_mass_dependent_thresholds || fmd->use_compounds /*|| fmd->mass_threshold_factor > 0.0f*/)) {
 		BKE_rigidbody_calc_threshold(max_con_mass, fmd, rbsc);
 	}
 
-	if (((fmd->breaking_angle) > 0) || (fmd->breaking_angle_weighted && weight > 0) ||
-		(((fmd->breaking_distance > 0) || (fmd->breaking_distance_weighted && weight > 0)) ||
-		 (fmd->cluster_breaking_angle > 0 || fmd->cluster_breaking_distance > 0)) && !rebuild)
+	if ((((fmd->breaking_angle) > 0) || (fmd->breaking_angle_weighted && weight > 0) ||
+		(fmd->breaking_distance > 0) || (fmd->breaking_distance_weighted && weight > 0) ||
+		 (fmd->cluster_breaking_angle > 0 || (fmd->cluster_breaking_distance > 0))) /*&& !rebuild*/)
 	{
 		float dist, angle, distdiff, anglediff;
 		calc_dist_angle(rbsc, &dist, &angle, false);
@@ -3437,7 +3438,6 @@ static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, Rigid
 
 		/* Treat distances here */
 		handle_breaking_distance(fmd, ob, rbsc, rbw, distdiff, weight, breaking_distance);
-
 	}
 }
 
@@ -3560,8 +3560,8 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 
 
 			if (rbsc->physics_constraint && rbw && (rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS) && !rebuild) {
-				printf("Rebuilding constraints\n");
-				//RB_constraint_set_enabled(rbsc->physics_constraint, rbsc->flag & RBC_FLAG_ENABLED);
+				//printf("Rebuilding constraints\n");
+				RB_constraint_set_enabled(rbsc->physics_constraint, rbsc->flag & RBC_FLAG_ENABLED);
 				rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 
 				if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && rbsc->type == RBC_TYPE_6DOF_SPRING)
@@ -3590,7 +3590,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			if (rebuild || rbsc->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD ||
 				rbsc->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD) {
 				/* World has been rebuilt so rebuild constraint */
-				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd,  ob,  rbsc, true);
+				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
 				BKE_rigidbody_start_dist_angle(rbsc, fmd->fracture_mode == MOD_FRACTURE_EXTERNAL);
 				//TODO ensure evaluation on transform change too
 			}
@@ -3601,7 +3601,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				//	BKE_rigidbody_start_dist_angle(rbsc, true);
 			}
 
-			if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+			if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL && !rebuild)
 			{
 				handle_regular_breaking(fmd, ob, rbw, rbsc, max_con_mass, rebuild);
 			}
@@ -3614,20 +3614,6 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			rbsc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
 			lastscale = rbw->time_scale;
 			laststeps = rbw->steps_per_second;
-
-#if 0
-			if (i < 10 && !rebuild)
-			{
-				print_v3("Con Loc", rbsc->pos);
-				print_qt("Con Rot", rbsc->orn);
-
-				print_v3("Mi1 Loc", rbsc->mi1->rigidbody->pos);
-				print_qt("Mi1 Rot", rbsc->mi1->rigidbody->orn);
-
-				print_v3("Mi2 Loc", rbsc->mi2->rigidbody->pos);
-				print_qt("Mi2 Rot", rbsc->mi2->rigidbody->orn);
-			}
-#endif
 
 			i++;
 		}
