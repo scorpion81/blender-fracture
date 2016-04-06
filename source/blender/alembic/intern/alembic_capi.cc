@@ -51,6 +51,7 @@ extern "C" {
 #include "BKE_object.h"
 #include "BKE_scene.h"
 
+#include "BLI_math.h"
 #include "BLI_listbase.h"
 #include "BLI_string.h"
 #include "BLI_threads.h"
@@ -58,6 +59,22 @@ extern "C" {
 #include "WM_api.h"
 #include "WM_types.h"
 }
+
+using Alembic::AbcGeom::ErrorHandler;
+using Alembic::AbcGeom::Exception;
+using Alembic::AbcGeom::MetaData;
+using Alembic::AbcGeom::P3fArraySamplePtr;
+using Alembic::AbcGeom::kWrapExisting;
+
+using Alembic::AbcGeom::IArchive;
+using Alembic::AbcGeom::ICameraSchema;
+using Alembic::AbcGeom::INuPatch;
+using Alembic::AbcGeom::IObject;
+using Alembic::AbcGeom::IPolyMesh;
+using Alembic::AbcGeom::IPolyMeshSchema;
+using Alembic::AbcGeom::ISampleSelector;
+using Alembic::AbcGeom::IXform;
+using Alembic::AbcGeom::IXformSchema;
 
 static Object *find_object(bContext *C, const std::string &name)
 {
@@ -74,8 +91,6 @@ static Object *find_object(bContext *C, const std::string &name)
 
 	return NULL;
 }
-
-using namespace Alembic::AbcGeom;
 
 static const int max_alembic_files = 300;
 
@@ -531,7 +546,7 @@ static size_t updatePoints(std::pair<IPolyMeshSchema, IObject> schema, const ISa
 	if (verts) {
 		int j = vtx_start;
 		for (int i = 0; i < vertex_count; ++i, ++j) {
-			V3f pos_in = (*positions)[i];
+			Imath::V3f pos_in = (*positions)[i];
 
 			// swap from Y-Up to Z-Up
 			verts[j].co[0] = pos_in[0];
@@ -542,7 +557,7 @@ static size_t updatePoints(std::pair<IPolyMeshSchema, IObject> schema, const ISa
 	else if (vcos) {
 		int j = vtx_start;
 		for (int i = 0; i < vertex_count; ++i, ++j) {
-			V3f pos_in = (*positions)[i];
+			Imath::V3f pos_in = (*positions)[i];
 
 			// swap from Y-Up to Z-Up
 			vcos[j][0] = pos_in[0];
@@ -775,8 +790,6 @@ int ABC_check_subobject_valid(const char *name, const char *sub_obj)
 
 	return found;
 }
-
-#include "BLI_math.h"
 
 int ABC_export(Scene *sce, const char *filename,
                double start, double end,

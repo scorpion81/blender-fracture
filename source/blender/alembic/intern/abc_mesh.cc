@@ -49,10 +49,47 @@ extern "C" {
 #include "WM_types.h"
 }
 
+using Alembic::Abc::FloatArraySample;
+using Alembic::Abc::Int32ArraySample;
+using Alembic::Abc::Int32ArraySamplePtr;
+using Alembic::Abc::P3fArraySamplePtr;
+using Alembic::Abc::V2fArraySample;
+using Alembic::Abc::V3fArraySample;
+
+using Alembic::AbcGeom::IObject;
+using Alembic::AbcGeom::IPolyMesh;
+using Alembic::AbcGeom::IPolyMeshSchema;
+using Alembic::AbcGeom::ISampleSelector;
+using Alembic::AbcGeom::IV2fGeomParam;
+
+using Alembic::AbcGeom::OArrayProperty;
+using Alembic::AbcGeom::OBoolProperty;
+using Alembic::AbcGeom::OC3fArrayProperty;
+using Alembic::AbcGeom::OC3fGeomParam;
+using Alembic::AbcGeom::OCompoundProperty;
+using Alembic::AbcGeom::OFaceSet;
+using Alembic::AbcGeom::OFaceSetSchema;
+using Alembic::AbcGeom::OFloatGeomParam;
+using Alembic::AbcGeom::OInt32GeomParam;
+using Alembic::AbcGeom::ON3fArrayProperty;
+using Alembic::AbcGeom::ON3fGeomParam;
+using Alembic::AbcGeom::OPolyMesh;
+using Alembic::AbcGeom::OPolyMeshSchema;
+using Alembic::AbcGeom::OSubD;
+using Alembic::AbcGeom::OSubDSchema;
+using Alembic::AbcGeom::OV2fGeomParam;
+using Alembic::AbcGeom::OV3fGeomParam;
+
+using Alembic::AbcGeom::kFacevaryingScope;
+using Alembic::AbcGeom::kVaryingScope;
+using Alembic::AbcGeom::kVertexScope;
+using Alembic::AbcGeom::kWrapExisting;
+using Alembic::AbcGeom::UInt32ArraySample;
+
 AbcMeshWriter::AbcMeshWriter(Scene *sce,
                              Object *obj,
                              AbcTransformWriter *parent,
-                             Alembic::Util::uint32_t timeSampling,
+                             uint32_t timeSampling,
                              AbcExportOptions &opts)
     : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
 {
@@ -104,15 +141,15 @@ AbcMeshWriter::AbcMeshWriter(Scene *sce,
 	}
 
 	if (m_options.use_subdiv_schema && isSubd) {
-		Alembic::AbcGeom::OSubD subd(parent->alembicXform(), name, m_time_sampling);
+		OSubD subd(parent->alembicXform(), name, m_time_sampling);
 		m_subdiv_schema = subd.getSchema();
 	}
 	else {
-		Alembic::AbcGeom::OPolyMesh mesh(parent->alembicXform(), name, m_time_sampling);
+		OPolyMesh mesh(parent->alembicXform(), name, m_time_sampling);
 		m_mesh_schema = mesh.getSchema();
 
-		Alembic::AbcGeom::OCompoundProperty typeContainer = m_mesh_schema.getUserProperties();
-		Alembic::AbcGeom::OBoolProperty type(typeContainer, "meshtype");
+		OCompoundProperty typeContainer = m_mesh_schema.getUserProperties();
+		OBoolProperty type(typeContainer, "meshtype");
 		m_subd_type = isSubd;
 		type.set(isSubd);
 	}
@@ -174,9 +211,8 @@ void AbcMeshWriter::writeMesh()
 	try {
 		std::vector<std::vector<float> > uvs;
 		std::vector<float> points, normals, creaseSharpness;
-		std::vector<Alembic::Util::int32_t> facePoints, faceCounts;
-
-		std::vector<Alembic::Util::int32_t> creaseIndices, creaseLengths;
+		std::vector<int32_t> facePoints, faceCounts;
+		std::vector<int32_t> creaseIndices, creaseLengths;
 
 		std::vector<uint32_t> uvIdx;
 		std::vector<Imath::V2f> uvValArray;
@@ -192,16 +228,16 @@ void AbcMeshWriter::writeMesh()
 
 		if (m_first_frame) {
 			/* Here I'm creating materials' facesets */
-			std::map< std::string, std::vector<Alembic::Util::int32_t>  > geoGroups;
+			std::map< std::string, std::vector<int32_t>  > geoGroups;
 			getGeoGroups(dm, geoGroups);
 
-			for (std::map< std::string, std::vector<Alembic::Util::int32_t>  >::iterator it = geoGroups.begin(); it != geoGroups.end(); ++it) {
-				Alembic::AbcGeom::OFaceSet faceSet;
+			for (std::map< std::string, std::vector<int32_t>  >::iterator it = geoGroups.begin(); it != geoGroups.end(); ++it) {
+				OFaceSet faceSet;
 
 				faceSet = m_mesh_schema.createFaceSet(it->first);
 
-				Alembic::AbcGeom::OFaceSetSchema::Sample samp;
-				samp.setFaces(Alembic::Abc::Int32ArraySample(it->second));
+				OFaceSetSchema::Sample samp;
+				samp.setFaces(Int32ArraySample(it->second));
 				faceSet.getSchema().set(samp);
 			}
 
@@ -217,35 +253,35 @@ void AbcMeshWriter::writeMesh()
 		}
 
 		/* Export UVs */
-		Alembic::AbcGeom::OV2fGeomParam::Sample uvSamp;
+		OV2fGeomParam::Sample uvSamp;
 		if (!uvIdx.empty() && !uvValArray.empty()) {
-			uvSamp.setScope(Alembic::AbcGeom::kFacevaryingScope);
-			uvSamp.setVals(Alembic::AbcGeom::V2fArraySample(
+			uvSamp.setScope(kFacevaryingScope);
+			uvSamp.setVals(V2fArraySample(
 			                   &uvValArray.front(),
 			                   uvValArray.size()));
-			Alembic::AbcGeom::UInt32ArraySample idxSamp(
+			UInt32ArraySample idxSamp(
 			            (const uint32_t *) &uvIdx.front(),
 			            uvIdx.size());
 			uvSamp.setIndices(idxSamp);
 		}
 
 		/* Normals export */
-		Alembic::AbcGeom::ON3fGeomParam::Sample normalsSamp;
+		ON3fGeomParam::Sample normalsSamp;
 		if (!normals.empty()) {
-			normalsSamp.setScope(Alembic::AbcGeom::kFacevaryingScope);
+			normalsSamp.setScope(kFacevaryingScope);
 			normalsSamp.setVals(
-			            Alembic::AbcGeom::N3fArraySample(
+			            V3fArraySample(
 			                (const Imath::V3f *) &normals.front(),
 			                normals.size() / 3));
 		}
 
-		m_mesh_sample = Alembic::AbcGeom::OPolyMeshSchema::Sample(
-		                  Alembic::Abc::V3fArraySample(
-		                      (const Imath::V3f *) &points.front(),
-		                      points.size() / 3),
-		                  Alembic::Abc::Int32ArraySample(facePoints),
-		                  Alembic::Abc::Int32ArraySample(faceCounts), uvSamp,
-		                  normalsSamp);
+		m_mesh_sample = OPolyMeshSchema::Sample(
+		                    V3fArraySample(
+		                        (const Imath::V3f *) &points.front(),
+		                        points.size() / 3),
+		                    Int32ArraySample(facePoints),
+		                    Int32ArraySample(faceCounts), uvSamp,
+		                    normalsSamp);
 
 		/* TODO : export all uvmaps */
 
@@ -267,8 +303,8 @@ void AbcMeshWriter::writeSubD()
 	try {
 		std::vector<float> points, creaseSharpness;
 		std::vector<std::vector<float> > uvs;
-		std::vector<Alembic::Util::int32_t> facePoints, faceCounts;
-		std::vector<Alembic::Util::int32_t> creaseIndices, creaseLengths;
+		std::vector<int32_t> facePoints, faceCounts;
+		std::vector<int32_t> creaseIndices, creaseLengths;
 		std::vector<uint32_t> uvIdx;
 		std::vector<Imath::V2f> uvValArray;
 
@@ -281,16 +317,16 @@ void AbcMeshWriter::writeSubD()
 		            creaseLengths, creaseSharpness);
 
 		if (m_first_frame) {
-			std::map< std::string, std::vector<Alembic::Util::int32_t>  > geoGroups;
+			std::map< std::string, std::vector<int32_t>  > geoGroups;
 			getGeoGroups(dm, geoGroups);
 
-			for (std::map< std::string, std::vector<Alembic::Util::int32_t>  >::iterator it = geoGroups.begin(); it != geoGroups.end(); ++it) {
-				Alembic::AbcGeom::OFaceSet faceSet;
+			for (std::map< std::string, std::vector<int32_t>  >::iterator it = geoGroups.begin(); it != geoGroups.end(); ++it) {
+				OFaceSet faceSet;
 
 				faceSet = m_subdiv_schema.createFaceSet(it->first);
 
-				Alembic::AbcGeom::OFaceSetSchema::Sample samp;
-				samp.setFaces(Alembic::Abc::Int32ArraySample(it->second));
+				OFaceSetSchema::Sample samp;
+				samp.setFaces(Int32ArraySample(it->second));
 				faceSet.getSchema().set(samp);
 			}
 
@@ -306,21 +342,21 @@ void AbcMeshWriter::writeSubD()
 			createArbGeoParams(dm);
 		}
 
-		Alembic::AbcGeom::OV2fGeomParam::Sample uvSamp;
+		OV2fGeomParam::Sample uvSamp;
 
-		m_subdiv_sample = Alembic::AbcGeom::OSubDSchema::Sample(
-		                  Alembic::Abc::V3fArraySample(
-		                      (const Imath::V3f *) &points.front(),
-		                      points.size() / 3),
-		                  Alembic::Abc::Int32ArraySample(facePoints),
-		                  Alembic::Abc::Int32ArraySample(faceCounts));
+		m_subdiv_sample = OSubDSchema::Sample(
+		                      V3fArraySample(
+		                          (const Imath::V3f *) &points.front(),
+		                          points.size() / 3),
+		                      Int32ArraySample(facePoints),
+		                      Int32ArraySample(faceCounts));
 
 		if (!uvIdx.empty() && !uvValArray.empty()) {
-			uvSamp.setScope(Alembic::AbcGeom::kFacevaryingScope);
-			uvSamp.setVals(Alembic::AbcGeom::V2fArraySample(
+			uvSamp.setScope(kFacevaryingScope);
+			uvSamp.setVals(V2fArraySample(
 			                   (const Imath::V2f *) &uvValArray.front(),
 			                   uvValArray.size()));
-			Alembic::AbcGeom::UInt32ArraySample idxSamp(
+			UInt32ArraySample idxSamp(
 			            (const uint32_t *) &uvIdx.front(),
 			            uvIdx.size());
 			uvSamp.setIndices(idxSamp);
@@ -329,14 +365,13 @@ void AbcMeshWriter::writeSubD()
 
 		if (!creaseIndices.empty()) {
 			m_subdiv_sample.setCreaseIndices(
-			            Alembic::Abc::Int32ArraySample(creaseIndices));
+			            Int32ArraySample(creaseIndices));
 			m_subdiv_sample.setCreaseLengths(
-			            Alembic::Abc::Int32ArraySample(creaseLengths));
+			            Int32ArraySample(creaseLengths));
 			m_subdiv_sample.setCreaseSharpnesses(
-			            Alembic::Abc::FloatArraySample(creaseSharpness));
+			            FloatArraySample(creaseSharpness));
 		}
 
-		//mSubDSample.setChildBounds(bounds());
 		m_subdiv_sample.setSelfBounds(bounds());
 		m_subdiv_schema.set(m_subdiv_sample);
 		writeArbGeoParams(dm);
@@ -350,11 +385,11 @@ void AbcMeshWriter::writeSubD()
 
 void AbcMeshWriter::getMeshInfo(DerivedMesh *dm,
                                 std::vector<float> &points,
-                                std::vector<Alembic::Util::int32_t> &facePoints,
-                                std::vector<Alembic::Util::int32_t> &faceCounts,
+                                std::vector<int32_t> &facePoints,
+                                std::vector<int32_t> &faceCounts,
                                 std::vector<std::vector<float> > &uvs,
-                                std::vector<Alembic::Util::int32_t> &creaseIndices,
-                                std::vector<Alembic::Util::int32_t> &creaseLengths,
+                                std::vector<int32_t> &creaseIndices,
+                                std::vector<int32_t> &creaseLengths,
                                 std::vector<float> &creaseSharpness)
 {
 	getPoints(dm, points);
@@ -429,8 +464,8 @@ void AbcMeshWriter::getPoints(DerivedMesh *dm, std::vector<float> &points)
 }
 
 void AbcMeshWriter::getTopology(DerivedMesh *dm,
-                                std::vector<Alembic::Util::int32_t> &facePoints,
-                                std::vector<Alembic::Util::int32_t> &pointCounts)
+                                std::vector<int32_t> &facePoints,
+                                std::vector<int32_t> &pointCounts)
 {
 	facePoints.clear();
 	pointCounts.clear();
@@ -578,7 +613,7 @@ void AbcMeshWriter::getUVs(DerivedMesh *dm,
 }
 
 void AbcMeshWriter::getMaterialIndices(DerivedMesh *dm,
-                                       std::vector<Alembic::Util::int32_t> &indices)
+                                       std::vector<int32_t> &indices)
 {
 	indices.clear();
 	indices.reserve(dm->getNumTessFaces(dm));
@@ -595,17 +630,17 @@ void AbcMeshWriter::createArbGeoParams(DerivedMesh *dm)
 {
 	if (m_is_fluid) {
 		/* TODO: replace this, when velocities are added by default to schemas. */
-		Alembic::AbcGeom::OV3fGeomParam param;
+		OV3fGeomParam param;
 
 		if (m_subdiv_schema.valid()) {
-			param = Alembic::AbcGeom::OV3fGeomParam(
+			param = OV3fGeomParam(
 			            m_subdiv_schema.getArbGeomParams(), "velocity", false,
-			            Alembic::AbcGeom::kVertexScope, 1, m_time_sampling);
+			            kVertexScope, 1, m_time_sampling);
 		}
 		else {
-			param = Alembic::AbcGeom::OV3fGeomParam(
+			param = OV3fGeomParam(
 			            m_mesh_schema.getArbGeomParams(), "velocity", false,
-			            Alembic::AbcGeom::kVertexScope, 1, m_time_sampling);
+			            kVertexScope, 1, m_time_sampling);
 		}
 
 		m_velocity = param.getValueProperty();
@@ -652,7 +687,7 @@ void AbcMeshWriter::createArbGeoParams(DerivedMesh *dm)
 }
 
 void AbcMeshWriter::createVertexLayerParam(DerivedMesh *dm, int index,
-                                               Alembic::Abc::OCompoundProperty arbGeoParams)
+                                           const OCompoundProperty &arbGeoParams)
 {
 	CustomDataLayer *layer = &dm->vertData.layers[index];
 	const std::string layer_name = layer->name;
@@ -665,23 +700,23 @@ void AbcMeshWriter::createVertexLayerParam(DerivedMesh *dm, int index,
 	switch (layer->type) {
 		case CD_PROP_FLT:
 		{
-			Alembic::AbcGeom::OFloatGeomParam param(arbGeoParams, layer_name, false,
-			                                        Alembic::AbcGeom::kVertexScope, 1, m_time_sampling);
+			OFloatGeomParam param(arbGeoParams, layer_name, false,
+			                      kVertexScope, 1, m_time_sampling);
 			m_layers_written.insert(layer_name);
 			m_vert_layers.push_back(
-			            std::pair<int, Alembic::Abc::OArrayProperty>(index,
-			                                                         param.getValueProperty()));
+			            std::pair<int, OArrayProperty>(index,
+			                                           param.getValueProperty()));
 
 			break;
 		}
 		case CD_PROP_INT:
 		{
-			Alembic::AbcGeom::OInt32GeomParam param(arbGeoParams, layer_name, false,
-			                                        Alembic::AbcGeom::kVertexScope, 1, m_time_sampling);
+			OInt32GeomParam param(arbGeoParams, layer_name, false,
+			                      kVertexScope, 1, m_time_sampling);
 			m_layers_written.insert(layer_name);
 			m_vert_layers.push_back(
-			            std::pair<int, Alembic::Abc::OArrayProperty>(index,
-			                                                         param.getValueProperty()));
+			            std::pair<int, OArrayProperty>(index,
+			                                           param.getValueProperty()));
 
 			break;
 		}
@@ -689,7 +724,7 @@ void AbcMeshWriter::createVertexLayerParam(DerivedMesh *dm, int index,
 }
 
 void AbcMeshWriter::createFaceLayerParam(DerivedMesh *dm, int index,
-                                         const Alembic::Abc::OCompoundProperty &arbGeoParams)
+                                         const OCompoundProperty &arbGeoParams)
 {
 	CustomDataLayer *layer = &dm->polyData.layers[index];
 	const std::string layer_name = layer->name;
@@ -702,13 +737,13 @@ void AbcMeshWriter::createFaceLayerParam(DerivedMesh *dm, int index,
 	switch (layer->type) {
 		case CD_MCOL:
 		{
-			Alembic::AbcGeom::OC3fGeomParam param(arbGeoParams, layer_name, false,
-			                                      Alembic::AbcGeom::kFacevaryingScope, 1, m_time_sampling);
+			OC3fGeomParam param(arbGeoParams, layer_name, false,
+			                    kFacevaryingScope, 1, m_time_sampling);
 
 			m_layers_written.insert(layer_name);
 			m_face_layers.push_back(
-			            std::pair<int, Alembic::Abc::OArrayProperty>(index,
-			                                                         param.getValueProperty()));
+			            std::pair<int, OArrayProperty>(index,
+			                                           param.getValueProperty()));
 
 			break;
 		}
@@ -753,14 +788,15 @@ void AbcMeshWriter::writeArbGeoParams(DerivedMesh *dm)
 	}
 
 	if (m_first_frame && m_has_per_face_materials) {
-		std::vector<Alembic::Util::int32_t> faceVals;
+		std::vector<int32_t> faceVals;
 
-		if (m_options.export_face_sets || m_options.export_mat_indices)
+		if (m_options.export_face_sets || m_options.export_mat_indices) {
 			getMaterialIndices(dm, faceVals);
+		}
 
 		if (m_options.export_face_sets) {
-			Alembic::AbcGeom::OFaceSetSchema::Sample samp;
-			samp.setFaces(Alembic::Abc::Int32ArraySample(faceVals));
+			OFaceSetSchema::Sample samp;
+			samp.setFaces(Int32ArraySample(faceVals));
 			m_face_set.getSchema().set(samp);
 		}
 
@@ -774,7 +810,7 @@ void AbcMeshWriter::writeArbGeoParams(DerivedMesh *dm)
 }
 
 void AbcMeshWriter::writeVertexLayerParam(DerivedMesh *dm, int index,
-                                          const Alembic::Abc::OCompoundProperty &/*arbGeoParams*/)
+                                          const OCompoundProperty &/*arbGeoParams*/)
 {
 	CustomDataLayer *layer = &dm->vertData.layers[m_vert_layers[index].first];
 	int totvert = dm->getNumVerts(dm);
@@ -794,7 +830,7 @@ void AbcMeshWriter::writeVertexLayerParam(DerivedMesh *dm, int index,
 }
 
 void AbcMeshWriter::writeFaceLayerParam(DerivedMesh *dm, int index,
-                                        const Alembic::Abc::OCompoundProperty &/*arbGeoParams*/)
+                                        const OCompoundProperty &/*arbGeoParams*/)
 {
 	CustomDataLayer *layer = &dm->polyData.layers[m_face_layers[index].first];
 	const int totpolys = dm->getNumPolys(dm);
@@ -837,7 +873,7 @@ ModifierData *AbcMeshWriter::getFluidSimModifier()
 	ModifierData *md = modifiers_findByType(m_object, eModifierType_Fluidsim);
 
 	if (md && (modifier_isEnabled(m_scene, md, eModifierMode_Render))) {
-	    FluidsimModifierData *fsmd = reinterpret_cast<FluidsimModifierData *>(md);
+		FluidsimModifierData *fsmd = reinterpret_cast<FluidsimModifierData *>(md);
 
 		if (fsmd->fss && fsmd->fss->type == OB_FLUIDSIM_DOMAIN) {
 			return md;
@@ -894,7 +930,7 @@ void AbcMeshWriter::getVelocities(DerivedMesh *dm, std::vector<float> &vels)
 
 void AbcMeshWriter::getGeoGroups(
         DerivedMesh *dm,
-        std::map<std::string, std::vector<Alembic::Util::int32_t> > &geo_groups)
+        std::map<std::string, std::vector<int32_t> > &geo_groups)
 {
 	const int num_poly = dm->getNumPolys(dm);
 	MPoly *polygons = dm->getPolyArray(dm);
@@ -916,7 +952,7 @@ void AbcMeshWriter::getGeoGroups(
 		std::replace(name.begin(), name.end(), ':', '_');
 
 		if (geo_groups.find(name) == geo_groups.end()) {
-			std::vector<Alembic::Util::int32_t> faceArray;
+			std::vector<int32_t> faceArray;
 			geo_groups[name] = faceArray;
 		}
 
@@ -931,7 +967,7 @@ void AbcMeshWriter::getGeoGroups(
 		std::replace(name.begin(), name.end(), '.', '_');
 		std::replace(name.begin(), name.end(), ':', '_');
 
-		std::vector<Alembic::Util::int32_t> faceArray;
+		std::vector<int32_t> faceArray;
 
 		for (int i = 0, e = dm->getNumTessFaces(dm); i < e; ++i) {
 			faceArray.push_back(i);
@@ -1069,10 +1105,10 @@ static void ABC_apply_materials(Object *ob, void *key)
 }
 #endif
 
-AbcMeshReader::AbcMeshReader(const Alembic::Abc::IObject &object, int from_forward, int from_up)
+AbcMeshReader::AbcMeshReader(const IObject &object, int from_forward, int from_up)
     : AbcObjectReader(object, from_forward, from_up)
 {
-	Alembic::AbcGeom::IPolyMesh abc_mesh(m_iobject, Alembic::AbcGeom::kWrapExisting);
+	IPolyMesh abc_mesh(m_iobject, kWrapExisting);
 	m_schema = abc_mesh.getSchema();
 }
 
@@ -1089,13 +1125,13 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 	size_t vtx_pos  = blender_mesh->totvert;
 	size_t loop_pos = blender_mesh->totloop;
 
-	Alembic::AbcGeom::IV2fGeomParam uv = m_schema.getUVsParam();
-	Alembic::Abc::ISampleSelector sample_sel(time);
+	IV2fGeomParam uv = m_schema.getUVsParam();
+	ISampleSelector sample_sel(time);
 
-	Alembic::AbcGeom::IPolyMeshSchema::Sample smp = m_schema.getValue(sample_sel);
-	Alembic::Abc::P3fArraySamplePtr positions = smp.getPositions();
-	Alembic::Abc::Int32ArraySamplePtr face_indices = smp.getFaceIndices();
-	Alembic::Abc::Int32ArraySamplePtr face_counts  = smp.getFaceCounts();
+	IPolyMeshSchema::Sample smp = m_schema.getValue(sample_sel);
+	P3fArraySamplePtr positions = smp.getPositions();
+	Int32ArraySamplePtr face_indices = smp.getFaceIndices();
+	Int32ArraySamplePtr face_counts  = smp.getFaceCounts();
 
 	const size_t vertex_count = positions->size();
 	const size_t num_poly = face_counts->size();
@@ -1108,17 +1144,17 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 	mesh_utils::mesh_add_mpolygons(blender_mesh, num_poly);
 	mesh_utils::mesh_add_mloops(blender_mesh, num_loops);
 
-	Alembic::AbcGeom::IV2fGeomParam::Sample::samp_ptr_type uvsamp_vals;
+	IV2fGeomParam::Sample::samp_ptr_type uvsamp_vals;
 
 	if (uv.valid()) {
-		Alembic::AbcGeom::IV2fGeomParam::Sample uvsamp = uv.getExpandedValue();
+		IV2fGeomParam::Sample uvsamp = uv.getExpandedValue();
 		uvsamp_vals = uvsamp.getVals();
 	}
 
 	int j = vtx_pos;
 	for (int i = 0; i < vertex_count; ++i, ++j) {
 		MVert &mvert = blender_mesh->mvert[j];
-		Alembic::Abc::V3f pos_in = (*positions)[i];
+		Imath::V3f pos_in = (*positions)[i];
 
 		mvert.co[0] = pos_in[0];
 		mvert.co[1] = pos_in[1];
@@ -1174,12 +1210,12 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 
 			int assigned_mat = mat_map[grp_name];
 
-			Alembic::AbcGeom::IFaceSet faceset 					= m_schema.getFaceSet(face_sets[i]);
+			IFaceSet faceset 					= m_schema.getFaceSet(face_sets[i]);
 			if (!faceset.valid())
 				continue;
-			Alembic::AbcGeom::IFaceSetSchema face_schem 			= faceset.getSchema();
-			Alembic::AbcGeom::IFaceSetSchema::Sample face_sample 	= face_schem.getValue(sample_sel);
-			Alembic::Abc::Int32ArraySamplePtr group_faces 	= face_sample.getFaces();
+			IFaceSetSchema face_schem 			= faceset.getSchema();
+			IFaceSetSchema::Sample face_sample 	= face_schem.getValue(sample_sel);
+			Int32ArraySamplePtr group_faces 	= face_sample.getFaces();
 			size_t num_group_faces 				= group_faces->size();
 
 			for (size_t l = 0; l < num_group_faces; l++) {
@@ -1206,6 +1242,6 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 #if 0
 	if (apply_materials) {
 		ABC_apply_materials(m_object, NULL);
-    }
+	}
 #endif
 }

@@ -112,7 +112,7 @@ Alembic::Abc::TimeSamplingPtr AbcExporter::createTimeSampling(int start, int end
 	}
 
 	getShutterSamples(shutterOpen, shutterClose, step, true, samples);
-	Alembic::Abc::TimeSamplingType ts(static_cast<Alembic::Util::uint32_t>(samples.size()), 1.0 / m_scene->r.frs_sec);
+	Alembic::Abc::TimeSamplingType ts(static_cast<uint32_t>(samples.size()), 1.0 / m_scene->r.frs_sec);
 	timeSampling.reset(new Alembic::Abc::TimeSampling(ts, samples));
 	return timeSampling;
 }
@@ -228,11 +228,11 @@ void AbcExporter::operator()()
 				xit->second->write();
 
 			/* Save the archive 's bounding box. */
-			Alembic::Abc::Box3d bounds;
+			Imath::Box3d bounds;
 
 			for (std::map<std::string, AbcTransformWriter*>::iterator xit = m_xforms.begin(), xe = m_xforms.end(); xit != xe; ++xit)
 			{
-				Alembic::Abc::Box3d box = xit->second->bounds();
+				Imath::Box3d box = xit->second->bounds();
 				bounds.extendBy(box);
 			}
 

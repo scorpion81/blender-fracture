@@ -43,10 +43,29 @@ extern "C" {
 #include "WM_types.h"
 }
 
+using Alembic::AbcGeom::bool_t;
+using Alembic::AbcGeom::FloatArraySample;
+using Alembic::AbcGeom::FloatArraySamplePtr;
+using Alembic::AbcGeom::MetaData;
+using Alembic::AbcGeom::P3fArraySamplePtr;
+using Alembic::AbcGeom::kWrapExisting;
+
+using Alembic::AbcGeom::IBoolProperty;
+using Alembic::AbcGeom::ICompoundProperty;
+using Alembic::AbcGeom::INuPatch;
+using Alembic::AbcGeom::INuPatchSchema;
+using Alembic::AbcGeom::IObject;
+using Alembic::AbcGeom::ISampleSelector;
+
+using Alembic::AbcGeom::OBoolProperty;
+using Alembic::AbcGeom::OCompoundProperty;
+using Alembic::AbcGeom::ONuPatch;
+using Alembic::AbcGeom::ONuPatchSchema;
+
 AbcNurbsWriter::AbcNurbsWriter(Scene *sce,
                                Object *obj,
                                AbcTransformWriter *parent,
-                               Alembic::Util::uint32_t timeSampling,
+                               uint32_t timeSampling,
                                AbcExportOptions& opts)
     : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
 {
@@ -68,7 +87,7 @@ AbcNurbsWriter::AbcNurbsWriter(Scene *sce,
 			str << "_";
 		}
 
-		Alembic::AbcGeom::ONuPatch nurbs(parent->alembicXform(), str.str().c_str(), m_time_sampling);
+		ONuPatch nurbs(parent->alembicXform(), str.str().c_str(), m_time_sampling);
 		m_nurbs_schema.push_back(nurbs.getSchema());
 	}
 }
@@ -86,7 +105,7 @@ bool AbcNurbsWriter::isAnimated() const
 static void recompute_pnts_cyclic(const BPoint *bps,
                                   const int num_u, const int num_v,
                                   const int add_u, const int add_v,
-                                  std::vector<Alembic::Abc::V3f> &pos,
+                                  std::vector<Imath::V3f> &pos,
                                   std::vector<float> &posWeight,
                                   bool rotate, float rot_mat[3][3])
 {
@@ -123,7 +142,7 @@ static void recompute_pnts_cyclic(const BPoint *bps,
 	for (int u = 0; u < new_u; ++u) {
 		for (int v = 0; v < new_v; ++v) {
 			Imath::Vec4<float>& pnt = pnts[u][v];
-			pos.push_back(Alembic::Abc::V3f(pnt.x, pnt.y, pnt.z));
+			pos.push_back(Imath::V3f(pnt.x, pnt.y, pnt.z));
 			posWeight.push_back(pnt.z);
 		}
 	}
@@ -167,14 +186,14 @@ void AbcNurbsWriter::do_write()
 			knotsV.push_back(nu->knotsv[i]);
 		}
 
-		Alembic::AbcGeom::ONuPatchSchema::Sample nuSamp;
+		ONuPatchSchema::Sample nuSamp;
 		nuSamp.setUOrder(nu->orderu);
 		nuSamp.setVOrder(nu->orderv);
 
 		const int add_u = (nu->flagu & CU_NURB_CYCLIC) ? nu->orderu - 1 : 0;
 		const int add_v = (nu->flagv & CU_NURB_CYCLIC) ? nu->orderv - 1 : 0;
 
-		std::vector<Alembic::Abc::V3f> sampPos;
+		std::vector<Imath::V3f> sampPos;
 		std::vector<float> sampPosWeights;
 		recompute_pnts_cyclic(nu->bp, nu->pntsu, nu->pntsv, add_u, add_v,
 		                      sampPos, sampPosWeights,
@@ -182,18 +201,18 @@ void AbcNurbsWriter::do_write()
 
 		nuSamp.setPositions(sampPos);
 		nuSamp.setPositionWeights(sampPosWeights);
-		nuSamp.setUKnot(Alembic::Abc::FloatArraySample(knotsU));
-		nuSamp.setVKnot(Alembic::Abc::FloatArraySample(knotsV));
+		nuSamp.setUKnot(FloatArraySample(knotsU));
+		nuSamp.setVKnot(FloatArraySample(knotsV));
 		nuSamp.setNu(nu->pntsu);
 		nuSamp.setNv(nu->pntsv);
 
 		bool endu = nu->flagu & CU_NURB_ENDPOINT;
 		bool endv = nu->flagv & CU_NURB_ENDPOINT;
 
-		Alembic::AbcGeom::OCompoundProperty typeContainer = m_nurbs_schema[count].getUserProperties();
-		Alembic::AbcGeom::OBoolProperty enduprop(typeContainer, "endU");
+		OCompoundProperty typeContainer = m_nurbs_schema[count].getUserProperties();
+		OBoolProperty enduprop(typeContainer, "endU");
 		enduprop.set(endu);
-		Alembic::AbcGeom::OBoolProperty endvprop(typeContainer, "endV");
+		OBoolProperty endvprop(typeContainer, "endV");
 		endvprop.set(endv);
 
 		m_nurbs_schema[count].set(nuSamp);
@@ -202,7 +221,7 @@ void AbcNurbsWriter::do_write()
 
 /* ****************************** nurbs reader ****************************** */
 
-AbcNurbsReader::AbcNurbsReader(const Alembic::Abc::IObject &object, int from_forward, int from_up)
+AbcNurbsReader::AbcNurbsReader(const IObject &object, int from_forward, int from_up)
     : AbcObjectReader(object, from_forward, from_up)
 {
 	getNurbsPatches(m_iobject);
@@ -222,7 +241,7 @@ void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time)
 {
 	Curve *cu = static_cast<Curve *>(BKE_curve_add(bmain, "abc_curve", OB_SURF));
 
-	std::vector< std::pair<Alembic::AbcGeom::INuPatchSchema, Alembic::Abc::IObject> >::iterator it;
+	std::vector< std::pair<INuPatchSchema, IObject> >::iterator it;
 
 	for (it = m_schemas.begin(); it != m_schemas.end(); ++it) {
 		Nurb *nu = (Nurb*)MEM_callocN(sizeof(Nurb), "abc_getnurb");
@@ -230,17 +249,17 @@ void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time)
 		nu->type = CU_NURBS;
 		nu->resolu = 4;
 		nu->resolv = 4;
-		Alembic::AbcGeom::ISampleSelector sample_sel(time);
-		Alembic::AbcGeom::INuPatchSchema::Sample smp = it->first.getValue(sample_sel);
+		ISampleSelector sample_sel(time);
+		INuPatchSchema::Sample smp = it->first.getValue(sample_sel);
 
-		Alembic::AbcGeom::P3fArraySamplePtr   positions    = smp.getPositions();
-		Alembic::AbcGeom::FloatArraySamplePtr positionsW   = smp.getPositionWeights();
+		P3fArraySamplePtr   positions    = smp.getPositions();
+		FloatArraySamplePtr positionsW   = smp.getPositionWeights();
 		int32_t num_U = smp.getNumU();
 		int32_t num_V = smp.getNumV();
 		int32_t u_order = smp.getUOrder();
 		int32_t v_order = smp.getVOrder();
-		Alembic::AbcGeom::FloatArraySamplePtr u_knot   = smp.getUKnot();
-		Alembic::AbcGeom::FloatArraySamplePtr v_knot   = smp.getVKnot();
+		FloatArraySamplePtr u_knot   = smp.getUKnot();
+		FloatArraySamplePtr v_knot   = smp.getVKnot();
 
 		size_t numPt = positions->size();
 		size_t numKnotsU = u_knot->size();
@@ -258,7 +277,7 @@ void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time)
 		nu->bp->radius = 1.0f;
 
 		for (int i = 0; i < numPt; ++i) {
-			Alembic::AbcGeom::V3f pos_in = (*positions)[i];
+			Imath::V3f pos_in = (*positions)[i];
 			float posw_in = 1.0;
 
 			if (positionsW && i < positionsW->size()) {
@@ -281,10 +300,10 @@ void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time)
 			nu->knotsv[i] = (*v_knot)[i];
 		}
 
-		Alembic::AbcGeom::ICompoundProperty userProps = it->first.getUserProperties();
+		ICompoundProperty userProps = it->first.getUserProperties();
 		if (userProps.valid() && userProps.getPropertyHeader("endU") != 0) {
-			Alembic::AbcGeom::IBoolProperty enduProp(userProps, "endU");
-			Alembic::AbcGeom::bool_t endu;
+			IBoolProperty enduProp(userProps, "endU");
+			bool_t endu;
 			enduProp.get(endu, sample_sel);
 
 			if (endu) {
@@ -293,8 +312,8 @@ void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time)
 		}
 
 		if (userProps.valid() && userProps.getPropertyHeader("endV") != 0) {
-			Alembic::AbcGeom::IBoolProperty endvProp(userProps, "endV");
-			Alembic::AbcGeom::bool_t endv;
+			IBoolProperty endvProp(userProps, "endV");
+			bool_t endv;
 			endvProp.get(endv, sample_sel);
 
 			if (endv) {
@@ -311,7 +330,7 @@ void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time)
 	m_object->data = cu;
 }
 
-void AbcNurbsReader::getNurbsPatches(const Alembic::Abc::IObject &obj)
+void AbcNurbsReader::getNurbsPatches(const IObject &obj)
 {
 	if (!obj.valid()) {
 		return;
@@ -319,7 +338,7 @@ void AbcNurbsReader::getNurbsPatches(const Alembic::Abc::IObject &obj)
 
 	for (int i = 0;i < obj.getNumChildren(); ++i) {
 		bool ok = true;
-		Alembic::Abc::IObject child(obj, obj.getChildHeader(i).getName());
+		IObject child(obj, obj.getChildHeader(i).getName());
 
 		if (!m_name.empty() && child.valid() && !begins_with(child.getFullName(), m_name)) {
 			ok = false;
@@ -328,12 +347,12 @@ void AbcNurbsReader::getNurbsPatches(const Alembic::Abc::IObject &obj)
 		if (!child.valid())
 			continue;
 
-		const Alembic::Abc::MetaData &md = child.getMetaData();
+		const MetaData &md = child.getMetaData();
 
-		if (Alembic::AbcGeom::INuPatch::matches(md) && ok) {
-			Alembic::AbcGeom::INuPatch abc_nurb(child, Alembic::AbcGeom::kWrapExisting);
-			Alembic::AbcGeom::INuPatchSchema schem = abc_nurb.getSchema();
-			m_schemas.push_back(std::pair<Alembic::AbcGeom::INuPatchSchema, Alembic::AbcGeom::IObject>(schem, child));
+		if (INuPatch::matches(md) && ok) {
+			INuPatch abc_nurb(child, kWrapExisting);
+			INuPatchSchema schem = abc_nurb.getSchema();
+			m_schemas.push_back(std::pair<INuPatchSchema, IObject>(schem, child));
 		}
 
 		getNurbsPatches(child);

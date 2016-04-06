@@ -55,7 +55,7 @@ class AbcMeshWriter : public AbcShapeWriter {
 	Alembic::Abc::OArrayProperty m_velocity;
 
 public:
-	AbcMeshWriter(Scene *sce, Object *obj, AbcTransformWriter *parent, Alembic::Util::uint32_t timeSampling, AbcExportOptions &opts);
+	AbcMeshWriter(Scene *sce, Object *obj, AbcTransformWriter *parent, uint32_t timeSampling, AbcExportOptions &opts);
 	~AbcMeshWriter();
 
 private:
@@ -68,30 +68,30 @@ private:
 	void writeSubD();
 
 	void getMeshInfo(DerivedMesh *dm, std::vector<float> &points,
-	                 std::vector<Alembic::Util::int32_t> &facePoints,
-	                 std::vector<Alembic::Util::int32_t> &faceCounts,
+	                 std::vector<int32_t> &facePoints,
+	                 std::vector<int32_t> &faceCounts,
 	                 std::vector< std::vector<float> > &uvs,
-	                 std::vector<Alembic::Util::int32_t> &creaseIndices,
-	                 std::vector<Alembic::Util::int32_t> &creaseLengths,
+	                 std::vector<int32_t> &creaseIndices,
+	                 std::vector<int32_t> &creaseLengths,
 	                 std::vector<float> &creaseSharpness);
 
 	DerivedMesh *getFinalMesh();
 	void freeMesh(DerivedMesh *dm);
 
 	void getPoints(DerivedMesh *dm, std::vector<float> &points);
-	void getTopology(DerivedMesh *dm, std::vector<Alembic::Util::int32_t> &facePoints, std::vector<Alembic::Util::int32_t> &pointCounts);
+	void getTopology(DerivedMesh *dm, std::vector<int32_t> &facePoints, std::vector<int32_t> &pointCounts);
 	void getNormals(DerivedMesh *dm, std::vector<float> &norms);
     void getUVs(DerivedMesh *dm, std::vector< Imath::V2f > &uvs, std::vector<uint32_t> &, int layer_idx);
-    void getMaterialIndices(DerivedMesh *dm, std::vector<Alembic::Util::int32_t> &indices);
+    void getMaterialIndices(DerivedMesh *dm, std::vector<int32_t> &indices);
 
 	void createArbGeoParams(DerivedMesh *dm);
-	void createVertexLayerParam(DerivedMesh *dm, int index, Alembic::Abc::OCompoundProperty arbGeoParams);
+	void createVertexLayerParam(DerivedMesh *dm, int index, const Alembic::Abc::OCompoundProperty &arbGeoParams);
 	void createFaceLayerParam(DerivedMesh *dm, int index, const Alembic::Abc::OCompoundProperty &arbGeoParams);
 
 	void writeArbGeoParams(DerivedMesh *dm);
 	void writeVertexLayerParam(DerivedMesh *dm, int index, const Alembic::Abc::OCompoundProperty &arbGeoParams);
 	void writeFaceLayerParam(DerivedMesh *dm, int index, const Alembic::Abc::OCompoundProperty &arbGeoParams);
-	void getGeoGroups(DerivedMesh *dm, std::map<std::string, std::vector<Alembic::Util::int32_t> > &geoGroups);
+	void getGeoGroups(DerivedMesh *dm, std::map<std::string, std::vector<int32_t> > &geoGroups);
 	
 	/* fluid surfaces support */
 	ModifierData *getFluidSimModifier();

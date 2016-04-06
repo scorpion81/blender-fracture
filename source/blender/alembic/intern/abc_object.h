@@ -38,7 +38,7 @@ protected:
 	Object *m_object;
     AbcExportOptions &m_options;
 
-    Alembic::Abc::Box3d m_bounds;
+    Imath::Box3d m_bounds;
     std::vector<AbcObjectWriter *> m_children;
 
     std::vector< std::pair<std::string, IDProperty *> > m_props;
@@ -52,7 +52,7 @@ public:
 
 	void addChild(AbcObjectWriter *child);
 
-    virtual Alembic::Abc::Box3d bounds() const;
+    virtual Imath::Box3d bounds() const;
 
     void write();
 

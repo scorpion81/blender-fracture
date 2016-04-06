@@ -27,7 +27,7 @@
 AbcShapeWriter::AbcShapeWriter(Scene *sce,
                                Object *obj,
                                AbcTransformWriter *parent,
-                               Alembic::Util::uint32_t timeSampling,
+                               uint32_t timeSampling,
                                AbcExportOptions &opts)
     : AbcObjectWriter(obj, opts)
 {

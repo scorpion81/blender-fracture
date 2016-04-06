@@ -37,6 +37,18 @@ extern "C" {
 #include "BKE_depsgraph.h"
 }
 
+using Alembic::AbcGeom::IObject;
+
+using Alembic::AbcGeom::OCompoundProperty;
+using Alembic::AbcGeom::ODoubleArrayProperty;
+using Alembic::AbcGeom::ODoubleProperty;
+using Alembic::AbcGeom::OFloatArrayProperty;
+using Alembic::AbcGeom::OFloatProperty;
+using Alembic::AbcGeom::OInt32ArrayProperty;
+using Alembic::AbcGeom::OInt32Property;
+using Alembic::AbcGeom::OStringArrayProperty;
+using Alembic::AbcGeom::OStringProperty;
+
 AbcObjectWriter::AbcObjectWriter(Object *obj, AbcExportOptions &opts)
     : m_object(obj)
     , m_options(opts)
@@ -52,7 +64,7 @@ void AbcObjectWriter::addChild(AbcObjectWriter *child)
 	m_children.push_back(child);
 }
 
-Alembic::Abc::Box3d AbcObjectWriter::bounds() const
+Imath::Box3d AbcObjectWriter::bounds() const
 {
 	return m_bounds;
 }
@@ -70,7 +82,7 @@ bool AbcObjectWriter::hasProperties(ID *id)
 	return !m_props.empty();
 }
 
-void AbcObjectWriter::writeProperties(ID *id, const Alembic::Abc::OCompoundProperty &props, bool writeAsUserData)
+void AbcObjectWriter::writeProperties(ID *id, const OCompoundProperty &props, bool writeAsUserData)
 {
 	for (int i = 0, e = m_props.size(); i < e; ++i) {
 		if (props.getPropertyHeader(m_props[i].first)){
@@ -142,57 +154,57 @@ void AbcObjectWriter::getAllProperties(IDProperty *group,
 	}
 }
 
-void AbcObjectWriter::writeArrayProperty(IDProperty *p, const Alembic::Abc::OCompoundProperty &abcProps)
+void AbcObjectWriter::writeArrayProperty(IDProperty *p, const OCompoundProperty &abcProps)
 {
 	std::string name(p->name);
 
 	switch(p->subtype) {
 		case IDP_INT:
 		{
-			Alembic::Abc::OInt32ArrayProperty op(abcProps, name);
-			op.set(Alembic::Abc::OInt32ArrayProperty::sample_type(static_cast<int *>(IDP_Array(p)), p->len));
+			OInt32ArrayProperty op(abcProps, name);
+			op.set(OInt32ArrayProperty::sample_type(static_cast<int *>(IDP_Array(p)), p->len));
 			break;
 		}
 		case IDP_FLOAT:
 		{
-			Alembic::Abc::OFloatArrayProperty op(abcProps, name);
-			op.set(Alembic::Abc::OFloatArrayProperty::sample_type(static_cast<float *>(IDP_Array(p)), p->len));
+			OFloatArrayProperty op(abcProps, name);
+			op.set(OFloatArrayProperty::sample_type(static_cast<float *>(IDP_Array(p)), p->len));
 			break;
 		}
 		case IDP_DOUBLE:
 		{
-			Alembic::Abc::ODoubleArrayProperty op(abcProps, name);
-			op.set(Alembic::Abc::ODoubleArrayProperty::sample_type(static_cast<double *>(IDP_Array(p)), p->len));
+			ODoubleArrayProperty op(abcProps, name);
+			op.set(ODoubleArrayProperty::sample_type(static_cast<double *>(IDP_Array(p)), p->len));
 			break;
 		}
 	}
 }
 
-void AbcObjectWriter::writeProperty(IDProperty *p, const std::string &name, const Alembic::Abc::OCompoundProperty &abcProps)
+void AbcObjectWriter::writeProperty(IDProperty *p, const std::string &name, const OCompoundProperty &abcProps)
 {
 	/* TODO: check this... */
 	switch(p->type) {
 		case IDP_STRING:
 		{
-			Alembic::Abc::OStringProperty op(abcProps, name);
+			OStringProperty op(abcProps, name);
 			op.set(IDP_String(p));
 			break;
 		}
 		case IDP_INT:
 		{
-			Alembic::Abc::OInt32Property op(abcProps, name);
+			OInt32Property op(abcProps, name);
 			op.set(IDP_Int(p));
 			break;
 		}
 		case IDP_FLOAT:
 		{
-			Alembic::Abc::OFloatProperty op(abcProps, name);
+			OFloatProperty op(abcProps, name);
 			op.set(IDP_Float(p));
 			break;
 		}
 		case IDP_DOUBLE:
 		{
-			Alembic::Abc::ODoubleProperty op(abcProps, name);
+			ODoubleProperty op(abcProps, name);
 			op.set(IDP_Double(p));
 			break;
 		}
@@ -208,7 +220,7 @@ void AbcObjectWriter::writeProperty(IDProperty *p, const std::string &name, cons
 	}
 }
 
-void AbcObjectWriter::writeGeomProperty(IDProperty *p, const std::string &name, const Alembic::Abc::OCompoundProperty &abcProps)
+void AbcObjectWriter::writeGeomProperty(IDProperty *p, const std::string &name, const OCompoundProperty &abcProps)
 {
 	switch(p->type) {
 		case IDP_STRING:
@@ -289,7 +301,7 @@ bool AbcObjectWriter::getPropertyValue(ID *id, const std::string &name, double &
 
 /* ****************************** object reader ***************************** */
 
-AbcObjectReader::AbcObjectReader(const Alembic::Abc::IObject &object, int from_forward, int from_up)
+AbcObjectReader::AbcObjectReader(const IObject &object, int from_forward, int from_up)
     : m_name("")
     , m_object_name("")
     , m_data_name("")
@@ -314,7 +326,7 @@ AbcObjectReader::AbcObjectReader(const Alembic::Abc::IObject &object, int from_f
 AbcObjectReader::~AbcObjectReader()
 {}
 
-const Alembic::Abc::IObject &AbcObjectReader::iobject() const
+const IObject &AbcObjectReader::iobject() const
 {
 	return m_iobject;
 }

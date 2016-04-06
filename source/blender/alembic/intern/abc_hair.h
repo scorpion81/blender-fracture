@@ -39,7 +39,7 @@ class AbcHairWriter : public AbcShapeWriter {
 
 public:
 	AbcHairWriter(Scene *sce, Object *obj, AbcTransformWriter *parent,
-						Alembic::Util::uint32_t timeSampling, AbcExportOptions &opts,
+						uint32_t timeSampling, AbcExportOptions &opts,
 						ParticleSystem *psys);
 	~AbcHairWriter();
 

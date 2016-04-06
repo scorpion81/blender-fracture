@@ -39,21 +39,32 @@ extern "C" {
 #include "WM_types.h"
 }
 
+using Alembic::AbcGeom::ICamera;
+using Alembic::AbcGeom::ICompoundProperty;
+using Alembic::AbcGeom::IFloatProperty;
+using Alembic::AbcGeom::ISampleSelector;
+
+using Alembic::AbcGeom::OCamera;
+using Alembic::AbcGeom::OFloatProperty;
+
+using Alembic::AbcGeom::CameraSample;
+using Alembic::AbcGeom::kWrapExisting;
+
 AbcCameraWriter::AbcCameraWriter(Scene *sce, Object *obj,
                                  AbcTransformWriter *parent,
-                                 Alembic::Util::uint32_t timeSampling,
+                                 uint32_t timeSampling,
                                  AbcExportOptions &opts)
     : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
 {
 	std::string name = get_object_name(m_object);
 	name.append("Shape");
 
-	Alembic::AbcGeom::OCamera camera(parent->alembicXform(), name, m_time_sampling);
+	OCamera camera(parent->alembicXform(), name, m_time_sampling);
 	m_camera_schema = camera.getSchema();
 
 	m_custom_data_container = m_camera_schema.getUserProperties();
-	m_stereo_distance = Alembic::AbcGeom::OFloatProperty(m_custom_data_container, "stereoDistance", m_time_sampling);
-	m_eye_separation  = Alembic::AbcGeom::OFloatProperty(m_custom_data_container, "eyeSeparation", m_time_sampling);
+	m_stereo_distance = OFloatProperty(m_custom_data_container, "stereoDistance", m_time_sampling);
+	m_eye_separation = OFloatProperty(m_custom_data_container, "eyeSeparation", m_time_sampling);
 }
 
 void AbcCameraWriter::do_write()
@@ -106,7 +117,7 @@ void AbcCameraWriter::do_write()
 AbcCameraReader::AbcCameraReader(const Alembic::Abc::IObject &object, int from_forward, int from_up)
     : AbcObjectReader(object, from_forward, from_up)
 {
-	Alembic::AbcGeom::ICamera abc_cam(m_iobject, Alembic::AbcGeom::kWrapExisting);
+	ICamera abc_cam(m_iobject, kWrapExisting);
 	m_schema = abc_cam.getSchema();
 }
 
@@ -119,27 +130,29 @@ void AbcCameraReader::readObjectData(Main *bmain, Scene *scene, float time)
 {
 	Camera *bcam = static_cast<Camera *>(BKE_camera_add(bmain, "abc_camera"));
 
-	Alembic::AbcGeom::ISampleSelector sample_sel(time);
-	Alembic::AbcGeom::CameraSample cam_sample;
+	ISampleSelector sample_sel(time);
+	CameraSample cam_sample;
 	m_schema.get(cam_sample, sample_sel);
 
-	Alembic::AbcGeom::ICompoundProperty customDataContainer =  m_schema.getUserProperties();
+	ICompoundProperty customDataContainer =  m_schema.getUserProperties();
 
-	if (customDataContainer.valid() && customDataContainer.getPropertyHeader("stereoDistance") &&
-	    customDataContainer.getPropertyHeader("eyeSeparation")) {
-		Alembic::AbcGeom::IFloatProperty convergence_plane(customDataContainer, "stereoDistance");
-		Alembic::AbcGeom::IFloatProperty eye_separation(customDataContainer, "eyeSeparation");
+	if (customDataContainer.valid() &&
+	    customDataContainer.getPropertyHeader("stereoDistance") &&
+	    customDataContainer.getPropertyHeader("eyeSeparation"))
+	{
+		IFloatProperty convergence_plane(customDataContainer, "stereoDistance");
+		IFloatProperty eye_separation(customDataContainer, "eyeSeparation");
 
 		bcam->stereo.interocular_distance = eye_separation.getValue(sample_sel);
 		bcam->stereo.convergence_distance = convergence_plane.getValue(sample_sel);;
 	}
 
-	float lens = cam_sample.getFocalLength();
-	float apperture_x = cam_sample.getHorizontalAperture();
-	float apperture_y = cam_sample.getVerticalAperture();
-	float h_film_offset = cam_sample.getHorizontalFilmOffset();
-	float v_film_offset = cam_sample.getVerticalFilmOffset();
-	float film_aspect = apperture_x / apperture_y;
+	const float lens = cam_sample.getFocalLength();
+	const float apperture_x = cam_sample.getHorizontalAperture();
+	const float apperture_y = cam_sample.getVerticalAperture();
+	const float h_film_offset = cam_sample.getHorizontalFilmOffset();
+	const float v_film_offset = cam_sample.getVerticalFilmOffset();
+	const float film_aspect = apperture_x / apperture_y;
 
 	bcam->lens = lens;
 	bcam->sensor_x = apperture_x * 10;

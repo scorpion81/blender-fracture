@@ -34,10 +34,15 @@ extern "C" {
 #include "BKE_particle.h"
 }
 
+using Alembic::AbcGeom::OCurves;
+using Alembic::AbcGeom::OCurvesSchema;
+using Alembic::AbcGeom::ON3fGeomParam;
+using Alembic::AbcGeom::OV2fGeomParam;
+
 AbcHairWriter::AbcHairWriter(Scene *sce,
                              Object *obj,
                              AbcTransformWriter *parent,
-                             Alembic::Util::uint32_t timeSampling,
+                             uint32_t timeSampling,
                              AbcExportOptions &opts,
                              ParticleSystem *psys)
     : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
@@ -48,7 +53,7 @@ AbcHairWriter::AbcHairWriter(Scene *sce,
 
 	m_is_animated = isAnimated();
 
-	Alembic::AbcGeom::OCurves curves(parent->alembicXform(), name, m_time_sampling);
+	OCurves curves(parent->alembicXform(), name, m_time_sampling);
 	m_curves_schema = curves.getSchema();
 }
 
@@ -95,10 +100,10 @@ void AbcHairWriter::do_write()
 		printf("Warning, no UV set found for underlying geometry\n");
 	}
 
-	std::vector<Alembic::AbcGeom::V3f> verts;
+	std::vector<Imath::V3f> verts;
 	std::vector<int32_t> hvertices;
-	std::vector<Alembic::AbcGeom::V2f> uv_values;
-	std::vector<Alembic::AbcGeom::N3f> norm_values;
+	std::vector<Imath::V2f> uv_values;
+	std::vector<Imath::V3f> norm_values;
 
 	const float nscale = 1.0f / 32767.0f;
 
@@ -120,10 +125,10 @@ void AbcHairWriter::do_write()
 
 					if (mface) {
 						psys_interpolate_uvs(tface, face->v4, pa->fuv, r_uv);
-						uv_values.push_back(Alembic::AbcGeom::V2f(r_uv[0], r_uv[1]));
+						uv_values.push_back(Imath::V2f(r_uv[0], r_uv[1]));
 
 						psys_interpolate_face(mverts, face, tface, NULL, mapfw, vec, tmpnor, NULL, NULL, NULL, NULL);
-						norm_values.push_back(Alembic::AbcGeom::N3f(tmpnor[0],tmpnor[2], -tmpnor[1]));
+						norm_values.push_back(Imath::V3f(tmpnor[0],tmpnor[2], -tmpnor[1]));
 					}
 				}
 				else {
@@ -150,9 +155,9 @@ void AbcHairWriter::do_write()
 						}
 
 						if (vtx[o] == num) {
-							uv_values.push_back(Alembic::AbcGeom::V2f(tface->uv[o][0], tface->uv[o][1]));
+							uv_values.push_back(Imath::V2f(tface->uv[o][0], tface->uv[o][1]));
 							MVert *mv = mverts + vtx[o];
-							norm_values.push_back(Alembic::AbcGeom::N3f(mv->no[0] * nscale,
+							norm_values.push_back(Imath::V3f(mv->no[0] * nscale,
 							                      mv->no[1] * nscale, mv->no[2] * nscale));
 							found = true;
 							break;
@@ -177,7 +182,7 @@ void AbcHairWriter::do_write()
 					mul_m3_v3(m_options.convert_matrix, vert);
 				}
 
-				verts.push_back(Alembic::AbcGeom::V3f(vert[0], vert[1], vert[2]));
+				verts.push_back(Imath::V3f(vert[0], vert[1], vert[2]));
 
 				++path;
 			}
@@ -200,14 +205,14 @@ void AbcHairWriter::do_write()
 
 					if (mface && mtface) {
 						psys_interpolate_uvs(tface, face->v4, pc->fuv, r_uv);
-						uv_values.push_back(Alembic::AbcGeom::V2f(r_uv[0], r_uv[1]));
+						uv_values.push_back(Imath::V2f(r_uv[0], r_uv[1]));
 
 						psys_interpolate_face(mverts, face, tface, NULL, mapfw, vec, tmpnor, NULL, NULL, NULL, NULL);
 						if (m_rotate_matrix) {
-							norm_values.push_back(Alembic::AbcGeom::N3f(tmpnor[0],tmpnor[2], -tmpnor[1]));
+							norm_values.push_back(Imath::V3f(tmpnor[0],tmpnor[2], -tmpnor[1]));
 						}
 						else {
-							norm_values.push_back(Alembic::AbcGeom::N3f(tmpnor[0],tmpnor[1], tmpnor[2]));
+							norm_values.push_back(Imath::V3f(tmpnor[0],tmpnor[1], tmpnor[2]));
 						}
 					}
 				}
@@ -219,7 +224,7 @@ void AbcHairWriter::do_write()
 					float vert[3];
 					copy_v3_v3(vert, path->co);
 					mul_m4_v3(inv_mat, vert);
-					verts.push_back(Alembic::AbcGeom::V3f(vert[0], vert[1], vert[2]));
+					verts.push_back(Imath::V3f(vert[0], vert[1], vert[2]));
 					++path;
 				}
 			}
@@ -229,16 +234,16 @@ void AbcHairWriter::do_write()
 	dm->release(dm);
 
 	Alembic::Abc::P3fArraySample iPos(verts);
-	m_curves_schema_sample = Alembic::AbcGeom::OCurvesSchema::Sample(iPos, hvertices);
+	m_curves_schema_sample = OCurvesSchema::Sample(iPos, hvertices);
 
 	if (!uv_values.empty()) {
-		Alembic::AbcGeom::OV2fGeomParam::Sample uv_smp;
+		OV2fGeomParam::Sample uv_smp;
 		uv_smp.setVals(uv_values);
 		m_curves_schema_sample.setUVs(uv_smp);
 	}
 
 	if (!norm_values.empty()) {
-		Alembic::AbcGeom::ON3fGeomParam::Sample norm_smp;
+		ON3fGeomParam::Sample norm_smp;
 		norm_smp.setVals(norm_values);
 		m_curves_schema_sample.setNormals(norm_smp);
 	}

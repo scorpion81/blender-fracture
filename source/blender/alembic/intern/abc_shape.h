@@ -34,13 +34,13 @@ class AbcTransformWriter;
 class AbcShapeWriter : public AbcObjectWriter {
 protected:
 	Scene *m_scene;
-	Alembic::Util::uint32_t m_time_sampling;
+	uint32_t m_time_sampling;
 
 public:
     AbcShapeWriter(Scene *sce,
 	               Object *obj,
 	               AbcTransformWriter *parent,
-	               Alembic::Util::uint32_t timeSampling,
+	               uint32_t timeSampling,
 	               AbcExportOptions &opts);
 
 protected:
