@@ -1061,6 +1061,22 @@ static void mesh_add_mpolygons(Mesh *mesh, size_t len)
 } /* mesh_utils */
 
 #if 0
+static Material *findMaterial(const char *name)
+{
+	Main *bmain = G.main;
+	Material *material, *found_material = NULL;
+
+	for (material = (Material*)bmain->mat.first; material; material = (Material*)material->id.next) {
+
+		if (BLI_strcaseeq(material->id.name+2, name) == true) {
+			found_material = material;
+			break;
+		}
+	}
+
+	return found_material;
+}
+
 static void ABC_apply_materials(Object *ob, void *key)
 {
 	AbcInfo &meshmap = abc_manager->mesh_map[key];

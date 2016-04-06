@@ -77,15 +77,6 @@ static void copyData(ModifierData *md, ModifierData *target)
 	modifier_copyData_generic(md, target);
 }
 
-static void freeData(ModifierData *md)
-{
-#ifdef WITH_ALEMBIC
-	ABC_destroy_mesh_data(md);
-#else
-	UNUSED_VARS(md);
-#endif
-}
-
 static bool dependsOnTime(ModifierData *md)
 {
 	MeshCacheModifierData *mcmd = (MeshCacheModifierData *)md;
@@ -335,7 +326,7 @@ ModifierTypeInfo modifierType_MeshCache = {
 	/* applyModifierEM */   NULL,
 	/* initData */          initData,
 	/* requiredDataMask */  NULL,
-	/* freeData */          freeData,
+	/* freeData */          NULL,
 	/* isDisabled */        isDisabled,
 	/* updateDepgraph */    NULL,
 	/* updateDepsgraph */   NULL,
