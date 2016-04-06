@@ -37,8 +37,6 @@ private:
 	virtual void do_write();
 
     bool isAnimated() const;
-
-	void writeNurbs();
 };
 
 class AbcNurbsReader : public AbcObjectReader {
@@ -49,7 +47,7 @@ public:
 
 	bool valid() const;
 
-	void readObjectData(Main *bmain, Scene *scene, float time, Object *parent);
+	void readObjectData(Main *bmain, Scene *scene, float time);
 
 private:
 	void getNurbsPatches(const Alembic::Abc::IObject &obj);

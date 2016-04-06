@@ -39,7 +39,7 @@ extern "C" {
 #include "WM_types.h"
 }
 
-AbcCameraWriter::AbcCameraWriter(Scene *sce, Object *obj, RenderData *r,
+AbcCameraWriter::AbcCameraWriter(Scene *sce, Object *obj,
                                  AbcTransformWriter *parent,
                                  Alembic::Util::uint32_t timeSampling,
                                  AbcExportOptions &opts)
@@ -115,7 +115,7 @@ bool AbcCameraReader::valid() const
 	return m_schema.valid();
 }
 
-void AbcCameraReader::readObjectData(Main *bmain, Scene *scene, float time, Object *parent)
+void AbcCameraReader::readObjectData(Main *bmain, Scene *scene, float time)
 {
 	Camera *bcam = static_cast<Camera *>(BKE_camera_add(bmain, "abc_camera"));
 
@@ -158,12 +158,4 @@ void AbcCameraReader::readObjectData(Main *bmain, Scene *scene, float time, Obje
 
 	m_object = BKE_object_add(bmain, scene, OB_CAMERA, m_object_name.c_str());
 	m_object->data = bcam;
-
-	if (parent) {
-		m_object->parent = parent;
-
-		DAG_id_tag_update(&m_object->id, OB_RECALC_OB);
-		DAG_relations_tag_update(bmain);
-		WM_main_add_notifier(NC_OBJECT | ND_PARENT, m_object);
-	}
 }

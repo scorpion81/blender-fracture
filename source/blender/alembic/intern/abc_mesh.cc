@@ -49,8 +49,10 @@ extern "C" {
 #include "WM_types.h"
 }
 
-AbcMeshWriter::AbcMeshWriter(Scene *sce, Object *obj,
-                             AbcTransformWriter *parent, Alembic::Util::uint32_t timeSampling,
+AbcMeshWriter::AbcMeshWriter(Scene *sce,
+                             Object *obj,
+                             AbcTransformWriter *parent,
+                             Alembic::Util::uint32_t timeSampling,
                              AbcExportOptions &opts)
     : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
 {
@@ -1051,7 +1053,7 @@ bool AbcMeshReader::valid() const
 	return m_schema.valid();
 }
 
-void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time, Object *parent)
+void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 {
 	Mesh *blender_mesh = BKE_mesh_add(bmain, m_data_name.c_str());
 

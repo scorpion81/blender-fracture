@@ -919,7 +919,7 @@ void ABC_import(bContext *C, const char *filename, int from_forward, int from_up
 		AbcObjectReader *reader = *iter;
 
 		if (reader->valid()) {
-			reader->readObjectData(CTX_data_main(C), CTX_data_scene(C), 0.0f, NULL);
+			reader->readObjectData(CTX_data_main(C), CTX_data_scene(C), 0.0f);
 			reader->readObjectMatrix(0.0f);
 		}
 	}

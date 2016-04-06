@@ -35,8 +35,7 @@ class AbcCameraWriter : public AbcShapeWriter {
     Alembic::AbcGeom::OFloatProperty m_eye_separation;
 
 public:
-	AbcCameraWriter(Scene *sce, Object *obj,
-	                RenderData *r, AbcTransformWriter *parent,
+	AbcCameraWriter(Scene *sce, Object *obj, AbcTransformWriter *parent,
 	                Alembic::Util::uint32_t timeSampling,
 	                AbcExportOptions &opts);
 
@@ -52,7 +51,7 @@ public:
 
 	bool valid() const;
 
-	void readObjectData(Main *bmain, Scene *scene, float time, Object *parent);
+	void readObjectData(Main *bmain, Scene *scene, float time);
 };
 
 #endif  /* __ABC_CAMERA_WRITER_H__ */

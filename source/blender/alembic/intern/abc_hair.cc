@@ -34,9 +34,12 @@ extern "C" {
 #include "BKE_particle.h"
 }
 
-AbcHairWriter::AbcHairWriter(Scene *sce, Object *obj, AbcTransformWriter *parent,
-                                     Alembic::Util::uint32_t timeSampling,
-                                     AbcExportOptions &opts, ParticleSystem *psys)
+AbcHairWriter::AbcHairWriter(Scene *sce,
+                             Object *obj,
+                             AbcTransformWriter *parent,
+                             Alembic::Util::uint32_t timeSampling,
+                             AbcExportOptions &opts,
+                             ParticleSystem *psys)
     : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
 {
 	std::string name = getObjectName(m_object);

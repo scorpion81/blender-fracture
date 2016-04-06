@@ -461,45 +461,42 @@ void AbcExporter::createShapeWriter(Object *ob, Object *dupliObParent)
 			if (enable_geo) {
 				Mesh *me = static_cast<Mesh *>(ob->data);
 
-				if (!me || me->totvert == 0)
+				if (!me || me->totvert == 0) {
 					return;
+				}
 
 				m_shapes.push_back(new AbcMeshWriter(m_scene, ob, xform, m_shape_sampling_index, m_options));
 				m_shapes.back()->setRotateMatrix(true);
 			}
-		}
-			break;
 
+			break;
+		}
 		case OB_SURF:
 		{
 			if (enable_geo) {
 				Curve *cu = static_cast<Curve *>(ob->data);
 
-				if (!cu)
+				if (!cu) {
 					return;
+				}
+
 				m_shapes.push_back(new AbcNurbsWriter(m_scene, ob, xform, m_shape_sampling_index, m_options));
 				m_shapes.back()->setRotateMatrix(true);
 			}
-		}
-			break;
 
+			break;
+		}
 		case OB_CAMERA:
 		{
 			Camera *cam = static_cast<Camera *>(ob->data);
 
 			if (cam->type == CAM_PERSP) {
-				m_shapes.push_back(new AbcCameraWriter(m_scene, ob, &(m_scene->r), xform, m_shape_sampling_index, m_options));
+				m_shapes.push_back(new AbcCameraWriter(m_scene, ob, xform, m_shape_sampling_index, m_options));
 			}
-		}
-			break;
 
-		default:
-		{
-			//std::cout << "Create Shape: " << getObjectName(ob) << "Shape, parent = " << getObjectName(ob) << "\n";
-			//mShapes.push_back(new AlembicObjectWriter(ob, xform->alembicXform()));
+			break;
 		}
 	}
-
 }
 
 AbcTransformWriter *AbcExporter::getXForm(const std::string &name)

@@ -24,8 +24,12 @@
 
 #include "abc_transform.h"
 
-AbcShapeWriter::AbcShapeWriter(Scene *sce, Object *obj, AbcTransformWriter *parent,
-											Alembic::Util::uint32_t timeSampling, AbcExportOptions &opts) : AbcObjectWriter(obj, opts)
+AbcShapeWriter::AbcShapeWriter(Scene *sce,
+                               Object *obj,
+                               AbcTransformWriter *parent,
+                               Alembic::Util::uint32_t timeSampling,
+                               AbcExportOptions &opts)
+    : AbcObjectWriter(obj, opts)
 {
 	m_first_frame = true;
 	m_scene = sce;

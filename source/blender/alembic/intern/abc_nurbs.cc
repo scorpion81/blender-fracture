@@ -42,15 +42,19 @@ extern "C" {
 #include "WM_types.h"
 }
 
-AbcNurbsWriter::AbcNurbsWriter(Scene *sce, Object *obj, AbcTransformWriter *parent,
-										Alembic::Util::uint32_t timeSampling,
-										AbcExportOptions& opts) : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
+AbcNurbsWriter::AbcNurbsWriter(Scene *sce,
+                               Object *obj,
+                               AbcTransformWriter *parent,
+                               Alembic::Util::uint32_t timeSampling,
+                               AbcExportOptions& opts)
+    : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
 {
 	m_is_animated = isAnimated();
 
 	// if the object is static, use the default static time sampling
-	if (!m_is_animated)
+	if (!m_is_animated) {
 		timeSampling = 0;
+	}
 
 	Curve *curve = static_cast<Curve *>(m_object->data);
 	size_t numNurbs = BLI_listbase_count(&curve->nurb);
@@ -69,19 +73,13 @@ AbcNurbsWriter::AbcNurbsWriter(Scene *sce, Object *obj, AbcTransformWriter *pare
 }
 
 AbcNurbsWriter::~AbcNurbsWriter()
-{
-
-}
+{}
 
 bool AbcNurbsWriter::isAnimated() const
 {
-	// check if object has shape keys
+	/* check if object has shape keys */
 	Curve *cu = static_cast<Curve *>(m_object->data);
-
-	if (cu->key)
-		return true;
-
-	return false;
+	return (cu->key != NULL);
 }
 
 static
@@ -99,6 +97,7 @@ void recompute_pnts_cyclic(const BPoint *bps, const int num_u, const int num_v, 
 	pnts.resize(new_u);
 	for (int u = 0; u < new_u; ++u) {
 		pnts[u].resize(new_v);
+
 		for (int v = 0; v < new_v; ++v) {
 			const BPoint& bp = bps[u + (v * new_u)];
 			pnts[u][v] = Imath::Vec4<float>(bp.vec[0], bp.vec[1], bp.vec[2], bp.vec[3]);
@@ -115,7 +114,6 @@ void recompute_pnts_cyclic(const BPoint *bps, const int num_u, const int num_v, 
 			posWeight.push_back(pnt.z);
 		}
 	}
-
 }
 
 void AbcNurbsWriter::do_write()
@@ -187,11 +185,6 @@ void AbcNurbsWriter::do_write()
 	}
 }
 
-void AbcNurbsWriter::writeNurbs()
-{
-
-}
-
 /* ****************************** nurbs reader ****************************** */
 
 AbcNurbsReader::AbcNurbsReader(const Alembic::Abc::IObject &object, int from_forward, int from_up)
@@ -210,7 +203,7 @@ bool AbcNurbsReader::valid() const
 	return m_schemas[0].first.valid();
 }
 
-void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time, Object *parent)
+void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time)
 {
 	Curve *cu = static_cast<Curve *>(BKE_curve_add(bmain, "abc_curve", OB_SURF));
 
@@ -301,14 +294,6 @@ void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time, Objec
 
 	m_object = BKE_object_add(bmain, scene, OB_CURVE, m_object_name.c_str());
 	m_object->data = cu;
-
-	if (parent) {
-		m_object->parent = parent;
-
-		DAG_id_tag_update(&m_object->id, OB_RECALC_OB);
-		DAG_relations_tag_update(bmain);
-		WM_main_add_notifier(NC_OBJECT | ND_PARENT, m_object);
-	}
 }
 
 void AbcNurbsReader::getNurbsPatches(const Alembic::Abc::IObject &obj)
