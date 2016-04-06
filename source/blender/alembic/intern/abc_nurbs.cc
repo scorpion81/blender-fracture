@@ -81,7 +81,7 @@ AbcNurbsWriter::AbcNurbsWriter(Scene *scene,
 
 	for (size_t i = 0; i < numNurbs; ++i) {
 		std::stringstream str;
-		str << get_object_name(m_object) << "Shape_" << i;
+		str << m_name << '_' << i;
 
 		while (parent->alembicXform().getChildHeader(str.str())) {
 			str << "_";

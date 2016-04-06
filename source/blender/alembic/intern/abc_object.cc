@@ -53,7 +53,9 @@ AbcObjectWriter::AbcObjectWriter(Object *obj, AbcExportOptions &opts)
     : m_object(obj)
     , m_options(opts)
     , m_first_frame(true)
-{}
+{
+	m_name = get_object_name(m_object) + "Shape";
+}
 
 AbcObjectWriter::~AbcObjectWriter()
 {}

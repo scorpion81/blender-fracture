@@ -51,13 +51,10 @@ AbcHairWriter::AbcHairWriter(Scene *scene,
                              ParticleSystem *psys)
     : AbcShapeWriter(scene, ob, parent, timeSampling, opts)
 {
-	std::string name = get_object_name(m_object);
-	name.append("Hair");
 	m_psys = psys;
-
 	m_is_animated = isAnimated();
 
-	OCurves curves(parent->alembicXform(), name, m_time_sampling);
+	OCurves curves(parent->alembicXform(), m_name, m_time_sampling);
 	m_curves_schema = curves.getSchema();
 }
 

@@ -44,6 +44,7 @@ protected:
     std::vector< std::pair<std::string, IDProperty *> > m_props;
 
     bool m_first_frame;
+	std::string m_name;
 
 public:
     AbcObjectWriter(Object *obj, AbcExportOptions &opts);

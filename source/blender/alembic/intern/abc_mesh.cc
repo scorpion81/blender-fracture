@@ -93,9 +93,6 @@ AbcMeshWriter::AbcMeshWriter(Scene *scene,
                              AbcExportOptions &opts)
     : AbcShapeWriter(scene, ob, parent, timeSampling, opts)
 {
-	std::string name = get_object_name(m_object);
-	name.append("Shape");
-
 	m_is_animated = isAnimated();
 	m_subsurf_mod = NULL;
 	m_has_per_face_materials = false;
@@ -136,16 +133,16 @@ AbcMeshWriter::AbcMeshWriter(Scene *scene,
 
 	m_is_fluid = (getFluidSimModifier() != NULL);
 
-	while (parent->alembicXform().getChildHeader(name)) {
-		name.append("_");
+	while (parent->alembicXform().getChildHeader(m_name)) {
+		m_name.append("_");
 	}
 
 	if (m_options.use_subdiv_schema && isSubd) {
-		OSubD subd(parent->alembicXform(), name, m_time_sampling);
+		OSubD subd(parent->alembicXform(), m_name, m_time_sampling);
 		m_subdiv_schema = subd.getSchema();
 	}
 	else {
-		OPolyMesh mesh(parent->alembicXform(), name, m_time_sampling);
+		OPolyMesh mesh(parent->alembicXform(), m_name, m_time_sampling);
 		m_mesh_schema = mesh.getSchema();
 
 		OCompoundProperty typeContainer = m_mesh_schema.getUserProperties();
