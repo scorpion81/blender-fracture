@@ -50,7 +50,7 @@ int ABC_export(struct Scene *sce, const char *filename,
 
 void ABC_import(struct bContext *C, const char *filename, int from_forward, int from_up);
 
-void ABC_get_vertex_cache(const char *filepath, float time, void *key, void *verts, int max_verts, const char *sub_obj, int is_mvert);
+void ABC_get_vertex_cache(const char *filepath, float time, void *verts, int max_verts, const char *sub_obj, int is_mvert);
 
 void ABC_destroy_mesh_data(void *key);
 

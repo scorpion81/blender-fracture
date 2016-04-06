@@ -346,27 +346,7 @@ static void ABC_mutex_unlock()
 {
 	BLI_mutex_unlock(abc_manager->mutex);
 }
-#endif
 
-static void visitObject(IObject iObj, std::vector< std::pair<IPolyMeshSchema, IObject> > &schemas, std::string sub_obj)
-{
-	if (!iObj.valid())
-		return;
-
-	IObject ret;
-	bool found = false;
-
-	abc_manager->visitObjects(iObj, ret, sub_obj, found);
-	const MetaData &md = ret.getMetaData();
-
-	if (IPolyMesh::matches(md) && found) {
-		IPolyMesh abc_mesh(ret, kWrapExisting);
-		IPolyMeshSchema schem = abc_mesh.getSchema();
-		schemas.push_back(std::pair<IPolyMeshSchema, IObject>(schem, ret));
-	}
-}
-
-#if 0
 static void visitObjectMatrix(IObject iObj, std::string abc_subobject, float time, float mat[][4])
 {
 	if (!iObj.valid())
@@ -524,66 +504,7 @@ static void getIObjectAsMesh(std::pair<IPolyMeshSchema, IObject> schema,
 	// Compute edge array is done here
 	BKE_mesh_validate(blender_mesh, false, false);
 }
-#endif
 
-static size_t updatePoints(std::pair<IPolyMeshSchema, IObject> schema, const ISampleSelector &sample_sel, MVert *verts, size_t vtx_start, int max_verts = -1, float (*vcos)[3] = 0) {
-
-	if (!schema.first.valid()) {
-		return vtx_start;
-	}
-
-	IPolyMeshSchema::Sample smp = schema.first.getValue(sample_sel);
-	P3fArraySamplePtr positions = smp.getPositions();
-
-	const size_t vertex_count = positions->size();
-
-	// We don't want to overflow the buffer !
-	if (max_verts > 0) {
-		if ((vtx_start + vertex_count) > max_verts)
-			return vtx_start;
-	}
-
-	if (verts) {
-		int j = vtx_start;
-		for (int i = 0; i < vertex_count; ++i, ++j) {
-			Imath::V3f pos_in = (*positions)[i];
-
-			// swap from Y-Up to Z-Up
-			verts[j].co[0] = pos_in[0];
-			verts[j].co[1] = -pos_in[2];
-			verts[j].co[2] = pos_in[1];
-		}
-	}
-	else if (vcos) {
-		int j = vtx_start;
-		for (int i = 0; i < vertex_count; ++i, ++j) {
-			Imath::V3f pos_in = (*positions)[i];
-
-			// swap from Y-Up to Z-Up
-			vcos[j][0] = pos_in[0];
-			vcos[j][1] = -pos_in[2];
-			vcos[j][2] = pos_in[1];
-		}
-	}
-
-	return vtx_start + vertex_count;
-}
-
-void ABC_destroy_mesh_data(void *key)
-{
-	if (abc_manager->mesh_map.find(key) != abc_manager->mesh_map.end()) {
-		AbcInfo *info = &abc_manager->mesh_map[key];
-
-		if (info->mesh) {
-			BKE_mesh_free(info->mesh, true);
-		}
-
-		info->schema_cache.clear();
-		info->mesh = NULL;
-	}
-}
-
-#if 0
 static void ABC_destroy_key(void *key)
 {
 	MeshMap::iterator it;
@@ -708,87 +629,156 @@ static void ABC_apply_materials(Object *ob, void *key)
 }
 #endif
 
-void ABC_get_vertex_cache(const char *filepath, float time, void *key, void *verts, int max_verts, const char *sub_obj, int is_mverts)
+static size_t updatePoints(std::pair<IPolyMeshSchema, IObject> schema,
+                           const ISampleSelector &sample_sel,
+                           MVert *verts, size_t vtx_start, int max_verts = -1,
+                           float (*vcos)[3] = 0)
 {
-	std::string file_path = filepath;
-	std::string sub_object = sub_obj;
+	if (!schema.first.valid()) {
+		return vtx_start;
+	}
 
-	if (file_path.empty()) {
-		std::cerr << __func__ << ": file path is empty!\n";
+	IPolyMeshSchema::Sample smp = schema.first.getValue(sample_sel);
+	P3fArraySamplePtr positions = smp.getPositions();
+
+	const size_t vertex_count = positions->size();
+
+	/* don't overflow the buffer! */
+	if (max_verts > 0) {
+		if ((vtx_start + vertex_count) > max_verts)
+			return vtx_start;
+	}
+
+	if (verts) {
+		int j = vtx_start;
+		for (int i = 0; i < vertex_count; ++i, ++j) {
+			Imath::V3f pos_in = (*positions)[i];
+
+			verts[j].co[0] = pos_in[0];
+			verts[j].co[1] = pos_in[1];
+			verts[j].co[2] = pos_in[2];
+		}
+	}
+	else if (vcos) {
+		int j = vtx_start;
+		for (int i = 0; i < vertex_count; ++i, ++j) {
+			Imath::V3f pos_in = (*positions)[i];
+
+			vcos[j][0] = pos_in[0];
+			vcos[j][1] = pos_in[1];
+			vcos[j][2] = pos_in[2];
+		}
+	}
+
+	return vtx_start + vertex_count;
+}
+
+void ABC_destroy_mesh_data(void *key)
+{
+	if (abc_manager->mesh_map.find(key) != abc_manager->mesh_map.end()) {
+		AbcInfo *info = &abc_manager->mesh_map[key];
+
+		if (info->mesh) {
+			BKE_mesh_free(info->mesh, true);
+		}
+
+		info->schema_cache.clear();
+		info->mesh = NULL;
+	}
+}
+
+static void find_mesh_object(const IObject &object, IObject &ret,
+                             const std::string &name, bool &found)
+{
+	if (!object.valid()) {
 		return;
 	}
 
-	IArchive *archive = abc_manager->getArchive(file_path);
+	std::vector<std::string> tokens;
+	split(name, "/", tokens);
+
+	IObject tmp = object;
+
+	std::vector<std::string>::iterator iter;
+	for (iter = tokens.begin(); iter != tokens.end(); ++iter) {
+		IObject child = tmp.getChild(*iter);
+
+		if (!child.valid()) {
+			continue;
+		}
+
+		const MetaData &md = child.getMetaData();
+
+		if (IPolyMesh::matches(md)) {
+			ret = child;
+			found = true;
+			return;
+		}
+
+		tmp = child;
+	}
+}
+
+void ABC_get_vertex_cache(const char *filepath, float time, void *verts,
+                          int max_verts, const char *sub_obj, int is_mverts)
+{
+	IArchive *archive = abc_manager->getArchive(filepath);
 
 	if (!archive || !archive->valid()) {
 		return;
 	}
 
-	IObject iObj = archive->getTop();
+	IObject object = archive->getTop();
 
-	if (!iObj.valid()) {
+	if (!object.valid()) {
 		return;
 	}
 
-	MeshMap::iterator mit = abc_manager->mesh_map_cache.find(key);
+	IObject mesh_obj;
+	bool found = false;
 
-	if (mit == abc_manager->mesh_map_cache.end()) {
-		AbcInfo info;
-		info.filename 	= file_path;
-		info.sub_object = sub_object;
-		visitObject(iObj, info.schema_cache, sub_object);
-		abc_manager->mesh_map_cache[key] 	= info;
-	}
-	else if (mit->second.filename != file_path || mit->second.sub_object != sub_object) {
-		if (mit->second.mesh)
-			BKE_mesh_free(mit->second.mesh, true);
-		AbcInfo info;
-		info.filename 	= file_path;
-		info.sub_object = sub_object;
-		visitObject(iObj, info.schema_cache, sub_object);
-		abc_manager->mesh_map_cache[key] 	= info;
+	find_mesh_object(object, mesh_obj, sub_obj, found);
+
+	if (!found) {
+		return;
 	}
 
+	IPolyMesh mesh(mesh_obj, kWrapExisting);
+	IPolyMeshSchema schema = mesh.getSchema();
 	ISampleSelector sample_sel(time);
-	std::vector< std::pair<IPolyMeshSchema, IObject> >::iterator it;
 
-	size_t vtx_count = 0;
-	for (it = abc_manager->mesh_map_cache[key].schema_cache.begin(); it != abc_manager->mesh_map_cache[key].schema_cache.end(); ++it) {
-		if (is_mverts)
-			vtx_count = updatePoints(*it, sample_sel, (MVert*)verts, vtx_count, max_verts, NULL);
-		else {
-			float (*vcos)[3] = static_cast<float (*)[3]>(verts);
-			vtx_count = updatePoints(*it, sample_sel, NULL, vtx_count, max_verts, vcos);
-		}
+	if (is_mverts) {
+		updatePoints(std::pair<IPolyMeshSchema, IObject>(schema, mesh_obj),
+		             sample_sel, (MVert *)verts, 0, max_verts, NULL);
+	}
+	else {
+		float (*vcos)[3] = static_cast<float (*)[3]>(verts);
+		updatePoints(std::pair<IPolyMeshSchema, IObject>(schema, mesh_obj),
+		             sample_sel, NULL, 0, max_verts, vcos);
 	}
 }
 
 int ABC_check_subobject_valid(const char *name, const char *sub_obj)
 {
-	if (name[0] == '\0')
+	if ((name[0] == '\0') || (sub_obj[0] == '\0')) {
 		return 0;
+	}
 
 	IArchive *archive = abc_manager->getArchive(name);
 
 	if (!archive) {
-		std::cerr << "Couldn't find archive!\n";
 		return 0;
 	}
 
 	if (!archive->valid()) {
-		std::cerr << "Alembic archive is not valid!\n";
-		return 0;
-	}
-
-	if (sub_obj[0] == '\0') {
-		std::cerr << "Subobject name is empty!\n";
 		return 0;
 	}
 
 	bool found = false;
-	abc_manager->getObject(name, sub_obj, found);
+	IObject ob;
+	find_mesh_object(archive->getTop(), ob, sub_obj, found);
 
-	return found;
+	return (found && ob.valid());
 }
 
 int ABC_export(Scene *sce, const char *filename,

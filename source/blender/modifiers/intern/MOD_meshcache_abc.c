@@ -37,9 +37,9 @@
 bool MOD_meshcache_read_abc_index(const char *filepath, const char *sub_object,
                                   float (*vertexCos)[3], const int verts_tot,
                                   const int index, const float factor,
-                                  const char **err_str, ModifierData *md)
+                                  const char **err_str)
 {
-    ABC_get_vertex_cache(filepath, factor, (void *)md, vertexCos, verts_tot, sub_object, 0);
+    ABC_get_vertex_cache(filepath, factor, vertexCos, verts_tot, sub_object, 0);
 
 	UNUSED_VARS(index, err_str);
 	return true;
@@ -48,15 +48,15 @@ bool MOD_meshcache_read_abc_index(const char *filepath, const char *sub_object,
 bool MOD_meshcache_read_abc_frame(const char *filepath, const char *sub_object,
                                   float (*vertexCos)[3], const int verts_tot, const char interp,
                                   const float frame,
-                                  const char **err_str, ModifierData *md)
+                                  const char **err_str)
 {
-	return MOD_meshcache_read_abc_index(filepath, sub_object, vertexCos, verts_tot, interp, frame, err_str, md);
+	return MOD_meshcache_read_abc_index(filepath, sub_object, vertexCos, verts_tot, interp, frame, err_str);
 }
 
 bool MOD_meshcache_read_abc_times(const char *filepath, const char *sub_object,
                                   float (*vertexCos)[3], const int verts_tot, const char interp,
                                   const float time, const float fps, const char time_mode,
-                                  const char **err_str, ModifierData *md)
+                                  const char **err_str)
 {
 	if (!ABC_check_subobject_valid(filepath, sub_object)) {
 		return false;
@@ -78,5 +78,5 @@ bool MOD_meshcache_read_abc_times(const char *filepath, const char *sub_object,
 
 	UNUSED_VARS(fps);
 
-	return MOD_meshcache_read_abc_frame(filepath, sub_object, vertexCos, verts_tot, interp, frame, err_str, md);
+	return MOD_meshcache_read_abc_frame(filepath, sub_object, vertexCos, verts_tot, interp, frame, err_str);
 }

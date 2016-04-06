@@ -109,7 +109,7 @@ static bool isDisabled(ModifierData *md, int UNUSED(useRenderParams))
 
 static void meshcache_do(
         MeshCacheModifierData *mcmd, Object *ob, DerivedMesh *UNUSED(dm),
-        float (*vertexCos_Real)[3], int numVerts, ModifierData *md)
+        float (*vertexCos_Real)[3], int numVerts)
 {
 	const bool use_factor = mcmd->factor < 1.0f;
 	float (*vertexCos_Store)[3] = (use_factor || (mcmd->deform_mode == MOD_MESHCACHE_DEFORM_INTEGRATE)) ?
@@ -195,7 +195,7 @@ static void meshcache_do(
 			/* TODO(kevin): we pass the modifierdata since it is used as a key
 			 * to map abc archives to modifiers */
 			ok = MOD_meshcache_read_abc_times(filepath, mcmd->sub_object, vertexCos, numVerts,
-			                                  mcmd->interp, time, fps, mcmd->time_mode, &err_str, md);
+			                                  mcmd->interp, time, fps, mcmd->time_mode, &err_str);
 			break;
 		default:
 			ok = false;
@@ -305,7 +305,7 @@ static void deformVerts(ModifierData *md, Object *ob,
 {
 	MeshCacheModifierData *mcmd = (MeshCacheModifierData *)md;
 
-	meshcache_do(mcmd, ob, derivedData, vertexCos, numVerts, md);
+	meshcache_do(mcmd, ob, derivedData, vertexCos, numVerts);
 }
 
 static void deformVertsEM(
@@ -314,7 +314,7 @@ static void deformVertsEM(
 {
 	MeshCacheModifierData *mcmd = (MeshCacheModifierData *)md;
 
-	meshcache_do(mcmd, ob, derivedData, vertexCos, numVerts, md);
+	meshcache_do(mcmd, ob, derivedData, vertexCos, numVerts);
 }
 
 
