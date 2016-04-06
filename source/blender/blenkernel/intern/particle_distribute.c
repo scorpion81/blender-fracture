@@ -822,6 +822,7 @@ static int psys_thread_context_init_distribute(ParticleThreadContext *ctx, Parti
 			else {
 				dm = CDDM_from_mesh((Mesh*)ob->data);
 			}
+			DM_ensure_tessface(dm);
 
 			distribute_grid(dm,psys);
 
@@ -1029,7 +1030,7 @@ static int psys_thread_context_init_distribute(ParticleThreadContext *ctx, Parti
 		double step, pos;
 		
 		step= (totpart < 2) ? 0.5 : 1.0/(double)totpart;
-		pos= 1e-6; /* tiny offset to avoid zero weight face */
+		pos = (from == PART_FROM_VERT) ? 0.0 : 1e-6; /* tiny offset to avoid zero weight face */
 		i= 0;
 
 		for (p=0; p<totpart; p++, pos+=step) {
