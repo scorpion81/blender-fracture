@@ -43,6 +43,8 @@ extern "C" {
 #include "BKE_modifier.h"
 #include "BKE_object.h"
 
+#include "ED_object.h"
+
 #include "WM_api.h"
 #include "WM_types.h"
 }
@@ -1049,7 +1051,7 @@ bool AbcMeshReader::valid() const
 	return m_schema.valid();
 }
 
-void AbcMeshReader::readObject(Main *bmain, Scene *scene, float time, Object *parent)
+void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time, Object *parent)
 {
 	Mesh *blender_mesh = BKE_mesh_add(bmain, m_data_name.c_str());
 
@@ -1165,39 +1167,10 @@ void AbcMeshReader::readObject(Main *bmain, Scene *scene, float time, Object *pa
 	}
 #endif
 
-	// Compute edge array is done here
 	BKE_mesh_validate(blender_mesh, false, false);
 
 	m_object = BKE_object_add(bmain, scene, OB_MESH, m_object_name.c_str());
 	m_object->data = blender_mesh;
-
-	if (parent) {
-		m_object->parent = parent;
-
-		DAG_id_tag_update(&m_object->id, OB_RECALC_OB);
-		DAG_relations_tag_update(bmain);
-		WM_main_add_notifier(NC_OBJECT | ND_PARENT, m_object);
-	}
-
-	// setup object matrix
-	const Alembic::AbcGeom::MetaData &md = m_iobject.getMetaData();
-
-	if (Alembic::AbcGeom::IXformSchema::matches(md)) {
-		Alembic::AbcGeom::IXform x(m_iobject, Alembic::AbcGeom::kWrapExisting);
-		Alembic::AbcGeom::IXformSchema &schema(x.getSchema());
-
-		if (schema.valid()) {
-			Alembic::AbcGeom::ISampleSelector xform_sample(time);
-			Alembic::AbcGeom::XformSample xs;
-			schema.get(xs, xform_sample);
-
-			for (int i = 0; i < 4; ++i) {
-				for (int j = 0; j < 4; j++) {
-					m_object->obmat[i][j] = xs.getMatrix()[i][j];
-				}
-			}
-		}
-	}
 
 	// TODO
 #if 0

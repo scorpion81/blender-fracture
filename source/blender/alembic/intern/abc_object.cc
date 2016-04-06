@@ -31,6 +31,10 @@ extern "C" {
 
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
+
+#include "DNA_object_types.h"
+
+#include "BKE_depsgraph.h"
 }
 
 AbcObjectWriter::AbcObjectWriter(Object *obj, AbcExportOptions &opts)
@@ -333,4 +337,33 @@ const Alembic::Abc::IObject &AbcObjectReader::iobject() const
 Object *AbcObjectReader::object() const
 {
 	return m_object;
+}
+
+void AbcObjectReader::readObjectMatrix(const float time) const
+{
+	const Alembic::AbcGeom::MetaData &md = m_iobject.getParent().getMetaData();
+
+	if (!Alembic::AbcGeom::IXformSchema::matches(md)) {
+		return;
+	}
+
+	Alembic::AbcGeom::IXform x(m_iobject.getParent(), Alembic::AbcGeom::kWrapExisting);
+	Alembic::AbcGeom::IXformSchema &schema(x.getSchema());
+
+	if (schema.valid()) {
+		Alembic::AbcGeom::ISampleSelector xform_sample(time);
+		Alembic::AbcGeom::XformSample xs;
+		schema.get(xs, xform_sample);
+
+		for (int i = 0; i < 3; ++i) {
+			m_object->loc[i] = xs.getTranslation()[i];
+			m_object->size[i] = xs.getScale()[i];
+		}
+
+		m_object->rot[0] = xs.getXRotation();
+		m_object->rot[1] = xs.getYRotation();
+		m_object->rot[2] = xs.getZRotation();
+
+		DAG_id_tag_update(&(m_object->id), OB_RECALC_OB);
+	}
 }

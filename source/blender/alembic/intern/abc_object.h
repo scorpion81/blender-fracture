@@ -104,7 +104,9 @@ public:
 	Object *object() const;
 
 	virtual bool valid() const = 0;
-	virtual void readObject(Main *bmain, Scene *scene, float time, Object *parent) = 0;
+	virtual void readObjectData(Main *bmain, Scene *scene, float time, Object *parent) = 0;
+
+	void readObjectMatrix(const float time) const;
 };
 
 #endif

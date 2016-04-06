@@ -210,7 +210,7 @@ bool AbcNurbsReader::valid() const
 	return m_schemas[0].first.valid();
 }
 
-void AbcNurbsReader::readObject(Main *bmain, Scene *scene, float time, Object *parent)
+void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time, Object *parent)
 {
 	Curve *cu = static_cast<Curve *>(BKE_curve_add(bmain, "abc_curve", OB_SURF));
 

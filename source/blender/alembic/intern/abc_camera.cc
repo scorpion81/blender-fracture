@@ -115,7 +115,7 @@ bool AbcCameraReader::valid() const
 	return m_schema.valid();
 }
 
-void AbcCameraReader::readObject(Main *bmain, Scene *scene, float time, Object *parent)
+void AbcCameraReader::readObjectData(Main *bmain, Scene *scene, float time, Object *parent)
 {
 	Camera *bcam = static_cast<Camera *>(BKE_camera_add(bmain, "abc_camera"));
 
