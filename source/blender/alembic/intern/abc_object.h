@@ -99,6 +99,8 @@ public:
 
 	void addChild(AbcObjectReader *child);
 
+	const Alembic::Abc::IObject &iobject() const;
+
 	Object *object() const;
 
 	virtual bool valid() const = 0;

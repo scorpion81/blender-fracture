@@ -296,18 +296,24 @@ AbcObjectReader::AbcObjectReader(const Alembic::Abc::IObject &object, int from_f
 	std::vector<std::string> parts;
 	split(m_name, "/", parts);
 
-	assert(parts.size() >= 2);
+	/* XXX - used to be an assert, but fails with NullReader */
+	if (parts.size() >= 2) {
+		m_object_name = parts[parts.size() - 2];
+		m_data_name = parts[parts.size() - 1];
 
-	m_object_name = parts[parts.size() - 2];
-	m_data_name = parts[parts.size() - 1];
-
-	if (mat3_from_axis_conversion(from_forward, from_up, 1, 2, m_conversion_mat)) {
-		m_do_convert_mat = true;
+		if (mat3_from_axis_conversion(from_forward, from_up, 1, 2, m_conversion_mat)) {
+			m_do_convert_mat = true;
+		}
 	}
 }
 
 AbcObjectReader::~AbcObjectReader()
-{}
+{
+	std::vector<AbcObjectReader *>::iterator iter;
+	for (iter = m_children.begin(); iter != m_children.end(); ++iter) {
+		delete *iter;
+	}
+}
 
 std::vector<AbcObjectReader *> AbcObjectReader::children() const
 {
@@ -317,6 +323,11 @@ std::vector<AbcObjectReader *> AbcObjectReader::children() const
 void AbcObjectReader::addChild(AbcObjectReader *child)
 {
 	m_children.push_back(child);
+}
+
+const Alembic::Abc::IObject &AbcObjectReader::iobject() const
+{
+	return m_iobject;
 }
 
 Object *AbcObjectReader::object() const

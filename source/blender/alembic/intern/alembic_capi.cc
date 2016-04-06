@@ -54,6 +54,25 @@ extern "C" {
 #include "BLI_listbase.h"
 #include "BLI_string.h"
 #include "BLI_threads.h"
+
+#include "WM_api.h"
+#include "WM_types.h"
+}
+
+static Object *find_object(bContext *C, const std::string &name)
+{
+	Scene *scene = CTX_data_scene(C);
+	Base *base;
+
+	for (base = static_cast<Base *>(scene->base.first); base; base = base->next) {
+		Object *ob = base->object;
+
+		if (ob->id.name + 2 == name) {
+			return ob;
+		}
+	}
+
+	return NULL;
 }
 
 using namespace Alembic::AbcGeom;
@@ -812,99 +831,74 @@ int ABC_export(Scene *sce, const char *filename,
 	return BL_ABC_NO_ERR;
 }
 
-#if 0
-static Object *create_hierarchy(bContext *C, IArchive */*archive*/, const std::vector<std::string> &parts)
-{
-	Object *parent = NULL;
-	std::string sub_object;
-
-	std::vector<std::string>::const_iterator iter;
-	for (iter = parts.begin(); iter != parts.end(); ++iter) {
-		sub_object = "/" + *iter;
-
-		Object *ob = find_object(CTX_data_scene(C), sub_object, parent);
-
-		if (ob) {
-			parent = ob;
-		}
-
-		if (sub_object == "/") {
-			parent = NULL;
-			continue;
-		}
-
-		Object *empty = BKE_object_add(CTX_data_main(C), CTX_data_scene(C), OB_EMPTY, sub_object.c_str());
-		empty->parent = parent;
-
-		DAG_id_tag_update(&empty->id, OB_RECALC_OB);
-	}
-
-	return parent;
-}
-#endif
-
-static void visit_object(const IObject &object, std::vector<AbcObjectReader *> &readers,
-                         AbcObjectReader *reader, int from_forward, int from_up)
+static void visit_object(const IObject &object,
+                         std::vector<AbcObjectReader *> &readers,
+                         int from_forward, int from_up)
 {
 	if (!object.valid()) {
 		return;
 	}
 
 	for (int i = 0; i < object.getNumChildren(); ++i) {
-		IObject child(object, object.getChildHeader(i).getName());
+		IObject child = object.getChild(i);
 
 		if (!child.valid()) {
 			continue;
 		}
 
+		AbcObjectReader *reader = NULL;
+
 		const MetaData &md = child.getMetaData();
 
 		if (IPolyMesh::matches(md)) {
-			if (!reader) {
-				reader = new AbcMeshReader(child, from_forward, from_up);
-				readers.push_back(reader);
-			}
-			else {
-				reader->addChild(new AbcMeshReader(child, from_forward, from_up));
-			}
+			reader = new AbcMeshReader(child, from_forward, from_up);
 		}
 		else if (INuPatch::matches(md)) {
-			if (!reader) {
-				reader = new AbcNurbsReader(child, from_forward, from_up);
-				readers.push_back(reader);
-			}
-			else {
-				reader->addChild(new AbcNurbsReader(child, from_forward, from_up));
-			}
+			reader = new AbcNurbsReader(child, from_forward, from_up);
 		}
 		else if (ICameraSchema::matches(md)) {
-			if (!reader) {
-				reader = new AbcCameraReader(child, from_forward, from_up);
-				readers.push_back(reader);
-			}
-			else {
-				reader->addChild(new AbcCameraReader(child, from_forward, from_up));
-			}
+			reader = new AbcCameraReader(child, from_forward, from_up);
 		}
 
-		visit_object(child, readers, reader, from_forward, from_up);
+		if (reader) {
+			readers.push_back(reader);
+		}
+
+		visit_object(child, readers, from_forward, from_up);
 	}
 }
 
-static void create_readers(IArchive *archive, std::vector<AbcObjectReader *> &readers,
+static void create_readers(IArchive *archive,
+                           std::vector<AbcObjectReader *> &readers,
                            int from_forward, int from_up)
 {
-	IObject root = archive->getTop();
+	visit_object(archive->getTop(), readers, from_forward, from_up);
+}
 
-	std::cerr << "Number of object in archive: " << root.getNumChildren() << "\n";
+static void create_hierarchy(bContext *C, AbcObjectReader *root)
+{
+	const IObject &iobjet = root->iobject();
+	const std::string &full_name = iobjet.getFullName();
 
-	for (int i = 0; i < root.getNumChildren(); ++i) {
-		IObject child = IObject(root, root.getChildHeader(i).getName());
+	std::vector<std::string> parts;
+	split(full_name, "/", parts);
 
-		std::cerr << "Object: " << i << ", chlidren: " << child.getNumChildren() << "\n";
+	Object *parent = NULL;
+
+	std::vector<std::string>::iterator iter;
+	for (iter = parts.begin(); iter != parts.end(); ++iter) {
+		parent = find_object(C, *iter);
+
+		if (parent != NULL && root->object() != parent) {
+			Object *ob = root->object();
+			ob->parent = parent;
+
+			DAG_id_tag_update(&ob->id, OB_RECALC_OB);
+			DAG_relations_tag_update(CTX_data_main(C));
+			WM_main_add_notifier(NC_OBJECT | ND_PARENT, ob);
+			break;
+		}
 	}
-
-	visit_object(archive->getTop(), readers, NULL, from_forward, from_up);
 }
 
 void ABC_import(bContext *C, const char *filename, int from_forward, int from_up)
@@ -927,19 +921,10 @@ void ABC_import(bContext *C, const char *filename, int from_forward, int from_up
 		if (reader->valid()) {
 			reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f, NULL);
 		}
+	}
 
-		std::vector<AbcObjectReader *> children = reader->children();
-		std::vector<AbcObjectReader *>::iterator child_iter;
-
-		std::cerr << "Number of children: " << children.size() << "\n";
-
-		for (child_iter = children.begin(); child_iter != children.end(); ++child_iter) {
-			AbcObjectReader *child_reader = *iter;
-
-			if (child_reader->valid()) {
-				child_reader->readObject(CTX_data_main(C), CTX_data_scene(C), 0.0f, reader->object());
-			}
-		}
+	for (iter = readers.begin(); iter != readers.end(); ++iter) {
+		create_hierarchy(C, *iter);
 	}
 
 	for (iter = readers.begin(); iter != readers.end(); ++iter) {
