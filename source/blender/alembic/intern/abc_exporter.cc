@@ -447,9 +447,7 @@ void AbcExporter::createShapeWriter(Object *ob, Object *dupliObParent)
 
 		if (enable_hair && psys->part && (psys->part->type == PART_HAIR)) {
 			m_options.export_child_hairs = enable_hair_child;
-
 			m_shapes.push_back(new AbcHairWriter(m_scene, ob, xform, m_shape_sampling_index, m_options, psys));
-			m_shapes.back()->setRotateMatrix(true);
 		}
 	}
 
@@ -464,7 +462,6 @@ void AbcExporter::createShapeWriter(Object *ob, Object *dupliObParent)
 				}
 
 				m_shapes.push_back(new AbcMeshWriter(m_scene, ob, xform, m_shape_sampling_index, m_options));
-				m_shapes.back()->setRotateMatrix(true);
 			}
 
 			break;
@@ -479,7 +476,6 @@ void AbcExporter::createShapeWriter(Object *ob, Object *dupliObParent)
 				}
 
 				m_shapes.push_back(new AbcNurbsWriter(m_scene, ob, xform, m_shape_sampling_index, m_options));
-				m_shapes.back()->setRotateMatrix(true);
 			}
 
 			break;

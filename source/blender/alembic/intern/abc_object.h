@@ -44,7 +44,6 @@ protected:
     std::vector< std::pair<std::string, IDProperty *> > m_props;
 
     bool m_first_frame;
-    bool m_rotate_matrix;
 
 public:
     AbcObjectWriter(Object *obj, AbcExportOptions &opts);
@@ -55,9 +54,6 @@ public:
     virtual Imath::Box3d bounds() const;
 
     void write();
-
-    void setRotateMatrix(bool s) { m_rotate_matrix = s; }
-    bool getRotateMatrix() { return m_rotate_matrix; }
 
 private:
     virtual void do_write() = 0;

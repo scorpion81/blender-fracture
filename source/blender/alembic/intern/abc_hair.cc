@@ -208,12 +208,12 @@ void AbcHairWriter::do_write()
 						uv_values.push_back(Imath::V2f(r_uv[0], r_uv[1]));
 
 						psys_interpolate_face(mverts, face, tface, NULL, mapfw, vec, tmpnor, NULL, NULL, NULL, NULL);
-						if (m_rotate_matrix) {
-							norm_values.push_back(Imath::V3f(tmpnor[0],tmpnor[2], -tmpnor[1]));
+
+						if (m_options.do_convert_axis) {
+							mul_m3_v3(m_options.convert_matrix, tmpnor);
 						}
-						else {
-							norm_values.push_back(Imath::V3f(tmpnor[0],tmpnor[1], tmpnor[2]));
-						}
+
+						norm_values.push_back(Imath::V3f(tmpnor[0], tmpnor[1], tmpnor[2]));
 					}
 				}
 

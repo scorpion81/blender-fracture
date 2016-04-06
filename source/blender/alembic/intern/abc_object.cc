@@ -53,7 +53,6 @@ AbcObjectWriter::AbcObjectWriter(Object *obj, AbcExportOptions &opts)
     : m_object(obj)
     , m_options(opts)
     , m_first_frame(true)
-    , m_rotate_matrix(false)
 {}
 
 AbcObjectWriter::~AbcObjectWriter()
