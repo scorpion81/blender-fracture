@@ -776,19 +776,22 @@ int ABC_check_subobject_valid(const char *name, const char *sub_obj)
 	return found;
 }
 
+#include "BLI_math.h"
+
 int ABC_export(Scene *sce, const char *filename,
-                double start, double end,
-                double xformstep, double geomstep,
-                double shutter_open, double shutter_close,
-                int selected_only,
-                int uvs, int normals,
-                int vcolors,
-                int force_meshes,
-                int flatten_hierarchy,
-                int custom_props_as_geodata,
-                int vislayers, int renderable,
-                int facesets, int matindices,
-                int use_subdiv_schema, bool ogawa, bool packuv)
+               double start, double end,
+               double xformstep, double geomstep,
+               double shutter_open, double shutter_close,
+               int selected_only,
+               int uvs, int normals,
+               int vcolors,
+               int force_meshes,
+               int flatten_hierarchy,
+               int custom_props_as_geodata,
+               int vislayers, int renderable,
+               int facesets, int matindices,
+               int use_subdiv_schema, bool ogawa, bool packuv,
+               int to_forward, int to_up)
 {
 	try {
 		AbcExportOptions opts(sce);
@@ -814,8 +817,14 @@ int ABC_export(Scene *sce, const char *filename,
 		opts.export_face_sets = facesets;
 		opts.export_mat_indices = matindices;
 
-		if (opts.startframe > opts.endframe)
+		if (opts.startframe > opts.endframe) {
 			std::swap(opts.startframe, opts.endframe);
+		}
+
+		opts.do_convert_axis = false;
+		if (mat3_from_axis_conversion(1, 2, to_forward, to_up, opts.convert_matrix)) {
+			opts.do_convert_axis = true;
+		}
 
 		AbcExporter exporter(sce, filename, opts);
 		exporter();

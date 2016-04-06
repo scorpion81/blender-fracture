@@ -163,17 +163,19 @@ void AbcHairWriter::do_write()
 
 			int steps = path->segments + 1;
 			hvertices.push_back(steps);
-			for (k=0; k < steps; k++) {
+
+			for (k = 0; k < steps; ++k) {
 				float vert[3];
 				copy_v3_v3(vert, path->co);
 				mul_m4_v3(inv_mat, vert);
-				if (m_rotate_matrix) {
-					verts.push_back(Alembic::AbcGeom::V3f(vert[0], vert[2], -vert[1]));
+
+				if (m_options.do_convert_axis) {
+					mul_m3_v3(m_options.convert_matrix, vert);
 				}
-				else {
-					verts.push_back(Alembic::AbcGeom::V3f(vert[0], vert[1], vert[2]));
-				}
-				path++;
+
+				verts.push_back(Alembic::AbcGeom::V3f(vert[0], vert[1], vert[2]));
+
+				++path;
 			}
 		}
 

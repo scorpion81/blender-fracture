@@ -32,6 +32,7 @@ extern "C" {
 #include "DNA_object_types.h"
 
 #include "BLI_listbase.h"
+#include "BLI_math.h"
 #include "BLI_string.h"
 
 #include "BKE_curve.h"
@@ -82,9 +83,12 @@ bool AbcNurbsWriter::isAnimated() const
 	return (cu->key != NULL);
 }
 
-static
-void recompute_pnts_cyclic(const BPoint *bps, const int num_u, const int num_v, const int add_u, const int add_v,
-						   std::vector<Alembic::Abc::V3f>& pos, std::vector<float>& posWeight, bool rotate)
+static void recompute_pnts_cyclic(const BPoint *bps,
+                                  const int num_u, const int num_v,
+                                  const int add_u, const int add_v,
+                                  std::vector<Alembic::Abc::V3f> &pos,
+                                  std::vector<float> &posWeight,
+                                  bool rotate, float rot_mat[3][3])
 {
 	const int new_u = num_u;// + add_u;
 	const int new_v = num_v;// + add_v;
@@ -98,19 +102,28 @@ void recompute_pnts_cyclic(const BPoint *bps, const int num_u, const int num_v, 
 	for (int u = 0; u < new_u; ++u) {
 		pnts[u].resize(new_v);
 
-		for (int v = 0; v < new_v; ++v) {
-			const BPoint& bp = bps[u + (v * new_u)];
-			pnts[u][v] = Imath::Vec4<float>(bp.vec[0], bp.vec[1], bp.vec[2], bp.vec[3]);
+		if (rotate) {
+			for (int v = 0; v < new_v; ++v) {
+				const BPoint& bp = bps[u + (v * new_u)];
+				float vert[3];
+				copy_v3_v3(vert, bp.vec);
+				mul_m3_v3(rot_mat, vert);
+
+				pnts[u][v] = Imath::Vec4<float>(vert[0], vert[1], vert[2], bp.vec[3]);
+			}
+		}
+		else {
+			for (int v = 0; v < new_v; ++v) {
+				const BPoint& bp = bps[u + (v * new_u)];
+				pnts[u][v] = Imath::Vec4<float>(bp.vec[0], bp.vec[1], bp.vec[2], bp.vec[3]);
+			}
 		}
 	}
 
 	for (int u = 0; u < new_u; ++u) {
 		for (int v = 0; v < new_v; ++v) {
 			Imath::Vec4<float>& pnt = pnts[u][v];
-			if (!rotate)
-				pos.push_back(Alembic::Abc::V3f(pnt.x, pnt.y, pnt.z));
-			else
-				pos.push_back(Alembic::Abc::V3f(pnt.x, pnt.z, -pnt.y));
+			pos.push_back(Alembic::Abc::V3f(pnt.x, pnt.y, pnt.z));
 			posWeight.push_back(pnt.z);
 		}
 	}
@@ -163,7 +176,9 @@ void AbcNurbsWriter::do_write()
 
 		std::vector<Alembic::Abc::V3f> sampPos;
 		std::vector<float> sampPosWeights;
-		recompute_pnts_cyclic(nu->bp, nu->pntsu, nu->pntsv, add_u, add_v, sampPos, sampPosWeights, m_rotate_matrix);
+		recompute_pnts_cyclic(nu->bp, nu->pntsu, nu->pntsv, add_u, add_v,
+		                      sampPos, sampPosWeights,
+		                      m_options.do_convert_axis, m_options.convert_matrix);
 
 		nuSamp.setPositions(sampPos);
 		nuSamp.setPositionWeights(sampPosWeights);

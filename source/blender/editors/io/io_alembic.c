@@ -96,6 +96,8 @@ static int wm_alembic_export_exec(bContext *C, wmOperator *op)
 	bool subdiv_schem = RNA_boolean_get(op->ptr, "subdiv_schema");
 	bool ogawa = RNA_boolean_get(op->ptr, "ogawa");
 	bool packuv = RNA_boolean_get(op->ptr, "packuv");
+	const int to_forward = RNA_enum_get(op->ptr, "to_forward");
+	const int to_up = RNA_enum_get(op->ptr, "to_up");
 
 	int result = ABC_export(CTX_data_scene(C), filename,
 	                        start, end,
@@ -105,7 +107,7 @@ static int wm_alembic_export_exec(bContext *C, wmOperator *op)
 	                        selected, uvs, normals, vcolors,
 	                        forcemeshes, flatten, geoprops,
 	                        vislayers, renderable, facesets, matindices,
-	                        subdiv_schem, ogawa, packuv);
+	                        subdiv_schem, ogawa, packuv, to_forward, to_up);
 
 	switch (result) {
 		case BL_ABC_UNKNOWN_ERROR:
@@ -130,6 +132,9 @@ void WM_OT_alembic_export(wmOperatorType *ot)
 
 	RNA_def_int(ot->srna, "start", 1, INT_MIN, INT_MAX, "Start frame", "Start Frame", INT_MIN, INT_MAX);
 	RNA_def_int(ot->srna, "end", 1, INT_MIN, INT_MAX, "End frame", "End Frame", INT_MIN, INT_MAX);
+
+	RNA_def_enum(ot->srna, "to_forward", rna_enum_object_axis_items, 0, "Forward Axis", "");
+	RNA_def_enum(ot->srna, "to_up", rna_enum_object_axis_items, 0, "Up Axis", "");
 
 	RNA_def_int(ot->srna, "xsamples", 1, 1, 128, "Xform samples / frame", "Transform samples per frame", 1, 128);
 	RNA_def_int(ot->srna, "gsamples", 1, 1, 128, "Geom samples / frame", "Geometry samples per frame", 1, 128);

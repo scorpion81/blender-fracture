@@ -37,6 +37,7 @@
 #include "BLI_path_util.h"
 
 #include "RNA_define.h"
+#include "RNA_enum_types.h"
 
 #include "DNA_anim_types.h"
 #include "DNA_object_types.h"
@@ -166,31 +167,43 @@ static void rna_Scene_ray_cast(
 #ifdef WITH_ALEMBIC
 #include "../../alembic/ABC_alembic.h"
 
-static void rna_Scene_alembic_export( Scene *sce, const char *filepath,
-										int start, int end,
-										int xformsamples, int geomsamples,
-										float shutter_open, float shutter_close,
-										int selected_only,
-										int uvs, int normals,
-										int vcolors,
-										int force_meshes,
-										int flatten_hierarchy,
-										int custom_props_as_geodata,
-										int vislayers, int renderable,
-										int facesets, int matindices, int subdiv_schema,
-										int ogawa, int packuv
-										)
+static void rna_Scene_alembic_export(
+        Scene *scene,
+        const char *filepath,
+        int start,
+        int end,
+        int xformsamples,
+        int geomsamples,
+        float shutter_open,
+        float shutter_close,
+        int selected_only,
+        int uvs,
+        int normals,
+        int vcolors,
+        int force_meshes,
+        int flatten_hierarchy,
+        int custom_props_as_geodata,
+        int vislayers,
+        int renderable,
+        int facesets,
+        int matindices,
+        int subdiv_schema,
+        int ogawa,
+        int packuv,
+        int to_forward,
+        int to_up)
 {
 // We have to enable allow_threads, because we may change scene frame number during export
 #ifdef WITH_PYTHON
 	BPy_BEGIN_ALLOW_THREADS;
 #endif
 
-	ABC_export( sce, filepath, start, end, 1.0 / xformsamples, 1.0 / geomsamples,
-				shutter_open, shutter_close,
-				selected_only, uvs, normals, vcolors,
-				force_meshes, flatten_hierarchy, custom_props_as_geodata,
-				vislayers, renderable, facesets, matindices, subdiv_schema, ogawa, packuv);
+	ABC_export(scene, filepath, start, end, 1.0 / xformsamples, 1.0 / geomsamples,
+	           shutter_open, shutter_close,
+	           selected_only, uvs, normals, vcolors,
+	           force_meshes, flatten_hierarchy, custom_props_as_geodata,
+	           vislayers, renderable, facesets, matindices, subdiv_schema,
+	           ogawa, packuv, to_forward, to_up);
 
 #ifdef WITH_PYTHON
 	BPy_END_ALLOW_THREADS;
@@ -349,6 +362,8 @@ void RNA_api_scene(StructRNA *srna)
 	RNA_def_boolean(func, "subdiv_schema"	, 0, "Use Alembic subdivision Schema", "Use Alembic subdivision Schema");
 	RNA_def_boolean(func, "ogawa"		, 0, "Export Ogawa", "Export as Ogawa format");
 	RNA_def_boolean(func, "packuv"		, 0, "Export with packed UV islands", "Export with packed UV islands");
+	RNA_def_enum(func, "to_forward", rna_enum_object_axis_items, 0, "Forward Axis", "");
+	RNA_def_enum(func, "to_up", rna_enum_object_axis_items, 0, "Up Axis", "");
 #endif
 }
 

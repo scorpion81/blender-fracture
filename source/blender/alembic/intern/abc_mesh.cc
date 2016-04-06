@@ -403,11 +403,12 @@ void AbcMeshWriter::getPoints(DerivedMesh *dm, std::vector<float> &points)
 
 	MVert *verts = dm->getVertArray(dm);
 
-	if (m_rotate_matrix) {
+	if (m_options.do_convert_axis) {
+		float vert[3];
+
 		for (int i = 0, e = dm->getNumVerts(dm); i < e; ++i) {
-			points.push_back(verts[i].co[0]);
-			points.push_back(verts[i].co[2]);
-			points.push_back(-verts[i].co[1]);
+			copy_v3_v3(vert, verts[i].co);
+			mul_m3_v3(m_options.convert_matrix, vert);
 		}
 	}
 	else {
@@ -837,11 +838,16 @@ void AbcMeshWriter::getVelocities(DerivedMesh *dm,
 	if (fss->meshVelocities) {
 		float *meshVels = reinterpret_cast<float *>(fss->meshVelocities);
 
-		if (m_rotate_matrix) {
+		if (m_options.do_convert_axis) {
+			float vel[3];
+
 			for (int i = 0; i < totverts; ++i) {
-				vels.push_back(meshVels[0]);
-				vels.push_back(meshVels[2]);
-				vels.push_back(-meshVels[1]);
+				copy_v3_v3(vel, meshVels);
+				mul_m3_v3(m_options.convert_matrix, vel);
+
+				vels.push_back(vels[0]);
+				vels.push_back(vels[1]);
+				vels.push_back(vels[2]);
 				meshVels += 3;
 			}
 		}

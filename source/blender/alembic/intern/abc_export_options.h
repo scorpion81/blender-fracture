@@ -60,6 +60,9 @@ struct AbcExportOptions {
 	bool export_ogawa;
 	bool pack_uv;
 
+	bool do_convert_axis;
+	float convert_matrix[3][3];
+
 private:
 	Scene *m_scene;
 };
