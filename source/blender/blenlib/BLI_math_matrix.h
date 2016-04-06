@@ -268,9 +268,6 @@ void BLI_space_transform_invert_normal(const struct SpaceTransform *data, float 
 void print_m3(const char *str, float M[3][3]);
 void print_m4(const char *str, float M[3][4]);
 
-void rotate_m3_yup_zup(float rot_x_mat[3][3], float rot_y_mat[3][3], float rot_z_mat[3][3], const float euler[3]);
-void rotate_m3_zup_yup(float rot_x_mat[3][3], float rot_y_mat[3][3], float rot_z_mat[3][3], const float euler[3]);
-
 #define print_m3_id(M) print_m3(STRINGIFY(M), M)
 #define print_m4_id(M) print_m4(STRINGIFY(M), M)
 
