@@ -86,12 +86,12 @@ using Alembic::AbcGeom::kVertexScope;
 using Alembic::AbcGeom::kWrapExisting;
 using Alembic::AbcGeom::UInt32ArraySample;
 
-AbcMeshWriter::AbcMeshWriter(Scene *sce,
-                             Object *obj,
+AbcMeshWriter::AbcMeshWriter(Scene *scene,
+                             Object *ob,
                              AbcTransformWriter *parent,
                              uint32_t timeSampling,
                              AbcExportOptions &opts)
-    : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
+    : AbcShapeWriter(scene, ob, parent, timeSampling, opts)
 {
 	std::string name = get_object_name(m_object);
 	name.append("Shape");

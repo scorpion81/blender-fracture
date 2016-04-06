@@ -25,8 +25,6 @@
 
 #include "abc_shape.h"
 
-class RenderData;
-
 class AbcCameraWriter : public AbcShapeWriter {
 	Alembic::AbcGeom::OCameraSchema m_camera_schema;
     Alembic::AbcGeom::CameraSample m_camera_sample;
@@ -35,7 +33,9 @@ class AbcCameraWriter : public AbcShapeWriter {
     Alembic::AbcGeom::OFloatProperty m_eye_separation;
 
 public:
-	AbcCameraWriter(Scene *sce, Object *obj, AbcTransformWriter *parent,
+	AbcCameraWriter(Scene *scene,
+	                Object *ob,
+	                AbcTransformWriter *parent,
 	                uint32_t timeSampling,
 	                AbcExportOptions &opts);
 

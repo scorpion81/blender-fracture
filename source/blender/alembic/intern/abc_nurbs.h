@@ -30,8 +30,11 @@ class AbcNurbsWriter : public AbcShapeWriter {
 	bool m_is_animated;
 
 public:
-	AbcNurbsWriter(Scene *sce, Object *obj, AbcTransformWriter *parent, uint32_t timeSampling, AbcExportOptions &opts);
-	~AbcNurbsWriter();
+	AbcNurbsWriter(Scene *scene,
+	               Object *ob,
+                   AbcTransformWriter *parent,
+                   uint32_t timeSampling,
+                   AbcExportOptions &opts);
 
 private:
 	virtual void do_write();

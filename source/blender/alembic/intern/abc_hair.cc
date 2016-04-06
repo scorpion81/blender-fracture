@@ -43,13 +43,13 @@ using Alembic::AbcGeom::OV2fGeomParam;
 
 static const float nscale = 1.0f / 32767.0f;
 
-AbcHairWriter::AbcHairWriter(Scene *sce,
-                             Object *obj,
+AbcHairWriter::AbcHairWriter(Scene *scene,
+                             Object *ob,
                              AbcTransformWriter *parent,
                              uint32_t timeSampling,
                              AbcExportOptions &opts,
                              ParticleSystem *psys)
-    : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
+    : AbcShapeWriter(scene, ob, parent, timeSampling, opts)
 {
 	std::string name = get_object_name(m_object);
 	name.append("Hair");
@@ -60,9 +60,6 @@ AbcHairWriter::AbcHairWriter(Scene *sce,
 	OCurves curves(parent->alembicXform(), name, m_time_sampling);
 	m_curves_schema = curves.getSchema();
 }
-
-AbcHairWriter::~AbcHairWriter()
-{}
 
 bool AbcHairWriter::isAnimated() const
 {

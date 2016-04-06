@@ -55,7 +55,12 @@ class AbcMeshWriter : public AbcShapeWriter {
 	Alembic::Abc::OArrayProperty m_velocity;
 
 public:
-	AbcMeshWriter(Scene *sce, Object *obj, AbcTransformWriter *parent, uint32_t timeSampling, AbcExportOptions &opts);
+	AbcMeshWriter(Scene *scene,
+	              Object *ob,
+                  AbcTransformWriter *parent,
+                  uint32_t timeSampling,
+                  AbcExportOptions &opts);
+
 	~AbcMeshWriter();
 
 private:

@@ -62,12 +62,12 @@ using Alembic::AbcGeom::OCompoundProperty;
 using Alembic::AbcGeom::ONuPatch;
 using Alembic::AbcGeom::ONuPatchSchema;
 
-AbcNurbsWriter::AbcNurbsWriter(Scene *sce,
-                               Object *obj,
+AbcNurbsWriter::AbcNurbsWriter(Scene *scene,
+                               Object *ob,
                                AbcTransformWriter *parent,
                                uint32_t timeSampling,
-                               AbcExportOptions& opts)
-    : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
+                               AbcExportOptions &opts)
+    : AbcShapeWriter(scene, ob, parent, timeSampling, opts)
 {
 	m_is_animated = isAnimated();
 
@@ -91,9 +91,6 @@ AbcNurbsWriter::AbcNurbsWriter(Scene *sce,
 		m_nurbs_schema.push_back(nurbs.getSchema());
 	}
 }
-
-AbcNurbsWriter::~AbcNurbsWriter()
-{}
 
 bool AbcNurbsWriter::isAnimated() const
 {

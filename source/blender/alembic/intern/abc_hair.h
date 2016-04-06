@@ -39,10 +39,12 @@ class AbcHairWriter : public AbcShapeWriter {
 	Alembic::AbcGeom::OCurvesSchema::Sample m_curves_schema_sample;
 
 public:
-	AbcHairWriter(Scene *sce, Object *obj, AbcTransformWriter *parent,
-						uint32_t timeSampling, AbcExportOptions &opts,
-						ParticleSystem *psys);
-	~AbcHairWriter();
+	AbcHairWriter(Scene *scene,
+	              Object *ob,
+                  AbcTransformWriter *parent,
+                  uint32_t timeSampling,
+                  AbcExportOptions &opts,
+                  ParticleSystem *psys);
 
 private:
 	virtual void do_write();

@@ -28,12 +28,6 @@ extern "C" {
 #endif
 
 struct bContext;
-struct Camera;
-struct Curve;
-struct DerivedMesh;
-struct Mesh;
-struct MVert;
-struct Object;
 struct Scene;
 
 #define BL_ABC_NO_ERR 0

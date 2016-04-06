@@ -50,11 +50,12 @@ using Alembic::AbcGeom::OFloatProperty;
 using Alembic::AbcGeom::CameraSample;
 using Alembic::AbcGeom::kWrapExisting;
 
-AbcCameraWriter::AbcCameraWriter(Scene *sce, Object *obj,
+AbcCameraWriter::AbcCameraWriter(Scene *scene,
+                                 Object *ob,
                                  AbcTransformWriter *parent,
                                  uint32_t timeSampling,
                                  AbcExportOptions &opts)
-    : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
+    : AbcShapeWriter(scene, ob, parent, timeSampling, opts)
 {
 	std::string name = get_object_name(m_object);
 	name.append("Shape");
