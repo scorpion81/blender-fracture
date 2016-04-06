@@ -42,7 +42,7 @@ AbcHairWriter::AbcHairWriter(Scene *sce,
                              ParticleSystem *psys)
     : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
 {
-	std::string name = getObjectName(m_object);
+	std::string name = get_object_name(m_object);
 	name.append("Hair");
 	m_psys = psys;
 
@@ -62,26 +62,26 @@ bool AbcHairWriter::isAnimated() const
 
 void AbcHairWriter::do_write()
 {
-	if (!m_psys)
+	if (!m_psys) {
 		return;
+	}
+
+	ParticleSystemModifierData *psmd = psys_get_modifier(m_object, m_psys);
+
+	if (!psmd->dm_final) {
+		return;
+	}
 
 	Object *ob = m_object;
 
 	ParticleData * pa; int p, k;
 	ParticleCacheKey **cache, *path;
 
-	/* Get untransformed vertices, There's a xform under the hair */
+	/* Get untransformed vertices, there's a xform under the hair. */
 	float inv_mat[4][4];
 	invert_m4_m4_safe(inv_mat, ob->obmat);
-	// could be interesting:
-	// psys_calc_dmcache
 
 	ParticleSettings *part = m_psys->part;
-	ParticleSystemModifierData *psmd = psys_get_modifier(ob, m_psys);
-
-	if (!psmd->dm_final) {
-		return;
-	}
 
 	DerivedMesh *dm = mesh_create_derived_view(m_scene, m_object, CD_MASK_MESH);
 	DM_ensure_tessface(dm);
@@ -131,9 +131,10 @@ void AbcHairWriter::do_write()
 				}
 			}
 			else if (part->from == 0 && mtface) {
-				// num is the DM's vertex id
-				int num = pa->num_dmcache >= 0 ? pa->num_dmcache : pa->num;
-				// We will iterate over all faces to find a corresponding underlying UV
+				/* num is the DM's vertex id */
+				const int num = (pa->num_dmcache >= 0) ? pa->num_dmcache : pa->num;
+
+				/* We will iterate over all faces to find a corresponding underlying UV */
 				for (int n = 0; n < dm->getNumTessFaces(dm); ++n) {
 					MFace * face  = (MFace*)dm->getTessFaceData(dm, n, CD_MFACE);
 					MTFace *tface = mtface + n;
@@ -147,6 +148,7 @@ void AbcHairWriter::do_write()
 						if (o > 2 && vtx[o] == 0) {
 							break;
 						}
+
 						if (vtx[o] == num) {
 							uv_values.push_back(Alembic::AbcGeom::V2f(tface->uv[o][0], tface->uv[o][1]));
 							MVert *mv = mverts + vtx[o];
@@ -156,8 +158,10 @@ void AbcHairWriter::do_write()
 							break;
 						}
 					}
-					if (found)
+
+					if (found) {
 						break;
+					}
 				}
 			}
 
@@ -180,11 +184,12 @@ void AbcHairWriter::do_write()
 		}
 
 		if (m_options.export_child_hairs && m_psys->childcache) {
-			// Children part
+			/* Children part */
 			cache = m_psys->childcache;
 			ChildParticle *pc;
 			for (p = 0, pc = m_psys->child; p < m_psys->totchild; p++, pc++) {
 				path = cache[p];
+
 				if (part->from == PART_FROM_FACE) {
 					float r_uv[2];
 					float tmpnor[3], mapfw[4], vec[3];
@@ -205,39 +210,17 @@ void AbcHairWriter::do_write()
 							norm_values.push_back(Alembic::AbcGeom::N3f(tmpnor[0],tmpnor[1], tmpnor[2]));
 						}
 					}
-				} /*else if (part->from == 0 && mtface) {
-					// num is the DM's vertex id
-					int num = pc->num;
-					// We will iterate over all faces to find a corresponding underlying UV
-					for (int n = 0; n < dm->getNumTessFaces(dm); ++n) {
-						MFace * face  = (MFace*)dm->getTessFaceData(dm, n, CD_MFACE);
-						MTFace *tface = (mtface != 0) ? mtface + n : NULL;
-						unsigned int vtx[4];
-						vtx[0] = face->v1;
-						vtx[1] = face->v2;
-						vtx[2] = face->v3;
-						vtx[3] = face->v4;
-						for (int o = 0; o < 4; ++o) {
-							if (o > 1 && vtx[o] == 0)
-								break;
-							if (vtx[o] == num) {
-								uv_values.push_back(Alembic::AbcGeom::V2f(tface->uv[o][0], tface->uv[o][1]));
-								MVert *mv = mverts + vtx[o];
-								norm_values.push_back(Alembic::AbcGeom::N3f(mv->no[0] * nscale, mv->no[1] * nscale, mv->no[2] * nscale));
-								break;
-							}
-						}
-					}
-				}*/
+				}
 
 				int steps = path->segments + 1;
 				hvertices.push_back(steps);
-				for (k=0; k < steps; k++) {
+
+				for (k = 0; k < steps; ++k) {
 					float vert[3];
 					copy_v3_v3(vert, path->co);
 					mul_m4_v3(inv_mat, vert);
 					verts.push_back(Alembic::AbcGeom::V3f(vert[0], vert[1], vert[2]));
-					path++;
+					++path;
 				}
 			}
 		}
@@ -246,7 +229,6 @@ void AbcHairWriter::do_write()
 	dm->release(dm);
 
 	Alembic::Abc::P3fArraySample iPos(verts);
-	Alembic::Abc::Int32ArraySample arraySample(hvertices);
 	m_curves_schema_sample = Alembic::AbcGeom::OCurvesSchema::Sample(iPos, hvertices);
 
 	if (!uv_values.empty()) {

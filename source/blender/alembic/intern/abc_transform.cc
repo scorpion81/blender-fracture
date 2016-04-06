@@ -32,33 +32,42 @@ extern "C" {
 #include "BLI_math.h"
 }
 
-using namespace Alembic;
+using Alembic::AbcGeom::OObject;
+using Alembic::AbcGeom::OXform;
 
-AbcTransformWriter::AbcTransformWriter(Object *obj, Abc::OObject abcParent, AbcTransformWriter *writerParent,
-												unsigned int timeSampling, AbcExportOptions &opts) : AbcObjectWriter(obj, opts)
+AbcTransformWriter::AbcTransformWriter(Object *obj,
+                                       OObject abcParent,
+                                       AbcTransformWriter *writerParent,
+                                       unsigned int timeSampling,
+                                       AbcExportOptions &opts)
+    : AbcObjectWriter(obj, opts)
 {
 	m_is_animated = hasAnimation(m_object);
 	m_parent = NULL;
 	m_no_parent_invert = false;
 
-	if (!m_is_animated)
+	if (!m_is_animated) {
 		timeSampling = 0;
+	}
 
-    m_xform = AbcGeom::OXform(abcParent, getObjectName(m_object), timeSampling);
+    m_xform = OXform(abcParent, get_object_name(m_object), timeSampling);
 	m_schema = m_xform.getSchema();
 
-	if (writerParent)
+	if (writerParent) {
 		writerParent->addChild(this);
+	}
 }
 
 void AbcTransformWriter::do_write()
 {
 	if (m_first_frame) {
 		if (hasProperties(reinterpret_cast<ID *>(m_object))) {
-			if (m_options.export_props_as_geo_params)
+			if (m_options.export_props_as_geo_params) {
 				writeProperties(reinterpret_cast<ID *>(m_object), m_schema.getArbGeomParams());
-			else
+			}
+			else {
 				writeProperties(reinterpret_cast<ID *>(m_object), m_schema.getUserProperties());
+			}
 		}
 
 		m_visibility = Alembic::AbcGeom::CreateVisibilityProperty(m_xform, m_xform.getSchema().getTimeSampling());
@@ -67,8 +76,9 @@ void AbcTransformWriter::do_write()
 	bool visibility = ! (m_object->restrictflag & OB_RESTRICT_VIEW);
 	m_visibility.set(visibility);
 
-	if (!m_first_frame && !m_is_animated)
+	if (!m_first_frame && !m_is_animated) {
 		return;
+	}
 
 	/* get local matrix */
     float mat[4][4];
@@ -92,18 +102,18 @@ void AbcTransformWriter::do_write()
         mul_m4_m4m4(mat, mat, rot_mat);
     }
 
-    m_matrix = convertMatrix(mat);
+    m_matrix = convert_matrix(mat);
 
 	m_sample.setMatrix(m_matrix);
 	m_schema.set(m_sample);
 }
 
-Abc::Box3d AbcTransformWriter::bounds() const
+Imath::Box3d AbcTransformWriter::bounds() const
 {
-	AbcGeom::Box3d bounds;
+	Imath::Box3d bounds;
 
 	for (int i = 0; i < m_children.size(); ++i) {
-		Abc::Box3d box(m_children[i]->bounds());
+		Imath::Box3d box(m_children[i]->bounds());
 		bounds.extendBy(box);
 	}
 
@@ -112,6 +122,6 @@ Abc::Box3d AbcTransformWriter::bounds() const
 
 bool AbcTransformWriter::hasAnimation(Object *obj) const
 {
-	// TODO: implement this
+	/* TODO: implement this */
 	return true;
 }

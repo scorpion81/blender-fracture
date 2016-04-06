@@ -70,22 +70,29 @@ bool AbcObjectWriter::hasProperties(ID *id)
 	return !m_props.empty();
 }
 
-void AbcObjectWriter::writeProperties(ID *id, Alembic::Abc::OCompoundProperty props, bool writeAsUserData)
+void AbcObjectWriter::writeProperties(ID *id, const Alembic::Abc::OCompoundProperty &props, bool writeAsUserData)
 {
 	for (int i = 0, e = m_props.size(); i < e; ++i) {
-		if (props.getPropertyHeader(m_props[i].first))
+		if (props.getPropertyHeader(m_props[i].first)){
 			continue;
-		if (writeAsUserData)
+		}
+
+		if (writeAsUserData) {
 			writeProperty(m_props[i].second, m_props[i].first, props);
-		else
+		}
+		else {
 			writeGeomProperty(m_props[i].second, m_props[i].first, props);
+		}
 	}
 }
 
-void AbcObjectWriter::getAllProperties(IDProperty *group, std::vector<std::pair<std::string, IDProperty*> > &allProps, const std::string &parent)
+void AbcObjectWriter::getAllProperties(IDProperty *group,
+                                       std::vector<std::pair<std::string, IDProperty *> > &allProps,
+                                       const std::string &parent)
 {
-	if (!group)
+	if (!group) {
 		return;
+	}
 
 	const char *separator = ".";
 
@@ -106,9 +113,9 @@ void AbcObjectWriter::getAllProperties(IDProperty *group, std::vector<std::pair<
 
 				name.append(prop->name);
 				allProps.push_back(std::make_pair(name, prop));
-			}
-			break;
 
+				break;
+			}
 			case IDP_GROUP:
 			{
 				/* ignore ui properties */
@@ -122,9 +129,9 @@ void AbcObjectWriter::getAllProperties(IDProperty *group, std::vector<std::pair<
 					name.append(prop->name);
 					getAllProperties(prop, allProps, name);
 				}
-			}
-			break;
 
+				break;
+			}
 			case IDP_ARRAY:
 			case IDP_ID:
 			case IDP_IDPARRAY:
@@ -135,7 +142,7 @@ void AbcObjectWriter::getAllProperties(IDProperty *group, std::vector<std::pair<
 	}
 }
 
-void AbcObjectWriter::writeArrayProperty(IDProperty *p, Alembic::Abc::OCompoundProperty abcProps)
+void AbcObjectWriter::writeArrayProperty(IDProperty *p, const Alembic::Abc::OCompoundProperty &abcProps)
 {
 	std::string name(p->name);
 
@@ -144,72 +151,66 @@ void AbcObjectWriter::writeArrayProperty(IDProperty *p, Alembic::Abc::OCompoundP
 		{
 			Alembic::Abc::OInt32ArrayProperty op(abcProps, name);
 			op.set(Alembic::Abc::OInt32ArrayProperty::sample_type(static_cast<int *>(IDP_Array(p)), p->len));
+			break;
 		}
-		break;
-
 		case IDP_FLOAT:
 		{
 			Alembic::Abc::OFloatArrayProperty op(abcProps, name);
-			op.set(Alembic::Abc::OFloatArrayProperty::sample_type(static_cast<float*>(IDP_Array(p)), p->len));
+			op.set(Alembic::Abc::OFloatArrayProperty::sample_type(static_cast<float *>(IDP_Array(p)), p->len));
+			break;
 		}
-		break;
-
 		case IDP_DOUBLE:
 		{
 			Alembic::Abc::ODoubleArrayProperty op(abcProps, name);
 			op.set(Alembic::Abc::ODoubleArrayProperty::sample_type(static_cast<double *>(IDP_Array(p)), p->len));
+			break;
 		}
-		break;
 	}
 }
 
-void AbcObjectWriter::writeProperty(IDProperty *p, const std::string &name, Alembic::Abc::OCompoundProperty abcProps)
+void AbcObjectWriter::writeProperty(IDProperty *p, const std::string &name, const Alembic::Abc::OCompoundProperty &abcProps)
 {
-	// TODO: check this...
+	/* TODO: check this... */
 	switch(p->type) {
 		case IDP_STRING:
 		{
 			Alembic::Abc::OStringProperty op(abcProps, name);
 			op.set(IDP_String(p));
+			break;
 		}
-		break;
-
 		case IDP_INT:
 		{
 			Alembic::Abc::OInt32Property op(abcProps, name);
 			op.set(IDP_Int(p));
+			break;
 		}
-		break;
-
 		case IDP_FLOAT:
 		{
 			Alembic::Abc::OFloatProperty op(abcProps, name);
 			op.set(IDP_Float(p));
+			break;
 		}
-		break;
-
 		case IDP_DOUBLE:
 		{
 			Alembic::Abc::ODoubleProperty op(abcProps, name);
 			op.set(IDP_Double(p));
+			break;
 		}
-		break;
-
 		case IDP_ARRAY:
+		{
 			writeArrayProperty(p, abcProps);
-		break;
-
+			break;
+		}
 		case IDP_ID:
 		case IDP_IDPARRAY:
 		case IDP_GROUP:
-		break;
+			break;
 	}
 }
 
-void AbcObjectWriter::writeGeomProperty(IDProperty *p, const std::string &name, Alembic::Abc::OCompoundProperty abcProps)
+void AbcObjectWriter::writeGeomProperty(IDProperty *p, const std::string &name, const Alembic::Abc::OCompoundProperty &abcProps)
 {
-	switch(p->type)
-	{
+	switch(p->type) {
 		case IDP_STRING:
 		{
 			std::string val = IDP_String(p);
@@ -218,9 +219,9 @@ void AbcObjectWriter::writeGeomProperty(IDProperty *p, const std::string &name, 
 			samp.setScope(Alembic::AbcGeom::kConstantScope);
 			samp.setVals(Alembic::AbcGeom::StringArraySample(&val, 1));
 			param.set(samp);
-		}
-		break;
 
+			break;
+		}
 		case IDP_INT:
 		{
 			int val = IDP_Int(p);
@@ -229,9 +230,9 @@ void AbcObjectWriter::writeGeomProperty(IDProperty *p, const std::string &name, 
 			samp.setScope(Alembic::AbcGeom::kConstantScope);
 			samp.setVals(Alembic::AbcGeom::Int32ArraySample(&val, 1));
 			param.set(samp);
-		}
-		break;
 
+			break;
+		}
 		case IDP_FLOAT:
 		{
 			float val = IDP_Float(p);
@@ -240,9 +241,9 @@ void AbcObjectWriter::writeGeomProperty(IDProperty *p, const std::string &name, 
 			samp.setScope(Alembic::AbcGeom::kConstantScope);
 			samp.setVals(Alembic::AbcGeom::FloatArraySample(&val, 1));
 			param.set(samp);
-		}
-		break;
 
+			break;
+		}
 		case IDP_DOUBLE:
 		{
 			double val = IDP_Double(p);
@@ -251,14 +252,14 @@ void AbcObjectWriter::writeGeomProperty(IDProperty *p, const std::string &name, 
 			samp.setScope(Alembic::AbcGeom::kConstantScope);
 			samp.setVals(Alembic::AbcGeom::DoubleArraySample(&val, 1));
 			param.set(samp);
-		}
-		break;
 
+			break;
+		}
 		case IDP_ARRAY:
 		case IDP_IDPARRAY:
 		case IDP_GROUP:
 		case IDP_ID:
-		break;
+			break;
 	}
 }
 

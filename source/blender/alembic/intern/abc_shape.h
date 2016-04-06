@@ -37,7 +37,11 @@ protected:
 	Alembic::Util::uint32_t m_time_sampling;
 
 public:
-    AbcShapeWriter(Scene *sce, Object *obj, AbcTransformWriter *parent, Alembic::Util::uint32_t timeSampling, AbcExportOptions &opts);
+    AbcShapeWriter(Scene *sce,
+	               Object *obj,
+	               AbcTransformWriter *parent,
+	               Alembic::Util::uint32_t timeSampling,
+	               AbcExportOptions &opts);
 
 protected:
 	void calcBounds(const std::vector<float> &points);

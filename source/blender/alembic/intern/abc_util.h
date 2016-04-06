@@ -27,12 +27,13 @@
 
 struct Object;
 
-std::string getObjectName(Object *ob);
-std::string getObjectDagPathName(Object *ob, Object *dupliParent);
+std::string get_object_name(Object *ob);
+std::string get_object_dag_path_name(Object *ob, Object *dupli_parent);
 
-bool objectIsSelected(Object *ob);
+bool object_selected(Object *ob);
+bool parent_selected(Object *ob);
 
-Alembic::Abc::M44d convertMatrix(float mat[4][4]);
+Imath::M44d convert_matrix(float mat[4][4]);
 
 void split(const std::string &s, const char *delim, std::vector<std::string> &v);
 

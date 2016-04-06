@@ -45,7 +45,7 @@ AbcCameraWriter::AbcCameraWriter(Scene *sce, Object *obj,
                                  AbcExportOptions &opts)
     : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
 {
-	std::string name = getObjectName(m_object);
+	std::string name = get_object_name(m_object);
 	name.append("Shape");
 
 	Alembic::AbcGeom::OCamera camera(parent->alembicXform(), name, m_time_sampling);

@@ -76,21 +76,21 @@ AbcExporter::~AbcExporter()
 }
 
 void AbcExporter::getShutterSamples(double shutterOpen, double shutterClose,
-                                        double step, bool timeRelative,
-                                        std::vector<double> &samples)
+                                    double step, bool timeRelative,
+                                    std::vector<double> &samples)
 {
 	samples.clear();
 
 	double timeFactor = timeRelative ? m_scene->r.frs_sec : 1.0;
 
-	// sample all frame
+	/* sample all frame */
 	if (shutterOpen == 0.0 && shutterClose == 1.0) {
 		for (double t = 0; t < 1.0; t += step) {
 			samples.push_back(t / timeFactor);
 		}
 	}
 	else {
-		// sample between shutter open & close
+		/* sample between shutter open & close */
 		int nsamples = std::max((1.0 / step) - 1.0, 1.0);
 		double timeInc = (shutterClose - shutterOpen) / nsamples;
 
@@ -132,7 +132,7 @@ void AbcExporter::getFrameSet(int start, int end, double step, double shutterOpe
 
 void AbcExporter::operator()()
 {
-	// Create archive here
+	/* Create archive here */
 	std::string sceneName;
 	char buf[16];
 
@@ -163,7 +163,7 @@ void AbcExporter::operator()()
 		                                               sceneName, Alembic::Abc::ErrorHandler::kThrowPolicy, arg);
 	}
 
-	// Create time samplings for transforms and shapes
+	/* Create time samplings for transforms and shapes */
 	Alembic::Abc::TimeSamplingPtr transTime = createTimeSampling(m_options.startframe, m_options.endframe,
 	                                                             m_options.xform_frame_step, m_options.shutter_open,
 	                                                             m_options.shutter_close);
@@ -195,20 +195,20 @@ void AbcExporter::operator()()
 
 	createShapeWriters();
 
-	// make a list of frames to export
+	/* make a list of frames to export */
 	std::set<double> xformFrames;
 	getFrameSet(m_options.startframe, m_options.endframe, m_options.xform_frame_step, m_options.shutter_open, m_options.shutter_close, xformFrames);
 
 	std::set<double> shapeFrames;
 	getFrameSet(m_options.startframe, m_options.endframe, m_options.shape_frame_step, m_options.shutter_open, m_options.shutter_close, shapeFrames);
 
-	// merge all frames needed
+	/* merge all frames needed */
 	std::set<double> allFrames(xformFrames);
 	allFrames.insert(shapeFrames.begin(), shapeFrames.end());
 
-	// export all frames
+	/* export all frames */
 
-	// TODO: replace this with some kind of progress report
+	/* TODO : replace this with some kind of progress report */
 	std::cout << "Exporting Alembic archive: " << m_filename << std::endl;
 	boost::progress_timer timer;
 	boost::progress_display progress(allFrames.size());
@@ -218,18 +218,16 @@ void AbcExporter::operator()()
 		double f = *it;
 		setCurrentFrame(f);
 
-		if (shapeFrames.count(f) != 0)
-		{
+		if (shapeFrames.count(f) != 0) {
 			for (int i = 0, e = m_shapes.size(); i != e; ++i)
 				m_shapes[i]->write();
 		}
 
-		if (xformFrames.count(f) != 0)
-		{
+		if (xformFrames.count(f) != 0) {
 			for (std::map<std::string, AbcTransformWriter*>::iterator xit = m_xforms.begin(), xe = m_xforms.end(); xit != xe; ++xit)
 				xit->second->write();
 
-			// Save the archive's bounding box.
+			/* Save the archive 's bounding box. */
 			Alembic::Abc::Box3d bounds;
 
 			for (std::map<std::string, AbcTransformWriter*>::iterator xit = m_xforms.begin(), xe = m_xforms.end(); xit != xe; ++xit)
@@ -258,7 +256,7 @@ void AbcExporter::createTransformWritersHierarchy()
 				case OB_LATTICE:
 				case OB_MBALL:
 				case OB_SPEAKER:
-					// we do not export transforms for objects of these classes.
+					/* we do not export transforms for objects of these classes */
 					break;
 
 				default:
@@ -278,7 +276,7 @@ void AbcExporter::createTransformWritersFlat()
 		Object *ob = base->object;
 
 		if (m_options.exportObject(ob) && objectIsShape(ob)) {
-			std::string name = getObjectName(ob);
+			std::string name = get_object_name(ob);
 			m_xforms[name] = new AbcTransformWriter(ob, m_archive.getTop(), 0, m_trans_sampling_index, m_options);
 		}
 
@@ -291,8 +289,8 @@ void AbcExporter::exploreTransform(Object *ob, Object *parent, Object *dupliObPa
 	Object *dupliob = NULL;
 	Object *dupliParent = NULL;
 	
-	struct DupliObject *link = NULL;
-	struct ListBase *lb = NULL;
+	DupliObject *link = NULL;
+	ListBase *lb = NULL;
 
 	createTransformWriter(ob, parent, dupliObParent);
 	
@@ -317,41 +315,42 @@ void AbcExporter::exploreTransform(Object *ob, Object *parent, Object *dupliObPa
 	}
 
 	free_object_duplilist(lb);
-
 }
 
 void AbcExporter::createTransformWriter(Object *ob, Object *parent, Object *dupliObParent)
 {
-	std::string name = getObjectDagPathName(ob, dupliObParent);
+	const std::string name = get_object_dag_path_name(ob, dupliObParent);
+
+	/* check if we have already created a transform writer for this object */
+	if (m_xforms.find(name) != m_xforms.end()){
+		std::cerr << "xform " << name << " already exists\n";
+		return;
+	}
+
 	AbcTransformWriter *xParent = NULL;
-	std::string parentname = "";
 
-	// check if we have already created a transform writer for this object
-	if (m_xforms.find(name) == m_xforms.end()) {
-		if (parent) {
-			parentname = getObjectDagPathName(parent, dupliObParent);
-			xParent = getXForm(parentname);
+	if (parent) {
+		const std::string parentname = get_object_dag_path_name(parent, dupliObParent);
+		xParent = getXForm(parentname);
 
-			if (!xParent) {
-				if (parent->parent)
-					createTransformWriter(parent, parent->parent, dupliObParent);
-				else
-					createTransformWriter(parent, dupliObParent, dupliObParent);
-
-				xParent = getXForm(parentname);
+		if (!xParent) {
+			if (parent->parent) {
+				createTransformWriter(parent, parent->parent, dupliObParent);
 			}
-		}
+			else {
+				createTransformWriter(parent, dupliObParent, dupliObParent);
+			}
 
-		if (xParent) {
-			m_xforms[name] = new AbcTransformWriter(ob, xParent->alembicXform(), xParent, m_trans_sampling_index, m_options);
-			m_xforms[name]->setParent(parent);
-		}
-		else {
-			m_xforms[name] = new AbcTransformWriter(ob, m_archive.getTop(), 0, m_trans_sampling_index, m_options);
+			xParent = getXForm(parentname);
 		}
 	}
+
+	if (xParent) {
+		m_xforms[name] = new AbcTransformWriter(ob, xParent->alembicXform(), xParent, m_trans_sampling_index, m_options);
+		m_xforms[name]->setParent(parent);
+	}
 	else {
-		std::cerr << "xform " << name << " already exists\n";
+		m_xforms[name] = new AbcTransformWriter(ob, m_archive.getTop(), 0, m_trans_sampling_index, m_options);
 	}
 }
 
@@ -376,12 +375,9 @@ void AbcExporter::exploreObject(Object *ob, Object *dupliObParent)
 	if (lb) {
 		DupliObject *link = static_cast<DupliObject *>(lb->first);
 		Object *dupliob = NULL;
-		// TODO(kevin): unused?
-		//Object *dupliParent = NULL;
 
 		while (link) {
 			dupliob = link->ob;
-			//dupliParent = (dupliob->parent) ? dupliob->parent : ob;
 
 			if (link->type == OB_DUPLIGROUP) {
 				exploreObject(dupliob, ob);
@@ -396,13 +392,15 @@ void AbcExporter::exploreObject(Object *ob, Object *dupliObParent)
 
 void AbcExporter::createShapeWriter(Object *ob, Object *dupliObParent)
 {
-	if (!objectIsShape(ob))
+	if (!objectIsShape(ob)) {
 		return;
+	}
 
-	if (!m_options.exportObject(ob))
+	if (!m_options.exportObject(ob)) {
 		return;
+	}
 
-	std::string name = getObjectDagPathName(ob, dupliObParent);
+	std::string name = get_object_dag_path_name(ob, dupliObParent);
 	
 	AbcTransformWriter *xform = getXForm(name);
 
@@ -420,7 +418,7 @@ void AbcExporter::createShapeWriter(Object *ob, Object *dupliObParent)
 	ID *id = reinterpret_cast<ID *>(ob);
 	IDProperty *xport_props = IDP_GetProperties(id, 0);
 
-	// Check for special export object flags
+	/* Check for special export object flags */
 	if (xport_props) {
 		IDProperty *enable_prop = IDP_GetPropertyFromGroup(xport_props, "abc_hair");
 		if (enable_prop) {

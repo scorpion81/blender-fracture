@@ -37,7 +37,6 @@ class AbcMeshWriter : public AbcShapeWriter {
 
 	bool m_has_per_face_materials;
 	Alembic::AbcGeom::OFaceSet m_face_set;
-	//Alembic::AbcGeom::OFaceSet mGeoFaceSet;
 	Alembic::Abc::OArrayProperty m_mat_indices;
 
 	bool m_is_animated;
@@ -69,13 +68,12 @@ private:
 	void writeSubD();
 
 	void getMeshInfo(DerivedMesh *dm, std::vector<float> &points,
-						std::vector<Alembic::Util::int32_t> &facePoints,
-						std::vector<Alembic::Util::int32_t> &faceCounts,
-						std::vector< std::vector<float> > &uvs,
-						std::vector<Alembic::Util::int32_t> &creaseIndices,
-						std::vector<Alembic::Util::int32_t> &creaseLengths,
-						std::vector<float> &creaseSharpness
-						);
+	                 std::vector<Alembic::Util::int32_t> &facePoints,
+	                 std::vector<Alembic::Util::int32_t> &faceCounts,
+	                 std::vector< std::vector<float> > &uvs,
+	                 std::vector<Alembic::Util::int32_t> &creaseIndices,
+	                 std::vector<Alembic::Util::int32_t> &creaseLengths,
+	                 std::vector<float> &creaseSharpness);
 
 	DerivedMesh *getFinalMesh();
 	void freeMesh(DerivedMesh *dm);
@@ -88,14 +86,14 @@ private:
 
 	void createArbGeoParams(DerivedMesh *dm);
 	void createVertexLayerParam(DerivedMesh *dm, int index, Alembic::Abc::OCompoundProperty arbGeoParams);
-	void createFaceLayerParam(DerivedMesh *dm, int index, Alembic::Abc::OCompoundProperty arbGeoParams);
+	void createFaceLayerParam(DerivedMesh *dm, int index, const Alembic::Abc::OCompoundProperty &arbGeoParams);
 
 	void writeArbGeoParams(DerivedMesh *dm);
-	void writeVertexLayerParam(DerivedMesh *dm, int index, Alembic::Abc::OCompoundProperty arbGeoParams);
-	void writeFaceLayerParam(DerivedMesh *dm, int index, Alembic::Abc::OCompoundProperty arbGeoParams);
+	void writeVertexLayerParam(DerivedMesh *dm, int index, const Alembic::Abc::OCompoundProperty &arbGeoParams);
+	void writeFaceLayerParam(DerivedMesh *dm, int index, const Alembic::Abc::OCompoundProperty &arbGeoParams);
 	void getGeoGroups(DerivedMesh *dm, std::map<std::string, std::vector<Alembic::Util::int32_t> > &geoGroups);
 	
-	// fluid surfaces support
+	/* fluid surfaces support */
 	ModifierData *getFluidSimModifier();
     void getVelocities(DerivedMesh *dm, std::vector<float> &vels);
 };

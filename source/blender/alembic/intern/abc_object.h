@@ -64,13 +64,13 @@ private:
 
 	void getAllProperties(IDProperty *group, std::vector<std::pair<std::string, IDProperty*> > &allProps, const std::string &parent);
 
-	void writeArrayProperty(IDProperty *p, Alembic::Abc::OCompoundProperty abcProps);
-	void writeProperty(IDProperty *p, const std::string &name, Alembic::Abc::OCompoundProperty abcProps);
-	void writeGeomProperty(IDProperty *p, const std::string &name, Alembic::Abc::OCompoundProperty abcProps);
+	void writeArrayProperty(IDProperty *p, const Alembic::Abc::OCompoundProperty &abcProps);
+	void writeProperty(IDProperty *p, const std::string &name, const Alembic::Abc::OCompoundProperty &abcProps);
+	void writeGeomProperty(IDProperty *p, const std::string &name, const Alembic::Abc::OCompoundProperty &abcProps);
 
 protected:
 	bool hasProperties(ID *id);
-	void writeProperties(ID *id, Alembic::Abc::OCompoundProperty props, bool writeAsUserData = true);
+	void writeProperties(ID *id, const Alembic::Abc::OCompoundProperty &props, bool writeAsUserData = true);
 
 	bool getPropertyValue(ID *id, const std::string &name, double &val);
 };

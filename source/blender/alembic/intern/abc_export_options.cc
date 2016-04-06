@@ -98,36 +98,13 @@ bool AbcExportOptions::isAbcRoot(Object *obj) const
 	return false;
 }
 
-static bool hierarchySelected(Object *ob)
-{
-	if (objectIsSelected(ob)) {
-		return true;
-	}
-
-	bool exportMe = false;
-
-	if (!exportMe) {
-		Object *parent = ob->parent;
-
-		while (parent != NULL) {
-			if (objectIsSelected(parent)) {
-				exportMe = true;
-			}
-
-			parent = parent->parent;
-		}
-	}
-
-	return exportMe;
-}
-
 bool AbcExportOptions::exportObject(Object *obj) const
 {
 	if (!exportTransform(obj)) {
 		return false;
 	}
 
-	if (selected_only && !hierarchySelected(obj)) {
+	if (selected_only && !parent_selected(obj)) {
 		return false;
 	}
 

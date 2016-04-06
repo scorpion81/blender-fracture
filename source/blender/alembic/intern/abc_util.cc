@@ -28,7 +28,7 @@ extern "C" {
 #include "DNA_object_types.h"
 }
 
-std::string getObjectName(Object *ob)
+std::string get_object_name(Object *ob)
 {
 	if (!ob) {
 		return "";
@@ -44,35 +44,60 @@ std::string getObjectName(Object *ob)
 	return name;
 }
 
-std::string getObjectDagPathName(Object *ob, Object *dupliParent)
+std::string get_object_dag_path_name(Object *ob, Object *dupli_parent)
 {
-    std::string name = getObjectName(ob);
+    std::string name = get_object_name(ob);
 
     Object *p = ob->parent;
 
     while (p) {
-        name = getObjectName(p) + "/" + name;
+        name = get_object_name(p) + "/" + name;
         p = p->parent;
     }
 
-    if (dupliParent && (ob != dupliParent))
-        name = getObjectName(dupliParent) + "/" + name;
+	if (dupli_parent && (ob != dupli_parent)) {
+		name = get_object_name(dupli_parent) + "/" + name;
+	}
 
     return name;
 }
 
-bool objectIsSelected(Object *ob)
+bool object_selected(Object *ob)
 {
 	return ob->flag & SELECT;
 }
 
-Alembic::Abc::M44d convertMatrix(float mat[4][4])
+bool parent_selected(Object *ob)
 {
-	Alembic::Abc::M44d m;
+   if (object_selected(ob)) {
+	   return true;
+   }
 
-	for (int i = 0; i < 4; ++i)
-		for (int j = 0; j < 4; ++j)
+   bool do_export = false;
+
+   Object *parent = ob->parent;
+
+   while (parent != NULL) {
+	   if (object_selected(parent)) {
+		   do_export = true;
+		   break;
+	   }
+
+	   parent = parent->parent;
+   }
+
+   return do_export;
+}
+
+Imath::M44d convert_matrix(float mat[4][4])
+{
+	Imath::M44d m;
+
+	for (int i = 0; i < 4; ++i) {
+		for (int j = 0; j < 4; ++j) {
 			m[i][j] = mat[i][j];
+		}
+	}
 
 	return m;
 }
@@ -80,7 +105,7 @@ Alembic::Abc::M44d convertMatrix(float mat[4][4])
 void split(const std::string &s, const char *delim, std::vector<std::string> &v)
 {
 	/* to avoid modifying original string first duplicate the original string
-	 *  and return a char pointer then free the memory */
+	 * and return a char pointer then free the memory */
 	char *dup = strdup(s.c_str());
 	char *token = strtok(dup, delim);
 

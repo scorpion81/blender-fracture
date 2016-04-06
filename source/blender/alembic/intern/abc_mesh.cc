@@ -56,22 +56,23 @@ AbcMeshWriter::AbcMeshWriter(Scene *sce,
                              AbcExportOptions &opts)
     : AbcShapeWriter(sce, obj, parent, timeSampling, opts)
 {
-	std::string name = getObjectName(m_object);
+	std::string name = get_object_name(m_object);
 	name.append("Shape");
 
-	m_is_animated 		= isAnimated();
-	m_subsurf_mod 	= NULL;
+	m_is_animated = isAnimated();
+	m_subsurf_mod = NULL;
 	m_has_per_face_materials = false;
-	m_has_vertex_weights 	 = false;
-	bool isSubd 		 = false;
+	m_has_vertex_weights = false;
+	bool isSubd = false;
 
-	// if the object is static, use the default static time sampling
-	if (!m_is_animated)
+	/* if the object is static, use the default static time sampling */
+	if (!m_is_animated) {
 		timeSampling = 0;
+	}
 
 	if (!m_options.export_subsurfs_as_meshes) {
-		// check if the mesh is a subsurf, ignoring disabled modifiers and
-		// displace if it's after subsurf.
+		/* check if the mesh is a subsurf, ignoring disabled modifiers and
+		 * displace if it's after subsurf. */
 		ModifierData *md = static_cast<ModifierData *>(m_object->modifiers.last);
 
 		while (md) {
@@ -86,8 +87,10 @@ AbcMeshWriter::AbcMeshWriter(Scene *sce,
 					}
 				}
 
-				if ((md->type != eModifierType_Displace) && (md->type != eModifierType_ParticleSystem))
-					break; // mesh is not a subsurf. break
+				/* mesh is not a subsurf. break */
+				if ((md->type != eModifierType_Displace) && (md->type != eModifierType_ParticleSystem)) {
+					break;
+				}
 			}
 
 			md = md->prev;
@@ -124,7 +127,7 @@ AbcMeshWriter::~AbcMeshWriter()
 
 bool AbcMeshWriter::isSubD() const
 {
-	return m_subd_type;//mSubDSchema.valid();
+	return m_subd_type;
 }
 
 bool AbcMeshWriter::isAnimated() const
@@ -156,10 +159,12 @@ void AbcMeshWriter::do_write()
 	if (!m_first_frame && !m_is_animated)
 		return;
 
-	if (m_options.use_subdiv_schema && m_subdiv_schema.valid())
+	if (m_options.use_subdiv_schema && m_subdiv_schema.valid()) {
 		writeSubD();
-	else
+	}
+	else {
 		writeMesh();
+	}
 }
 
 void AbcMeshWriter::writeMesh()
@@ -178,13 +183,15 @@ void AbcMeshWriter::writeMesh()
 
 		int active_uvlayer = CustomData_get_active_layer(&dm->loopData, CD_MLOOPUV);
 
-		if (active_uvlayer >= 0)
+		if (active_uvlayer >= 0) {
 			getUVs(dm, uvValArray, uvIdx, active_uvlayer);
+		}
+
 		getMeshInfo(dm, points, facePoints, faceCounts, uvs, creaseIndices,
 		            creaseLengths, creaseSharpness);
 
 		if (m_first_frame) {
-			// Here I'm creating materials' facesets
+			/* Here I'm creating materials' facesets */
 			std::map< std::string, std::vector<Alembic::Util::int32_t>  > geoGroups;
 			getGeoGroups(dm, geoGroups);
 
@@ -209,7 +216,7 @@ void AbcMeshWriter::writeMesh()
 			createArbGeoParams(dm);
 		}
 
-		// Export UVs
+		/* Export UVs */
 		Alembic::AbcGeom::OV2fGeomParam::Sample uvSamp;
 		if (!uvIdx.empty() && !uvValArray.empty()) {
 			uvSamp.setScope(Alembic::AbcGeom::kFacevaryingScope);
@@ -222,7 +229,7 @@ void AbcMeshWriter::writeMesh()
 			uvSamp.setIndices(idxSamp);
 		}
 
-		// Normals export
+		/* Normals export */
 		Alembic::AbcGeom::ON3fGeomParam::Sample normalsSamp;
 		if (!normals.empty()) {
 			normalsSamp.setScope(Alembic::AbcGeom::kFacevaryingScope);
@@ -240,7 +247,7 @@ void AbcMeshWriter::writeMesh()
 		                  Alembic::Abc::Int32ArraySample(faceCounts), uvSamp,
 		                  normalsSamp);
 
-		// TODO : export all uvmaps
+		/* TODO : export all uvmaps */
 
 		m_mesh_sample.setSelfBounds(bounds());
 		m_mesh_schema.set(m_mesh_sample);
@@ -266,7 +273,6 @@ void AbcMeshWriter::writeSubD()
 		std::vector<Imath::V2f> uvValArray;
 
 		int active_uvlayer  = CustomData_get_active_layer(&dm->loopData, CD_MLOOPUV);
-		//int num_uv_layers = dm->loopData.totlayer;
 
 		if (active_uvlayer >= 0)
 			getUVs(dm, uvValArray, uvIdx, active_uvlayer);
@@ -449,9 +455,9 @@ void AbcMeshWriter::getTopology(DerivedMesh *dm,
 
 void AbcMeshWriter::getNormals(DerivedMesh *dm, std::vector<float> &norms)
 {
-	// TODO: check if we need to reverse the normals.
+	/* TODO: check if we need to reverse the normals. */
 
-	float nscale = 1.0f / 32767.0f;
+	const float nscale = 1.0f / 32767.0f;
 	norms.clear();
 
 	if (m_options.export_normals) {
@@ -581,7 +587,6 @@ void AbcMeshWriter::getMaterialIndices(DerivedMesh *dm,
 
 	for (int i = 1, e = dm->getNumTessFaces(dm); i < e; ++i) {
 		MFace *face = &faces[i];
-		//assert(face->mat_nr >= 0);
 		indices.push_back(face->mat_nr);
 	}
 }
@@ -589,31 +594,35 @@ void AbcMeshWriter::getMaterialIndices(DerivedMesh *dm,
 void AbcMeshWriter::createArbGeoParams(DerivedMesh *dm)
 {
 	if (m_is_fluid) {
-		// TODO: replace this, when velocities are added by default to schemas.
+		/* TODO: replace this, when velocities are added by default to schemas. */
 		Alembic::AbcGeom::OV3fGeomParam param;
 
-		if (m_subdiv_schema.valid())
+		if (m_subdiv_schema.valid()) {
 			param = Alembic::AbcGeom::OV3fGeomParam(
 			            m_subdiv_schema.getArbGeomParams(), "velocity", false,
 			            Alembic::AbcGeom::kVertexScope, 1, m_time_sampling);
-		else
+		}
+		else {
 			param = Alembic::AbcGeom::OV3fGeomParam(
 			            m_mesh_schema.getArbGeomParams(), "velocity", false,
 			            Alembic::AbcGeom::kVertexScope, 1, m_time_sampling);
+		}
 
 		m_velocity = param.getValueProperty();
 
-		return; // we don't need anything more for fluid meshes
+		/* we don't need anything more for fluid meshes */
+		return;
 	}
 
-	std::string layerName;
+	std::string layer_name;
 
 	for (int i = 0; i < dm->vertData.totlayer; ++i) {
-		layerName = dm->vertData.layers[i].name;
+		layer_name = dm->vertData.layers[i].name;
 
-		// skip unnamed layers
-		if (layerName == "")
+		/* skip unnamed layers */
+		if (layer_name == "") {
 			continue;
+		}
 
 		if (m_subdiv_schema.valid())
 			createVertexLayerParam(dm, i, m_subdiv_schema.getArbGeomParams());
@@ -623,22 +632,22 @@ void AbcMeshWriter::createArbGeoParams(DerivedMesh *dm)
 
 	for (int i = 0; i < dm->polyData.totlayer; ++i) {
 		CustomDataLayer *layer = &dm->polyData.layers[i];
-		layerName = dm->polyData.layers[i].name;
+		layer_name = dm->polyData.layers[i].name;
 
-		// skip unnamed layers
-		if (layerName == "")
+		/* skip unnamed layers */
+		if (layer_name == "") {
 			continue;
+		}
 
 		if (layer->type == CD_MCOL && !m_options.export_vcols)
 			continue;
 
-		if (m_subdiv_schema.valid())
+		if (m_subdiv_schema.valid()) {
 			createFaceLayerParam(dm, i, m_subdiv_schema.getArbGeomParams());
-		else
+		}
+		else {
 			createFaceLayerParam(dm, i, m_mesh_schema.getArbGeomParams());
-	}
-
-	if (m_options.export_vweigths) {
+		}
 	}
 }
 
@@ -646,56 +655,63 @@ void AbcMeshWriter::createVertexLayerParam(DerivedMesh *dm, int index,
                                                Alembic::Abc::OCompoundProperty arbGeoParams)
 {
 	CustomDataLayer *layer = &dm->vertData.layers[index];
-	std::string layerName = layer->name;
+	const std::string layer_name = layer->name;
 
-	// we have already a layer named layerName. skip
-	if (m_layers_written.count(layerName) != 0)
+	/* we have already a layer named layerName. skip */
+	if (m_layers_written.count(layer_name) != 0) {
 		return;
+	}
 
 	switch (layer->type) {
-		case CD_PROP_FLT: {
-			Alembic::AbcGeom::OFloatGeomParam param(arbGeoParams, layerName, false,
+		case CD_PROP_FLT:
+		{
+			Alembic::AbcGeom::OFloatGeomParam param(arbGeoParams, layer_name, false,
 			                                        Alembic::AbcGeom::kVertexScope, 1, m_time_sampling);
-			m_layers_written.insert(layerName);
+			m_layers_written.insert(layer_name);
 			m_vert_layers.push_back(
 			            std::pair<int, Alembic::Abc::OArrayProperty>(index,
 			                                                         param.getValueProperty()));
-		}
-			break;
 
-		case CD_PROP_INT: {
-			Alembic::AbcGeom::OInt32GeomParam param(arbGeoParams, layerName, false,
+			break;
+		}
+		case CD_PROP_INT:
+		{
+			Alembic::AbcGeom::OInt32GeomParam param(arbGeoParams, layer_name, false,
 			                                        Alembic::AbcGeom::kVertexScope, 1, m_time_sampling);
-			m_layers_written.insert(layerName);
+			m_layers_written.insert(layer_name);
 			m_vert_layers.push_back(
 			            std::pair<int, Alembic::Abc::OArrayProperty>(index,
 			                                                         param.getValueProperty()));
-		}
+
 			break;
+		}
 	}
 }
 
 void AbcMeshWriter::createFaceLayerParam(DerivedMesh *dm, int index,
-                                             Alembic::Abc::OCompoundProperty arbGeoParams)
+                                         const Alembic::Abc::OCompoundProperty &arbGeoParams)
 {
 	CustomDataLayer *layer = &dm->polyData.layers[index];
-	std::string layerName = layer->name;
+	const std::string layer_name = layer->name;
 
-	// we have already a layer named layerName. skip
-	if (m_layers_written.count(layerName) != 0)
+	/* we have already a layer named layer_name, skip */
+	if (m_layers_written.count(layer_name) != 0) {
 		return;
+	}
 
 	switch (layer->type) {
-		case CD_MCOL: {
-			Alembic::AbcGeom::OC3fGeomParam param(arbGeoParams, layerName, false,
+		case CD_MCOL:
+		{
+			Alembic::AbcGeom::OC3fGeomParam param(arbGeoParams, layer_name, false,
 			                                      Alembic::AbcGeom::kFacevaryingScope, 1, m_time_sampling);
-			m_layers_written.insert(layerName);
+
+			m_layers_written.insert(layer_name);
 			m_face_layers.push_back(
 			            std::pair<int, Alembic::Abc::OArrayProperty>(index,
 			                                                         param.getValueProperty()));
-		}
-			break;
 
+			break;
+		}
 		default:
 			break;
 	};
@@ -711,23 +727,29 @@ void AbcMeshWriter::writeArbGeoParams(DerivedMesh *dm)
 		                                           m_velocity.getDataType(),
 		                                           Alembic::Util::Dimensions(dm->getNumVerts(dm)));
 		m_velocity.set(samp);
-		return; // we have all we need.
+
+		/* we have all we need */
+		return;
 	}
 
-	// vertex data
+	/* vertex data */
 	for (int i = 0; i < m_vert_layers.size(); ++i) {
-		if (m_subdiv_schema.valid())
+		if (m_subdiv_schema.valid()) {
 			writeVertexLayerParam(dm, i, m_subdiv_schema.getArbGeomParams());
-		else
+		}
+		else {
 			writeVertexLayerParam(dm, i, m_mesh_schema.getArbGeomParams());
+		}
 	}
 
-	// face varying data
+	/* face varying data */
 	for (int i = 0; i < m_face_layers.size(); ++i) {
-		if (m_subdiv_schema.valid())
+		if (m_subdiv_schema.valid()) {
 			writeFaceLayerParam(dm, i, m_subdiv_schema.getArbGeomParams());
-		else
+		}
+		else {
 			writeFaceLayerParam(dm, i, m_mesh_schema.getArbGeomParams());
+		}
 	}
 
 	if (m_first_frame && m_has_per_face_materials) {
@@ -752,35 +774,36 @@ void AbcMeshWriter::writeArbGeoParams(DerivedMesh *dm)
 }
 
 void AbcMeshWriter::writeVertexLayerParam(DerivedMesh *dm, int index,
-                                          Alembic::Abc::OCompoundProperty arbGeoParams)
+                                          const Alembic::Abc::OCompoundProperty &/*arbGeoParams*/)
 {
 	CustomDataLayer *layer = &dm->vertData.layers[m_vert_layers[index].first];
-	std::string layerName = layer->name;
 	int totvert = dm->getNumVerts(dm);
 
 	switch (layer->type) {
 		case CD_PROP_FLT:
-		case CD_PROP_INT: {
+		case CD_PROP_INT:
+		{
 			Alembic::AbcCoreAbstract::ArraySample samp(layer->data,
 			                                           m_vert_layers[index].second.getDataType(),
 			                                           Alembic::Util::Dimensions(totvert));
 
 			m_vert_layers[index].second.set(samp);
-		}
 			break;
+		}
 	};
 }
 
 void AbcMeshWriter::writeFaceLayerParam(DerivedMesh *dm, int index,
-                                            Alembic::Abc::OCompoundProperty arbGeoParams)
+                                        const Alembic::Abc::OCompoundProperty &/*arbGeoParams*/)
 {
 	CustomDataLayer *layer = &dm->polyData.layers[m_face_layers[index].first];
+	const int totpolys = dm->getNumPolys(dm);
 
-	int totpolys = dm->getNumPolys(dm);
 	std::vector<float> buffer;
 
 	switch (layer->type) {
-		case CD_MCOL: {
+		case CD_MCOL:
+		{
 			const float cscale = 1.0f / 255.0f;
 
 			buffer.clear();
@@ -790,6 +813,7 @@ void AbcMeshWriter::writeFaceLayerParam(DerivedMesh *dm, int index,
 			for (int i = 0; i < totpolys; ++i) {
 				MPoly *p = &polys[i];
 				MCol *cface = &cfaces[p->loopstart + p->totloop];
+
 				for (int j = 0; j < p->totloop; ++j) {
 					cface--;
 					buffer.push_back(cface->b * cscale);
@@ -823,13 +847,12 @@ ModifierData *AbcMeshWriter::getFluidSimModifier()
 	return NULL;
 }
 
-void AbcMeshWriter::getVelocities(DerivedMesh *dm,
-                                      std::vector<float> &vels)
+void AbcMeshWriter::getVelocities(DerivedMesh *dm, std::vector<float> &vels)
 {
-	int totverts = dm->getNumVerts(dm);
+	const int totverts = dm->getNumVerts(dm);
 
 	vels.clear();
-	vels.reserve(dm->getNumVerts(dm));
+	vels.reserve(totverts);
 
 	ModifierData *md = getFluidSimModifier();
 	FluidsimModifierData *fmd = reinterpret_cast<FluidsimModifierData *>(md);
@@ -869,11 +892,11 @@ void AbcMeshWriter::getVelocities(DerivedMesh *dm,
 	}
 }
 
-void AbcMeshWriter::getGeoGroups(DerivedMesh *dm,
-                                 std::map<std::string,
-                                 std::vector<Alembic::Util::int32_t> > &geoGroups)
+void AbcMeshWriter::getGeoGroups(
+        DerivedMesh *dm,
+        std::map<std::string, std::vector<Alembic::Util::int32_t> > &geo_groups)
 {
-	int num_poly = dm->getNumPolys(dm);
+	const int num_poly = dm->getNumPolys(dm);
 	MPoly *polygons = dm->getPolyArray(dm);
 
 	for (int i = 0; i < num_poly; ++i) {
@@ -881,8 +904,10 @@ void AbcMeshWriter::getGeoGroups(DerivedMesh *dm,
 		short mnr = current_poly.mat_nr;
 
 		Material *mat = give_current_material(m_object, mnr + 1);
-		if (!mat)
+
+		if (!mat) {
 			continue;
+		}
 
 		std::string name = (mat->id.name + 2);
 
@@ -890,25 +915,18 @@ void AbcMeshWriter::getGeoGroups(DerivedMesh *dm,
 		std::replace(name.begin(), name.end(), '.', '_');
 		std::replace(name.begin(), name.end(), ':', '_');
 
-		if (geoGroups.find(name) == geoGroups.end()) {
+		if (geo_groups.find(name) == geo_groups.end()) {
 			std::vector<Alembic::Util::int32_t> faceArray;
-			geoGroups[name] = faceArray;
+			geo_groups[name] = faceArray;
 		}
 
-		geoGroups[name].push_back(i);
+		geo_groups[name].push_back(i);
 	}
 
-	if (geoGroups.size() == 0) {
+	if (geo_groups.size() == 0) {
 		Material *mat = give_current_material(m_object, 1);
-		std::string name;
 
-		if (!mat)
-			name = "default";
-		else {
-			std::string matname = mat->id.name + 2;
-			name = matname;
-		}
-
+		std::string name = (mat) ? (mat->id.name + 2) : "default";
 		std::replace(name.begin(), name.end(), ' ', '_');
 		std::replace(name.begin(), name.end(), '.', '_');
 		std::replace(name.begin(), name.end(), ':', '_');
@@ -919,13 +937,13 @@ void AbcMeshWriter::getGeoGroups(DerivedMesh *dm,
 			faceArray.push_back(i);
 		}
 
-		geoGroups[name] = faceArray;
+		geo_groups[name] = faceArray;
 	}
 }
 
 /* ******************************* mesh reader ****************************** */
 
-// Some helpers for mesh generation
+/* Some helpers for mesh generation */
 namespace mesh_utils {
 
 static void mesh_add_verts(Mesh *mesh, size_t len)
@@ -939,8 +957,9 @@ static void mesh_add_verts(Mesh *mesh, size_t len)
 	CustomData_copy(&mesh->vdata, &vdata, CD_MASK_MESH, CD_DEFAULT, totvert);
 	CustomData_copy_data(&mesh->vdata, &vdata, 0, 0, mesh->totvert);
 
-	if (!CustomData_has_layer(&vdata, CD_MVERT))
+	if (!CustomData_has_layer(&vdata, CD_MVERT)) {
 		CustomData_add_layer(&vdata, CD_MVERT, CD_CALLOC, NULL, totvert);
+	}
 
 	CustomData_free(&mesh->vdata, mesh->totvert);
 	mesh->vdata = vdata;
@@ -984,17 +1003,20 @@ static void mesh_add_mpolygons(Mesh *mesh, size_t len)
 		return;
 	}
 
-	const int totpolys = mesh->totpoly + len;   /* new face count */
+	/* new face count */
+	const int totpolys = mesh->totpoly + len;
 
 	CustomData pdata;
 	CustomData_copy(&mesh->pdata, &pdata, CD_MASK_MESH, CD_DEFAULT, totpolys);
 	CustomData_copy_data(&mesh->pdata, &pdata, 0, 0, mesh->totpoly);
 
-	if (!CustomData_has_layer(&pdata, CD_MPOLY))
+	if (!CustomData_has_layer(&pdata, CD_MPOLY)) {
 		CustomData_add_layer(&pdata, CD_MPOLY, CD_CALLOC, NULL, totpolys);
+	}
 
-	if (!CustomData_has_layer(&pdata, CD_MTEXPOLY))
+	if (!CustomData_has_layer(&pdata, CD_MTEXPOLY)) {
 		CustomData_add_layer(&pdata, CD_MTEXPOLY, CD_CALLOC, NULL, totpolys);
+	}
 
 	CustomData_free(&mesh->pdata, mesh->totpoly);
 	mesh->pdata = pdata;
@@ -1010,7 +1032,7 @@ static void ABC_apply_materials(Object *ob, void *key)
 {
 	AbcInfo &meshmap = abc_manager->mesh_map[key];
 
-	// Clean up slots
+	/* Clean up slots */
 	while (object_remove_material_slot(ob));
 
 	bool can_assign = true;
@@ -1122,7 +1144,7 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 		poly.loopstart = loopcount;
 		poly.totloop   = face_size;
 
-		// TODO : reverse
+		/* TODO: reverse */
 		int rev_loop = loopcount;
 		for (int f = face_size; f-- ;) {
 			MLoop &loop 	= blender_mesh->mloop[rev_loop+f];
@@ -1137,7 +1159,7 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 		}
 	}
 
-	// TODO
+	/* TODO */
 #if 0
 	if (assign_mat) {
 		std::map<std::string, int> &mat_map = abc_manager->mesh_map[key].mat_map;
@@ -1180,7 +1202,7 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 	m_object = BKE_object_add(bmain, scene, OB_MESH, m_object_name.c_str());
 	m_object->data = blender_mesh;
 
-	// TODO
+	/* TODO */
 #if 0
 	if (apply_materials) {
 		ABC_apply_materials(m_object, NULL);

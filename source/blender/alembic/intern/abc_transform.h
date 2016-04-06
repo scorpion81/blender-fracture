@@ -35,18 +35,20 @@ class AbcTransformWriter : public AbcObjectWriter {
 	Alembic::AbcGeom::OVisibilityProperty m_visibility;
 	Alembic::Abc::M44d m_matrix;
 
-	bool m_world_space;
 	bool m_is_animated;
 	bool m_no_parent_invert;
 	Object *m_parent;
 	bool m_visible;
 
 public:
-	AbcTransformWriter(Object *obj, Alembic::Abc::OObject abcParent, AbcTransformWriter *writerParent,
-							unsigned int timeSampling, AbcExportOptions &opts);
+	AbcTransformWriter(Object *obj,
+	                   Alembic::Abc::OObject abcParent,
+	                   AbcTransformWriter *writerParent,
+	                   unsigned int timeSampling,
+	                   AbcExportOptions &opts);
 
 	Alembic::AbcGeom::OXform &alembicXform() { return m_xform;}
-    virtual Alembic::Abc::Box3d bounds() const;
+    virtual Imath::Box3d bounds() const;
     void setParent(Object *p) { m_parent = p; }
 
 private:

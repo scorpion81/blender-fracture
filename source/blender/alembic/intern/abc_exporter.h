@@ -37,7 +37,6 @@ class AbcExporter {
     Alembic::Abc::OArchive m_archive;
     unsigned int m_trans_sampling_index, m_shape_sampling_index;
 
-	// blender's scene
 	Scene *m_scene;
 	double m_saved_frame;
 

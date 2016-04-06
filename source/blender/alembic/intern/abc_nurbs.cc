@@ -52,7 +52,7 @@ AbcNurbsWriter::AbcNurbsWriter(Scene *sce,
 {
 	m_is_animated = isAnimated();
 
-	// if the object is static, use the default static time sampling
+	/* if the object is static, use the default static time sampling */
 	if (!m_is_animated) {
 		timeSampling = 0;
 	}
@@ -62,7 +62,7 @@ AbcNurbsWriter::AbcNurbsWriter(Scene *sce,
 
 	for (size_t i = 0; i < numNurbs; ++i) {
 		std::stringstream str;
-		str << getObjectName(m_object) << "Shape_" << i;
+		str << get_object_name(m_object) << "Shape_" << i;
 
 		while (parent->alembicXform().getChildHeader(str.str())) {
 			str << "_";
@@ -90,8 +90,8 @@ static void recompute_pnts_cyclic(const BPoint *bps,
                                   std::vector<float> &posWeight,
                                   bool rotate, float rot_mat[3][3])
 {
-	const int new_u = num_u;// + add_u;
-	const int new_v = num_v;// + add_v;
+	const int new_u = num_u;/* + add_u; */
+	const int new_v = num_v;/* + add_v; */
 	const int new_size = new_u * new_v;
 
 	pos.reserve(new_size);
@@ -131,7 +131,7 @@ static void recompute_pnts_cyclic(const BPoint *bps,
 
 void AbcNurbsWriter::do_write()
 {
-	// we have already stored a sample for this object.
+	/* we have already stored a sample for this object. */
 	if (!m_first_frame && !m_is_animated)
 		return;
 
@@ -265,8 +265,8 @@ void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time)
 				posw_in = (*positionsW)[i];
 			}
 
-			// TODO
-			// swap from Y-Up to Z-Up
+			/* TODO */
+			/* swap from Y-Up to Z-Up */
 			nu->bp[i].vec[0] = pos_in[0];
 			nu->bp[i].vec[1] = -pos_in[2];
 			nu->bp[i].vec[2] = pos_in[1];
