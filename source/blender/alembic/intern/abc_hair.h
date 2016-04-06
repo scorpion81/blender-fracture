@@ -26,8 +26,9 @@
 #include "abc_shape.h"
 
 struct CustomDataLayer;
-struct Mesh;
+struct DerivedMesh;
 struct ModifierData;
+struct ParticleSettings;
 struct ParticleSystem;
 
 class AbcHairWriter : public AbcShapeWriter {
@@ -47,6 +48,20 @@ private:
 	virtual void do_write();
 
     bool isAnimated() const;
+
+	void write_hair_sample(DerivedMesh *dm,
+                           ParticleSettings *part,
+                           std::vector<Imath::V3f> &verts,
+                           std::vector<Imath::V3f> &norm_values,
+                           std::vector<Imath::V2f> &uv_values,
+                           std::vector<int32_t> &hvertices);
+
+	void write_hair_child_sample(DerivedMesh *dm,
+	                             ParticleSettings *part,
+                                 std::vector<Imath::V3f> &verts,
+                                 std::vector<Imath::V3f> &norm_values,
+                                 std::vector<Imath::V2f> &uv_values,
+                                 std::vector<int32_t> &hvertices);
 };
 
 #endif  /* __ABC_HAIR_WRITER_H__ */
