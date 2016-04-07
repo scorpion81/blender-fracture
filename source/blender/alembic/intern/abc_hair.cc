@@ -145,15 +145,15 @@ void AbcHairWriter::write_hair_sample(DerivedMesh *dm,
 		path = cache[p];
 
 		if (part->from == PART_FROM_FACE && mtface) {
-			float r_uv[2];
-			float tmpnor[3], mapfw[4], vec[3];
-			int num = pa->num_dmcache >= 0 ? pa->num_dmcache : pa->num;
+			const int num = pa->num_dmcache >= 0 ? pa->num_dmcache : pa->num;
 
 			if (num < dm->getNumTessFaces(dm)) {
-				MFace *face = (MFace*)dm->getTessFaceData(dm, num, CD_MFACE);
+				MFace *face = static_cast<MFace *>(dm->getTessFaceData(dm, num, CD_MFACE));
 				MTFace *tface = mtface + num;
 
 				if (mface) {
+					float r_uv[2], tmpnor[3], mapfw[4], vec[3];
+
 					psys_interpolate_uvs(tface, face->v4, pa->fuv, r_uv);
 					uv_values.push_back(Imath::V2f(r_uv[0], r_uv[1]));
 
@@ -253,14 +253,14 @@ void AbcHairWriter::write_hair_child_sample(DerivedMesh *dm,
 		path = cache[p];
 
 		if (part->from == PART_FROM_FACE) {
-			float r_uv[2];
-			float tmpnor[3], mapfw[4], vec[3];
-			int num = pc->num;
+			const int num = pc->num;
 
-			MFace *face = (MFace *)dm->getTessFaceData(dm, num, CD_MFACE);
+			MFace *face = static_cast<MFace *>(dm->getTessFaceData(dm, num, CD_MFACE));
 			MTFace *tface = mtface + num;
 
 			if (mface && mtface) {
+				float r_uv[2], tmpnor[3], mapfw[4], vec[3];
+
 				psys_interpolate_uvs(tface, face->v4, pc->fuv, r_uv);
 				uv_values.push_back(Imath::V2f(r_uv[0], r_uv[1]));
 
@@ -281,7 +281,13 @@ void AbcHairWriter::write_hair_child_sample(DerivedMesh *dm,
 			float vert[3];
 			copy_v3_v3(vert, path->co);
 			mul_m4_v3(inv_mat, vert);
+
+			if (m_options.do_convert_axis) {
+				mul_m3_v3(m_options.convert_matrix, vert);
+			}
+
 			verts.push_back(Imath::V3f(vert[0], vert[1], vert[2]));
+
 			++path;
 		}
 	}

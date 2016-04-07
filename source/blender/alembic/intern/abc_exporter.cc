@@ -286,18 +286,14 @@ void AbcExporter::createTransformWritersFlat()
 
 void AbcExporter::exploreTransform(Object *ob, Object *parent, Object *dupliObParent)
 {
-	Object *dupliob = NULL;
-	Object *dupliParent = NULL;
-	
-	DupliObject *link = NULL;
-	ListBase *lb = NULL;
-
 	createTransformWriter(ob, parent, dupliObParent);
-	
-	lb = object_duplilist(G.main->eval_ctx, m_scene, ob);
+
+	ListBase *lb = object_duplilist(G.main->eval_ctx, m_scene, ob);
 
 	if (lb) {
-		link = (DupliObject*)lb->first;
+		DupliObject *link = static_cast<DupliObject *>(lb->first);
+		Object *dupliob = NULL;
+		Object *dupliParent = NULL;
 		
 		while (link) {
 			dupliob = link->ob;
@@ -356,7 +352,7 @@ void AbcExporter::createTransformWriter(Object *ob, Object *parent, Object *dupl
 
 void AbcExporter::createShapeWriters()
 {
-	Base *base = (Base *) m_scene->base.first;
+	Base *base = static_cast<Base *>(m_scene->base.first);
 
 	while (base) {
 		Object *ob = base->object;
@@ -405,15 +401,13 @@ void AbcExporter::createShapeWriter(Object *ob, Object *dupliObParent)
 	AbcTransformWriter *xform = getXForm(name);
 
 	if (!xform) {
-		std::cerr << "xform " << name << "is NULL" <<  std::endl;
+		std::cerr << __func__ << ": xform " << name << "is NULL\n";
 		return;
 	}
 
-	ParticleSystem *psys = (ParticleSystem *)ob->particlesystem.first;
-
-	int enable_hair 	  = true;
+	int enable_hair = true;
 	int enable_hair_child = true;
-	int enable_geo  	  = true;
+	int enable_geo = true;
 
 	ID *id = reinterpret_cast<ID *>(ob);
 	IDProperty *xport_props = IDP_GetProperties(id, 0);
@@ -440,6 +434,8 @@ void AbcExporter::createShapeWriter(Object *ob, Object *dupliObParent)
 			enable_hair_child = IDP_Int(enable_prop);
 		}
 	}
+
+	ParticleSystem *psys = static_cast<ParticleSystem *>(ob->particlesystem.first);
 
 	for (; psys; psys = psys->next) {
 		if (!psys_check_enabled(ob, psys))

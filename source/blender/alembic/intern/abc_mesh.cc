@@ -224,7 +224,7 @@ void AbcMeshWriter::writeMesh()
 		            creaseLengths, creaseSharpness);
 
 		if (m_first_frame) {
-			/* Here I'm creating materials' facesets */
+			/* create materials' facesets */
 			std::map< std::string, std::vector<int32_t>  > geoGroups;
 			getGeoGroups(dm, geoGroups);
 
@@ -253,12 +253,15 @@ void AbcMeshWriter::writeMesh()
 		OV2fGeomParam::Sample uvSamp;
 		if (!uvIdx.empty() && !uvValArray.empty()) {
 			uvSamp.setScope(kFacevaryingScope);
+
 			uvSamp.setVals(V2fArraySample(
 			                   &uvValArray.front(),
 			                   uvValArray.size()));
+
 			UInt32ArraySample idxSamp(
 			            (const uint32_t *) &uvIdx.front(),
 			            uvIdx.size());
+
 			uvSamp.setIndices(idxSamp);
 		}
 
