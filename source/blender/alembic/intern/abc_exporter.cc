@@ -276,7 +276,7 @@ void AbcExporter::createTransformWritersFlat()
 		Object *ob = base->object;
 
 		if (m_options.exportObject(ob) && objectIsShape(ob)) {
-			std::string name = get_object_name(ob);
+			std::string name = get_id_name(ob);
 			m_xforms[name] = new AbcTransformWriter(ob, m_archive.getTop(), 0, m_trans_sampling_index, m_options);
 		}
 

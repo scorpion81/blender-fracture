@@ -50,7 +50,7 @@ AbcTransformWriter::AbcTransformWriter(Object *obj,
 		timeSampling = 0;
 	}
 
-    m_xform = OXform(abcParent, get_object_name(m_object), timeSampling);
+    m_xform = OXform(abcParent, get_id_name(m_object), timeSampling);
 	m_schema = m_xform.getSchema();
 
 	if (writerParent) {

@@ -28,14 +28,18 @@ extern "C" {
 #include "DNA_object_types.h"
 }
 
-std::string get_object_name(Object *ob)
+std::string get_id_name(Object *ob)
 {
 	if (!ob) {
 		return "";
 	}
 
 	ID *id = reinterpret_cast<ID *>(ob);
+	return get_id_name(id);
+}
 
+std::string get_id_name(ID *id)
+{
 	std::string name(id->name + 2);
 	std::replace(name.begin(), name.end(), ' ', '_');
 	std::replace(name.begin(), name.end(), '.', '_');
@@ -46,17 +50,17 @@ std::string get_object_name(Object *ob)
 
 std::string get_object_dag_path_name(Object *ob, Object *dupli_parent)
 {
-    std::string name = get_object_name(ob);
+    std::string name = get_id_name(ob);
 
     Object *p = ob->parent;
 
     while (p) {
-        name = get_object_name(p) + "/" + name;
+        name = get_id_name(p) + "/" + name;
         p = p->parent;
     }
 
 	if (dupli_parent && (ob != dupli_parent)) {
-		name = get_object_name(dupli_parent) + "/" + name;
+		name = get_id_name(dupli_parent) + "/" + name;
 	}
 
     return name;

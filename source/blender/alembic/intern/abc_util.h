@@ -25,9 +25,11 @@
 
 #include <Alembic/Abc/All.h>
 
+struct ID;
 struct Object;
 
-std::string get_object_name(Object *ob);
+std::string get_id_name(ID *id);
+std::string get_id_name(Object *ob);
 std::string get_object_dag_path_name(Object *ob, Object *dupli_parent);
 
 bool object_selected(Object *ob);

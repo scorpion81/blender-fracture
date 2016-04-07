@@ -945,11 +945,7 @@ void AbcMeshWriter::getGeoGroups(
 			continue;
 		}
 
-		std::string name = (mat->id.name + 2);
-
-		std::replace(name.begin(), name.end(), ' ', '_');
-		std::replace(name.begin(), name.end(), '.', '_');
-		std::replace(name.begin(), name.end(), ':', '_');
+		std::string name = get_id_name(&mat->id);
 
 		if (geo_groups.find(name) == geo_groups.end()) {
 			std::vector<int32_t> faceArray;
@@ -962,10 +958,7 @@ void AbcMeshWriter::getGeoGroups(
 	if (geo_groups.size() == 0) {
 		Material *mat = give_current_material(m_object, 1);
 
-		std::string name = (mat) ? (mat->id.name + 2) : "default";
-		std::replace(name.begin(), name.end(), ' ', '_');
-		std::replace(name.begin(), name.end(), '.', '_');
-		std::replace(name.begin(), name.end(), ':', '_');
+		std::string name = (mat) ? get_id_name(&mat->id) : "default";
 
 		std::vector<int32_t> faceArray;
 
