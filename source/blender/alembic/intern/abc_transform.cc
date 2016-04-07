@@ -95,13 +95,6 @@ void AbcTransformWriter::do_write()
 		mul_m4_m3m4(mat, m_options.convert_matrix, mat);
 	}
 
-    float rot_mat[4][4];
-	if (m_object->type == OB_CAMERA) {
-        unit_m4(rot_mat);
-        rotate_m4(rot_mat, 'X', -M_PI_2);
-        mul_m4_m4m4(mat, mat, rot_mat);
-    }
-
     m_matrix = convert_matrix(mat);
 
 	m_sample.setMatrix(m_matrix);
