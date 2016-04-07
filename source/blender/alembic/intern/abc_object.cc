@@ -362,6 +362,10 @@ void AbcObjectReader::readObjectMatrix(const float time) const
 		m_object->rot[1] = xs.getYRotation();
 		m_object->rot[2] = xs.getZRotation();
 
+		for (int i = 0; i < 3; ++i) {
+			m_object->rot[i] *= M_PI / 180.0f;
+		}
+
 		DAG_id_tag_update(&(m_object->id), OB_RECALC_OB);
 	}
 }
