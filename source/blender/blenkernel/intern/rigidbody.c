@@ -226,7 +226,7 @@ void BKE_rigidbody_calc_threshold(float max_con_mass, FractureModifierData *rmd,
 
 			thresh = ((min_mass + (rmd->mass_threshold_factor * max_mass)) / (min_mass + max_mass)) * max_thresh;
 		}
-		else;
+		else
 		{
 			con_mass = con->mi1->rigidbody->mass + con->mi2->rigidbody->mass;
 			if (rmd->use_mass_dependent_thresholds)
@@ -3400,24 +3400,6 @@ static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, Rigid
 	float weight = MIN2(rbsc->mi1->thresh_weight, rbsc->mi2->thresh_weight);
 	float breaking_angle = fmd->breaking_angle_weighted ? fmd->breaking_angle * weight : fmd->breaking_angle;
 	float breaking_distance = fmd->breaking_distance_weighted ? fmd->breaking_distance * weight : fmd->breaking_distance;
-	int iterations;
-
-	if (fmd->solver_iterations_override == 0) {
-		iterations = rbw->num_solver_iterations;
-	}
-	else {
-		if ((rbsc->mi1->particle_index != -1) && (rbsc->mi1->particle_index == rbsc->mi2->particle_index)) {
-			iterations = fmd->cluster_solver_iterations_override;
-		}
-		else {
-			iterations = fmd->solver_iterations_override;
-		}
-	}
-
-	if (iterations > 0) {
-		rbsc->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
-		rbsc->num_solver_iterations = iterations;
-	}
 
 	if ((fmd->use_mass_dependent_thresholds || fmd->use_compounds /*|| fmd->mass_threshold_factor > 0.0f*/)) {
 		BKE_rigidbody_calc_threshold(max_con_mass, fmd, rbsc);
@@ -3438,6 +3420,28 @@ static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, Rigid
 
 		/* Treat distances here */
 		handle_breaking_distance(fmd, ob, rbsc, rbw, distdiff, weight, breaking_distance);
+	}
+}
+
+static void handle_solver_iterations(RigidBodyWorld *rbw, FractureModifierData *fmd, RigidBodyShardCon *rbsc)
+{
+	int iterations;
+
+	if (fmd->solver_iterations_override == 0) {
+		iterations = rbw->num_solver_iterations;
+	}
+	else {
+		if ((rbsc->mi1->particle_index != -1) && (rbsc->mi1->particle_index == rbsc->mi2->particle_index)) {
+			iterations = fmd->cluster_solver_iterations_override;
+		}
+		else {
+			iterations = fmd->solver_iterations_override;
+		}
+	}
+
+	if (iterations > 0) {
+		rbsc->flag |= RBC_FLAG_OVERRIDE_SOLVER_ITERATIONS;
+		rbsc->num_solver_iterations = iterations;
 	}
 }
 
@@ -3545,6 +3549,10 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				rbsc->start_angle = 0.0f;
 				rbsc->start_dist = 0.0f;
 			}
+
+			/* needs probably taken into account BEFORE validation already, instead of after it
+			 * (causing a delay by one frame with old value and thus different simulation behavior at start) */
+			handle_solver_iterations(rbw, fmd, rbsc);
 
 			if (rbsc->physics_constraint && !(RB_constraint_is_enabled(rbsc->physics_constraint)))
 			{
