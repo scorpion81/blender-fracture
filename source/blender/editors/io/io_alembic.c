@@ -39,9 +39,14 @@
 #include "BLI_string.h"
 #include "BLI_utildefines.h"
 
+#include "BLT_translation.h"
+
 #include "RNA_access.h"
 #include "RNA_define.h"
 #include "RNA_enum_types.h"
+
+#include "UI_interface.h"
+#include "UI_resources.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -118,6 +123,102 @@ static int wm_alembic_export_exec(bContext *C, wmOperator *op)
 	return OPERATOR_FINISHED;
 }
 
+static void ui_alembic_export_settings(uiLayout *layout, PointerRNA *imfptr)
+{
+	uiLayout *box = uiLayoutBox(layout);
+	uiLayout *row = uiLayoutRow(box, false);
+	uiItemL(row, IFACE_("Archive Options:"), ICON_FILE_BLANK);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "ogawa", 0, NULL, ICON_NONE);
+
+	box = uiLayoutBox(layout);
+	row = uiLayoutRow(box, false);
+	uiItemL(row, IFACE_("Manual Transform:"), ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "to_forward", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "to_up", 0, NULL, ICON_NONE);
+
+	/* Scene Options */
+	box = uiLayoutBox(layout);
+	row = uiLayoutRow(box, false);
+	uiItemL(row, IFACE_("Scene Options:"), ICON_SCENE_DATA);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "start", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "end", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "xsamples", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "gsamples", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "sh_open", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "sh_close", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "selected", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "renderable", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "vislayers", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "flatten", 0, NULL, ICON_NONE);
+
+	/* Object Data */
+	box = uiLayoutBox(layout);
+	row = uiLayoutRow(box, false);
+	uiItemL(row, IFACE_("Object Options:"), ICON_OBJECT_DATA);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "uvs", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "packuv", 0, NULL, ICON_NONE);
+	uiLayoutSetEnabled(row, RNA_boolean_get(imfptr, "uvs"));
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "normals", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "vcolors", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "facesets", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "matindices", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "subdiv_schema", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "forcemeshes", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "geoprops", 0, NULL, ICON_NONE);
+}
+
+static void wm_alembic_export_draw(bContext *UNUSED(C), wmOperator *op)
+{
+	PointerRNA ptr;
+
+	RNA_pointer_create(NULL, op->type->srna, op->properties, &ptr);
+	ui_alembic_export_settings(op->layout, &ptr);
+}
+
 void WM_OT_alembic_export(wmOperatorType *ot)
 {
 	ot->name = "Export Alembic Archive";
@@ -126,38 +227,98 @@ void WM_OT_alembic_export(wmOperatorType *ot)
 	ot->invoke = wm_alembic_export_invoke;
 	ot->exec = wm_alembic_export_exec;
 	ot->poll = WM_operator_winactive;
+	ot->ui = wm_alembic_export_draw;
 
 	WM_operator_properties_filesel(ot, 0, FILE_BLENDER, FILE_SAVE, WM_FILESEL_FILEPATH,
 	                               FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 
-	RNA_def_int(ot->srna, "start", 1, INT_MIN, INT_MAX, "Start frame", "Start Frame", INT_MIN, INT_MAX);
-	RNA_def_int(ot->srna, "end", 1, INT_MIN, INT_MAX, "End frame", "End Frame", INT_MIN, INT_MAX);
+	RNA_def_int(ot->srna, "start", 1, INT_MIN, INT_MAX,
+	            "Start frame", "Start Frame", INT_MIN, INT_MAX);
 
-	RNA_def_enum(ot->srna, "to_forward", rna_enum_object_axis_items, 0, "Forward Axis", "");
-	RNA_def_enum(ot->srna, "to_up", rna_enum_object_axis_items, 0, "Up Axis", "");
+	RNA_def_int(ot->srna, "end", 1, INT_MIN, INT_MAX,
+	            "End frame", "End Frame", INT_MIN, INT_MAX);
 
-	RNA_def_int(ot->srna, "xsamples", 1, 1, 128, "Xform samples / frame", "Transform samples per frame", 1, 128);
-	RNA_def_int(ot->srna, "gsamples", 1, 1, 128, "Geom samples / frame", "Geometry samples per frame", 1, 128);
-	RNA_def_float(ot->srna, "sh_open", 0.0f, -1.0f, 1.0f, "Shutter open", "", -1.0f, 1.0f);
-	RNA_def_float(ot->srna, "sh_close", 1.0f, -1.0f, 1.0f, "Shutter close", "", -1.0f, 1.0f);
+	RNA_def_enum(ot->srna, "to_forward", rna_enum_object_axis_items, OB_NEGZ,
+	             "Forward Axis", "Target forward axis");
 
-	RNA_def_boolean(ot->srna, "selected"	, 0, "Selected objects only", "Export only selected objects");
-	RNA_def_boolean(ot->srna, "renderable"	, 1, "Renderable objects only", "Export only objects marked renderable in the outliner");
-	RNA_def_boolean(ot->srna, "vislayers"	, 0, "Visible layers only", "Export only objects in visible layers");
-	RNA_def_boolean(ot->srna, "flatten"		, 0, "Flatten hierarchy", "Flatten hierarchy");
-	RNA_def_boolean(ot->srna, "uvs"			, 1, "UVs", "Export UVs");
-	RNA_def_boolean(ot->srna, "normals"		, 1, "Normals", "Export normals");
-	RNA_def_boolean(ot->srna, "vcolors"		, 0, "Vertex colors", "Export vertex colors");
-	RNA_def_boolean(ot->srna, "facesets"	, 0, "Facesets", "Export facesets");
-	RNA_def_boolean(ot->srna, "matindices"	, 0, "Material indices", "Export per face material indices");
-	RNA_def_boolean(ot->srna, "subdiv_schema"	, 0, "Use Alembic subdiv schema", "Export with subdiv schema, else with mesh schema");
-	RNA_def_boolean(ot->srna, "geoprops"	, 0, "Custom props as geom data", "Write custom properties as geometry props (If not checked, hey are written as user data)");
-	RNA_def_boolean(ot->srna, "forcemeshes"	, 0, "Subsurfs as meshes", "Export subdivision surfaces as meshes");
-	RNA_def_boolean(ot->srna, "ogawa"		, 0, "Export Ogawa", "Export as Ogawa archive type");
-	RNA_def_boolean(ot->srna, "packuv"		, 1, "Pack UV islands", "Export UV with packed island");
+	RNA_def_enum(ot->srna, "to_up", rna_enum_object_axis_items, OB_POSY,
+	             "Up Axis", "Target up axis");
+
+	RNA_def_int(ot->srna, "xsamples", 1, 1, 128,
+	            "Xform samples / frame", "Transform samples per frame", 1, 128);
+
+	RNA_def_int(ot->srna, "gsamples", 1, 1, 128,
+	            "Geom samples / frame", "Geometry samples per frame", 1, 128);
+
+	RNA_def_float(ot->srna, "sh_open", 0.0f, -1.0f, 1.0f,
+	              "Shutter open", "", -1.0f, 1.0f);
+
+	RNA_def_float(ot->srna, "sh_close", 1.0f, -1.0f, 1.0f,
+	              "Shutter close", "", -1.0f, 1.0f);
+
+	RNA_def_boolean(ot->srna, "selected", 0,
+	                "Selected objects only", "Export only selected objects");
+
+	RNA_def_boolean(ot->srna, "renderable"	, 1,
+	                "Renderable objects only",
+	                "Export only objects marked renderable in the outliner");
+
+	RNA_def_boolean(ot->srna, "vislayers", 0,
+	                "Visible layers only", "Export only objects in visible layers");
+
+	RNA_def_boolean(ot->srna, "flatten", 0,
+	                "Flatten hierarchy",
+	                "Do not preserve objects' parent/children relationship");
+
+	RNA_def_boolean(ot->srna, "uvs", 1, "UVs", "Export UVs");
+
+	RNA_def_boolean(ot->srna, "packuv", 1, "Pack UV islands",
+	                "Export UV with packed island");
+
+	RNA_def_boolean(ot->srna, "normals", 1, "Normals", "Export normals");
+
+	RNA_def_boolean(ot->srna, "vcolors", 0, "Vertex colors", "Export vertex colors");
+
+	RNA_def_boolean(ot->srna, "facesets", 0, "Facesets", "Export facesets");
+
+	RNA_def_boolean(ot->srna, "matindices", 0, "Material indices",
+	                "Export per face material indices");
+
+	RNA_def_boolean(ot->srna, "subdiv_schema", 0,
+	                "Use Subdivision Schema",
+	                "Export meshes using Alembic's subdivision schema");
+
+	RNA_def_boolean(ot->srna, "forcemeshes", 0,
+	                "Apply Subsurf", "Export subdivision surfaces as meshes");
+
+	RNA_def_boolean(ot->srna, "geoprops", 0,
+	                "Custom props as geom data",
+	                "Write custom properties as geometry properties (default to user data)");
+
+	RNA_def_boolean(ot->srna, "ogawa", 0, "Export Ogawa",
+	                "Export as Ogawa archive type");
 }
 
-#endif
+static void ui_alembic_import_settings(uiLayout *layout, PointerRNA *imfptr)
+{
+	uiLayout *box = uiLayoutBox(layout);
+	uiLayout *row = uiLayoutRow(box, false);
+	uiItemL(row, IFACE_("Manual Transform:"), ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "from_forward", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "from_up", 0, NULL, ICON_NONE);
+}
+
+static void wm_alembic_import_draw(bContext *UNUSED(C), wmOperator *op)
+{
+	PointerRNA ptr;
+
+	RNA_pointer_create(NULL, op->type->srna, op->properties, &ptr);
+	ui_alembic_import_settings(op->layout, &ptr);
+}
 
 static int wm_alembic_import_exec(bContext *C, wmOperator *op)
 {
@@ -194,10 +355,16 @@ void WM_OT_alembic_import(wmOperatorType *ot)
 	ot->invoke = WM_operator_filesel;
 	ot->exec = wm_alembic_import_exec;
 	ot->poll = WM_operator_winactive;
+	ot->ui = wm_alembic_import_draw;
 
 	WM_operator_properties_filesel(ot, 0, FILE_BLENDER, FILE_SAVE, WM_FILESEL_FILEPATH,
 	                               FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 
-	RNA_def_enum(ot->srna, "from_forward", rna_enum_object_axis_items, 0, "Forward Axis", "");
-	RNA_def_enum(ot->srna, "from_up", rna_enum_object_axis_items, 0, "Up Axis", "");
+	RNA_def_enum(ot->srna, "from_forward", rna_enum_object_axis_items, OB_NEGZ,
+	             "Forward Axis", "Forward axis of the objects in the .abc archive");
+
+	RNA_def_enum(ot->srna, "from_up", rna_enum_object_axis_items, OB_POSY,
+	             "Up Axis", "Up axis of the objects in the .abc archive");
 }
+
+#endif
