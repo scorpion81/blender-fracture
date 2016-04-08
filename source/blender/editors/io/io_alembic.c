@@ -329,10 +329,6 @@ static int wm_alembic_import_exec(bContext *C, wmOperator *op)
 
 	Scene *scene = CTX_data_scene(C);
 
-	/* TODO: handle cursor */
-	float cursor_location[3];
-	copy_v3_v3(cursor_location, scene->cursor);
-
 	char filename[FILE_MAX];
 	RNA_string_get(op->ptr, "filepath", filename);
 
@@ -340,9 +336,6 @@ static int wm_alembic_import_exec(bContext *C, wmOperator *op)
 	const int from_up = RNA_enum_get(op->ptr, "from_up");
 
 	ABC_import(C, filename, from_forward, from_up);
-
-	/* restore cursor */
-	copy_v3_v3(scene->cursor, cursor_location);
 
 	return OPERATOR_FINISHED;
 }
