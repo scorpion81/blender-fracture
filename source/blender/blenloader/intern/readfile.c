@@ -5400,6 +5400,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 
 		fmd->refresh_images = true;
 		fmd->auto_execute = autoexec;
+		fmd->refresh_autohide = true;
 	}
 }
 
