@@ -4159,8 +4159,8 @@ static void rna_def_modifier_meshcache(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "File Path", "Path to external displacements file");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-	prop = RNA_def_property(srna, "sub_object", PROP_STRING, PROP_FILEPATH);
-	RNA_def_property_ui_text(prop, "Object", "Name of the object in the file");
+	prop = RNA_def_property(srna, "sub_object", PROP_STRING, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Object", "Path to the object in the Alembic archive");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "factor", PROP_FLOAT, PROP_NONE);
