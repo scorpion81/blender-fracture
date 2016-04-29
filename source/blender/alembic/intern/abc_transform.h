@@ -31,7 +31,6 @@ class AbcTransformWriter : public AbcObjectWriter {
 	Alembic::AbcGeom::OXform m_xform;
     Alembic::AbcGeom::OXformSchema m_schema;
     Alembic::AbcGeom::XformSample m_sample;
-	Alembic::Abc::OBoolProperty m_rot90xprop;
 	Alembic::AbcGeom::OVisibilityProperty m_visibility;
 	Alembic::Abc::M44d m_matrix;
 

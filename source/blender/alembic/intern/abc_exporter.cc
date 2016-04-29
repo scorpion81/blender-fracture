@@ -346,7 +346,7 @@ void AbcExporter::createTransformWriter(Object *ob, Object *parent, Object *dupl
 		m_xforms[name]->setParent(parent);
 	}
 	else {
-		m_xforms[name] = new AbcTransformWriter(ob, m_archive.getTop(), 0, m_trans_sampling_index, m_options);
+		m_xforms[name] = new AbcTransformWriter(ob, m_archive.getTop(), NULL, m_trans_sampling_index, m_options);
 	}
 }
 
@@ -491,9 +491,12 @@ void AbcExporter::createShapeWriter(Object *ob, Object *dupliObParent)
 
 AbcTransformWriter *AbcExporter::getXForm(const std::string &name)
 {
-	std::map<std::string,AbcTransformWriter*>::iterator it = m_xforms.find(name);
-	if (it == m_xforms.end())
+	std::map<std::string, AbcTransformWriter *>::iterator it = m_xforms.find(name);
+
+	if (it == m_xforms.end()) {
 		return NULL;
+	}
+
 	return it->second;
 }
 
