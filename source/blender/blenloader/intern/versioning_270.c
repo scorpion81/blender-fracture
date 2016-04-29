@@ -1072,5 +1072,33 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 				}
 			}
 		}
+
+		for (Scene *scene = main->scene.first; scene; scene = scene->id.next) {
+			CurvePaintSettings *cps = &scene->toolsettings->curve_paint_settings;
+			if (cps->error_threshold == 0) {
+				cps->curve_type = CU_BEZIER;
+				cps->flag |= CURVE_PAINT_FLAG_CORNERS_DETECT;
+				cps->error_threshold = 8;
+				cps->radius_max = 1.0f;
+				cps->corner_angle = DEG2RADF(70.0f);
+			}
+		}
+
+		for (Scene *scene = main->scene.first; scene; scene = scene->id.next) {
+			Sequence *seq;
+
+			SEQ_BEGIN (scene->ed, seq)
+			{
+				if (seq->type == SEQ_TYPE_TEXT) {
+					TextVars *data = seq->effectdata;
+					if (data->color[3] == 0.0f) {
+						copy_v4_fl(data->color, 1.0f);
+						data->shadow_color[3] = 1.0f;
+					}
+				}
+			}
+			SEQ_END
+		}
+
 	}
 }
