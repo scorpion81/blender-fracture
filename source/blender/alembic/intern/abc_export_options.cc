@@ -46,6 +46,7 @@ AbcExportOptions::AbcExportOptions(Scene *scene)
 	shape_frame_step = 1;
 	shutter_open = 0.0;
 	shutter_close = 1.0;
+	global_scale = 1.0f;
 
 	flatten_hierarchy = false;
 

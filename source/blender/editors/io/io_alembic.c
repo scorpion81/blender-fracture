@@ -103,16 +103,17 @@ static int wm_alembic_export_exec(bContext *C, wmOperator *op)
 	bool packuv = RNA_boolean_get(op->ptr, "packuv");
 	const int to_forward = RNA_enum_get(op->ptr, "to_forward");
 	const int to_up = RNA_enum_get(op->ptr, "to_up");
+	const float scale = RNA_float_get(op->ptr, "scale");
 
 	int result = ABC_export(CTX_data_scene(C), filename,
 	                        start, end,
-	                        (double) 1.0 / xsamples,
-	                        (double) 1.0 / gsamples,
+	                        1.0 / (double)xsamples,
+	                        1.0 / (double)gsamples,
 	                        sh_open, sh_close,
 	                        selected, uvs, normals, vcolors,
 	                        forcemeshes, flatten, geoprops,
 	                        vislayers, renderable, facesets, matindices,
-	                        subdiv_schem, ogawa, packuv, to_forward, to_up);
+	                        subdiv_schem, ogawa, packuv, to_forward, to_up, scale);
 
 	switch (result) {
 		case BL_ABC_UNKNOWN_ERROR:
@@ -141,6 +142,9 @@ static void ui_alembic_export_settings(uiLayout *layout, PointerRNA *imfptr)
 
 	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "to_up", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "scale", 0, NULL, ICON_NONE);
 
 	/* Scene Options */
 	box = uiLayoutBox(layout);
@@ -297,6 +301,8 @@ void WM_OT_alembic_export(wmOperatorType *ot)
 
 	RNA_def_boolean(ot->srna, "ogawa", 0, "Export Ogawa",
 	                "Export as Ogawa archive type");
+
+	RNA_def_float(ot->srna, "scale", 1.0f, 0.0f, 1000.0f, "Scale", "", 0.0f, 1000.0f);
 }
 
 static void ui_alembic_import_settings(uiLayout *layout, PointerRNA *imfptr)
@@ -310,6 +316,9 @@ static void ui_alembic_import_settings(uiLayout *layout, PointerRNA *imfptr)
 
 	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "from_up", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "scale", 0, NULL, ICON_NONE);
 }
 
 static void wm_alembic_import_draw(bContext *UNUSED(C), wmOperator *op)
@@ -327,15 +336,14 @@ static int wm_alembic_import_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	Scene *scene = CTX_data_scene(C);
-
 	char filename[FILE_MAX];
 	RNA_string_get(op->ptr, "filepath", filename);
 
 	const int from_forward = RNA_enum_get(op->ptr, "from_forward");
 	const int from_up = RNA_enum_get(op->ptr, "from_up");
+	const float scale = RNA_float_get(op->ptr, "scale");
 
-	ABC_import(C, filename, from_forward, from_up);
+	ABC_import(C, filename, from_forward, from_up, scale);
 
 	return OPERATOR_FINISHED;
 }
@@ -358,6 +366,8 @@ void WM_OT_alembic_import(wmOperatorType *ot)
 
 	RNA_def_enum(ot->srna, "from_up", rna_enum_object_axis_items, OB_POSY,
 	             "Up Axis", "Up axis of the objects in the .abc archive");
+
+	RNA_def_float(ot->srna, "scale", 1.0f, 0.0f, 1000.0f, "Scale", "", 0.0f, 1000.0f);
 }
 
 #endif

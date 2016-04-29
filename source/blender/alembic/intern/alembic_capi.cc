@@ -231,7 +231,7 @@ int ABC_export(Scene *sce, const char *filename,
                int vislayers, int renderable,
                int facesets, int matindices,
                int use_subdiv_schema, bool ogawa, bool packuv,
-               int to_forward, int to_up)
+               int to_forward, int to_up, float scale)
 {
 	try {
 		AbcExportOptions opts(sce);
@@ -256,6 +256,7 @@ int ABC_export(Scene *sce, const char *filename,
 		// Deprecated
 		opts.export_face_sets = facesets;
 		opts.export_mat_indices = matindices;
+		opts.global_scale = scale;
 
 		if (opts.startframe > opts.endframe) {
 			std::swap(opts.startframe, opts.endframe);
@@ -366,7 +367,7 @@ static void create_hierarchy(bContext *C, AbcObjectReader *root)
 	}
 }
 
-void ABC_import(bContext *C, const char *filename, int from_forward, int from_up)
+void ABC_import(bContext *C, const char *filename, int from_forward, int from_up, float scale)
 {
 	/* get objects strings */
 	IArchive archive = open_archive(filename);
@@ -385,7 +386,7 @@ void ABC_import(bContext *C, const char *filename, int from_forward, int from_up
 
 		if (reader->valid()) {
 			reader->readObjectData(CTX_data_main(C), CTX_data_scene(C), 0.0f);
-			reader->readObjectMatrix(0.0f);
+			reader->readObjectMatrix(0.0f, scale);
 		}
 	}
 

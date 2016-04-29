@@ -337,7 +337,7 @@ Object *AbcObjectReader::object() const
 	return m_object;
 }
 
-void AbcObjectReader::readObjectMatrix(const float time) const
+void AbcObjectReader::readObjectMatrix(const float time, const float scale) const
 {
 	const Alembic::AbcGeom::MetaData &md = m_iobject.getParent().getMetaData();
 
@@ -355,7 +355,7 @@ void AbcObjectReader::readObjectMatrix(const float time) const
 
 		for (int i = 0; i < 3; ++i) {
 			m_object->loc[i] = xs.getTranslation()[i];
-			m_object->size[i] = xs.getScale()[i];
+			m_object->size[i] = xs.getScale()[i] * scale;
 		}
 
 		m_object->rot[0] = xs.getXRotation();

@@ -98,7 +98,7 @@ public:
 
 	virtual void readObjectData(Main *bmain, Scene *scene, float time) = 0;
 
-	void readObjectMatrix(const float time) const;
+	void readObjectMatrix(const float time, const float scale) const;
 };
 
 #endif

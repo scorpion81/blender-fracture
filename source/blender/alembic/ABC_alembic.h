@@ -46,9 +46,9 @@ int ABC_export(struct Scene *sce, const char *filename,
                int vislayers, int renderable,
                int facesets, int matindices,
                int geogroups, bool ogawa,
-               bool packuv, int to_forward, int to_up);
+               bool packuv, int to_forward, int to_up, float scale);
 
-void ABC_import(struct bContext *C, const char *filename, int from_forward, int from_up);
+void ABC_import(struct bContext *C, const char *filename, int from_forward, int from_up, float scale);
 
 void ABC_get_vertex_cache(const char *filepath, float time, void *verts, int max_verts, const char *sub_obj, int is_mvert);
 

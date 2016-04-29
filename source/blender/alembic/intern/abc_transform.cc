@@ -91,6 +91,10 @@ void AbcTransformWriter::do_write()
         copy_m4_m4(mat, m_object->obmat);
     }
 
+	float smat[4][4];
+	scale_m4_fl(smat, m_options.global_scale);
+	mul_m4_m4m4(mat, smat, mat);
+
 	if (m_options.do_convert_axis) {
 		mul_m4_m3m4(mat, m_options.convert_matrix, mat);
 	}

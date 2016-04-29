@@ -43,6 +43,7 @@ struct AbcExportOptions {
 	double shape_frame_step;
 	double shutter_open;
 	double shutter_close;
+	float global_scale;
 
 	bool flatten_hierarchy;
 
