@@ -450,6 +450,9 @@ void AbcMeshWriter::getPoints(DerivedMesh *dm, std::vector<float> &points)
 		for (int i = 0, e = dm->getNumVerts(dm); i < e; ++i) {
 			copy_v3_v3(vert, verts[i].co);
 			mul_m3_v3(m_options.convert_matrix, vert);
+			points.push_back(vert[0]);
+			points.push_back(vert[1]);
+			points.push_back(vert[2]);
 		}
 	}
 	else {

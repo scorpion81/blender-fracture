@@ -253,10 +253,11 @@ int ABC_export(Scene *sce, const char *filename,
 		opts.use_subdiv_schema = use_subdiv_schema;
 		opts.export_ogawa = ogawa;
 		opts.pack_uv = packuv;
+		opts.global_scale = scale;
+
 		// Deprecated
 		opts.export_face_sets = facesets;
 		opts.export_mat_indices = matindices;
-		opts.global_scale = scale;
 
 		if (opts.startframe > opts.endframe) {
 			std::swap(opts.startframe, opts.endframe);
