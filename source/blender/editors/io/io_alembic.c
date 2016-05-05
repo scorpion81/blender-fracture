@@ -99,8 +99,8 @@ static int wm_alembic_export_exec(bContext *C, wmOperator *op)
 	bool facesets = RNA_boolean_get(op->ptr, "facesets");
 	bool matindices = RNA_boolean_get(op->ptr, "matindices");
 	bool subdiv_schem = RNA_boolean_get(op->ptr, "subdiv_schema");
-	bool ogawa = RNA_boolean_get(op->ptr, "ogawa");
 	bool packuv = RNA_boolean_get(op->ptr, "packuv");
+	const int compression = RNA_enum_get(op->ptr, "compression_type");
 	const int to_forward = RNA_enum_get(op->ptr, "to_forward");
 	const int to_up = RNA_enum_get(op->ptr, "to_up");
 	const float scale = RNA_float_get(op->ptr, "scale");
@@ -113,7 +113,7 @@ static int wm_alembic_export_exec(bContext *C, wmOperator *op)
 	                        selected, uvs, normals, vcolors,
 	                        forcemeshes, flatten, geoprops,
 	                        vislayers, renderable, facesets, matindices,
-	                        subdiv_schem, ogawa, packuv, to_forward, to_up, scale);
+	                        subdiv_schem, compression, packuv, to_forward, to_up, scale);
 
 	switch (result) {
 		case BL_ABC_UNKNOWN_ERROR:
@@ -128,10 +128,10 @@ static void ui_alembic_export_settings(uiLayout *layout, PointerRNA *imfptr)
 {
 	uiLayout *box = uiLayoutBox(layout);
 	uiLayout *row = uiLayoutRow(box, false);
-	uiItemL(row, IFACE_("Archive Options:"), ICON_FILE_BLANK);
+	uiItemL(row, IFACE_("Archive Options:"), ICON_NONE);
 
 	row = uiLayoutRow(box, false);
-	uiItemR(row, imfptr, "ogawa", 0, NULL, ICON_NONE);
+	uiItemR(row, imfptr, "compression_type", 0, NULL, ICON_NONE);
 
 	box = uiLayoutBox(layout);
 	row = uiLayoutRow(box, false);
@@ -299,8 +299,8 @@ void WM_OT_alembic_export(wmOperatorType *ot)
 	                "Custom props as geom data",
 	                "Write custom properties as geometry properties (default to user data)");
 
-	RNA_def_boolean(ot->srna, "ogawa", 0, "Export Ogawa",
-	                "Export as Ogawa archive type");
+	RNA_def_enum(ot->srna, "compression_type", rna_enum_abc_compression_items,
+	             ABC_ARCHIVE_OGAWA, "Compression", "");
 
 	RNA_def_float(ot->srna, "scale", 1.0f, 0.0f, 1000.0f, "Scale", "", 0.0f, 1000.0f);
 }

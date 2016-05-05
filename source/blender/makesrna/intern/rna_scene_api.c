@@ -45,6 +45,16 @@
 
 #include "rna_internal.h"  /* own include */
 
+#ifdef WITH_ALEMBIC
+#	include "../../alembic/ABC_alembic.h"
+#endif
+
+EnumPropertyItem rna_enum_abc_compression_items[] = {
+	{ ABC_ARCHIVE_OGAWA, "OGAWA", 0, "Ogawa", "" },
+    { ABC_ARCHIVE_HDF5, "HDF5", 0, "HDF5", "" },
+	{ 0, NULL, 0, NULL, NULL }
+};
+
 #ifdef RNA_RUNTIME
 
 #include "BKE_animsys.h"
@@ -175,7 +185,6 @@ static void rna_Scene_ray_cast(
 }
 
 #ifdef WITH_ALEMBIC
-#include "../../alembic/ABC_alembic.h"
 
 static void rna_Scene_alembic_export(
         Scene *scene,
@@ -370,8 +379,8 @@ void RNA_api_scene(StructRNA *srna)
 	RNA_def_boolean(func, "renderable"	, 0, "Renderable objects only", "Export only objects marked renderable in the outliner");
 	RNA_def_boolean(func, "facesets"	, 0, "Facesets", "Export facesets");
 	RNA_def_boolean(func, "matindices"	, 0, "Material indices", "Export per face material indices");
-	RNA_def_boolean(func, "subdiv_schema"	, 0, "Use Alembic subdivision Schema", "Use Alembic subdivision Schema");
-	RNA_def_boolean(func, "ogawa"		, 0, "Export Ogawa", "Export as Ogawa format");
+	RNA_def_boolean(func, "subdiv_schema", 0, "Use Alembic subdivision Schema", "Use Alembic subdivision Schema");
+	RNA_def_enum(func, "compression_type", rna_enum_abc_compression_items, 0, "Compression", "");
 	RNA_def_boolean(func, "packuv"		, 0, "Export with packed UV islands", "Export with packed UV islands");
 	RNA_def_enum(func, "to_forward", rna_enum_object_axis_items, 0, "Forward Axis", "");
 	RNA_def_enum(func, "to_up", rna_enum_object_axis_items, 0, "Up Axis", "");

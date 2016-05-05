@@ -230,7 +230,7 @@ int ABC_export(Scene *sce, const char *filename,
                int custom_props_as_geodata,
                int vislayers, int renderable,
                int facesets, int matindices,
-               int use_subdiv_schema, bool ogawa, bool packuv,
+               int use_subdiv_schema, int compression, bool packuv,
                int to_forward, int to_up, float scale)
 {
 	try {
@@ -251,7 +251,7 @@ int ABC_export(Scene *sce, const char *filename,
 		opts.visible_layers_only = vislayers;
 		opts.renderable_only = renderable;
 		opts.use_subdiv_schema = use_subdiv_schema;
-		opts.export_ogawa = ogawa;
+		opts.export_ogawa = (compression == ABC_ARCHIVE_OGAWA);
 		opts.pack_uv = packuv;
 		opts.global_scale = scale;
 

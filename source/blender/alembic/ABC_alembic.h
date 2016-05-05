@@ -30,6 +30,11 @@ extern "C" {
 struct bContext;
 struct Scene;
 
+enum {
+	ABC_ARCHIVE_OGAWA = 0,
+	ABC_ARCHIVE_HDF5  = 1,
+};
+
 #define BL_ABC_NO_ERR 0
 #define BL_ABC_UNKNOWN_ERROR 1
 
@@ -45,7 +50,7 @@ int ABC_export(struct Scene *sce, const char *filename,
                int custom_props_as_geodata,
                int vislayers, int renderable,
                int facesets, int matindices,
-               int geogroups, bool ogawa,
+               int geogroups, int compression,
                bool packuv, int to_forward, int to_up, float scale);
 
 void ABC_import(struct bContext *C, const char *filename, int from_forward, int from_up, float scale);
