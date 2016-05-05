@@ -439,6 +439,9 @@ void IMB_buffer_float_from_byte(float *rect_to, const unsigned char *rect_from,
 void IMB_buffer_float_from_float(float *rect_to, const float *rect_from,
 	int channels_from, int profile_to, int profile_from, bool predivide,
 	int width, int height, int stride_to, int stride_from);
+void IMB_buffer_float_from_float_threaded(float *rect_to, const float *rect_from,
+	int channels_from, int profile_to, int profile_from, bool predivide,
+	int width, int height, int stride_to, int stride_from);
 void IMB_buffer_float_from_float_mask(float *rect_to, const float *rect_from,
 	int channels_from, int width, int height, int stride_to, int stride_from, char *mask);
 void IMB_buffer_byte_from_byte(unsigned char *rect_to, const unsigned char *rect_from,
@@ -579,6 +582,14 @@ void IMB_processor_apply_threaded(int buffer_lines, int handle_size, void *init_
                                   void (init_handle) (void *handle, int start_line, int tot_line,
                                                       void *customdata),
                                   void *(do_thread) (void *));
+
+typedef void (*ScanlineThreadFunc) (void *custom_data,
+                                    int start_scanline,
+                                    int num_scanlines);
+void IMB_processor_apply_threaded_scanlines(int total_scanlines,
+                                            ScanlineThreadFunc do_thread,
+                                            void *custom_data);
+
 
 /* ffmpeg */
 void IMB_ffmpeg_init(void);

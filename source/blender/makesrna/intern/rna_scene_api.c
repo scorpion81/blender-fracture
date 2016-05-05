@@ -56,6 +56,7 @@
 #include "BKE_writeavi.h"
 
 #include "ED_transform.h"
+#include "ED_transform_snap_object_context.h"
 #include "ED_uvedit.h"
 
 #ifdef WITH_PYTHON
