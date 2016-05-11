@@ -81,7 +81,7 @@ void SVMShaderManager::device_update(Device *device, DeviceScene *dscene, Scene 
 		compiler.background = ((int)i == scene->default_background);
 		compiler.compile(scene, shader, svm_nodes, i, &summary);
 
-		VLOG(1) << "Compilation summary:\n"
+		VLOG(2) << "Compilation summary:\n"
 		        << "Shader name: " << shader->name << "\n"
 		        << summary.full_report();
 	}
@@ -506,7 +506,7 @@ void SVMCompiler::generate_multi_closure(ShaderNode *root_node,
 
 	state->closure_done.insert(node);
 
-	if(node->name == ustring("mix_closure") || node->name == ustring("add_closure")) {
+	if(node->special_type == SHADER_SPECIAL_TYPE_COMBINE_CLOSURE) {
 		/* weighting is already taken care of in ShaderGraph::transform_multi_closure */
 		ShaderInput *cl1in = node->input("Closure1");
 		ShaderInput *cl2in = node->input("Closure2");

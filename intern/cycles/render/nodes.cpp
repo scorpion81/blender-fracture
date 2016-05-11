@@ -3126,6 +3126,8 @@ void ColorNode::compile(OSLCompiler& compiler)
 AddClosureNode::AddClosureNode()
 : ShaderNode("add_closure")
 {
+	special_type = SHADER_SPECIAL_TYPE_COMBINE_CLOSURE;
+
 	add_input("Closure1", SHADER_SOCKET_CLOSURE);
 	add_input("Closure2", SHADER_SOCKET_CLOSURE);
 	add_output("Closure",  SHADER_SOCKET_CLOSURE);
@@ -3146,6 +3148,8 @@ void AddClosureNode::compile(OSLCompiler& compiler)
 MixClosureNode::MixClosureNode()
 : ShaderNode("mix_closure")
 {
+	special_type = SHADER_SPECIAL_TYPE_COMBINE_CLOSURE;
+
 	add_input("Fac", SHADER_SOCKET_FLOAT, 0.5f);
 	add_input("Closure1", SHADER_SOCKET_CLOSURE);
 	add_input("Closure2", SHADER_SOCKET_CLOSURE);
@@ -3320,7 +3324,7 @@ void MixNode::compile(OSLCompiler& compiler)
 	compiler.add(this, "node_mix");
 }
 
-bool MixNode::constant_fold(ShaderGraph *graph, ShaderOutput * /*socket*/, float3 * /*optimized_value*/)
+bool MixNode::constant_fold(ShaderGraph *graph, ShaderOutput * /*socket*/, float3 * optimized_value)
 {
 	if(type != ustring("Mix")) {
 		return false;
@@ -3332,22 +3336,27 @@ bool MixNode::constant_fold(ShaderGraph *graph, ShaderOutput * /*socket*/, float
 	ShaderOutput *color_out = output("Color");
 
 	/* remove useless mix colors nodes */
-	if(color1_in->link == color2_in->link) {
+	if(color1_in->link && color1_in->link == color2_in->link) {
 		graph->relink(this, color_out, color1_in->link);
 		return true;
 	}
 
 	/* remove unused mix color input when factor is 0.0 or 1.0 */
-	/* check for color links and make sure factor link is disconnected */
-	if(color1_in->link && color2_in->link && !fac_in->link) {
+	if(!fac_in->link) {
 		/* factor 0.0 */
 		if(fac_in->value.x == 0.0f) {
-			graph->relink(this, color_out, color1_in->link);
+			if (color1_in->link)
+				graph->relink(this, color_out, color1_in->link);
+			else
+				*optimized_value = color1_in->value;
 			return true;
 		}
 		/* factor 1.0 */
 		else if(fac_in->value.x == 1.0f) {
-			graph->relink(this, color_out, color2_in->link);
+			if (color2_in->link)
+				graph->relink(this, color_out, color2_in->link);
+			else
+				*optimized_value = color2_in->value;
 			return true;
 		}
 	}
@@ -3958,6 +3967,8 @@ void BlackbodyNode::compile(OSLCompiler& compiler)
 OutputNode::OutputNode()
 : ShaderNode("output")
 {
+	special_type = SHADER_SPECIAL_TYPE_OUTPUT;
+
 	add_input("Surface", SHADER_SOCKET_CLOSURE);
 	add_input("Volume", SHADER_SOCKET_CLOSURE);
 	add_input("Displacement", SHADER_SOCKET_FLOAT);
