@@ -58,6 +58,7 @@ using Alembic::AbcGeom::IObject;
 using Alembic::AbcGeom::IPolyMesh;
 using Alembic::AbcGeom::IPolyMeshSchema;
 using Alembic::AbcGeom::ISampleSelector;
+using Alembic::AbcGeom::IXform;
 
 static IArchive open_archive(const std::string &filename)
 {
@@ -282,6 +283,13 @@ int ABC_export(Scene *sce, const char *filename,
 	return BL_ABC_NO_ERR;
 }
 
+/* Return whether or not this object is a Maya locator, which is similar to
+ * empties used as parent object in Blender. */
+static bool is_locator(const IObject &object)
+{
+	return object.getProperties().getPropertyHeader("locator") != NULL;
+}
+
 static void visit_object(const IObject &object,
                          std::vector<AbcObjectReader *> &readers,
                          int from_forward, int from_up)
@@ -301,7 +309,10 @@ static void visit_object(const IObject &object,
 
 		const MetaData &md = child.getMetaData();
 
-		if (IPolyMesh::matches(md)) {
+		if (IXform::matches(md) && is_locator(child)) {
+			reader = new AbcEmptyReader(child, from_forward, from_up);
+		}
+		else if (IPolyMesh::matches(md)) {
 			reader = new AbcMeshReader(child, from_forward, from_up);
 		}
 		else if (INuPatch::matches(md)) {

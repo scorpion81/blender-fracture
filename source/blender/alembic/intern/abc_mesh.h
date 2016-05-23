@@ -114,4 +114,15 @@ public:
 	void readObjectData(Main *bmain, Scene *scene, float time);
 };
 
+class AbcEmptyReader : public AbcObjectReader {
+	Alembic::AbcGeom::IXformSchema m_schema;
+
+public:
+	AbcEmptyReader(const Alembic::Abc::IObject &object, int from_forward, int from_up);
+
+	bool valid() const;
+
+	void readObjectData(Main *bmain, Scene *scene, float time);
+};
+
 #endif  /* __ABC_MESH_WRITER_H__ */

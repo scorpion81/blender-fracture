@@ -33,6 +33,7 @@ extern "C" {
 #include "DNA_modifier_types.h"
 #include "DNA_object_fluidsim.h"
 #include "DNA_object_types.h"
+#include "DNA_object_types.h"
 
 #include "BLI_listbase.h"
 #include "BLI_math_geom.h"
@@ -1272,4 +1273,18 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 		ABC_apply_materials(m_object, NULL);
 	}
 #endif
+}
+
+AbcEmptyReader::AbcEmptyReader(const Alembic::Abc::IObject &object, int from_forward, int from_up)
+    : AbcObjectReader(object, from_forward, from_up)
+{}
+
+bool AbcEmptyReader::valid() const
+{
+	return true; // TODO? m_schema.valid();
+}
+
+void AbcEmptyReader::readObjectData(Main *bmain, Scene *scene, float /*time*/)
+{
+	m_object = BKE_object_add(bmain, scene, OB_EMPTY, m_object_name.c_str());
 }
