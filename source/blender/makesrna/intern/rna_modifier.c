@@ -4080,7 +4080,9 @@ static void rna_def_modifier_meshcache(BlenderRNA *brna)
 	static EnumPropertyItem prop_format_type_items[] = {
 		{MOD_MESHCACHE_TYPE_MDD, "MDD", 0, "MDD ", ""},
 		{MOD_MESHCACHE_TYPE_PC2, "PC2", 0, "PC2", ""},
+#ifdef WITH_ALEMBIC
 	    {MOD_MESHCACHE_TYPE_ABC, "ABC", 0, "Alembic", ""},
+#endif
 		{0, NULL, 0, NULL, NULL}
 	};
 
