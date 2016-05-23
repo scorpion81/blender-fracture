@@ -361,10 +361,16 @@ static void create_hierarchy(bContext *C, AbcObjectReader *root)
 	std::vector<std::string> parts;
 	split(full_name, "/", parts);
 
+	/* object doesn't have any parents, since its path only contain its name,
+	 * and its data name. */
+	if (parts.size() == 2) {
+		return;
+	}
+
 	Object *parent = NULL;
 
-	std::vector<std::string>::iterator iter;
-	for (iter = parts.begin(); iter != parts.end(); ++iter) {
+	std::vector<std::string>::reverse_iterator iter;
+	for (iter = parts.rbegin() + 2; iter != parts.rend(); ++iter) {
 		parent = find_object(C, *iter);
 
 		if (parent != NULL && root->object() != parent) {
@@ -374,7 +380,8 @@ static void create_hierarchy(bContext *C, AbcObjectReader *root)
 			DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 			DAG_relations_tag_update(CTX_data_main(C));
 			WM_main_add_notifier(NC_OBJECT | ND_PARENT, ob);
-			break;
+
+			return;
 		}
 	}
 }
