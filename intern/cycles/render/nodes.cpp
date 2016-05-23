@@ -718,11 +718,11 @@ static void sky_texture_precompute_new(SunSky *sunsky, float3 dir, float turbidi
 	sunsky->theta = theta;
 	sunsky->phi = phi;
 
-	double solarElevation = M_PI_2_F - theta;
+	float solarElevation = M_PI_2_F - theta;
 
 	/* Initialize Sky Model */
 	ArHosekSkyModelState *sky_state;
-	sky_state = arhosek_xyz_skymodelstate_alloc_init(turbidity, ground_albedo, solarElevation);
+	sky_state = arhosek_xyz_skymodelstate_alloc_init((double)turbidity, (double)ground_albedo, (double)solarElevation);
 
 	/* Copy values from sky_state to SunSky */
 	for(int i = 0; i < 9; ++i) {
@@ -2476,8 +2476,8 @@ void GeometryNode::attributes(Shader *shader, AttributeRequestSet *attributes)
 void GeometryNode::compile(SVMCompiler& compiler)
 {
 	ShaderOutput *out;
-	NodeType geom_node = NODE_GEOMETRY;
-	NodeType attr_node = NODE_ATTR;
+	ShaderNodeType geom_node = NODE_GEOMETRY;
+	ShaderNodeType attr_node = NODE_ATTR;
 
 	if(bump == SHADER_BUMP_DX) {
 		geom_node = NODE_GEOMETRY_BUMP_DX;
@@ -2593,9 +2593,9 @@ void TextureCoordinateNode::attributes(Shader *shader, AttributeRequestSet *attr
 void TextureCoordinateNode::compile(SVMCompiler& compiler)
 {
 	ShaderOutput *out;
-	NodeType texco_node = NODE_TEX_COORD;
-	NodeType attr_node = NODE_ATTR;
-	NodeType geom_node = NODE_GEOMETRY;
+	ShaderNodeType texco_node = NODE_TEX_COORD;
+	ShaderNodeType attr_node = NODE_ATTR;
+	ShaderNodeType geom_node = NODE_GEOMETRY;
 
 	if(bump == SHADER_BUMP_DX) {
 		texco_node = NODE_TEX_COORD_BUMP_DX;
@@ -2726,8 +2726,8 @@ void UVMapNode::attributes(Shader *shader, AttributeRequestSet *attributes)
 void UVMapNode::compile(SVMCompiler& compiler)
 {
 	ShaderOutput *out = output("UV");
-	NodeType texco_node = NODE_TEX_COORD;
-	NodeType attr_node = NODE_ATTR;
+	ShaderNodeType texco_node = NODE_TEX_COORD;
+	ShaderNodeType attr_node = NODE_ATTR;
 	int attr;
 
 	if(bump == SHADER_BUMP_DX) {
@@ -3757,7 +3757,7 @@ void AttributeNode::compile(SVMCompiler& compiler)
 	ShaderOutput *color_out = output("Color");
 	ShaderOutput *vector_out = output("Vector");
 	ShaderOutput *fac_out = output("Fac");
-	NodeType attr_node = NODE_ATTR;
+	ShaderNodeType attr_node = NODE_ATTR;
 	AttributeStandard std = Attribute::name_standard(attribute.c_str());
 	int attr;
 
