@@ -309,6 +309,8 @@ AbcObjectReader::AbcObjectReader(const IObject &object, int from_forward, int fr
     , m_object(NULL)
     , m_iobject(object)
     , m_do_convert_mat(false)
+    , m_from_up(from_up)
+    , m_from_forward(from_forward)
 {
 	m_name = object.getFullName();
 	std::vector<std::string> parts;

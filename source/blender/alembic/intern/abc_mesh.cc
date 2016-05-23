@@ -34,7 +34,9 @@ extern "C" {
 #include "DNA_object_fluidsim.h"
 #include "DNA_object_types.h"
 
+#include "BLI_listbase.h"
 #include "BLI_math_geom.h"
+#include "BLI_string.h"
 
 #include "BKE_DerivedMesh.h"
 #include "BKE_depsgraph.h"
@@ -1250,7 +1252,21 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 	m_object = BKE_object_add(bmain, scene, OB_MESH, m_object_name.c_str());
 	m_object->data = blender_mesh;
 
-	/* TODO */
+	/* Add a default mesh cache modifier */
+
+	ModifierData *md = modifier_new(eModifierType_MeshCache);
+	BLI_addtail(&m_object->modifiers, md);
+
+	MeshCacheModifierData *mcmd = reinterpret_cast<MeshCacheModifierData *>(md);
+	mcmd->type = MOD_MESHCACHE_TYPE_ABC;
+	mcmd->time_mode = MOD_MESHCACHE_TIME_SECONDS;
+	mcmd->forward_axis = m_from_forward;
+	mcmd->up_axis = m_from_up;
+
+	BLI_strncpy(mcmd->filepath, m_iobject.getArchive().getName().c_str(), 1024);
+	BLI_strncpy(mcmd->sub_object, m_iobject.getFullName().c_str(), 1024);
+
+	/* TODO: add materials */
 #if 0
 	if (apply_materials) {
 		ABC_apply_materials(m_object, NULL);

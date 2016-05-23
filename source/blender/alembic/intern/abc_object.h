@@ -85,6 +85,9 @@ protected:
 	bool m_do_convert_mat;
 	float m_conversion_mat[3][3];
 
+	int m_from_up;
+	int m_from_forward;
+
 public:
 	explicit AbcObjectReader(const Alembic::Abc::IObject &object, int from_forward, int from_up);
 
