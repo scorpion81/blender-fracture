@@ -32,6 +32,8 @@
 #include "abc_util.h"
 
 extern "C" {
+#include "MEM_guardedalloc.h"
+
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
@@ -40,6 +42,7 @@ extern "C" {
 #include "BKE_depsgraph.h"
 
 #include "BLI_math.h"
+#include "BLI_string.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -219,7 +222,38 @@ int ABC_check_subobject_valid(const char *name, const char *sub_obj)
 	return (found && ob.valid());
 }
 
-int ABC_export(Scene *sce, const char *filename,
+struct ExportJobData {
+	Scene *scene;
+
+	char filename[1024];
+	ExportSettings settings;
+
+	short *stop;
+	short *do_update;
+	float *progress;
+};
+
+void export_startjob(void *cjv, short *stop, short *do_update, float *progress)
+{
+	ExportJobData *data = static_cast<ExportJobData *>(cjv);
+
+	data->stop = stop;
+	data->do_update = do_update;
+	data->progress = progress;
+
+	try {
+		AbcExporter exporter(data->scene, data->filename, data->settings);
+		exporter(*data->progress);
+	}
+	catch (const std::exception &e) {
+		std::cerr << "Abc Export error: " << e.what() << '\n';
+	}
+	catch (...) {
+		std::cerr << "Abc Export error\n";
+	}
+}
+
+int ABC_export(Scene *scene, bContext *C, const char *filename,
                double start, double end,
                double xformstep, double geomstep,
                double shutter_open, double shutter_close,
@@ -234,54 +268,60 @@ int ABC_export(Scene *sce, const char *filename,
                int use_subdiv_schema, int compression, bool packuv,
                int to_forward, int to_up, float scale)
 {
-	try {
-		ExportSettings opts(sce);
-		opts.startframe = start;
-		opts.endframe = end;
-		opts.xform_frame_step = xformstep;
-		opts.shape_frame_step = geomstep;
-		opts.shutter_open = shutter_open;
-		opts.shutter_close = shutter_close;
-		opts.selected_only = selected_only;
-		opts.export_uvs = uvs;
-		opts.export_normals = normals;
-		opts.export_vcols = vcolors;
-		opts.export_subsurfs_as_meshes = force_meshes;
-		opts.flatten_hierarchy = flatten_hierarchy;
-		opts.export_props_as_geo_params = custom_props_as_geodata;
-		opts.visible_layers_only = vislayers;
-		opts.renderable_only = renderable;
-		opts.use_subdiv_schema = use_subdiv_schema;
-		opts.export_ogawa = (compression == ABC_ARCHIVE_OGAWA);
-		opts.pack_uv = packuv;
-		opts.global_scale = scale;
+	ExportJobData *job = static_cast<ExportJobData *>(MEM_mallocN(sizeof(ExportJobData), "ExportJobData"));
+	job->scene = scene;
+	BLI_strncpy(job->filename, filename, 1024);
 
-		// Deprecated
-		opts.export_face_sets = facesets;
-		opts.export_mat_indices = matindices;
+	job->settings.scene = job->scene;
+	job->settings.startframe = start;
+	job->settings.endframe = end;
+	job->settings.xform_frame_step = xformstep;
+	job->settings.shape_frame_step = geomstep;
+	job->settings.shutter_open = shutter_open;
+	job->settings.shutter_close = shutter_close;
+	job->settings.selected_only = selected_only;
+	job->settings.export_uvs = uvs;
+	job->settings.export_normals = normals;
+	job->settings.export_vcols = vcolors;
+	job->settings.export_subsurfs_as_meshes = force_meshes;
+	job->settings.flatten_hierarchy = flatten_hierarchy;
+	job->settings.export_props_as_geo_params = custom_props_as_geodata;
+	job->settings.visible_layers_only = vislayers;
+	job->settings.renderable_only = renderable;
+	job->settings.use_subdiv_schema = use_subdiv_schema;
+	job->settings.export_ogawa = (compression == ABC_ARCHIVE_OGAWA);
+	job->settings.pack_uv = packuv;
+	job->settings.global_scale = scale;
 
-		if (opts.startframe > opts.endframe) {
-			std::swap(opts.startframe, opts.endframe);
-		}
+	// Deprecated
+	job->settings.export_face_sets = facesets;
+	job->settings.export_mat_indices = matindices;
 
-		opts.do_convert_axis = false;
-		if (mat3_from_axis_conversion(1, 2, to_forward, to_up, opts.convert_matrix)) {
-			opts.do_convert_axis = true;
-		}
-
-		AbcExporter exporter(sce, filename, opts);
-		exporter();
+	if (job->settings.startframe > job->settings.endframe) {
+		std::swap(job->settings.startframe, job->settings.endframe);
 	}
-	catch (const std::exception &e) {
-		std::cout << "Abc Export error: " << e.what() << '\n';
-		return BL_ABC_UNKNOWN_ERROR;
-	}
-	catch (...) {
-		return BL_ABC_UNKNOWN_ERROR;
-	}
+
+	job->settings.do_convert_axis = mat3_from_axis_conversion(
+	                                    1, 2, to_forward, to_up, job->settings.convert_matrix);
+
+	wmJob *wm_job = WM_jobs_get(CTX_wm_manager(C),
+	                            CTX_wm_window(C),
+	                            job->scene,
+	                            "Alembic Export",
+	                            WM_JOB_PROGRESS,
+	                            WM_JOB_TYPE_ALEMBIC);
+
+	/* setup job */
+	WM_jobs_customdata_set(wm_job, job, MEM_freeN);
+	WM_jobs_timer(wm_job, 0.1, NC_SCENE | ND_COMPO_RESULT, NC_SCENE | ND_COMPO_RESULT);
+	WM_jobs_callbacks(wm_job, export_startjob, NULL, NULL, NULL);
+
+	WM_jobs_start(CTX_wm_manager(C), wm_job);
 
 	return BL_ABC_NO_ERR;
 }
+
+/* ********************** Import file ********************** */
 
 /* Return whether or not this object is a Maya locator, which is similar to
  * empties used as parent object in Blender. */
@@ -337,9 +377,8 @@ static void create_readers(IArchive &archive,
 	visit_object(archive.getTop(), readers, settings);
 }
 
-static Object *find_object(bContext *C, const std::string &name)
+static Object *find_object(Scene *scene, const std::string &name)
 {
-	Scene *scene = CTX_data_scene(C);
 	Base *base;
 
 	for (base = static_cast<Base *>(scene->base.first); base; base = base->next) {
@@ -353,7 +392,7 @@ static Object *find_object(bContext *C, const std::string &name)
 	return NULL;
 }
 
-static void create_hierarchy(bContext *C, AbcObjectReader *root)
+static void create_hierarchy(Main *bmain, Scene *scene, AbcObjectReader *root)
 {
 	const IObject &iobjet = root->iobject();
 	const std::string &full_name = iobjet.getFullName();
@@ -371,14 +410,14 @@ static void create_hierarchy(bContext *C, AbcObjectReader *root)
 
 	std::vector<std::string>::reverse_iterator iter;
 	for (iter = parts.rbegin() + 2; iter != parts.rend(); ++iter) {
-		parent = find_object(C, *iter);
+		parent = find_object(scene, *iter);
 
 		if (parent != NULL && root->object() != parent) {
 			Object *ob = root->object();
 			ob->parent = parent;
 
 			DAG_id_tag_update(&ob->id, OB_RECALC_OB);
-			DAG_relations_tag_update(CTX_data_main(C));
+			DAG_relations_tag_update(bmain);
 			WM_main_add_notifier(NC_OBJECT | ND_PARENT, ob);
 
 			return;
@@ -386,31 +425,43 @@ static void create_hierarchy(bContext *C, AbcObjectReader *root)
 	}
 }
 
-void ABC_import(bContext *C, const char *filename, int from_forward, int from_up, float scale)
+struct ImportJobData {
+	Main *bmain;
+	Scene *scene;
+
+	char filename[1024];
+	ImportSettings settings;
+
+	short *stop;
+	short *do_update;
+	float *progress;
+};
+
+static void import_startjob(void *cjv, short *stop, short *do_update, float *progress)
 {
-	/* get objects strings */
-	IArchive archive = open_archive(filename);
+	ImportJobData *data = static_cast<ImportJobData *>(cjv);
+
+	data->stop = stop;
+	data->do_update = do_update;
+	data->progress = progress;
+
+	IArchive archive = open_archive(data->filename);
 
 	if (!archive.valid()) {
 		return;
 	}
 
-	ImportSettings settings;
-	settings.from_forward = from_forward;
-	settings.from_up = from_up;
-	settings.scale = scale;
-
-	float mat[3][3];
-	settings.do_convert_mat = mat3_from_axis_conversion(
-	                              settings.from_forward,
-	                              settings.from_up, 1, 2,
-	                              mat);
-
-	scale_m4_fl(settings.conversion_mat, scale);
-	mul_m4_m3m4(settings.conversion_mat, mat, settings.conversion_mat);
+	*data->do_update = true;
+	*data->progress = 0.05f;
 
 	std::vector<AbcObjectReader *> readers;
-	create_readers(archive, readers, settings);
+	create_readers(archive, readers, data->settings);
+
+	*data->do_update = true;
+	*data->progress = 0.1f;
+
+	const float size = static_cast<float>(readers.size());
+	size_t i = 0;
 
 	std::vector<AbcObjectReader *>::iterator iter;
 
@@ -418,16 +469,57 @@ void ABC_import(bContext *C, const char *filename, int from_forward, int from_up
 		AbcObjectReader *reader = *iter;
 
 		if (reader->valid()) {
-			reader->readObjectData(CTX_data_main(C), CTX_data_scene(C), 0.0f);
+			reader->readObjectData(data->bmain, data->scene, 0.0f);
 			reader->readObjectMatrix(0.0f);
 		}
+
+		*data->progress = 0.1f + 0.6f * (++i / size);
 	}
 
+	i = 0;
 	for (iter = readers.begin(); iter != readers.end(); ++iter) {
-		create_hierarchy(C, *iter);
+		create_hierarchy(data->bmain, data->scene, *iter);
+		*data->progress = 0.7f + 0.3f * (++i / size);
 	}
 
 	for (iter = readers.begin(); iter != readers.end(); ++iter) {
 		delete *iter;
 	}
+
+	WM_main_add_notifier(NC_SCENE | ND_FRAME, data->scene);
+}
+
+void ABC_import(bContext *C, const char *filename, int from_forward, int from_up, float scale)
+{
+	ImportJobData *job = static_cast<ImportJobData *>(MEM_mallocN(sizeof(ImportJobData), "ImportJobData"));
+	job->bmain = CTX_data_main(C);
+	job->scene = CTX_data_scene(C);
+	BLI_strncpy(job->filename, filename, 1024);
+
+	job->settings.from_forward = from_forward;
+	job->settings.from_up = from_up;
+	job->settings.scale = scale;
+
+	float mat[3][3];
+	job->settings.do_convert_mat = mat3_from_axis_conversion(
+	                                   job->settings.from_forward,
+	                                   job->settings.from_up,
+	                                   1, 2, mat);
+
+	scale_m4_fl(job->settings.conversion_mat, scale);
+	mul_m4_m3m4(job->settings.conversion_mat, mat, job->settings.conversion_mat);
+
+	wmJob *wm_job = WM_jobs_get(CTX_wm_manager(C),
+	                            CTX_wm_window(C),
+	                            job->scene,
+	                            "Alembic Import",
+	                            WM_JOB_PROGRESS,
+	                            WM_JOB_TYPE_ALEMBIC);
+
+	/* setup job */
+	WM_jobs_customdata_set(wm_job, job, MEM_freeN);
+	WM_jobs_timer(wm_job, 0.1, NC_SCENE | ND_COMPO_RESULT, NC_SCENE | ND_COMPO_RESULT);
+	WM_jobs_callbacks(wm_job, import_startjob, NULL, NULL, NULL);
+
+	WM_jobs_start(CTX_wm_manager(C), wm_job);
 }

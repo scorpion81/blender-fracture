@@ -135,7 +135,7 @@ void AbcExporter::getFrameSet(double step, std::set<double> &frames)
 	}
 }
 
-void AbcExporter::operator()()
+void AbcExporter::operator()(float &progress)
 {
 	/* Create archive here */
 	std::string scene_name;
@@ -211,17 +211,22 @@ void AbcExporter::operator()()
 
 	/* export all frames */
 
-	/* TODO : progress report */
 	std::set<double>::const_iterator begin = frames.begin();
 	std::set<double>::const_iterator end = frames.end();
 
+	const float size = static_cast<float>(frames.size());
+	size_t i = 0;
+
 	for (; begin != end; ++begin) {
+		progress = (++i / size);
+
 		double f = *begin;
 		setCurrentFrame(f);
 
 		if (shape_frames.count(f) != 0) {
-			for (int i = 0, e = m_shapes.size(); i != e; ++i)
+			for (int i = 0, e = m_shapes.size(); i != e; ++i) {
 				m_shapes[i]->write();
+			}
 		}
 
 		if (xform_frames.count(f) == 0) {

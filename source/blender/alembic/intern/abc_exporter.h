@@ -47,7 +47,7 @@ public:
 	AbcExporter(Scene *scene, const char *filename, ExportSettings &settings);
 	~AbcExporter();
 
-	void operator()();
+	void operator()(float &progress);
 
 protected:
 	double getCurrentFrame() const;

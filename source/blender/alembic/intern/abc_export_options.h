@@ -27,7 +27,7 @@ struct Object;
 struct Scene;
 
 struct ExportSettings {
-	explicit ExportSettings(Scene *scene);
+	ExportSettings();
 
 	bool exportTransform(Object *obj) const;
 	bool isAbcRoot(Object *obj) const;
@@ -64,8 +64,7 @@ struct ExportSettings {
 	bool do_convert_axis;
 	float convert_matrix[3][3];
 
-private:
-	Scene *m_scene;
+	Scene *scene;
 };
 
 #endif  /* __ABC_EXPORT_OPTIONS_H__ */

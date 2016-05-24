@@ -190,6 +190,7 @@ static void rna_Scene_ray_cast(
 
 static void rna_Scene_alembic_export(
         Scene *scene,
+        bContext *C,
         const char *filepath,
         int start,
         int end,
@@ -220,7 +221,7 @@ static void rna_Scene_alembic_export(
 	BPy_BEGIN_ALLOW_THREADS;
 #endif
 
-	ABC_export(scene, filepath, start, end, 1.0 / xformsamples, 1.0 / geomsamples,
+	ABC_export(scene, C, filepath, start, end, 1.0 / xformsamples, 1.0 / geomsamples,
 	           shutter_open, shutter_close,
 	           selected_only, uvs, normals, vcolors,
 	           force_meshes, flatten_hierarchy, custom_props_as_geodata,
@@ -387,6 +388,8 @@ void RNA_api_scene(StructRNA *srna)
 	RNA_def_enum(func, "to_forward", rna_enum_object_axis_items, 0, "Forward Axis", "");
 	RNA_def_enum(func, "to_up", rna_enum_object_axis_items, 0, "Up Axis", "");
 	RNA_def_float(func, "scale", 1.0f, 0.0f, 1000.0f, "Scale", "", 0.0f, 1000.0f);
+
+	RNA_def_function_flag(func, FUNC_USE_CONTEXT);
 #endif
 }
 

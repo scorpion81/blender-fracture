@@ -105,7 +105,7 @@ static int wm_alembic_export_exec(bContext *C, wmOperator *op)
 	const int to_up = RNA_enum_get(op->ptr, "to_up");
 	const float scale = RNA_float_get(op->ptr, "scale");
 
-	int result = ABC_export(CTX_data_scene(C), filename,
+	int result = ABC_export(CTX_data_scene(C), C, filename,
 	                        start, end,
 	                        1.0 / (double)xsamples,
 	                        1.0 / (double)gsamples,

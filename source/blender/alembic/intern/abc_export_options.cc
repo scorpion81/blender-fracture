@@ -33,8 +33,8 @@ extern "C" {
 #include "BKE_idprop.h"
 }
 
-ExportSettings::ExportSettings(Scene *scene)
-    : m_scene(scene)
+ExportSettings::ExportSettings()
+    : scene(NULL)
 {
 	selected_only = false;
 	visible_layers_only = false;
@@ -109,7 +109,7 @@ bool ExportSettings::exportObject(Object *obj) const
 		return false;
 	}
 
-	if (visible_layers_only && !(m_scene->lay & obj->lay)) {
+	if (visible_layers_only && !(scene->lay & obj->lay)) {
 		return false;
 	}
 

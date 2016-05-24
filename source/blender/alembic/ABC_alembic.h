@@ -38,7 +38,7 @@ enum {
 #define BL_ABC_NO_ERR 0
 #define BL_ABC_UNKNOWN_ERROR 1
 
-int ABC_export(struct Scene *sce, const char *filename,
+int ABC_export(struct Scene *scene, struct bContext *C, const char *filename,
                double start, double end,
                double xformstep, double geomstep,
                double shutter_open, double shutter_close,
