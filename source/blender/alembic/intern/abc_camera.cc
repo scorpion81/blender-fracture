@@ -112,8 +112,8 @@ void AbcCameraWriter::do_write()
 
 /* ****************************** camera reader ***************************** */
 
-AbcCameraReader::AbcCameraReader(const Alembic::Abc::IObject &object, int from_forward, int from_up)
-    : AbcObjectReader(object, from_forward, from_up)
+AbcCameraReader::AbcCameraReader(const Alembic::Abc::IObject &object, ImportSettings &settings)
+    : AbcObjectReader(object, settings)
 {
 	ICamera abc_cam(m_iobject, kWrapExisting);
 	m_schema = abc_cam.getSchema();

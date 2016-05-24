@@ -292,7 +292,7 @@ static bool is_locator(const IObject &object)
 
 static void visit_object(const IObject &object,
                          std::vector<AbcObjectReader *> &readers,
-                         int from_forward, int from_up)
+                         ImportSettings &settings)
 {
 	if (!object.valid()) {
 		return;
@@ -310,31 +310,31 @@ static void visit_object(const IObject &object,
 		const MetaData &md = child.getMetaData();
 
 		if (IXform::matches(md) && is_locator(child)) {
-			reader = new AbcEmptyReader(child, from_forward, from_up);
+			reader = new AbcEmptyReader(child, settings);
 		}
 		else if (IPolyMesh::matches(md)) {
-			reader = new AbcMeshReader(child, from_forward, from_up);
+			reader = new AbcMeshReader(child, settings);
 		}
 		else if (INuPatch::matches(md)) {
-			reader = new AbcNurbsReader(child, from_forward, from_up);
+			reader = new AbcNurbsReader(child, settings);
 		}
 		else if (ICameraSchema::matches(md)) {
-			reader = new AbcCameraReader(child, from_forward, from_up);
+			reader = new AbcCameraReader(child, settings);
 		}
 
 		if (reader) {
 			readers.push_back(reader);
 		}
 
-		visit_object(child, readers, from_forward, from_up);
+		visit_object(child, readers, settings);
 	}
 }
 
 static void create_readers(IArchive &archive,
                            std::vector<AbcObjectReader *> &readers,
-                           int from_forward, int from_up)
+                           ImportSettings &settings)
 {
-	visit_object(archive.getTop(), readers, from_forward, from_up);
+	visit_object(archive.getTop(), readers, settings);
 }
 
 static Object *find_object(bContext *C, const std::string &name)
@@ -395,8 +395,22 @@ void ABC_import(bContext *C, const char *filename, int from_forward, int from_up
 		return;
 	}
 
+	ImportSettings settings;
+	settings.from_forward = from_forward;
+	settings.from_up = from_up;
+	settings.scale = scale;
+
+	float mat[3][3];
+	settings.do_convert_mat = mat3_from_axis_conversion(
+	                              settings.from_forward,
+	                              settings.from_up, 1, 2,
+	                              mat);
+
+	scale_m4_fl(settings.conversion_mat, scale);
+	mul_m4_m3m4(settings.conversion_mat, mat, settings.conversion_mat);
+
 	std::vector<AbcObjectReader *> readers;
-	create_readers(archive, readers, from_forward, from_up);
+	create_readers(archive, readers, settings);
 
 	std::vector<AbcObjectReader *>::iterator iter;
 
@@ -405,7 +419,7 @@ void ABC_import(bContext *C, const char *filename, int from_forward, int from_up
 
 		if (reader->valid()) {
 			reader->readObjectData(CTX_data_main(C), CTX_data_scene(C), 0.0f);
-			reader->readObjectMatrix(0.0f, scale);
+			reader->readObjectMatrix(0.0f);
 		}
 	}
 

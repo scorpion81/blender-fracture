@@ -47,7 +47,7 @@ class AbcCameraReader : public AbcObjectReader {
 	Alembic::AbcGeom::ICameraSchema m_schema;
 
 public:
-	AbcCameraReader(const Alembic::Abc::IObject &object, int from_forward, int from_up);
+	AbcCameraReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
 
 	bool valid() const;
 

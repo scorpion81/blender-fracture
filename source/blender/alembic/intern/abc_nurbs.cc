@@ -218,8 +218,8 @@ void AbcNurbsWriter::do_write()
 
 /* ****************************** nurbs reader ****************************** */
 
-AbcNurbsReader::AbcNurbsReader(const IObject &object, int from_forward, int from_up)
-    : AbcObjectReader(object, from_forward, from_up)
+AbcNurbsReader::AbcNurbsReader(const IObject &object, ImportSettings &settings)
+    : AbcObjectReader(object, settings)
 {
 	getNurbsPatches(m_iobject);
 }

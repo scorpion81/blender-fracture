@@ -46,7 +46,7 @@ class AbcNurbsReader : public AbcObjectReader {
 	std::vector< std::pair<Alembic::AbcGeom::INuPatchSchema, Alembic::Abc::IObject> > m_schemas;
 
 public:
-	AbcNurbsReader(const Alembic::Abc::IObject &object, int from_forward, int from_up);
+	AbcNurbsReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
 
 	bool valid() const;
 

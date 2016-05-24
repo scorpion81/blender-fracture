@@ -303,15 +303,13 @@ bool AbcObjectWriter::getPropertyValue(ID *id, const std::string &name, double &
 
 /* ****************************** object reader ***************************** */
 
-AbcObjectReader::AbcObjectReader(const IObject &object, int from_forward, int from_up)
+AbcObjectReader::AbcObjectReader(const IObject &object, ImportSettings &settings)
     : m_name("")
     , m_object_name("")
     , m_data_name("")
     , m_object(NULL)
     , m_iobject(object)
-    , m_do_convert_mat(false)
-    , m_from_up(from_up)
-    , m_from_forward(from_forward)
+    , m_settings(&settings)
 {
 	m_name = object.getFullName();
 	std::vector<std::string> parts;
@@ -321,10 +319,6 @@ AbcObjectReader::AbcObjectReader(const IObject &object, int from_forward, int fr
 
 	m_object_name = parts[parts.size() - 2];
 	m_data_name = parts[parts.size() - 1];
-
-	if (mat3_from_axis_conversion(from_forward, from_up, 1, 2, m_conversion_mat)) {
-		m_do_convert_mat = true;
-	}
 }
 
 AbcObjectReader::~AbcObjectReader()
@@ -340,7 +334,7 @@ Object *AbcObjectReader::object() const
 	return m_object;
 }
 
-void AbcObjectReader::readObjectMatrix(const float time, const float scale)
+void AbcObjectReader::readObjectMatrix(const float time)
 {
 	const Alembic::AbcGeom::MetaData &md = m_iobject.getParent().getMetaData();
 
@@ -366,8 +360,8 @@ void AbcObjectReader::readObjectMatrix(const float time, const float scale)
 		m_object->rot[1] = xs.getYRotation() * M_PI / 180;
 		m_object->rot[2] = xs.getZRotation() * M_PI / 180;
 
-		if (m_do_convert_mat) {
-			mul_v3_m3v3(m_object->loc, m_conversion_mat, loc);
+		if (m_settings->do_convert_mat) {
+			mul_v3_m4v3(m_object->loc, m_settings->conversion_mat, loc);
 		}
 		else {
 			copy_v3_v3(m_object->loc, loc);
@@ -375,16 +369,7 @@ void AbcObjectReader::readObjectMatrix(const float time, const float scale)
 
 		DAG_id_tag_update(&(m_object->id), OB_RECALC_OB);
 
-//		float global_mat[4][4];
-//		scale_m4_fl(global_mat, scale);
-
-//		if (m_do_convert_mat) {
-//			mul_m4_m4m3(global_mat, global_mat, m_conversion_mat);
-//		}
-
-//		translate_m4(global_mat, 1.0f, 1.0f, 1.0f);
-//		mul_m4_m4m4(m_object->obmat, m_object->obmat, global_mat);
-
+//		mul_m4_m4m4(m_object->obmat, m_settings->conversion_mat, m_object->obmat);
 //		BKE_object_apply_mat4(m_object, m_object->obmat, false,  false);
 	}
 }

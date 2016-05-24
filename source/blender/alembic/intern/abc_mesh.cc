@@ -1120,8 +1120,8 @@ static void ABC_apply_materials(Object *ob, void *key)
 }
 #endif
 
-AbcMeshReader::AbcMeshReader(const IObject &object, int from_forward, int from_up)
-    : AbcObjectReader(object, from_forward, from_up)
+AbcMeshReader::AbcMeshReader(const IObject &object, ImportSettings &settings)
+    : AbcObjectReader(object, settings)
 {
 	IPolyMesh abc_mesh(m_iobject, kWrapExisting);
 	m_schema = abc_mesh.getSchema();
@@ -1178,11 +1178,11 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 		mvert.bweight = 0;
 	}
 
-	if (m_do_convert_mat) {
+	if (m_settings->do_convert_mat) {
 		j = vtx_pos;
 		for (int i = 0; i < vertex_count; ++i, ++j) {
 			MVert &mvert = blender_mesh->mvert[j];
-			mul_m3_v3(m_conversion_mat, mvert.co);
+			mul_m4_v3(m_settings->conversion_mat, mvert.co);
 		}
 	}
 
@@ -1261,8 +1261,8 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 	MeshCacheModifierData *mcmd = reinterpret_cast<MeshCacheModifierData *>(md);
 	mcmd->type = MOD_MESHCACHE_TYPE_ABC;
 	mcmd->time_mode = MOD_MESHCACHE_TIME_SECONDS;
-	mcmd->forward_axis = m_from_forward;
-	mcmd->up_axis = m_from_up;
+	mcmd->forward_axis = m_settings->from_forward;
+	mcmd->up_axis = m_settings->from_up;
 
 	BLI_strncpy(mcmd->filepath, m_iobject.getArchive().getName().c_str(), 1024);
 	BLI_strncpy(mcmd->sub_object, m_iobject.getFullName().c_str(), 1024);
@@ -1275,8 +1275,8 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 #endif
 }
 
-AbcEmptyReader::AbcEmptyReader(const Alembic::Abc::IObject &object, int from_forward, int from_up)
-    : AbcObjectReader(object, from_forward, from_up)
+AbcEmptyReader::AbcEmptyReader(const Alembic::Abc::IObject &object, ImportSettings &settings)
+    : AbcObjectReader(object, settings)
 {}
 
 bool AbcEmptyReader::valid() const

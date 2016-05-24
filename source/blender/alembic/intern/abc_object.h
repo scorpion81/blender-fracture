@@ -72,6 +72,15 @@ protected:
 	bool getPropertyValue(ID *id, const std::string &name, double &val);
 };
 
+struct ImportSettings {
+	bool do_convert_mat;
+	float conversion_mat[4][4];
+
+	int from_up;
+	int from_forward;
+	float scale;
+};
+
 class AbcObjectReader {
 protected:
 	std::string m_name;
@@ -80,16 +89,10 @@ protected:
 	Object *m_object;
 	Alembic::Abc::IObject m_iobject;
 
-	/* TODO(kevin): move this out of here, becomes redundant when importing
-	 * multiple object */
-	bool m_do_convert_mat;
-	float m_conversion_mat[3][3];
-
-	int m_from_up;
-	int m_from_forward;
+	ImportSettings *m_settings;
 
 public:
-	explicit AbcObjectReader(const Alembic::Abc::IObject &object, int from_forward, int from_up);
+	explicit AbcObjectReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
 
 	virtual ~AbcObjectReader();
 
@@ -101,7 +104,7 @@ public:
 
 	virtual void readObjectData(Main *bmain, Scene *scene, float time) = 0;
 
-	void readObjectMatrix(const float time, const float scale);
+	void readObjectMatrix(const float time);
 };
 
 #endif

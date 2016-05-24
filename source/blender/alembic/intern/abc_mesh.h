@@ -107,7 +107,7 @@ class AbcMeshReader : public AbcObjectReader {
 	Alembic::AbcGeom::IPolyMeshSchema m_schema;
 
 public:
-	AbcMeshReader(const Alembic::Abc::IObject &object, int from_forward, int from_up);
+	AbcMeshReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
 
 	bool valid() const;
 
@@ -118,7 +118,7 @@ class AbcEmptyReader : public AbcObjectReader {
 	Alembic::AbcGeom::IXformSchema m_schema;
 
 public:
-	AbcEmptyReader(const Alembic::Abc::IObject &object, int from_forward, int from_up);
+	AbcEmptyReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
 
 	bool valid() const;
 
