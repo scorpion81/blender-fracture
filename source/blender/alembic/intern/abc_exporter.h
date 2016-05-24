@@ -54,14 +54,11 @@ protected:
 	void setCurrentFrame(double t);
 
 private:
-	void getShutterSamples(double shutterOpen, double shutterClose,
-							double step, bool timeRelative,
-							std::vector<double> &samples);
+	void getShutterSamples(double step, bool time_relative, std::vector<double> &samples);
 
-	Alembic::Abc::TimeSamplingPtr createTimeSampling(int start, int end, double step,
-													double shutterOpen, double shutterClose);
+	Alembic::Abc::TimeSamplingPtr createTimeSampling(double step);
 
-	void getFrameSet(int start, int end, double step, double shutterOpen, double shutterClose, std::set<double> &frames);
+	void getFrameSet(double step, std::set<double> &frames);
 
 	void createTransformWritersHierarchy();
 	void createTransformWritersFlat();
