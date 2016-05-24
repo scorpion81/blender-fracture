@@ -208,7 +208,7 @@ void AbcExporter::operator()()
 
 	/* TODO : progress report */
 	std::set<double>::const_iterator begin = allFrames.begin();
-	std::set<double>::const_iterator end = allFrames.begin();
+	std::set<double>::const_iterator end = allFrames.end();
 
 	for (; begin != end; ++begin) {
 		double f = *begin;
