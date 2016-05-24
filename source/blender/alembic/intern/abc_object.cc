@@ -1,4 +1,4 @@
-/*
+﻿/*
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -28,6 +28,7 @@
 
 extern "C" {
 #include "BKE_idprop.h"
+#include "BKE_object.h"
 
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
@@ -339,7 +340,7 @@ Object *AbcObjectReader::object() const
 	return m_object;
 }
 
-void AbcObjectReader::readObjectMatrix(const float time, const float scale) const
+void AbcObjectReader::readObjectMatrix(const float time, const float scale)
 {
 	const Alembic::AbcGeom::MetaData &md = m_iobject.getParent().getMetaData();
 
@@ -355,19 +356,35 @@ void AbcObjectReader::readObjectMatrix(const float time, const float scale) cons
 		Alembic::AbcGeom::XformSample xs;
 		schema.get(xs, xform_sample);
 
+		float loc[3];
 		for (int i = 0; i < 3; ++i) {
-			m_object->loc[i] = xs.getTranslation()[i];
-			m_object->size[i] = xs.getScale()[i] * scale;
+			loc[i] = xs.getTranslation()[i];
+			m_object->size[i] = xs.getScale()[i];
 		}
 
-		m_object->rot[0] = xs.getXRotation();
-		m_object->rot[1] = xs.getYRotation();
-		m_object->rot[2] = xs.getZRotation();
+		m_object->rot[0] = xs.getXRotation() * M_PI / 180;
+		m_object->rot[1] = xs.getYRotation() * M_PI / 180;
+		m_object->rot[2] = xs.getZRotation() * M_PI / 180;
 
-		for (int i = 0; i < 3; ++i) {
-			m_object->rot[i] *= M_PI / 180.0f;
+		if (m_do_convert_mat) {
+			mul_v3_m3v3(m_object->loc, m_conversion_mat, loc);
+		}
+		else {
+			copy_v3_v3(m_object->loc, loc);
 		}
 
 		DAG_id_tag_update(&(m_object->id), OB_RECALC_OB);
+
+//		float global_mat[4][4];
+//		scale_m4_fl(global_mat, scale);
+
+//		if (m_do_convert_mat) {
+//			mul_m4_m4m3(global_mat, global_mat, m_conversion_mat);
+//		}
+
+//		translate_m4(global_mat, 1.0f, 1.0f, 1.0f);
+//		mul_m4_m4m4(m_object->obmat, m_object->obmat, global_mat);
+
+//		BKE_object_apply_mat4(m_object, m_object->obmat, false,  false);
 	}
 }
