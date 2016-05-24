@@ -44,7 +44,7 @@ public:
 	                   Alembic::Abc::OObject abcParent,
 	                   AbcTransformWriter *writerParent,
 	                   unsigned int timeSampling,
-	                   AbcExportOptions &opts);
+	                   ExportSettings &settings);
 
 	Alembic::AbcGeom::OXform &alembicXform() { return m_xform;}
     virtual Imath::Box3d bounds() const;

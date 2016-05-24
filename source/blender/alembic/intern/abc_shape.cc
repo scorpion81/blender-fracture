@@ -28,8 +28,8 @@ AbcShapeWriter::AbcShapeWriter(Scene *sce,
                                Object *obj,
                                AbcTransformWriter *parent,
                                uint32_t timeSampling,
-                               AbcExportOptions &opts)
-    : AbcObjectWriter(obj, opts)
+                               ExportSettings &settings)
+    : AbcObjectWriter(obj, settings)
 {
 	m_first_frame = true;
 	m_scene = sce;

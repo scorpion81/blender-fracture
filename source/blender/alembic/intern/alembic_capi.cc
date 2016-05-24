@@ -235,7 +235,7 @@ int ABC_export(Scene *sce, const char *filename,
                int to_forward, int to_up, float scale)
 {
 	try {
-		AbcExportOptions opts(sce);
+		ExportSettings opts(sce);
 		opts.startframe = start;
 		opts.endframe = end;
 		opts.xform_frame_step = xformstep;

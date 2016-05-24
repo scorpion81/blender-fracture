@@ -66,8 +66,8 @@ AbcNurbsWriter::AbcNurbsWriter(Scene *scene,
                                Object *ob,
                                AbcTransformWriter *parent,
                                uint32_t timeSampling,
-                               AbcExportOptions &opts)
-    : AbcShapeWriter(scene, ob, parent, timeSampling, opts)
+                               ExportSettings &settings)
+    : AbcShapeWriter(scene, ob, parent, timeSampling, settings)
 {
 	m_is_animated = isAnimated();
 
@@ -194,7 +194,7 @@ void AbcNurbsWriter::do_write()
 		std::vector<float> sampPosWeights;
 		recompute_pnts_cyclic(nu->bp, nu->pntsu, nu->pntsv, add_u, add_v,
 		                      sampPos, sampPosWeights,
-		                      m_options.do_convert_axis, m_options.convert_matrix);
+		                      m_settings.do_convert_axis, m_settings.convert_matrix);
 
 		nuSamp.setPositions(sampPos);
 		nuSamp.setPositionWeights(sampPosWeights);

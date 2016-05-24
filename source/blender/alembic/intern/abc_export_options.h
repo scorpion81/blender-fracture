@@ -26,8 +26,8 @@
 struct Object;
 struct Scene;
 
-struct AbcExportOptions {
-	explicit AbcExportOptions(Scene *scene);
+struct ExportSettings {
+	explicit ExportSettings(Scene *scene);
 
 	bool exportTransform(Object *obj) const;
 	bool isAbcRoot(Object *obj) const;

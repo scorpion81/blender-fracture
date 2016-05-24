@@ -41,7 +41,7 @@ public:
 	               Object *obj,
 	               AbcTransformWriter *parent,
 	               uint32_t timeSampling,
-	               AbcExportOptions &opts);
+	               ExportSettings &settings);
 
 protected:
 	void calcBounds(const std::vector<float> &points);

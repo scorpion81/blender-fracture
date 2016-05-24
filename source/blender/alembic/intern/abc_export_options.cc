@@ -33,7 +33,7 @@ extern "C" {
 #include "BKE_idprop.h"
 }
 
-AbcExportOptions::AbcExportOptions(Scene *scene)
+ExportSettings::ExportSettings(Scene *scene)
     : m_scene(scene)
 {
 	selected_only = false;
@@ -61,12 +61,12 @@ AbcExportOptions::AbcExportOptions(Scene *scene)
 	export_props_as_geo_params = true;
 }
 
-bool AbcExportOptions::exportTransform(Object *obj) const
+bool ExportSettings::exportTransform(Object *obj) const
 {
 	return !isAbcRoot(obj);
 }
 
-bool AbcExportOptions::checkIsAbcRoot(Object *ob)
+bool ExportSettings::checkIsAbcRoot(Object *ob)
 {
 	Object *parent = ob;
 
@@ -81,7 +81,7 @@ bool AbcExportOptions::checkIsAbcRoot(Object *ob)
 	return false;
 }
 
-bool AbcExportOptions::isAbcRoot(Object *obj) const
+bool ExportSettings::isAbcRoot(Object *obj) const
 {
 	ID *id = reinterpret_cast<ID *>(obj);
 	IDProperty *xport_props = IDP_GetProperties(id, false);
@@ -99,7 +99,7 @@ bool AbcExportOptions::isAbcRoot(Object *obj) const
 	return false;
 }
 
-bool AbcExportOptions::exportObject(Object *obj) const
+bool ExportSettings::exportObject(Object *obj) const
 {
 	if (!exportTransform(obj)) {
 		return false;

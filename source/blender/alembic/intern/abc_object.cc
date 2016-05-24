@@ -50,9 +50,9 @@ using Alembic::AbcGeom::OInt32Property;
 using Alembic::AbcGeom::OStringArrayProperty;
 using Alembic::AbcGeom::OStringProperty;
 
-AbcObjectWriter::AbcObjectWriter(Object *obj, AbcExportOptions &opts)
+AbcObjectWriter::AbcObjectWriter(Object *obj, ExportSettings &settings)
     : m_object(obj)
-    , m_options(opts)
+    , m_settings(settings)
     , m_first_frame(true)
 {
 	m_name = get_id_name(m_object) + "Shape";

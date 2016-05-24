@@ -47,9 +47,9 @@ AbcHairWriter::AbcHairWriter(Scene *scene,
                              Object *ob,
                              AbcTransformWriter *parent,
                              uint32_t timeSampling,
-                             AbcExportOptions &opts,
+                             ExportSettings &settings,
                              ParticleSystem *psys)
-    : AbcShapeWriter(scene, ob, parent, timeSampling, opts)
+    : AbcShapeWriter(scene, ob, parent, timeSampling, settings)
 {
 	m_psys = psys;
 	m_is_animated = isAnimated();
@@ -89,7 +89,7 @@ void AbcHairWriter::do_write()
 	if (part->type == PART_HAIR && m_psys->pathcache) {
 		write_hair_sample(dm, part, verts, norm_values, uv_values, hvertices);
 
-		if (m_options.export_child_hairs && m_psys->childcache) {
+		if (m_settings.export_child_hairs && m_psys->childcache) {
 			write_hair_child_sample(dm, part, verts, norm_values, uv_values, hvertices);
 		}
 	}
@@ -159,8 +159,8 @@ void AbcHairWriter::write_hair_sample(DerivedMesh *dm,
 
 					psys_interpolate_face(mverts, face, tface, NULL, mapfw, vec, tmpnor, NULL, NULL, NULL, NULL);
 
-					if (m_options.do_convert_axis) {
-						mul_m3_v3(m_options.convert_matrix, tmpnor);
+					if (m_settings.do_convert_axis) {
+						mul_m3_v3(m_settings.convert_matrix, tmpnor);
 					}
 
 					norm_values.push_back(Imath::V3f(tmpnor[0], tmpnor[1], tmpnor[2]));
@@ -214,8 +214,8 @@ void AbcHairWriter::write_hair_sample(DerivedMesh *dm,
 			copy_v3_v3(vert, path->co);
 			mul_m4_v3(inv_mat, vert);
 
-			if (m_options.do_convert_axis) {
-				mul_m3_v3(m_options.convert_matrix, vert);
+			if (m_settings.do_convert_axis) {
+				mul_m3_v3(m_settings.convert_matrix, vert);
 			}
 
 			verts.push_back(Imath::V3f(vert[0], vert[1], vert[2]));
@@ -266,8 +266,8 @@ void AbcHairWriter::write_hair_child_sample(DerivedMesh *dm,
 
 				psys_interpolate_face(mverts, face, tface, NULL, mapfw, vec, tmpnor, NULL, NULL, NULL, NULL);
 
-				if (m_options.do_convert_axis) {
-					mul_m3_v3(m_options.convert_matrix, tmpnor);
+				if (m_settings.do_convert_axis) {
+					mul_m3_v3(m_settings.convert_matrix, tmpnor);
 				}
 
 				norm_values.push_back(Imath::V3f(tmpnor[0], tmpnor[1], tmpnor[2]));
@@ -282,8 +282,8 @@ void AbcHairWriter::write_hair_child_sample(DerivedMesh *dm,
 			copy_v3_v3(vert, path->co);
 			mul_m4_v3(inv_mat, vert);
 
-			if (m_options.do_convert_axis) {
-				mul_m3_v3(m_options.convert_matrix, vert);
+			if (m_settings.do_convert_axis) {
+				mul_m3_v3(m_settings.convert_matrix, vert);
 			}
 
 			verts.push_back(Imath::V3f(vert[0], vert[1], vert[2]));

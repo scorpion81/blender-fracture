@@ -30,7 +30,7 @@
 #include "abc_transform.h"
 
 class AbcExporter {
-	AbcExportOptions &m_options;
+	ExportSettings &m_settings;
 
 	const char *m_filename;
 
@@ -44,7 +44,7 @@ class AbcExporter {
 	std::vector<AbcObjectWriter *> m_shapes;
 
 public:
-	AbcExporter(Scene *scene, const char *filename, AbcExportOptions &opts);
+	AbcExporter(Scene *scene, const char *filename, ExportSettings &settings);
 	~AbcExporter();
 
 	void operator()();

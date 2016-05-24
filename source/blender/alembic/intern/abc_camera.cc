@@ -54,8 +54,8 @@ AbcCameraWriter::AbcCameraWriter(Scene *scene,
                                  Object *ob,
                                  AbcTransformWriter *parent,
                                  uint32_t timeSampling,
-                                 AbcExportOptions &opts)
-    : AbcShapeWriter(scene, ob, parent, timeSampling, opts)
+                                 ExportSettings &settings)
+    : AbcShapeWriter(scene, ob, parent, timeSampling, settings)
 {
 	OCamera camera(parent->alembicXform(), m_name, m_time_sampling);
 	m_camera_schema = camera.getSchema();

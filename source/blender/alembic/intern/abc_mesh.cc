@@ -93,8 +93,8 @@ AbcMeshWriter::AbcMeshWriter(Scene *scene,
                              Object *ob,
                              AbcTransformWriter *parent,
                              uint32_t timeSampling,
-                             AbcExportOptions &opts)
-    : AbcShapeWriter(scene, ob, parent, timeSampling, opts)
+                             ExportSettings &settings)
+    : AbcShapeWriter(scene, ob, parent, timeSampling, settings)
 {
 	m_is_animated = isAnimated();
 	m_subsurf_mod = NULL;
@@ -107,7 +107,7 @@ AbcMeshWriter::AbcMeshWriter(Scene *scene,
 		timeSampling = 0;
 	}
 
-	if (!m_options.export_subsurfs_as_meshes) {
+	if (!m_settings.export_subsurfs_as_meshes) {
 		/* check if the mesh is a subsurf, ignoring disabled modifiers and
 		 * displace if it's after subsurf. */
 		ModifierData *md = static_cast<ModifierData *>(m_object->modifiers.last);
@@ -140,7 +140,7 @@ AbcMeshWriter::AbcMeshWriter(Scene *scene,
 		m_name.append("_");
 	}
 
-	if (m_options.use_subdiv_schema && isSubd) {
+	if (m_settings.use_subdiv_schema && isSubd) {
 		OSubD subd(parent->alembicXform(), m_name, m_time_sampling);
 		m_subdiv_schema = subd.getSchema();
 	}
@@ -196,7 +196,7 @@ void AbcMeshWriter::do_write()
 	if (!m_first_frame && !m_is_animated)
 		return;
 
-	if (m_options.use_subdiv_schema && m_subdiv_schema.valid()) {
+	if (m_settings.use_subdiv_schema && m_subdiv_schema.valid()) {
 		writeSubD();
 	}
 	else {
@@ -242,7 +242,7 @@ void AbcMeshWriter::writeMesh()
 			}
 
 			if (hasProperties(reinterpret_cast<ID *>(m_object->data))) {
-				if (m_options.export_props_as_geo_params)
+				if (m_settings.export_props_as_geo_params)
 					writeProperties(reinterpret_cast<ID *>(m_object->data),
 					                m_mesh_schema.getArbGeomParams(), false);
 				else
@@ -334,7 +334,7 @@ void AbcMeshWriter::writeSubD()
 			}
 
 			if (hasProperties(reinterpret_cast<ID *>(m_object->data))) {
-				if (m_options.export_props_as_geo_params)
+				if (m_settings.export_props_as_geo_params)
 					writeProperties(reinterpret_cast<ID *>(m_object->data),
 					                m_subdiv_schema.getArbGeomParams(), false);
 				else
@@ -447,12 +447,12 @@ void AbcMeshWriter::getPoints(DerivedMesh *dm, std::vector<float> &points)
 
 	MVert *verts = dm->getVertArray(dm);
 
-	if (m_options.do_convert_axis) {
+	if (m_settings.do_convert_axis) {
 		float vert[3];
 
 		for (int i = 0, e = dm->getNumVerts(dm); i < e; ++i) {
 			copy_v3_v3(vert, verts[i].co);
-			mul_m3_v3(m_options.convert_matrix, vert);
+			mul_m3_v3(m_settings.convert_matrix, vert);
 			points.push_back(vert[0]);
 			points.push_back(vert[1]);
 			points.push_back(vert[2]);
@@ -501,7 +501,7 @@ void AbcMeshWriter::getNormals(DerivedMesh *dm, std::vector<float> &norms)
 	const float nscale = 1.0f / 32767.0f;
 	norms.clear();
 
-	if (m_options.export_normals) {
+	if (m_settings.export_normals) {
 		norms.reserve(m_num_face_verts);
 
 		MVert *verts = dm->getVertArray(dm);
@@ -574,14 +574,14 @@ void AbcMeshWriter::getUVs(DerivedMesh *dm,
 
 	MLoopUV *mloopuv_array = static_cast<MLoopUV *>(CustomData_get_layer_n(&dm->loopData, CD_MLOOPUV, layer_idx));
 
-	if (!(m_options.export_uvs && mloopuv_array)) {
+	if (!(m_settings.export_uvs && mloopuv_array)) {
 		return;
 	}
 
 	int num_poly = dm->getNumPolys(dm);
 	MPoly *polygons = dm->getPolyArray(dm);
 
-	if (!m_options.pack_uv) {
+	if (!m_settings.pack_uv) {
 		int cnt = 0;
 		for (int i = 0; i < num_poly; ++i) {
 			MPoly &current_poly = polygons[i];
@@ -680,7 +680,7 @@ void AbcMeshWriter::createArbGeoParams(DerivedMesh *dm)
 			continue;
 		}
 
-		if (layer->type == CD_MCOL && !m_options.export_vcols)
+		if (layer->type == CD_MCOL && !m_settings.export_vcols)
 			continue;
 
 		if (m_subdiv_schema.valid()) {
@@ -796,17 +796,17 @@ void AbcMeshWriter::writeArbGeoParams(DerivedMesh *dm)
 	if (m_first_frame && m_has_per_face_materials) {
 		std::vector<int32_t> faceVals;
 
-		if (m_options.export_face_sets || m_options.export_mat_indices) {
+		if (m_settings.export_face_sets || m_settings.export_mat_indices) {
 			getMaterialIndices(dm, faceVals);
 		}
 
-		if (m_options.export_face_sets) {
+		if (m_settings.export_face_sets) {
 			OFaceSetSchema::Sample samp;
 			samp.setFaces(Int32ArraySample(faceVals));
 			m_face_set.getSchema().set(samp);
 		}
 
-		if (m_options.export_mat_indices) {
+		if (m_settings.export_mat_indices) {
 			Alembic::AbcCoreAbstract::ArraySample samp(&(faceVals.front()),
 			                                           m_mat_indices.getDataType(),
 			                                           Alembic::Util::Dimensions(dm->getNumTessFaces(dm)));
@@ -903,12 +903,12 @@ void AbcMeshWriter::getVelocities(DerivedMesh *dm, std::vector<float> &vels)
 	if (fss->meshVelocities) {
 		float *meshVels = reinterpret_cast<float *>(fss->meshVelocities);
 
-		if (m_options.do_convert_axis) {
+		if (m_settings.do_convert_axis) {
 			float vel[3];
 
 			for (int i = 0; i < totverts; ++i) {
 				copy_v3_v3(vel, meshVels);
-				mul_m3_v3(m_options.convert_matrix, vel);
+				mul_m3_v3(m_settings.convert_matrix, vel);
 
 				vels.push_back(vels[0]);
 				vels.push_back(vels[1]);

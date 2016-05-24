@@ -36,7 +36,7 @@ struct Main;
 class AbcObjectWriter {
 protected:
 	Object *m_object;
-    AbcExportOptions &m_options;
+    ExportSettings &m_settings;
 
     Imath::Box3d m_bounds;
     std::vector<AbcObjectWriter *> m_children;
@@ -47,7 +47,7 @@ protected:
 	std::string m_name;
 
 public:
-    AbcObjectWriter(Object *obj, AbcExportOptions &opts);
+    AbcObjectWriter(Object *obj, ExportSettings &settings);
     virtual ~AbcObjectWriter();
 
 	void addChild(AbcObjectWriter *child);

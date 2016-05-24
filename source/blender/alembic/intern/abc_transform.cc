@@ -39,8 +39,8 @@ AbcTransformWriter::AbcTransformWriter(Object *obj,
                                        OObject abcParent,
                                        AbcTransformWriter *writerParent,
                                        unsigned int timeSampling,
-                                       AbcExportOptions &opts)
-    : AbcObjectWriter(obj, opts)
+                                       ExportSettings &settings)
+    : AbcObjectWriter(obj, settings)
 {
 	m_is_animated = hasAnimation(m_object);
 	m_parent = NULL;
@@ -62,7 +62,7 @@ void AbcTransformWriter::do_write()
 {
 	if (m_first_frame) {
 		if (hasProperties(reinterpret_cast<ID *>(m_object))) {
-			if (m_options.export_props_as_geo_params) {
+			if (m_settings.export_props_as_geo_params) {
 				writeProperties(reinterpret_cast<ID *>(m_object), m_schema.getArbGeomParams());
 			}
 			else {
@@ -92,11 +92,11 @@ void AbcTransformWriter::do_write()
     }
 
 	float smat[4][4];
-	scale_m4_fl(smat, m_options.global_scale);
+	scale_m4_fl(smat, m_settings.global_scale);
 	mul_m4_m4m4(mat, smat, mat);
 
-	if (m_options.do_convert_axis) {
-		mul_m4_m3m4(mat, m_options.convert_matrix, mat);
+	if (m_settings.do_convert_axis) {
+		mul_m4_m3m4(mat, m_settings.convert_matrix, mat);
 	}
 
     m_matrix = convert_matrix(mat);

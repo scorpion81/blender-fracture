@@ -59,7 +59,7 @@ public:
 	              Object *ob,
                   AbcTransformWriter *parent,
                   uint32_t timeSampling,
-                  AbcExportOptions &opts);
+                  ExportSettings &settings);
 
 	~AbcMeshWriter();
 
