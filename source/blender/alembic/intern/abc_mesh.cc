@@ -41,6 +41,7 @@ extern "C" {
 
 #include "BKE_DerivedMesh.h"
 #include "BKE_depsgraph.h"
+#include "BKE_main.h"
 #include "BKE_material.h"
 #include "BKE_mesh.h"
 #include "BKE_modifier.h"
@@ -59,6 +60,8 @@ using Alembic::Abc::P3fArraySamplePtr;
 using Alembic::Abc::V2fArraySample;
 using Alembic::Abc::V3fArraySample;
 
+using Alembic::AbcGeom::IFaceSet;
+using Alembic::AbcGeom::IFaceSetSchema;
 using Alembic::AbcGeom::IObject;
 using Alembic::AbcGeom::IPolyMesh;
 using Alembic::AbcGeom::IPolyMeshSchema;
@@ -1062,10 +1065,8 @@ static void mesh_add_mpolygons(Mesh *mesh, size_t len)
 
 } /* mesh_utils */
 
-#if 0
-static Material *findMaterial(const char *name)
+static Material *findMaterial(Main *bmain, const char *name)
 {
-	Main *bmain = G.main;
 	Material *material, *found_material = NULL;
 
 	for (material = (Material*)bmain->mat.first; material; material = (Material*)material->id.next) {
@@ -1079,46 +1080,43 @@ static Material *findMaterial(const char *name)
 	return found_material;
 }
 
-static void ABC_apply_materials(Object *ob, void *key)
+static void ABC_apply_materials(Main *bmain, Object *ob, const std::map<std::string, int> &mat_map)
 {
-	AbcInfo &meshmap = abc_manager->mesh_map[key];
-
 	/* Clean up slots */
 	while (object_remove_material_slot(ob));
 
 	bool can_assign = true;
-	std::map<std::string, int>::iterator it = meshmap.mat_map.begin();
+	std::map<std::string, int>::const_iterator it = mat_map.begin();
+
 	int matcount = 0;
-	for (; it != abc_manager->mesh_map[key].mat_map.end(); ++it, matcount++) {
+	for (; it != mat_map.end(); ++it, ++matcount) {
 		Material *curmat = give_current_material(ob, matcount);
-		if (curmat == NULL) {
-			if (!object_add_material_slot(ob)) {
-				can_assign = false;
-				break;
-			}
+
+		if (curmat != NULL) {
+			continue;
+		}
+
+		if (!object_add_material_slot(ob)) {
+			can_assign = false;
+			break;
 		}
 	}
 
 	if (can_assign) {
-		it = abc_manager->mesh_map[key].mat_map.begin();
-		for (; it != meshmap.mat_map.end(); ++it) {
+		it = mat_map.begin();
 
-			Material *assigned_name;
+		for (; it != mat_map.end(); ++it) {
 			std::string mat_name = it->first;
+			Material *assigned_name = findMaterial(bmain, mat_name.c_str());
 
-			if (findMaterial(mat_name.c_str()) != NULL) {//meshmap.materials.find(mat_name) != meshmap.materials.end()) {
-				assigned_name = findMaterial(mat_name.c_str());//meshmap.materials[mat_name];
-			}
-			else {
-				assigned_name = BKE_material_add(G.main, mat_name.c_str());
-				meshmap.materials[mat_name] = assigned_name;
+			if (assigned_name == NULL) {
+				assigned_name = BKE_material_add(bmain, mat_name.c_str());
 			}
 
 			assign_material(ob, assigned_name, it->second, BKE_MAT_ASSIGN_OBJECT);
 		}
 	}
 }
-#endif
 
 AbcMeshReader::AbcMeshReader(const IObject &object, ImportSettings &settings)
     : AbcObjectReader(object, settings)
@@ -1136,9 +1134,9 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 {
 	Mesh *blender_mesh = BKE_mesh_add(bmain, m_data_name.c_str());
 
-	size_t idx_pos  = blender_mesh->totpoly;
-	size_t vtx_pos  = blender_mesh->totvert;
-	size_t loop_pos = blender_mesh->totloop;
+	const size_t idx_pos  = blender_mesh->totpoly;
+	const size_t vtx_pos  = blender_mesh->totvert;
+	const size_t loop_pos = blender_mesh->totloop;
 
 	IV2fGeomParam uv = m_schema.getUVsParam();
 	ISampleSelector sample_sel(time);
@@ -1210,44 +1208,6 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 		}
 	}
 
-	/* TODO */
-#if 0
-	if (assign_mat) {
-		std::map<std::string, int> &mat_map = abc_manager->mesh_map[key].mat_map;
-		int &current_mat = abc_manager->mesh_map[key].current_mat;
-
-		for (int i = 0; i < face_sets.size(); ++i) {
-			std::string grp_name = face_sets[i];
-
-			if (mat_map.find(grp_name) == mat_map.end()) {
-				mat_map[grp_name] = 1 + current_mat++;
-			}
-
-			int assigned_mat = mat_map[grp_name];
-
-			IFaceSet faceset 					= m_schema.getFaceSet(face_sets[i]);
-			if (!faceset.valid())
-				continue;
-			IFaceSetSchema face_schem 			= faceset.getSchema();
-			IFaceSetSchema::Sample face_sample 	= face_schem.getValue(sample_sel);
-			Int32ArraySamplePtr group_faces 	= face_sample.getFaces();
-			size_t num_group_faces 				= group_faces->size();
-
-			for (size_t l = 0; l < num_group_faces; l++) {
-				size_t pos = (*group_faces)[l]+idx_pos;
-
-				if (pos >= blender_mesh->totpoly) {
-					std::cerr << "Faceset overflow on " << faceset.getName() << std::endl;
-					break;
-				}
-
-				MPoly  &poly = blender_mesh->mpoly[pos];
-				poly.mat_nr = assigned_mat - 1;
-			}
-		}
-	}
-#endif
-
 	BKE_mesh_validate(blender_mesh, false, false);
 
 	m_object = BKE_object_add(bmain, scene, OB_MESH, m_object_name.c_str());
@@ -1267,12 +1227,60 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 	BLI_strncpy(mcmd->filepath, m_iobject.getArchive().getName().c_str(), 1024);
 	BLI_strncpy(mcmd->sub_object, m_iobject.getFullName().c_str(), 1024);
 
-	/* TODO: add materials */
-#if 0
-	if (apply_materials) {
-		ABC_apply_materials(m_object, NULL);
+	/* TODO: expose this as a setting to the user? */
+	const bool assign_mat = true;
+
+	if (assign_mat) {
+		readFaceSets(bmain, blender_mesh, idx_pos, sample_sel);
 	}
-#endif
+}
+
+void AbcMeshReader::readFaceSets(Main *bmain, Mesh *mesh, size_t idx_pos, const ISampleSelector &sample_sel)
+{
+	std::vector<std::string> face_sets;
+	m_schema.getFaceSetNames(face_sets);
+
+	if (face_sets.empty()) {
+		return;
+	}
+
+	std::map<std::string, int> mat_map;
+	int current_mat = 0;
+
+	for (int i = 0; i < face_sets.size(); ++i) {
+		const std::string &grp_name = face_sets[i];
+
+		if (mat_map.find(grp_name) == mat_map.end()) {
+			mat_map[grp_name] = 1 + current_mat++;
+		}
+
+		const int assigned_mat = mat_map[grp_name];
+
+		const IFaceSet faceset = m_schema.getFaceSet(grp_name);
+
+		if (!faceset.valid()) {
+			continue;
+		}
+
+		const IFaceSetSchema face_schem = faceset.getSchema();
+		const IFaceSetSchema::Sample face_sample = face_schem.getValue(sample_sel);
+		const Int32ArraySamplePtr group_faces = face_sample.getFaces();
+		const size_t num_group_faces = group_faces->size();
+
+		for (size_t l = 0; l < num_group_faces; l++) {
+			size_t pos = (*group_faces)[l] + idx_pos;
+
+			if (pos >= mesh->totpoly) {
+				std::cerr << "Faceset overflow on " << faceset.getName() << '\n';
+				break;
+			}
+
+			MPoly &poly = mesh->mpoly[pos];
+			poly.mat_nr = assigned_mat - 1;
+		}
+	}
+
+	ABC_apply_materials(bmain, m_object, mat_map);
 }
 
 AbcEmptyReader::AbcEmptyReader(const Alembic::Abc::IObject &object, ImportSettings &settings)

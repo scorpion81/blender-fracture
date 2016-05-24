@@ -26,6 +26,7 @@
 #include "abc_shape.h"
 
 struct DerivedMesh;
+struct Mesh;
 struct ModifierData;
 
 class AbcMeshWriter : public AbcShapeWriter {
@@ -112,6 +113,8 @@ public:
 	bool valid() const;
 
 	void readObjectData(Main *bmain, Scene *scene, float time);
+    void readFaceSets(Main *bmain, Mesh *mesh, size_t idx_pos,
+	                  const Alembic::AbcGeom::ISampleSelector &sample_sel);
 };
 
 class AbcEmptyReader : public AbcObjectReader {
