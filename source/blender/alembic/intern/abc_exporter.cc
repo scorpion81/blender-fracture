@@ -27,8 +27,6 @@
 #include <Alembic/AbcCoreHDF5/All.h>
 #include <Alembic/AbcCoreOgawa/All.h>
 
-#include <boost/progress.hpp>
-
 #include "abc_camera.h"
 #include "abc_mesh.h"
 #include "abc_nurbs.h"
@@ -172,13 +170,13 @@ void AbcExporter::operator()()
 
 	Alembic::Abc::TimeSamplingPtr shapeTime;
 
-	if ((m_settings.shape_frame_step == m_settings.xform_frame_step) || (m_settings.startframe == m_settings.endframe))
+	if ((m_settings.shape_frame_step == m_settings.xform_frame_step) ||
+	    (m_settings.startframe == m_settings.endframe))
 	{
 		shapeTime = transTime;
 		m_shape_sampling_index = m_trans_sampling_index;
 	}
-	else
-	{
+	else {
 		shapeTime = createTimeSampling(m_settings.startframe, m_settings.endframe,
 		                               m_settings.shape_frame_step, m_settings.shutter_open,
 		                               m_settings.shutter_close);
@@ -208,14 +206,12 @@ void AbcExporter::operator()()
 
 	/* export all frames */
 
-	/* TODO : replace this with some kind of progress report */
-	std::cout << "Exporting Alembic archive: " << m_filename << std::endl;
-	boost::progress_timer timer;
-	boost::progress_display progress(allFrames.size());
+	/* TODO : progress report */
+	std::set<double>::const_iterator begin = allFrames.begin();
+	std::set<double>::const_iterator end = allFrames.begin();
 
-	for (std::set<double>::const_iterator it(allFrames.begin()), e(allFrames.end()); it != e; ++it)
-	{
-		double f = *it;
+	for (; begin != end; ++begin) {
+		double f = *begin;
 		setCurrentFrame(f);
 
 		if (shapeFrames.count(f) != 0) {
@@ -223,23 +219,24 @@ void AbcExporter::operator()()
 				m_shapes[i]->write();
 		}
 
-		if (xformFrames.count(f) != 0) {
-			for (std::map<std::string, AbcTransformWriter*>::iterator xit = m_xforms.begin(), xe = m_xforms.end(); xit != xe; ++xit)
-				xit->second->write();
-
-			/* Save the archive 's bounding box. */
-			Imath::Box3d bounds;
-
-			for (std::map<std::string, AbcTransformWriter*>::iterator xit = m_xforms.begin(), xe = m_xforms.end(); xit != xe; ++xit)
-			{
-				Imath::Box3d box = xit->second->bounds();
-				bounds.extendBy(box);
-			}
-
-			archiveBoxProp.set(bounds);
+		if (xformFrames.count(f) == 0) {
+			continue;
 		}
 
-		++progress;
+		std::map<std::string, AbcTransformWriter *>::iterator xit, xe;
+		for (xit = m_xforms.begin(), xe = m_xforms.end(); xit != xe; ++xit) {
+			xit->second->write();
+		}
+
+		/* Save the archive 's bounding box. */
+		Imath::Box3d bounds;
+
+		for (xit = m_xforms.begin(), xe = m_xforms.end(); xit != xe; ++xit) {
+			Imath::Box3d box = xit->second->bounds();
+			bounds.extendBy(box);
+		}
+
+		archiveBoxProp.set(bounds);
 	}
 }
 
