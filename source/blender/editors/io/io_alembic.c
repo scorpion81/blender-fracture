@@ -237,10 +237,10 @@ void WM_OT_alembic_export(wmOperatorType *ot)
 	                               FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 
 	RNA_def_int(ot->srna, "start", 1, INT_MIN, INT_MAX,
-	            "Start frame", "Start Frame", INT_MIN, INT_MAX);
+	            "Start Frame", "Start Frame", INT_MIN, INT_MAX);
 
 	RNA_def_int(ot->srna, "end", 1, INT_MIN, INT_MAX,
-	            "End frame", "End Frame", INT_MIN, INT_MAX);
+	            "End Frame", "End Frame", INT_MIN, INT_MAX);
 
 	RNA_def_enum(ot->srna, "to_forward", rna_enum_object_axis_items, OB_NEGZ,
 	             "Forward Axis", "Target forward axis");
@@ -249,43 +249,43 @@ void WM_OT_alembic_export(wmOperatorType *ot)
 	             "Up Axis", "Target up axis");
 
 	RNA_def_int(ot->srna, "xsamples", 1, 1, 128,
-	            "Xform samples / frame", "Transform samples per frame", 1, 128);
+	            "Transform Samples", "Transform samples per frame", 1, 128);
 
 	RNA_def_int(ot->srna, "gsamples", 1, 1, 128,
-	            "Geom samples / frame", "Geometry samples per frame", 1, 128);
+	            "Geometry Samples", "Geometry samples per frame", 1, 128);
 
 	RNA_def_float(ot->srna, "sh_open", 0.0f, -1.0f, 1.0f,
-	              "Shutter open", "", -1.0f, 1.0f);
+	              "Shutter Open", "", -1.0f, 1.0f);
 
 	RNA_def_float(ot->srna, "sh_close", 1.0f, -1.0f, 1.0f,
-	              "Shutter close", "", -1.0f, 1.0f);
+	              "Shutter Close", "", -1.0f, 1.0f);
 
 	RNA_def_boolean(ot->srna, "selected", 0,
-	                "Selected objects only", "Export only selected objects");
+	                "Selected Objects Only", "Export only selected objects");
 
 	RNA_def_boolean(ot->srna, "renderable"	, 1,
-	                "Renderable objects only",
+	                "Renderable Objects Only",
 	                "Export only objects marked renderable in the outliner");
 
 	RNA_def_boolean(ot->srna, "vislayers", 0,
-	                "Visible layers only", "Export only objects in visible layers");
+	                "Visible Layers Only", "Export only objects in visible layers");
 
 	RNA_def_boolean(ot->srna, "flatten", 0,
-	                "Flatten hierarchy",
+	                "Flatten Hierarchy",
 	                "Do not preserve objects' parent/children relationship");
 
 	RNA_def_boolean(ot->srna, "uvs", 1, "UVs", "Export UVs");
 
-	RNA_def_boolean(ot->srna, "packuv", 1, "Pack UV islands",
-	                "Export UV with packed island");
+	RNA_def_boolean(ot->srna, "packuv", 1, "Pack UV Islands",
+	                "Export UVs with packed island");
 
 	RNA_def_boolean(ot->srna, "normals", 1, "Normals", "Export normals");
 
 	RNA_def_boolean(ot->srna, "vcolors", 0, "Vertex colors", "Export vertex colors");
 
-	RNA_def_boolean(ot->srna, "facesets", 0, "Facesets", "Export facesets");
+	RNA_def_boolean(ot->srna, "facesets", 0, "Face Sets", "Export per face shading group assignments");
 
-	RNA_def_boolean(ot->srna, "matindices", 0, "Material indices",
+	RNA_def_boolean(ot->srna, "matindices", 0, "Material Indices",
 	                "Export per face material indices");
 
 	RNA_def_boolean(ot->srna, "subdiv_schema", 0,
@@ -296,7 +296,7 @@ void WM_OT_alembic_export(wmOperatorType *ot)
 	                "Apply Subsurf", "Export subdivision surfaces as meshes");
 
 	RNA_def_boolean(ot->srna, "geoprops", 0,
-	                "Custom props as geom data",
+	                "Custom Props As Geom Data",
 	                "Write custom properties as geometry properties (default to user data)");
 
 	RNA_def_enum(ot->srna, "compression_type", rna_enum_abc_compression_items,
