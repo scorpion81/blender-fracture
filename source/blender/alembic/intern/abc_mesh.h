@@ -113,8 +113,17 @@ public:
 	bool valid() const;
 
 	void readObjectData(Main *bmain, Scene *scene, float time);
-    void readFaceSets(Main *bmain, Mesh *mesh, size_t idx_pos,
-	                  const Alembic::AbcGeom::ISampleSelector &sample_sel);
+
+private:
+	void readFaceSetsSample(Main *bmain, Mesh *mesh, size_t poly_start,
+	                        const Alembic::AbcGeom::ISampleSelector &sample_sel);
+
+	void readPolyDataSample(Mesh *blender_mesh,
+	                        const Alembic::AbcGeom::IPolyMeshSchema::Sample &sample,
+	                        const size_t poly_start);
+
+	void readVertexDataSample(Mesh *mesh,
+	                          const Alembic::AbcGeom::IPolyMeshSchema::Sample &sample);
 };
 
 class AbcEmptyReader : public AbcObjectReader {

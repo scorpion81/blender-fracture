@@ -982,7 +982,7 @@ void AbcMeshWriter::getGeoGroups(
 /* ******************************* mesh reader ****************************** */
 
 /* Some helpers for mesh generation */
-namespace mesh_utils {
+namespace utils {
 
 static void mesh_add_verts(Mesh *mesh, size_t len)
 {
@@ -1063,9 +1063,7 @@ static void mesh_add_mpolygons(Mesh *mesh, size_t len)
 	mesh->totpoly = totpolys;
 }
 
-} /* mesh_utils */
-
-static Material *findMaterial(Main *bmain, const char *name)
+static Material *find_material(Main *bmain, const char *name)
 {
 	Material *material, *found_material = NULL;
 
@@ -1080,7 +1078,7 @@ static Material *findMaterial(Main *bmain, const char *name)
 	return found_material;
 }
 
-static void ABC_apply_materials(Main *bmain, Object *ob, const std::map<std::string, int> &mat_map)
+static void assign_materials(Main *bmain, Object *ob, const std::map<std::string, int> &mat_map)
 {
 	/* Clean up slots */
 	while (object_remove_material_slot(ob));
@@ -1107,7 +1105,7 @@ static void ABC_apply_materials(Main *bmain, Object *ob, const std::map<std::str
 
 		for (; it != mat_map.end(); ++it) {
 			std::string mat_name = it->first;
-			Material *assigned_name = findMaterial(bmain, mat_name.c_str());
+			Material *assigned_name = find_material(bmain, mat_name.c_str());
 
 			if (assigned_name == NULL) {
 				assigned_name = BKE_material_add(bmain, mat_name.c_str());
@@ -1117,6 +1115,10 @@ static void ABC_apply_materials(Main *bmain, Object *ob, const std::map<std::str
 		}
 	}
 }
+
+}  /* namespace utils */
+
+/* ****************************** AbcMeshReader ***************************** */
 
 AbcMeshReader::AbcMeshReader(const IObject &object, ImportSettings &settings)
     : AbcObjectReader(object, settings)
@@ -1132,86 +1134,29 @@ bool AbcMeshReader::valid() const
 
 void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 {
-	Mesh *blender_mesh = BKE_mesh_add(bmain, m_data_name.c_str());
+	Mesh *mesh = BKE_mesh_add(bmain, m_data_name.c_str());
 
-	const size_t idx_pos  = blender_mesh->totpoly;
-	const size_t vtx_pos  = blender_mesh->totvert;
-	const size_t loop_pos = blender_mesh->totloop;
+	const ISampleSelector sample_sel(time);
 
-	IV2fGeomParam uv = m_schema.getUVsParam();
-	ISampleSelector sample_sel(time);
+	const IPolyMeshSchema::Sample sample = m_schema.getValue(sample_sel);
 
-	IPolyMeshSchema::Sample smp = m_schema.getValue(sample_sel);
-	P3fArraySamplePtr positions = smp.getPositions();
-	Int32ArraySamplePtr face_indices = smp.getFaceIndices();
-	Int32ArraySamplePtr face_counts  = smp.getFaceCounts();
+	readVertexDataSample(mesh, sample);
 
-	const size_t vertex_count = positions->size();
-	const size_t num_poly = face_counts->size();
-	const size_t num_loops = face_indices->size();
+	const size_t poly_start = mesh->totpoly;
 
-	std::vector<std::string> face_sets;
-	m_schema.getFaceSetNames(face_sets);
+	readPolyDataSample(mesh, sample, poly_start);
 
-	mesh_utils::mesh_add_verts(blender_mesh, vertex_count);
-	mesh_utils::mesh_add_mpolygons(blender_mesh, num_poly);
-	mesh_utils::mesh_add_mloops(blender_mesh, num_loops);
+	/* TODO: expose this as a setting to the user? */
+	const bool assign_mat = true;
 
-	IV2fGeomParam::Sample::samp_ptr_type uvsamp_vals;
-
-	if (uv.valid()) {
-		IV2fGeomParam::Sample uvsamp = uv.getExpandedValue();
-		uvsamp_vals = uvsamp.getVals();
+	if (assign_mat) {
+		readFaceSetsSample(bmain, mesh, poly_start, sample_sel);
 	}
 
-	int j = vtx_pos;
-	for (int i = 0; i < vertex_count; ++i, ++j) {
-		MVert &mvert = blender_mesh->mvert[j];
-		Imath::V3f pos_in = (*positions)[i];
-
-		mvert.co[0] = pos_in[0];
-		mvert.co[1] = pos_in[1];
-		mvert.co[2] = pos_in[2];
-
-		mvert.bweight = 0;
-	}
-
-	if (m_settings->do_convert_mat) {
-		j = vtx_pos;
-		for (int i = 0; i < vertex_count; ++i, ++j) {
-			MVert &mvert = blender_mesh->mvert[j];
-			mul_m4_v3(m_settings->conversion_mat, mvert.co);
-		}
-	}
-
-	j = idx_pos;
-	int loopcount = loop_pos;
-	for (int i = 0; i < num_poly; ++i, ++j) {
-		int face_size = (*face_counts)[i];
-		MPoly &poly = blender_mesh->mpoly[j];
-
-		poly.loopstart = loopcount;
-		poly.totloop   = face_size;
-
-		/* TODO: reverse */
-		int rev_loop = loopcount;
-		for (int f = face_size; f-- ;) {
-			MLoop &loop 	= blender_mesh->mloop[rev_loop+f];
-			MLoopUV &loopuv = blender_mesh->mloopuv[rev_loop+f];
-
-			if (uvsamp_vals) {
-				loopuv.uv[0] = (*uvsamp_vals)[loopcount][0];
-				loopuv.uv[1] = (*uvsamp_vals)[loopcount][1];
-			}
-
-			loop.v = (*face_indices)[loopcount++];
-		}
-	}
-
-	BKE_mesh_validate(blender_mesh, false, false);
+	BKE_mesh_validate(mesh, false, false);
 
 	m_object = BKE_object_add(bmain, scene, OB_MESH, m_object_name.c_str());
-	m_object->data = blender_mesh;
+	m_object->data = mesh;
 
 	/* Add a default mesh cache modifier */
 
@@ -1226,16 +1171,83 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 
 	BLI_strncpy(mcmd->filepath, m_iobject.getArchive().getName().c_str(), 1024);
 	BLI_strncpy(mcmd->sub_object, m_iobject.getFullName().c_str(), 1024);
+}
 
-	/* TODO: expose this as a setting to the user? */
-	const bool assign_mat = true;
+void AbcMeshReader::readVertexDataSample(Mesh *mesh, const IPolyMeshSchema::Sample &sample)
+{
+	const P3fArraySamplePtr positions = sample.getPositions();
+	const size_t vertex_count = positions->size();
+	const size_t vertex_start = mesh->totvert;
 
-	if (assign_mat) {
-		readFaceSets(bmain, blender_mesh, idx_pos, sample_sel);
+	utils::mesh_add_verts(mesh, vertex_count);
+
+	for (int i = 0, j = vertex_start; i < vertex_count; ++i, ++j) {
+		MVert &mvert = mesh->mvert[j];
+		Imath::V3f pos_in = (*positions)[i];
+
+		mvert.co[0] = pos_in[0];
+		mvert.co[1] = pos_in[1];
+		mvert.co[2] = pos_in[2];
+
+		mvert.bweight = 0;
+	}
+
+	if (m_settings->do_convert_mat) {
+		for (int i = 0, j = vertex_start; i < vertex_count; ++i, ++j) {
+			MVert &mvert = mesh->mvert[j];
+			mul_m4_v3(m_settings->conversion_mat, mvert.co);
+		}
 	}
 }
 
-void AbcMeshReader::readFaceSets(Main *bmain, Mesh *mesh, size_t idx_pos, const ISampleSelector &sample_sel)
+void AbcMeshReader::readPolyDataSample(Mesh *blender_mesh,
+                                       const Alembic::AbcGeom::IPolyMeshSchema::Sample &sample,
+                                       const size_t poly_start)
+{
+	const Int32ArraySamplePtr face_indices = sample.getFaceIndices();
+	const Int32ArraySamplePtr face_counts  = sample.getFaceCounts();
+	const size_t num_poly = face_counts->size();
+	const size_t num_loops = face_indices->size();
+	const size_t loop_pos = blender_mesh->totloop;
+
+	utils::mesh_add_mpolygons(blender_mesh, num_poly);
+	utils::mesh_add_mloops(blender_mesh, num_loops);
+
+	IV2fGeomParam::Sample::samp_ptr_type uvsamp_vals;
+	const IV2fGeomParam uv = m_schema.getUVsParam();
+
+	if (uv.valid()) {
+		IV2fGeomParam::Sample uvsamp = uv.getExpandedValue();
+		uvsamp_vals = uvsamp.getVals();
+	}
+
+	int j = poly_start;
+	int loopcount = loop_pos;
+	for (int i = 0; i < num_poly; ++i, ++j) {
+		int face_size = (*face_counts)[i];
+		MPoly &poly = blender_mesh->mpoly[j];
+
+		poly.loopstart = loopcount;
+		poly.totloop   = face_size;
+
+		/* TODO: reverse */
+		int rev_loop = loopcount;
+		for (int f = face_size; f-- ;) {
+			MLoop &loop 	= blender_mesh->mloop[rev_loop + f];
+			MLoopUV &loopuv = blender_mesh->mloopuv[rev_loop + f];
+
+			if (uvsamp_vals) {
+				loopuv.uv[0] = (*uvsamp_vals)[loopcount][0];
+				loopuv.uv[1] = (*uvsamp_vals)[loopcount][1];
+			}
+
+			loop.v = (*face_indices)[loopcount++];
+		}
+	}
+}
+
+void AbcMeshReader::readFaceSetsSample(Main *bmain, Mesh *mesh, size_t poly_start,
+                                       const ISampleSelector &sample_sel)
 {
 	std::vector<std::string> face_sets;
 	m_schema.getFaceSetNames(face_sets);
@@ -1268,7 +1280,7 @@ void AbcMeshReader::readFaceSets(Main *bmain, Mesh *mesh, size_t idx_pos, const 
 		const size_t num_group_faces = group_faces->size();
 
 		for (size_t l = 0; l < num_group_faces; l++) {
-			size_t pos = (*group_faces)[l] + idx_pos;
+			size_t pos = (*group_faces)[l] + poly_start;
 
 			if (pos >= mesh->totpoly) {
 				std::cerr << "Faceset overflow on " << faceset.getName() << '\n';
@@ -1280,8 +1292,10 @@ void AbcMeshReader::readFaceSets(Main *bmain, Mesh *mesh, size_t idx_pos, const 
 		}
 	}
 
-	ABC_apply_materials(bmain, m_object, mat_map);
+	utils::assign_materials(bmain, m_object, mat_map);
 }
+
+/* ***************************** AbcEmptyReader ***************************** */
 
 AbcEmptyReader::AbcEmptyReader(const Alembic::Abc::IObject &object, ImportSettings &settings)
     : AbcObjectReader(object, settings)
