@@ -37,7 +37,7 @@ bool parent_selected(Object *ob);
 
 Imath::M44d convert_matrix(float mat[4][4]);
 
-void split(const std::string &s, const char *delim, std::vector<std::string> &v);
+void split(const std::string &s, const char delim, std::vector<std::string> &tokens);
 
 template<class TContainer>
 bool begins_with(const TContainer &input, const TContainer &match)

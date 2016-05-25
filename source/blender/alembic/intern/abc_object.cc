@@ -313,7 +313,7 @@ AbcObjectReader::AbcObjectReader(const IObject &object, ImportSettings &settings
 {
 	m_name = object.getFullName();
 	std::vector<std::string> parts;
-	split(m_name, "/", parts);
+	split(m_name, '/', parts);
 
 	assert(parts.size() >= 2);
 

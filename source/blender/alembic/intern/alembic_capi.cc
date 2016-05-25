@@ -148,7 +148,7 @@ static void find_mesh_object(const IObject &object, IObject &ret,
 	}
 
 	std::vector<std::string> tokens;
-	split(name, "/", tokens);
+	split(name, '/', tokens);
 
 	IObject tmp = object;
 
@@ -429,7 +429,7 @@ static void create_hierarchy(Main *bmain, Scene *scene, AbcObjectReader *root)
 	const std::string &full_name = iobjet.getFullName();
 
 	std::vector<std::string> parts;
-	split(full_name, "/", parts);
+	split(full_name, '/', parts);
 
 	/* object doesn't have any parents, since its path only contain its name,
 	 * and its data name. */

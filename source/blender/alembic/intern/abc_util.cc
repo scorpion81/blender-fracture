@@ -106,19 +106,16 @@ Imath::M44d convert_matrix(float mat[4][4])
 	return m;
 }
 
-void split(const std::string &s, const char *delim, std::vector<std::string> &v)
+void split(const std::string &s, const char delim, std::vector<std::string> &tokens)
 {
-	/* to avoid modifying original string first duplicate the original string
-	 * and return a char pointer then free the memory */
-	char *dup = strdup(s.c_str());
-	char *token = strtok(dup, delim);
+	tokens.clear();
 
-	while (token != NULL) {
-		v.push_back(std::string(token));
-		/* the call is treated as a subsequent calls to strtok: the function
-		 * continues from where it left in previous invocation */
-		token = strtok(NULL, delim);
+	std::stringstream ss(s);
+	std::string item;
+
+	while (std::getline(ss, item, delim)) {
+		if (!item.empty()) {
+			tokens.push_back(item);
+		}
 	}
-
-	free(dup);
 }
