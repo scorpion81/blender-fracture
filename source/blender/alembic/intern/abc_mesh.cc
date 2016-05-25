@@ -66,6 +66,8 @@ using Alembic::AbcGeom::IObject;
 using Alembic::AbcGeom::IPolyMesh;
 using Alembic::AbcGeom::IPolyMeshSchema;
 using Alembic::AbcGeom::ISampleSelector;
+using Alembic::AbcGeom::ISubD;
+using Alembic::AbcGeom::ISubDSchema;
 using Alembic::AbcGeom::IV2fGeomParam;
 
 using Alembic::AbcGeom::OArrayProperty;
@@ -1120,16 +1122,22 @@ static void assign_materials(Main *bmain, Object *ob, const std::map<std::string
 
 /* ****************************** AbcMeshReader ***************************** */
 
-AbcMeshReader::AbcMeshReader(const IObject &object, ImportSettings &settings)
+AbcMeshReader::AbcMeshReader(const IObject &object, ImportSettings &settings, bool is_subd)
     : AbcObjectReader(object, settings)
 {
-	IPolyMesh abc_mesh(m_iobject, kWrapExisting);
-	m_schema = abc_mesh.getSchema();
+	if (is_subd) {
+		ISubD isubd_mesh(m_iobject, kWrapExisting);
+		m_subd_schema = isubd_mesh.getSchema();
+	}
+	else {
+		IPolyMesh ipoly_mesh(m_iobject, kWrapExisting);
+		m_schema = ipoly_mesh.getSchema();
+	}
 }
 
 bool AbcMeshReader::valid() const
 {
-	return m_schema.valid();
+	return m_schema.valid() || m_subd_schema.valid();
 }
 
 void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
@@ -1137,14 +1145,25 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 	Mesh *mesh = BKE_mesh_add(bmain, m_data_name.c_str());
 
 	const ISampleSelector sample_sel(time);
-
-	const IPolyMeshSchema::Sample sample = m_schema.getValue(sample_sel);
-
-	readVertexDataSample(mesh, sample);
-
 	const size_t poly_start = mesh->totpoly;
 
-	readPolyDataSample(mesh, sample, poly_start);
+	if (m_subd_schema.valid()) {
+		const ISubDSchema::Sample sample = m_subd_schema.getValue(sample_sel);
+
+		readVertexDataSample(mesh, sample.getPositions());
+		readPolyDataSample(mesh, sample.getFaceIndices(), sample.getFaceCounts(), poly_start);
+	}
+	else {
+		const IPolyMeshSchema::Sample sample = m_schema.getValue(sample_sel);
+
+		readVertexDataSample(mesh, sample.getPositions());
+		readPolyDataSample(mesh, sample.getFaceIndices(), sample.getFaceCounts(), poly_start);
+	}
+
+	BKE_mesh_validate(mesh, false, false);
+
+	m_object = BKE_object_add(bmain, scene, OB_MESH, m_object_name.c_str());
+	m_object->data = mesh;
 
 	/* TODO: expose this as a setting to the user? */
 	const bool assign_mat = true;
@@ -1152,11 +1171,6 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 	if (assign_mat) {
 		readFaceSetsSample(bmain, mesh, poly_start, sample_sel);
 	}
-
-	BKE_mesh_validate(mesh, false, false);
-
-	m_object = BKE_object_add(bmain, scene, OB_MESH, m_object_name.c_str());
-	m_object->data = mesh;
 
 	/* Add a default mesh cache modifier */
 
@@ -1173,9 +1187,8 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 	BLI_strncpy(mcmd->sub_object, m_iobject.getFullName().c_str(), 1024);
 }
 
-void AbcMeshReader::readVertexDataSample(Mesh *mesh, const IPolyMeshSchema::Sample &sample)
+void AbcMeshReader::readVertexDataSample(Mesh *mesh, const P3fArraySamplePtr &positions)
 {
-	const P3fArraySamplePtr positions = sample.getPositions();
 	const size_t vertex_count = positions->size();
 	const size_t vertex_start = mesh->totvert;
 
@@ -1200,21 +1213,21 @@ void AbcMeshReader::readVertexDataSample(Mesh *mesh, const IPolyMeshSchema::Samp
 	}
 }
 
-void AbcMeshReader::readPolyDataSample(Mesh *blender_mesh,
-                                       const Alembic::AbcGeom::IPolyMeshSchema::Sample &sample,
+void AbcMeshReader::readPolyDataSample(Mesh *mesh,
+                                       const Int32ArraySamplePtr &face_indices,
+                                       const Int32ArraySamplePtr &face_counts,
                                        const size_t poly_start)
 {
-	const Int32ArraySamplePtr face_indices = sample.getFaceIndices();
-	const Int32ArraySamplePtr face_counts  = sample.getFaceCounts();
 	const size_t num_poly = face_counts->size();
 	const size_t num_loops = face_indices->size();
-	const size_t loop_pos = blender_mesh->totloop;
+	const size_t loop_pos = mesh->totloop;
 
-	utils::mesh_add_mpolygons(blender_mesh, num_poly);
-	utils::mesh_add_mloops(blender_mesh, num_loops);
+	utils::mesh_add_mpolygons(mesh, num_poly);
+	utils::mesh_add_mloops(mesh, num_loops);
 
 	IV2fGeomParam::Sample::samp_ptr_type uvsamp_vals;
-	const IV2fGeomParam uv = m_schema.getUVsParam();
+	const IV2fGeomParam uv = (m_subd_schema.valid() ? m_subd_schema.getUVsParam()
+	                                                : m_schema.getUVsParam());
 
 	if (uv.valid()) {
 		IV2fGeomParam::Sample uvsamp = uv.getExpandedValue();
@@ -1225,16 +1238,16 @@ void AbcMeshReader::readPolyDataSample(Mesh *blender_mesh,
 	int loopcount = loop_pos;
 	for (int i = 0; i < num_poly; ++i, ++j) {
 		int face_size = (*face_counts)[i];
-		MPoly &poly = blender_mesh->mpoly[j];
+		MPoly &poly = mesh->mpoly[j];
 
 		poly.loopstart = loopcount;
-		poly.totloop   = face_size;
+		poly.totloop = face_size;
 
 		/* TODO: reverse */
 		int rev_loop = loopcount;
 		for (int f = face_size; f-- ;) {
-			MLoop &loop 	= blender_mesh->mloop[rev_loop + f];
-			MLoopUV &loopuv = blender_mesh->mloopuv[rev_loop + f];
+			MLoop &loop 	= mesh->mloop[rev_loop + f];
+			MLoopUV &loopuv = mesh->mloopuv[rev_loop + f];
 
 			if (uvsamp_vals) {
 				loopuv.uv[0] = (*uvsamp_vals)[loopcount][0];
@@ -1250,7 +1263,13 @@ void AbcMeshReader::readFaceSetsSample(Main *bmain, Mesh *mesh, size_t poly_star
                                        const ISampleSelector &sample_sel)
 {
 	std::vector<std::string> face_sets;
-	m_schema.getFaceSetNames(face_sets);
+
+	if (m_subd_schema.valid()) {
+		m_subd_schema.getFaceSetNames(face_sets);
+	}
+	else {
+		m_schema.getFaceSetNames(face_sets);
+	}
 
 	if (face_sets.empty()) {
 		return;
@@ -1268,7 +1287,8 @@ void AbcMeshReader::readFaceSetsSample(Main *bmain, Mesh *mesh, size_t poly_star
 
 		const int assigned_mat = mat_map[grp_name];
 
-		const IFaceSet faceset = m_schema.getFaceSet(grp_name);
+		const IFaceSet faceset = (m_subd_schema.valid() ? m_subd_schema.getFaceSet(grp_name)
+		                                                : m_schema.getFaceSet(grp_name));
 
 		if (!faceset.valid()) {
 			continue;

@@ -61,6 +61,7 @@ using Alembic::AbcGeom::IObject;
 using Alembic::AbcGeom::IPolyMesh;
 using Alembic::AbcGeom::IPolyMeshSchema;
 using Alembic::AbcGeom::ISampleSelector;
+using Alembic::AbcGeom::ISubD;
 using Alembic::AbcGeom::IXform;
 
 static IArchive open_archive(const std::string &filename)
@@ -353,7 +354,10 @@ static void visit_object(const IObject &object,
 			reader = new AbcEmptyReader(child, settings);
 		}
 		else if (IPolyMesh::matches(md)) {
-			reader = new AbcMeshReader(child, settings);
+			reader = new AbcMeshReader(child, settings, false);
+		}
+		else if (ISubD::matches(md)) {
+			reader = new AbcMeshReader(child, settings, true);
 		}
 		else if (INuPatch::matches(md)) {
 			reader = new AbcNurbsReader(child, settings);

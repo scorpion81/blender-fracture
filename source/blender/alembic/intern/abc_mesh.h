@@ -106,9 +106,10 @@ private:
 
 class AbcMeshReader : public AbcObjectReader {
 	Alembic::AbcGeom::IPolyMeshSchema m_schema;
+	Alembic::AbcGeom::ISubDSchema m_subd_schema;
 
 public:
-	AbcMeshReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
+	AbcMeshReader(const Alembic::Abc::IObject &object, ImportSettings &settings, bool is_subd);
 
 	bool valid() const;
 
@@ -118,12 +119,13 @@ private:
 	void readFaceSetsSample(Main *bmain, Mesh *mesh, size_t poly_start,
 	                        const Alembic::AbcGeom::ISampleSelector &sample_sel);
 
-	void readPolyDataSample(Mesh *blender_mesh,
-	                        const Alembic::AbcGeom::IPolyMeshSchema::Sample &sample,
-	                        const size_t poly_start);
+	void readPolyDataSample(Mesh *mesh,
+	                        const Alembic::AbcGeom::Int32ArraySamplePtr &face_indices,
+                            const Alembic::AbcGeom::Int32ArraySamplePtr &face_counts,
+                            const size_t poly_start);
 
 	void readVertexDataSample(Mesh *mesh,
-	                          const Alembic::AbcGeom::IPolyMeshSchema::Sample &sample);
+	                          const Alembic::AbcGeom::P3fArraySamplePtr &positions);
 };
 
 class AbcEmptyReader : public AbcObjectReader {
