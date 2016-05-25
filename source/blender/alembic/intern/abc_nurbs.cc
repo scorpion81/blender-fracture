@@ -203,8 +203,8 @@ void AbcNurbsWriter::do_write()
 		nuSamp.setNu(nu->pntsu);
 		nuSamp.setNv(nu->pntsv);
 
-		bool endu = nu->flagu & CU_NURB_ENDPOINT;
-		bool endv = nu->flagv & CU_NURB_ENDPOINT;
+		const bool endu = nu->flagu & CU_NURB_ENDPOINT;
+		const bool endv = nu->flagv & CU_NURB_ENDPOINT;
 
 		OCompoundProperty typeContainer = m_nurbs_schema[count].getUserProperties();
 		OBoolProperty enduprop(typeContainer, "endU");
@@ -246,26 +246,26 @@ void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time)
 		nu->type = CU_NURBS;
 		nu->resolu = 4;
 		nu->resolv = 4;
-		ISampleSelector sample_sel(time);
-		INuPatchSchema::Sample smp = it->first.getValue(sample_sel);
 
-		P3fArraySamplePtr   positions    = smp.getPositions();
-		FloatArraySamplePtr positionsW   = smp.getPositionWeights();
-		int32_t num_U = smp.getNumU();
-		int32_t num_V = smp.getNumV();
-		int32_t u_order = smp.getUOrder();
-		int32_t v_order = smp.getVOrder();
-		FloatArraySamplePtr u_knot   = smp.getUKnot();
-		FloatArraySamplePtr v_knot   = smp.getVKnot();
+		const ISampleSelector sample_sel(time);
+		const INuPatchSchema::Sample smp = it->first.getValue(sample_sel);
+		const P3fArraySamplePtr positions = smp.getPositions();
+		const FloatArraySamplePtr positionsW = smp.getPositionWeights();
+		const int32_t num_U = smp.getNumU();
+		const int32_t num_V = smp.getNumV();
+		const int32_t u_order = smp.getUOrder();
+		const int32_t v_order = smp.getVOrder();
+		const FloatArraySamplePtr u_knot = smp.getUKnot();
+		const FloatArraySamplePtr v_knot = smp.getVKnot();
 
-		size_t numPt = positions->size();
-		size_t numKnotsU = u_knot->size();
-		size_t numKnotsV = v_knot->size();
+		const size_t numPt = positions->size();
+		const size_t numKnotsU = u_knot->size();
+		const size_t numKnotsV = v_knot->size();
 
 		nu->orderu = u_order;
 		nu->orderv = v_order;
-		nu->pntsu  = num_U;
-		nu->pntsv  = num_V;
+		nu->pntsu = num_U;
+		nu->pntsv = num_V;
 		nu->bezt = NULL;
 
 		nu->bp = (BPoint *)MEM_callocN(numPt * sizeof(BPoint), "abc_setsplinetype");
