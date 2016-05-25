@@ -241,7 +241,7 @@ void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time)
 	std::vector< std::pair<INuPatchSchema, IObject> >::iterator it;
 
 	for (it = m_schemas.begin(); it != m_schemas.end(); ++it) {
-		Nurb *nu = (Nurb*)MEM_callocN(sizeof(Nurb), "abc_getnurb");
+		Nurb *nu = (Nurb *)MEM_callocN(sizeof(Nurb), "abc_getnurb");
 		nu->flag  = CU_SMOOTH;
 		nu->type = CU_NURBS;
 		nu->resolu = 4;
@@ -268,25 +268,27 @@ void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time)
 		nu->pntsv  = num_V;
 		nu->bezt = NULL;
 
-		nu->bp = (BPoint*)MEM_callocN(numPt * sizeof(BPoint), "abc_setsplinetype");
-		nu->knotsu = (float*)MEM_callocN(numKnotsU * sizeof(float), "abc_setsplineknotsu");
-		nu->knotsv = (float*)MEM_callocN(numKnotsV * sizeof(float), "abc_setsplineknotsv");
+		nu->bp = (BPoint *)MEM_callocN(numPt * sizeof(BPoint), "abc_setsplinetype");
+		nu->knotsu = (float *)MEM_callocN(numKnotsU * sizeof(float), "abc_setsplineknotsu");
+		nu->knotsv = (float *)MEM_callocN(numKnotsV * sizeof(float), "abc_setsplineknotsv");
 		nu->bp->radius = 1.0f;
 
 		for (int i = 0; i < numPt; ++i) {
 			Imath::V3f pos_in = (*positions)[i];
-			float posw_in = 1.0;
+			float posw_in = 1.0f;
 
 			if (positionsW && i < positionsW->size()) {
 				posw_in = (*positionsW)[i];
 			}
 
-			/* TODO */
-			/* swap from Y-Up to Z-Up */
 			nu->bp[i].vec[0] = pos_in[0];
-			nu->bp[i].vec[1] = -pos_in[2];
-			nu->bp[i].vec[2] = pos_in[1];
+			nu->bp[i].vec[1] = pos_in[1];
+			nu->bp[i].vec[2] = pos_in[2];
 			nu->bp[i].vec[3] = posw_in;
+
+			if (m_settings->do_convert_mat) {
+				mul_m4_v3(m_settings->conversion_mat, nu->bp[i].vec);
+			}
 		}
 
 		for (size_t i = 0; i < numKnotsU; i++) {
@@ -333,7 +335,16 @@ void AbcNurbsReader::getNurbsPatches(const IObject &obj)
 		return;
 	}
 
-	for (int i = 0;i < obj.getNumChildren(); ++i) {
+	const int num_children = obj.getNumChildren();
+
+	if (num_children == 0) {
+		INuPatch abc_nurb(obj, kWrapExisting);
+		INuPatchSchema schem = abc_nurb.getSchema();
+		m_schemas.push_back(std::pair<INuPatchSchema, IObject>(schem, obj));
+		return;
+	}
+
+	for (int i = 0; i < num_children; ++i) {
 		bool ok = true;
 		IObject child(obj, obj.getChildHeader(i).getName());
 
