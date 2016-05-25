@@ -24,6 +24,7 @@
 
 #include <Alembic/AbcCoreHDF5/All.h>
 #include <Alembic/AbcCoreOgawa/All.h>
+#include <Alembic/AbcMaterial/IMaterial.h>
 
 #include "abc_exporter.h"
 #include "abc_camera.h"
@@ -55,14 +56,20 @@ using Alembic::AbcGeom::P3fArraySamplePtr;
 using Alembic::AbcGeom::kWrapExisting;
 
 using Alembic::AbcGeom::IArchive;
-using Alembic::AbcGeom::ICameraSchema;
+using Alembic::AbcGeom::ICamera;
+using Alembic::AbcGeom::ICurves;
+using Alembic::AbcGeom::IFaceSet;
+using Alembic::AbcGeom::ILight;
 using Alembic::AbcGeom::INuPatch;
 using Alembic::AbcGeom::IObject;
+using Alembic::AbcGeom::IPoints;
 using Alembic::AbcGeom::IPolyMesh;
 using Alembic::AbcGeom::IPolyMeshSchema;
 using Alembic::AbcGeom::ISampleSelector;
 using Alembic::AbcGeom::ISubD;
 using Alembic::AbcGeom::IXform;
+
+using Alembic::AbcMaterial::IMaterial;
 
 static IArchive open_archive(const std::string &filename)
 {
@@ -350,8 +357,10 @@ static void visit_object(const IObject &object,
 
 		const MetaData &md = child.getMetaData();
 
-		if (IXform::matches(md) && is_locator(child)) {
-			reader = new AbcEmptyReader(child, settings);
+		if (IXform::matches(md)) {
+			if (is_locator(child)) {
+				reader = new AbcEmptyReader(child, settings);
+			}
 		}
 		else if (IPolyMesh::matches(md)) {
 			reader = new AbcMeshReader(child, settings, false);
@@ -362,8 +371,26 @@ static void visit_object(const IObject &object,
 		else if (INuPatch::matches(md)) {
 			reader = new AbcNurbsReader(child, settings);
 		}
-		else if (ICameraSchema::matches(md)) {
+		else if (ICamera::matches(md)) {
 			reader = new AbcCameraReader(child, settings);
+		}
+		else if (IPoints::matches(md)) {
+			/* Pass for now. */
+		}
+		else if (IMaterial::matches(md)) {
+			/* Pass for now. */
+		}
+		else if (ILight::matches(md)) {
+			/* Pass for now. */
+		}
+		else if (IFaceSet::matches(md)) {
+			/* Pass, those are handled in the mesh reader. */
+		}
+		else if (ICurves::matches(md)) {
+			/* Pass for now. */
+		}
+		else {
+			assert(false);
 		}
 
 		if (reader) {
