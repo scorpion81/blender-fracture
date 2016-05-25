@@ -361,10 +361,10 @@ void WM_OT_alembic_import(wmOperatorType *ot)
 	WM_operator_properties_filesel(ot, 0, FILE_BLENDER, FILE_SAVE, WM_FILESEL_FILEPATH,
 	                               FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 
-	RNA_def_enum(ot->srna, "from_forward", rna_enum_object_axis_items, OB_NEGZ,
+	RNA_def_enum(ot->srna, "from_forward", rna_enum_object_axis_items, OB_POSZ,
 	             "Forward Axis", "Forward axis of the objects in the .abc archive");
 
-	RNA_def_enum(ot->srna, "from_up", rna_enum_object_axis_items, OB_POSY,
+	RNA_def_enum(ot->srna, "from_up", rna_enum_object_axis_items, OB_NEGY,
 	             "Up Axis", "Up axis of the objects in the .abc archive");
 
 	RNA_def_float(ot->srna, "scale", 1.0f, 0.0f, 1000.0f, "Scale", "", 0.0f, 1000.0f);
