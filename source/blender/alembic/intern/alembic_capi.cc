@@ -28,6 +28,7 @@
 
 #include "abc_exporter.h"
 #include "abc_camera.h"
+#include "abc_hair.h"
 #include "abc_mesh.h"
 #include "abc_nurbs.h"
 #include "abc_util.h"
@@ -402,7 +403,7 @@ static void visit_object(const IObject &object,
 			/* Pass, those are handled in the mesh reader. */
 		}
 		else if (ICurves::matches(md)) {
-			/* Pass for now. */
+			reader = new AbcHairReader(child, settings);
 		}
 		else {
 			assert(false);

@@ -23,6 +23,7 @@
 #ifndef __ABC_HAIR_WRITER_H__
 #define __ABC_HAIR_WRITER_H__
 
+#include "abc_object.h"
 #include "abc_shape.h"
 
 struct CustomDataLayer;
@@ -64,6 +65,17 @@ private:
                                  std::vector<Imath::V3f> &norm_values,
                                  std::vector<Imath::V2f> &uv_values,
                                  std::vector<int32_t> &hvertices);
+};
+
+class AbcHairReader : public AbcObjectReader {
+	Alembic::AbcGeom::ICurvesSchema m_curves_schema;
+
+public:
+	AbcHairReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
+
+	bool valid() const;
+
+	void readObjectData(Main *bmain, Scene *scene, float time);
 };
 
 #endif  /* __ABC_HAIR_WRITER_H__ */

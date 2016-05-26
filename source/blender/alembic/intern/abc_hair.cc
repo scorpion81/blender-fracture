@@ -28,13 +28,30 @@
 #include "abc_util.h"
 
 extern "C" {
+#include "MEM_guardedalloc.h"
+
+#include "DNA_curve_types.h"
 #include "DNA_modifier_types.h"
 
+#include "BLI_listbase.h"
 #include "BLI_math_geom.h"
 
+#include "BKE_curve.h"
 #include "BKE_DerivedMesh.h"
+#include "BKE_object.h"
 #include "BKE_particle.h"
+
+#include "ED_curve.h"
 }
+
+using Alembic::Abc::IInt32ArrayProperty;
+using Alembic::Abc::Int32ArraySamplePtr;
+using Alembic::Abc::P3fArraySamplePtr;
+
+using Alembic::AbcGeom::ICurves;
+using Alembic::AbcGeom::ICurvesSchema;
+using Alembic::AbcGeom::ISampleSelector;
+using Alembic::AbcGeom::kWrapExisting;
 
 using Alembic::AbcGeom::OCurves;
 using Alembic::AbcGeom::OCurvesSchema;
@@ -279,4 +296,74 @@ void AbcHairWriter::write_hair_child_sample(DerivedMesh *dm,
 			++path;
 		}
 	}
+}
+
+AbcHairReader::AbcHairReader(const Alembic::Abc::IObject &object, ImportSettings &settings)
+    : AbcObjectReader(object, settings)
+{
+	ICurves abc_curves(object, kWrapExisting);
+	m_curves_schema = abc_curves.getSchema();
+}
+
+bool AbcHairReader::valid() const
+{
+	return m_curves_schema.valid();
+}
+
+void AbcHairReader::readObjectData(Main *bmain, Scene *scene, float time)
+{
+	Curve *cu = BKE_curve_add(bmain, "abc_hair", OB_CURVE);
+	cu->editnurb = (EditNurb *)MEM_callocN(sizeof(EditNurb), "editnurb");
+	cu->flag |= CU_DEFORM_FILL | CU_PATH | CU_3D;
+
+	const ISampleSelector sample_sel(time);
+
+	const ICurvesSchema::Sample smp = m_curves_schema.getValue(sample_sel);
+	const Int32ArraySamplePtr hvertices = smp.getCurvesNumVertices();
+	const P3fArraySamplePtr positions = smp.getPositions();
+
+	m_object = BKE_object_add(bmain, scene, OB_CURVE, m_object_name.c_str());
+	m_object->data = cu;
+
+	ListBase *editnurb = object_editcurve_get(m_object);
+
+	size_t idx = 0;
+	for (size_t i = 0; i < hvertices->size(); ++i) {
+		const int steps = (*hvertices)[i];
+
+		Nurb *nu = (Nurb *)MEM_callocN(sizeof(Nurb), "abc_getnurb");
+		nu->bp = (BPoint *)MEM_callocN(sizeof(BPoint) * steps, "abc_getnurb");
+		nu->type = CU_NURBS;
+		nu->resolu = cu->resolu;
+		nu->resolv = cu->resolv;
+		nu->pntsu = steps;
+		nu->pntsv = 1;
+		nu->orderu = steps;
+		nu->flagu = CU_NURB_ENDPOINT; /* endpoint */
+
+		BPoint *bp = nu->bp;
+
+		for (int j = 0; j < steps; ++j, ++bp) {
+			Imath::V3f pos = (*positions)[idx++];
+
+			/* Convert Y-up to Z-up. */
+			bp->vec[0] = pos.x;
+			bp->vec[1] = -pos.z;
+			bp->vec[2] = pos.y;
+			bp->vec[3] = 1.0;
+
+	//		bp->f1 = SELECT;
+			bp->radius = bp->weight = 1.0;
+		}
+
+		nu->knotsu = NULL; /* nurbs_knot_calc_u allocates */
+		BKE_nurb_knot_calc_u(nu);
+
+		nu->flag |= CU_SMOOTH;
+
+		BLI_addtail(editnurb, nu);
+	}
+
+	cu->actnu = hvertices->size() - 1;
+	cu->actvert = CU_ACT_NONE;
 }
