@@ -41,6 +41,13 @@ extern "C" {
 #include "BKE_cdderivedmesh.h"
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
+#include "BKE_global.h"
+
+/* SpaceType struct has a member called 'new' which obviously conflicts with C++
+ * so temporarily redefining the new keyword to make it compile. */
+#define new extern_new
+#include "BKE_screen.h"
+#undef new
 
 #include "BLI_math.h"
 #include "BLI_string.h"
@@ -241,13 +248,19 @@ struct ExportJobData {
 	float *progress;
 };
 
-void export_startjob(void *cjv, short *stop, short *do_update, float *progress)
+static void export_startjob(void *customdata, short *stop, short *do_update, float *progress)
 {
-	ExportJobData *data = static_cast<ExportJobData *>(cjv);
+	ExportJobData *data = static_cast<ExportJobData *>(customdata);
 
 	data->stop = stop;
 	data->do_update = do_update;
 	data->progress = progress;
+
+	/* XXX annoying hack: needed to prevent data corruption when changing
+	 * scene frame in separate threads
+     */
+    G.is_rendering = true;
+    BKE_spacedata_draw_locks(true);
 
 	try {
 		AbcExporter exporter(data->scene, data->filename, data->settings);
@@ -259,6 +272,12 @@ void export_startjob(void *cjv, short *stop, short *do_update, float *progress)
 	catch (...) {
 		std::cerr << "Abc Export error\n";
 	}
+}
+
+static void export_endjob(void */*customdata*/)
+{
+    G.is_rendering = false;
+    BKE_spacedata_draw_locks(false);
 }
 
 int ABC_export(Scene *scene, bContext *C, const char *filename,
@@ -318,7 +337,7 @@ int ABC_export(Scene *scene, bContext *C, const char *filename,
 	/* setup job */
 	WM_jobs_customdata_set(wm_job, job, MEM_freeN);
 	WM_jobs_timer(wm_job, 0.1, NC_SCENE | ND_COMPO_RESULT, NC_SCENE | ND_COMPO_RESULT);
-	WM_jobs_callbacks(wm_job, export_startjob, NULL, NULL, NULL);
+	WM_jobs_callbacks(wm_job, export_startjob, NULL, NULL, export_endjob);
 
 	WM_jobs_start(CTX_wm_manager(C), wm_job);
 
