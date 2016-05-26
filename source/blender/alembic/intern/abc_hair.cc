@@ -313,7 +313,6 @@ bool AbcHairReader::valid() const
 void AbcHairReader::readObjectData(Main *bmain, Scene *scene, float time)
 {
 	Curve *cu = BKE_curve_add(bmain, "abc_hair", OB_CURVE);
-	cu->editnurb = (EditNurb *)MEM_callocN(sizeof(EditNurb), "editnurb");
 	cu->flag |= CU_DEFORM_FILL | CU_PATH | CU_3D;
 
 	const ISampleSelector sample_sel(time);
@@ -324,8 +323,6 @@ void AbcHairReader::readObjectData(Main *bmain, Scene *scene, float time)
 
 	m_object = BKE_object_add(bmain, scene, OB_CURVE, m_object_name.c_str());
 	m_object->data = cu;
-
-	ListBase *editnurb = object_editcurve_get(m_object);
 
 	size_t idx = 0;
 	for (size_t i = 0; i < hvertices->size(); ++i) {
@@ -352,7 +349,6 @@ void AbcHairReader::readObjectData(Main *bmain, Scene *scene, float time)
 			bp->vec[2] = pos.y;
 			bp->vec[3] = 1.0;
 
-	//		bp->f1 = SELECT;
 			bp->radius = bp->weight = 1.0;
 		}
 
@@ -361,7 +357,7 @@ void AbcHairReader::readObjectData(Main *bmain, Scene *scene, float time)
 
 		nu->flag |= CU_SMOOTH;
 
-		BLI_addtail(editnurb, nu);
+		BLI_addtail(&cu->nurb, nu);
 	}
 
 	cu->actnu = hvertices->size() - 1;
