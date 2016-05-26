@@ -103,8 +103,7 @@ static void recompute_pnts_cyclic(const BPoint *bps,
                                   const int num_u, const int num_v,
                                   const int add_u, const int add_v,
                                   std::vector<Imath::V3f> &pos,
-                                  std::vector<float> &posWeight,
-                                  bool rotate, float rot_mat[3][3])
+                                  std::vector<float> &posWeight)
 {
 	const int new_u = num_u;/* + add_u; */
 	const int new_v = num_v;/* + add_v; */
@@ -115,31 +114,23 @@ static void recompute_pnts_cyclic(const BPoint *bps,
 
 	std::vector< std::vector<Imath::Vec4<float> > > pnts;
 	pnts.resize(new_u);
+
 	for (int u = 0; u < new_u; ++u) {
 		pnts[u].resize(new_v);
 
-		if (rotate) {
-			for (int v = 0; v < new_v; ++v) {
-				const BPoint& bp = bps[u + (v * new_u)];
-				float vert[3];
-				copy_v3_v3(vert, bp.vec);
-				mul_m3_v3(rot_mat, vert);
-
-				pnts[u][v] = Imath::Vec4<float>(vert[0], vert[1], vert[2], bp.vec[3]);
-			}
-		}
-		else {
-			for (int v = 0; v < new_v; ++v) {
-				const BPoint& bp = bps[u + (v * new_u)];
-				pnts[u][v] = Imath::Vec4<float>(bp.vec[0], bp.vec[1], bp.vec[2], bp.vec[3]);
-			}
+		for (int v = 0; v < new_v; ++v) {
+			const BPoint& bp = bps[u + (v * new_u)];
+			pnts[u][v] = Imath::Vec4<float>(bp.vec[0], bp.vec[1], bp.vec[2], bp.vec[3]);
 		}
 	}
 
 	for (int u = 0; u < new_u; ++u) {
 		for (int v = 0; v < new_v; ++v) {
-			Imath::Vec4<float>& pnt = pnts[u][v];
-			pos.push_back(Imath::V3f(pnt.x, pnt.y, pnt.z));
+			const Imath::Vec4<float> &pnt = pnts[u][v];
+
+			/* Convert Z-up to Y-up. */
+			pos.push_back(Imath::V3f(pnt.x, pnt.z, -pnt.y));
+
 			posWeight.push_back(pnt.z);
 		}
 	}
@@ -193,8 +184,7 @@ void AbcNurbsWriter::do_write()
 		std::vector<Imath::V3f> sampPos;
 		std::vector<float> sampPosWeights;
 		recompute_pnts_cyclic(nu->bp, nu->pntsu, nu->pntsv, add_u, add_v,
-		                      sampPos, sampPosWeights,
-		                      m_settings.do_convert_axis, m_settings.convert_matrix);
+		                      sampPos, sampPosWeights);
 
 		nuSamp.setPositions(sampPos);
 		nuSamp.setPositionWeights(sampPosWeights);
@@ -281,14 +271,11 @@ void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time)
 				posw_in = (*positionsW)[i];
 			}
 
+			/* Convert Y-up to Z-up. */
 			nu->bp[i].vec[0] = pos_in[0];
-			nu->bp[i].vec[1] = pos_in[1];
-			nu->bp[i].vec[2] = pos_in[2];
+			nu->bp[i].vec[1] = -pos_in[2];
+			nu->bp[i].vec[2] = pos_in[1];
 			nu->bp[i].vec[3] = posw_in;
-
-			if (m_settings->do_convert_mat) {
-				mul_m4_v3(m_settings->conversion_mat, nu->bp[i].vec);
-			}
 		}
 
 		for (size_t i = 0; i < numKnotsU; i++) {

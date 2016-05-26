@@ -452,23 +452,11 @@ void AbcMeshWriter::getPoints(DerivedMesh *dm, std::vector<float> &points)
 
 	MVert *verts = dm->getVertArray(dm);
 
-	if (m_settings.do_convert_axis) {
-		float vert[3];
-
-		for (int i = 0, e = dm->getNumVerts(dm); i < e; ++i) {
-			copy_v3_v3(vert, verts[i].co);
-			mul_m3_v3(m_settings.convert_matrix, vert);
-			points.push_back(vert[0]);
-			points.push_back(vert[1]);
-			points.push_back(vert[2]);
-		}
-	}
-	else {
-		for (int i = 0, e = dm->getNumVerts(dm); i < e; ++i) {
-			points.push_back(verts[i].co[0]);
-			points.push_back(verts[i].co[1]);
-			points.push_back(verts[i].co[2]);
-		}
+	for (int i = 0, e = dm->getNumVerts(dm); i < e; ++i) {
+		/* Convert Z-up to Y-up. */
+		points.push_back(verts[i].co[0]);
+		points.push_back(verts[i].co[2]);
+		points.push_back(-verts[i].co[1]);
 	}
 
 	calcBounds(points);
@@ -907,27 +895,16 @@ void AbcMeshWriter::getVelocities(DerivedMesh *dm, std::vector<float> &vels)
 
 	if (fss->meshVelocities) {
 		float *meshVels = reinterpret_cast<float *>(fss->meshVelocities);
+		float vel[3];
 
-		if (m_settings.do_convert_axis) {
-			float vel[3];
+		for (int i = 0; i < totverts; ++i) {
+			copy_v3_v3(vel, meshVels);
 
-			for (int i = 0; i < totverts; ++i) {
-				copy_v3_v3(vel, meshVels);
-				mul_m3_v3(m_settings.convert_matrix, vel);
-
-				vels.push_back(vels[0]);
-				vels.push_back(vels[1]);
-				vels.push_back(vels[2]);
-				meshVels += 3;
-			}
-		}
-		else {
-			{
-				vels.push_back(meshVels[0]);
-				vels.push_back(meshVels[1]);
-				vels.push_back(meshVels[2]);
-				meshVels += 3;
-			}
+			/* Convert Z-up to Y-up. */
+			vels.push_back(vels[0]);
+			vels.push_back(vels[2]);
+			vels.push_back(-vels[1]);
+			meshVels += 3;
 		}
 	}
 	else {
@@ -1180,8 +1157,8 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 	MeshCacheModifierData *mcmd = reinterpret_cast<MeshCacheModifierData *>(md);
 	mcmd->type = MOD_MESHCACHE_TYPE_ABC;
 	mcmd->time_mode = MOD_MESHCACHE_TIME_SECONDS;
-	mcmd->forward_axis = m_settings->from_forward;
-	mcmd->up_axis = m_settings->from_up;
+	mcmd->forward_axis = OB_POSZ;
+	mcmd->up_axis = OB_NEGY;
 
 	BLI_strncpy(mcmd->filepath, m_iobject.getArchive().getName().c_str(), 1024);
 	BLI_strncpy(mcmd->sub_object, m_iobject.getFullName().c_str(), 1024);
@@ -1198,18 +1175,11 @@ void AbcMeshReader::readVertexDataSample(Mesh *mesh, const P3fArraySamplePtr &po
 		MVert &mvert = mesh->mvert[j];
 		Imath::V3f pos_in = (*positions)[i];
 
+		/* Convert Y-up to Z-up. */
 		mvert.co[0] = pos_in[0];
-		mvert.co[1] = pos_in[1];
-		mvert.co[2] = pos_in[2];
-
+		mvert.co[1] = -pos_in[2];
+		mvert.co[2] = pos_in[1];
 		mvert.bweight = 0;
-	}
-
-	if (m_settings->do_convert_mat) {
-		for (int i = 0, j = vertex_start; i < vertex_count; ++i, ++j) {
-			MVert &mvert = mesh->mvert[j];
-			mul_m4_v3(m_settings->conversion_mat, mvert.co);
-		}
 	}
 }
 

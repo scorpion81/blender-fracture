@@ -101,8 +101,6 @@ static int wm_alembic_export_exec(bContext *C, wmOperator *op)
 	bool subdiv_schem = RNA_boolean_get(op->ptr, "subdiv_schema");
 	bool packuv = RNA_boolean_get(op->ptr, "packuv");
 	const int compression = RNA_enum_get(op->ptr, "compression_type");
-	const int to_forward = RNA_enum_get(op->ptr, "to_forward");
-	const int to_up = RNA_enum_get(op->ptr, "to_up");
 	const float scale = RNA_float_get(op->ptr, "scale");
 
 	int result = ABC_export(CTX_data_scene(C), C, filename,
@@ -113,7 +111,7 @@ static int wm_alembic_export_exec(bContext *C, wmOperator *op)
 	                        selected, uvs, normals, vcolors,
 	                        forcemeshes, flatten, geoprops,
 	                        vislayers, renderable, facesets, matindices,
-	                        subdiv_schem, compression, packuv, to_forward, to_up, scale);
+	                        subdiv_schem, compression, packuv, scale);
 
 	switch (result) {
 		case BL_ABC_UNKNOWN_ERROR:
@@ -136,12 +134,6 @@ static void ui_alembic_export_settings(uiLayout *layout, PointerRNA *imfptr)
 	box = uiLayoutBox(layout);
 	row = uiLayoutRow(box, false);
 	uiItemL(row, IFACE_("Manual Transform:"), ICON_NONE);
-
-	row = uiLayoutRow(box, false);
-	uiItemR(row, imfptr, "to_forward", 0, NULL, ICON_NONE);
-
-	row = uiLayoutRow(box, false);
-	uiItemR(row, imfptr, "to_up", 0, NULL, ICON_NONE);
 
 	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "scale", 0, NULL, ICON_NONE);
@@ -242,12 +234,6 @@ void WM_OT_alembic_export(wmOperatorType *ot)
 	RNA_def_int(ot->srna, "end", 1, INT_MIN, INT_MAX,
 	            "End Frame", "End Frame", INT_MIN, INT_MAX);
 
-	RNA_def_enum(ot->srna, "to_forward", rna_enum_object_axis_items, OB_NEGZ,
-	             "Forward Axis", "Target forward axis");
-
-	RNA_def_enum(ot->srna, "to_up", rna_enum_object_axis_items, OB_POSY,
-	             "Up Axis", "Target up axis");
-
 	RNA_def_int(ot->srna, "xsamples", 1, 1, 128,
 	            "Transform Samples", "Transform samples per frame", 1, 128);
 
@@ -312,12 +298,6 @@ static void ui_alembic_import_settings(uiLayout *layout, PointerRNA *imfptr)
 	uiItemL(row, IFACE_("Manual Transform:"), ICON_NONE);
 
 	row = uiLayoutRow(box, false);
-	uiItemR(row, imfptr, "from_forward", 0, NULL, ICON_NONE);
-
-	row = uiLayoutRow(box, false);
-	uiItemR(row, imfptr, "from_up", 0, NULL, ICON_NONE);
-
-	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "scale", 0, NULL, ICON_NONE);
 }
 
@@ -339,11 +319,9 @@ static int wm_alembic_import_exec(bContext *C, wmOperator *op)
 	char filename[FILE_MAX];
 	RNA_string_get(op->ptr, "filepath", filename);
 
-	const int from_forward = RNA_enum_get(op->ptr, "from_forward");
-	const int from_up = RNA_enum_get(op->ptr, "from_up");
 	const float scale = RNA_float_get(op->ptr, "scale");
 
-	ABC_import(C, filename, from_forward, from_up, scale);
+	ABC_import(C, filename, scale);
 
 	return OPERATOR_FINISHED;
 }
@@ -360,12 +338,6 @@ void WM_OT_alembic_import(wmOperatorType *ot)
 
 	WM_operator_properties_filesel(ot, 0, FILE_BLENDER, FILE_SAVE, WM_FILESEL_FILEPATH,
 	                               FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
-
-	RNA_def_enum(ot->srna, "from_forward", rna_enum_object_axis_items, OB_POSZ,
-	             "Forward Axis", "Forward axis of the objects in the .abc archive");
-
-	RNA_def_enum(ot->srna, "from_up", rna_enum_object_axis_items, OB_NEGY,
-	             "Up Axis", "Up axis of the objects in the .abc archive");
 
 	RNA_def_float(ot->srna, "scale", 1.0f, 0.0f, 1000.0f, "Scale", "", 0.0f, 1000.0f);
 }

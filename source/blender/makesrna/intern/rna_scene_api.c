@@ -212,8 +212,6 @@ static void rna_Scene_alembic_export(
         int subdiv_schema,
         int ogawa,
         int packuv,
-        int to_forward,
-        int to_up,
         float scale)
 {
 // We have to enable allow_threads, because we may change scene frame number during export
@@ -226,7 +224,7 @@ static void rna_Scene_alembic_export(
 	           selected_only, uvs, normals, vcolors,
 	           force_meshes, flatten_hierarchy, custom_props_as_geodata,
 	           vislayers, renderable, facesets, matindices, subdiv_schema,
-	           ogawa, packuv, to_forward, to_up, scale);
+	           ogawa, packuv, scale);
 
 #ifdef WITH_PYTHON
 	BPy_END_ALLOW_THREADS;
@@ -385,8 +383,6 @@ void RNA_api_scene(StructRNA *srna)
 	RNA_def_boolean(func, "subdiv_schema", 0, "Use Alembic subdivision Schema", "Use Alembic subdivision Schema");
 	RNA_def_enum(func, "compression_type", rna_enum_abc_compression_items, 0, "Compression", "");
 	RNA_def_boolean(func, "packuv"		, 0, "Export with packed UV islands", "Export with packed UV islands");
-	RNA_def_enum(func, "to_forward", rna_enum_object_axis_items, 0, "Forward Axis", "");
-	RNA_def_enum(func, "to_up", rna_enum_object_axis_items, 0, "Up Axis", "");
 	RNA_def_float(func, "scale", 1.0f, 0.0f, 1000.0f, "Scale", "", 0.0f, 1000.0f);
 
 	RNA_def_function_flag(func, FUNC_USE_CONTEXT);

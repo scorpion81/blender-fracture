@@ -80,23 +80,14 @@ void AbcTransformWriter::do_write()
 		return;
 	}
 
-	/* get local matrix */
-    float mat[4][4];
-	if (m_object->parent) {
-		float invmat[4][4];
-        invert_m4_m4(invmat, m_object->parent->obmat);
-        mul_m4_m4m4(mat, invmat, m_object->obmat);
-    }
-    else {
-        copy_m4_m4(mat, m_object->obmat);
-    }
+	float mat[4][4];
+	create_transform_matrix(m_object, mat);
 
-	float smat[4][4];
-	scale_m4_fl(smat, m_settings.global_scale);
-	mul_m4_m4m4(mat, smat, mat);
-
-	if (m_settings.do_convert_axis) {
-		mul_m4_m3m4(mat, m_settings.convert_matrix, mat);
+	if (m_object->type == OB_CAMERA) {
+		float rot_mat[4][4];
+		unit_m4(rot_mat);
+		rotate_m4(rot_mat, 'X', -M_PI_2);
+		mul_m4_m4m4(mat, mat, rot_mat);
 	}
 
     m_matrix = convert_matrix(mat);

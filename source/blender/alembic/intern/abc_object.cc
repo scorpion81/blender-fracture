@@ -350,26 +350,33 @@ void AbcObjectReader::readObjectMatrix(const float time)
 		Alembic::AbcGeom::XformSample xs;
 		schema.get(xs, xform_sample);
 
-		float loc[3];
-		for (int i = 0; i < 3; ++i) {
-			loc[i] = xs.getTranslation()[i];
-			m_object->size[i] = xs.getScale()[i];
+		Alembic::Abc::M44d xfrom = xs.getMatrix();
+
+		for (int i = 0; i < 4; ++i) {
+            for (int j = 0; j < 4; j++) {
+                m_object->obmat[i][j] = xfrom[i][j];
+            }
+        }
+
+		if (m_object->type == OB_CAMERA) {
+			float cam_to_yup[4][4];
+			unit_m4(cam_to_yup);
+			rotate_m4(cam_to_yup, 'X', M_PI_2);
+			mul_m4_m4m4(m_object->obmat, m_object->obmat, cam_to_yup);
 		}
 
-		m_object->rot[0] = xs.getXRotation() * M_PI / 180;
-		m_object->rot[1] = xs.getYRotation() * M_PI / 180;
-		m_object->rot[2] = xs.getZRotation() * M_PI / 180;
+		create_transform_matrix(m_object);
 
-		if (m_settings->do_convert_mat) {
-			mul_v3_m4v3(m_object->loc, m_settings->conversion_mat, loc);
-		}
-		else {
-			copy_v3_v3(m_object->loc, loc);
-		}
+		/* TODO: apply global scale */
+#if 0
+		float global_scale[4][4];
+		scale_m4_fl(global_scale, m_settings->scale);
+		mul_m4_m4m4(m_object->obmat, m_object->obmat, global_scale);
+		mul_v3_fl(m_object->obmat[3], m_settings->scale);
+#endif
 
-		DAG_id_tag_update(&(m_object->id), OB_RECALC_OB);
+		invert_m4_m4(m_object->imat, m_object->obmat);
 
-//		mul_m4_m4m4(m_object->obmat, m_settings->conversion_mat, m_object->obmat);
-//		BKE_object_apply_mat4(m_object, m_object->obmat, false,  false);
+		BKE_object_apply_mat4(m_object, m_object->obmat, false,  false);
 	}
 }

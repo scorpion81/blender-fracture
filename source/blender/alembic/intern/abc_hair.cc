@@ -159,11 +159,8 @@ void AbcHairWriter::write_hair_sample(DerivedMesh *dm,
 
 					psys_interpolate_face(mverts, face, tface, NULL, mapfw, vec, tmpnor, NULL, NULL, NULL, NULL);
 
-					if (m_settings.do_convert_axis) {
-						mul_m3_v3(m_settings.convert_matrix, tmpnor);
-					}
-
-					norm_values.push_back(Imath::V3f(tmpnor[0], tmpnor[1], tmpnor[2]));
+					/* Convert Z-up to Y-up. */
+					norm_values.push_back(Imath::V3f(tmpnor[0], -tmpnor[2], tmpnor[1]));
 				}
 			}
 			else {
@@ -214,11 +211,8 @@ void AbcHairWriter::write_hair_sample(DerivedMesh *dm,
 			copy_v3_v3(vert, path->co);
 			mul_m4_v3(inv_mat, vert);
 
-			if (m_settings.do_convert_axis) {
-				mul_m3_v3(m_settings.convert_matrix, vert);
-			}
-
-			verts.push_back(Imath::V3f(vert[0], vert[1], vert[2]));
+			/* Convert Z-up to Y-up. */
+			verts.push_back(Imath::V3f(vert[0], vert[2], -vert[1]));
 
 			++path;
 		}
@@ -266,11 +260,8 @@ void AbcHairWriter::write_hair_child_sample(DerivedMesh *dm,
 
 				psys_interpolate_face(mverts, face, tface, NULL, mapfw, vec, tmpnor, NULL, NULL, NULL, NULL);
 
-				if (m_settings.do_convert_axis) {
-					mul_m3_v3(m_settings.convert_matrix, tmpnor);
-				}
-
-				norm_values.push_back(Imath::V3f(tmpnor[0], tmpnor[1], tmpnor[2]));
+				/* Convert Z-up to Y-up. */
+				norm_values.push_back(Imath::V3f(tmpnor[0], tmpnor[2], -tmpnor[1]));
 			}
 		}
 
@@ -282,11 +273,8 @@ void AbcHairWriter::write_hair_child_sample(DerivedMesh *dm,
 			copy_v3_v3(vert, path->co);
 			mul_m4_v3(inv_mat, vert);
 
-			if (m_settings.do_convert_axis) {
-				mul_m3_v3(m_settings.convert_matrix, vert);
-			}
-
-			verts.push_back(Imath::V3f(vert[0], vert[1], vert[2]));
+			/* Convert Z-up to Y-up. */
+			verts.push_back(Imath::V3f(vert[0], vert[2], -vert[1]));
 
 			++path;
 		}

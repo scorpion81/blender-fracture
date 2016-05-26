@@ -273,8 +273,7 @@ int ABC_export(Scene *scene, bContext *C, const char *filename,
                int custom_props_as_geodata,
                int vislayers, int renderable,
                int facesets, int matindices,
-               int use_subdiv_schema, int compression, bool packuv,
-               int to_forward, int to_up, float scale)
+               int use_subdiv_schema, int compression, bool packuv, float scale)
 {
 	ExportJobData *job = static_cast<ExportJobData *>(MEM_mallocN(sizeof(ExportJobData), "ExportJobData"));
 	job->scene = scene;
@@ -308,9 +307,6 @@ int ABC_export(Scene *scene, bContext *C, const char *filename,
 	if (job->settings.startframe > job->settings.endframe) {
 		std::swap(job->settings.startframe, job->settings.endframe);
 	}
-
-	job->settings.do_convert_axis = mat3_from_axis_conversion(
-	                                    1, 2, to_forward, to_up, job->settings.convert_matrix);
 
 	wmJob *wm_job = WM_jobs_get(CTX_wm_manager(C),
 	                            CTX_wm_window(C),
@@ -520,25 +516,14 @@ static void import_startjob(void *cjv, short *stop, short *do_update, float *pro
 	WM_main_add_notifier(NC_SCENE | ND_FRAME, data->scene);
 }
 
-void ABC_import(bContext *C, const char *filename, int from_forward, int from_up, float scale)
+void ABC_import(bContext *C, const char *filename, float scale)
 {
 	ImportJobData *job = static_cast<ImportJobData *>(MEM_mallocN(sizeof(ImportJobData), "ImportJobData"));
 	job->bmain = CTX_data_main(C);
 	job->scene = CTX_data_scene(C);
 	BLI_strncpy(job->filename, filename, 1024);
 
-	job->settings.from_forward = from_forward;
-	job->settings.from_up = from_up;
 	job->settings.scale = scale;
-
-	float mat[3][3];
-	job->settings.do_convert_mat = mat3_from_axis_conversion(
-	                                   job->settings.from_forward,
-	                                   job->settings.from_up,
-	                                   1, 2, mat);
-
-	scale_m4_fl(job->settings.conversion_mat, scale);
-	mul_m4_m3m4(job->settings.conversion_mat, mat, job->settings.conversion_mat);
 
 	wmJob *wm_job = WM_jobs_get(CTX_wm_manager(C),
 	                            CTX_wm_window(C),
