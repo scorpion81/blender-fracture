@@ -3488,7 +3488,8 @@ static void do_refresh_autohide(FractureModifierData *fmd, Object *ob)
 
 	fmd->face_pairs = BLI_ghash_int_new("face_pairs");
 
-	if (fmd->dm)
+	/* in case of re-using existing islands this one might become invalid for autohide, so force fallback */
+	if (fmd->dm && fmd->dm->getNumPolys(fmd->dm) > 0)
 	{
 		make_face_pairs(fmd, fmd->dm, ob);
 	}
