@@ -365,7 +365,7 @@ void AbcObjectReader::readObjectMatrix(const float time)
 			mul_m4_m4m4(m_object->obmat, m_object->obmat, cam_to_yup);
 		}
 
-		create_transform_matrix(m_object);
+		create_transform_matrix(m_object->obmat);
 
 		/* TODO: apply global scale */
 #if 0

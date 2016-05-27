@@ -4333,6 +4333,41 @@ static bConstraintTypeInfo CTI_OBJECTSOLVER = {
 	objectsolver_evaluate /* evaluate */
 };
 
+/* ----------- Transform Cache ------------- */
+
+#ifdef WITH_ALEMBIC
+#include "ABC_alembic.h"
+#endif
+
+static void transformcache_evaluate(bConstraint *con, bConstraintOb *cob, ListBase *targets)
+{
+	bTransformCacheConstraint *data = con->data;
+	Scene *scene = cob->scene;
+
+	const float ctime = BKE_scene_frame_get(scene) / (float)scene->r.frs_sec;
+
+	printf("%s: time: %f\n", __func__, ctime);
+
+	ABC_get_transform(cob->ob, data->filepath, data->abc_object_path, cob->matrix, ctime);
+
+	UNUSED_VARS(targets);
+}
+
+static bConstraintTypeInfo CTI_TRANSFORMCACHE = {
+	CONSTRAINT_TYPE_TRANSFORMCACHE, /* type */
+	sizeof(bTransformCacheConstraint), /* size */
+	"Transform Cache", /* name */
+	"bTransformCacheConstraint", /* struct name */
+	NULL,  /* free data */
+	NULL,  /* id looper */
+	NULL,  /* copy data */
+	NULL,  /* new data */
+	NULL,  /* get constraint targets */
+	NULL,  /* flush constraint targets */
+	NULL,  /* get target matrix */
+	transformcache_evaluate  /* evaluate */
+};
+
 /* ************************* Constraints Type-Info *************************** */
 /* All of the constraints api functions use bConstraintTypeInfo structs to carry out
  * and operations that involve constraint specific code.
@@ -4374,6 +4409,7 @@ static void constraints_init_typeinfo(void)
 	constraintsTypeInfo[26] = &CTI_FOLLOWTRACK;      /* Follow Track Constraint */
 	constraintsTypeInfo[27] = &CTI_CAMERASOLVER;     /* Camera Solver Constraint */
 	constraintsTypeInfo[28] = &CTI_OBJECTSOLVER;     /* Object Solver Constraint */
+	constraintsTypeInfo[29] = &CTI_TRANSFORMCACHE;   /* Transform Cache Constraint */
 }
 
 /* This function should be used for getting the appropriate type-info when only

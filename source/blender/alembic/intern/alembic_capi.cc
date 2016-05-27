@@ -76,6 +76,8 @@ using Alembic::AbcGeom::IPolyMeshSchema;
 using Alembic::AbcGeom::ISampleSelector;
 using Alembic::AbcGeom::ISubD;
 using Alembic::AbcGeom::IXform;
+using Alembic::AbcGeom::IXformSchema;
+using Alembic::AbcGeom::XformSample;
 
 using Alembic::AbcMaterial::IMaterial;
 
@@ -558,4 +560,81 @@ void ABC_import(bContext *C, const char *filename, float scale)
 	WM_jobs_callbacks(wm_job, import_startjob, NULL, NULL, NULL);
 
 	WM_jobs_start(CTX_wm_manager(C), wm_job);
+}
+
+/* ******************************* */
+
+static IXform get_xform(const IObject &object,  const std::string &name, bool &found)
+{
+	if (!object.valid()) {
+		return IXform();
+	}
+
+	std::vector<std::string> tokens;
+	split(name, '/', tokens);
+
+	IObject tmp = object;
+
+	std::vector<std::string>::iterator iter;
+	for (iter = tokens.begin(); iter != tokens.end(); ++iter) {
+		IObject child = tmp.getChild(*iter);
+
+		if (!child.valid()) {
+			continue;
+		}
+
+		tmp = child;
+	}
+
+	if (!tmp.valid()) {
+		return IXform();
+	}
+
+	found = true;
+
+	const MetaData &md = tmp.getMetaData();
+
+	if (IXform::matches(md)) {
+		return IXform(tmp, kWrapExisting);
+	}
+
+	return IXform(tmp.getParent(), kWrapExisting);
+}
+
+void ABC_get_transform(Object *ob, const char *filename, const char *object_path, float r_mat[4][4], float time)
+{
+	IArchive archive = open_archive(filename);
+
+	if (!archive.valid()) {
+		return;
+	}
+
+	bool found = false;
+	const IXform ixform = get_xform(archive.getTop(), object_path, found);
+	const IXformSchema xform_schema = ixform.getSchema();
+
+	if (!found || !xform_schema.valid()) {
+		return;
+	}
+
+	XformSample xs;
+	ISampleSelector sample_sel(time);
+	xform_schema.get(xs, sample_sel);
+
+	Imath::M44d xform = xs.getMatrix();
+
+	for (int i = 0; i < 4; ++i) {
+		for(int j = 0; j < 4; ++j) {
+			r_mat[i][j] = xform[i][j];
+		}
+	}
+
+	if (ob->type == OB_CAMERA) {
+		float cam_to_yup[4][4];
+		unit_m4(cam_to_yup);
+		rotate_m4(cam_to_yup, 'X', M_PI_2);
+		mul_m4_m4m4(r_mat, r_mat, cam_to_yup);
+	}
+
+	create_transform_matrix(r_mat);
 }

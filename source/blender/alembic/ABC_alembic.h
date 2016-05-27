@@ -28,6 +28,7 @@ extern "C" {
 #endif
 
 struct bContext;
+struct Object;
 struct Scene;
 
 enum {
@@ -58,6 +59,8 @@ void ABC_import(struct bContext *C, const char *filename, float scale);
 void ABC_get_vertex_cache(const char *filepath, float time, void *verts, int max_verts, const char *sub_obj, int is_mvert);
 
 int ABC_check_subobject_valid(const char *name, const char *sub_obj);
+
+void ABC_get_transform(struct Object *ob, const char *filename, const char *object_path, float r_mat[4][4], float time);
 
 #ifdef __cplusplus
 }

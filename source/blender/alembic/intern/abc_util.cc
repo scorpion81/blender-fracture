@@ -154,7 +154,7 @@ static void create_rotation_matrix(
 
 /* Recompute transform matrix of object in new coordinate system
  * (from Y-Up to Z-Up). */
-void create_transform_matrix(Object *obj)
+void create_transform_matrix(float r_mat[4][4])
 {
     float rot_mat[3][3], rot[3][3], scale_mat[4][4], invmat[4][4], transform_mat[4][4];
     float rot_x_mat[3][3], rot_y_mat[3][3], rot_z_mat[3][3];
@@ -172,7 +172,7 @@ void create_transform_matrix(Object *obj)
     /* compute rotation matrix */
 
     /* extract location, rotation, and scale from matrix */
-    mat4_to_loc_rot_size(loc, rot, scale, obj->obmat);
+    mat4_to_loc_rot_size(loc, rot, scale, r_mat);
 
     /* get euler angles from rotation matrix */
     mat3_to_eulO(euler, ROT_MODE_XYZ, rot);
@@ -201,7 +201,7 @@ void create_transform_matrix(Object *obj)
     /* add scale to transformation matrix */
     mul_m4_m4m4(transform_mat, transform_mat, scale_mat);
 
-    copy_m4_m4(obj->obmat, transform_mat);
+    copy_m4_m4(r_mat, transform_mat);
 }
 
 /* recompute transform matrix of object in new coordinate system (from Z-Up to Y-Up) */
