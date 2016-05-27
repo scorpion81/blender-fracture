@@ -43,6 +43,11 @@ extern "C" {
 
 #include "BLI_string.h"
 
+#ifdef WIN32
+/* needed for MSCV because of snprintf from BLI_string */
+#include "BLI_winstuff.h"
+#endif
+
 #include "BKE_anim.h"
 #include "BKE_global.h"
 #include "BKE_idprop.h"
