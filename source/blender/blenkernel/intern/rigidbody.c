@@ -1341,7 +1341,9 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 		}
 
 		mat4_to_loc_quat(loc, rot, ob->obmat);
-		if (ob->derivedFinal)
+
+		/* a hacky check whether the dm might be valid or not*/
+		if (ob->derivedFinal && ob->derivedFinal->getNumLoopTri(ob->derivedFinal) > 0)
 			DM_mesh_boundbox(ob->derivedFinal, locbb, size);
 		else  //fallback
 			BKE_mesh_boundbox_calc((Mesh*)ob->data, locbb, size);
