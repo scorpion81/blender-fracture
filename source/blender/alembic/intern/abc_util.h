@@ -49,6 +49,8 @@ bool begins_with(const TContainer &input, const TContainer &match)
 	        && std::equal(match.begin(), match.end(), input.begin());
 }
 
+bool is_locator(const Alembic::AbcGeom::IObject &object);
+
 void create_input_transform(const Alembic::AbcGeom::ISampleSelector &sample_sel,
                             const Alembic::AbcGeom::IXform &ixform, Object *ob,
                             float r_mat[4][4]);

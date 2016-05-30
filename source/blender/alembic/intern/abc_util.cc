@@ -204,6 +204,13 @@ void create_transform_matrix(float r_mat[4][4])
     copy_m4_m4(r_mat, transform_mat);
 }
 
+/* Return whether or not this object is a Maya locator, which is similar to
+ * empties used as parent object in Blender. */
+bool is_locator(const Alembic::AbcGeom::IObject &object)
+{
+	return object.getProperties().getPropertyHeader("locator") != NULL;
+}
+
 static void get_matrix(const Alembic::AbcGeom::ISampleSelector &sample_sel,
                        const Alembic::AbcGeom::IXform &leaf, Imath::M44d &m)
 {
@@ -219,6 +226,10 @@ static void get_matrix(const Alembic::AbcGeom::ISampleSelector &sample_sel,
 	Alembic::AbcGeom::IObject obj = leaf.getParent();
 
 	if (!obj.valid() || !Alembic::AbcGeom::IXform::matches(obj.getHeader())) {
+		return;
+	}
+
+	if (!is_locator(leaf) || (leaf.getNumChildren() != 0)) {
 		return;
 	}
 

@@ -349,13 +349,6 @@ int ABC_export(Scene *scene, bContext *C, const char *filename,
 
 /* ********************** Import file ********************** */
 
-/* Return whether or not this object is a Maya locator, which is similar to
- * empties used as parent object in Blender. */
-static bool is_locator(const IObject &object)
-{
-	return object.getProperties().getPropertyHeader("locator") != NULL;
-}
-
 static void visit_object(const IObject &object,
                          std::vector<AbcObjectReader *> &readers,
                          ImportSettings &settings)
