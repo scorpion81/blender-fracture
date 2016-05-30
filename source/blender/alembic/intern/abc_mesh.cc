@@ -1125,13 +1125,19 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 	const ISampleSelector sample_sel(time);
 	const size_t poly_start = mesh->totpoly;
 
+	bool is_constant = true;
+
 	if (m_subd_schema.valid()) {
+		is_constant = m_subd_schema.isConstant();
+
 		const ISubDSchema::Sample sample = m_subd_schema.getValue(sample_sel);
 
 		readVertexDataSample(mesh, sample.getPositions());
 		readPolyDataSample(mesh, sample.getFaceIndices(), sample.getFaceCounts(), poly_start);
 	}
 	else {
+		is_constant = m_schema.isConstant();
+
 		const IPolyMeshSchema::Sample sample = m_schema.getValue(sample_sel);
 
 		readVertexDataSample(mesh, sample.getPositions());
@@ -1152,17 +1158,19 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 
 	/* Add a default mesh cache modifier */
 
-	ModifierData *md = modifier_new(eModifierType_MeshCache);
-	BLI_addtail(&m_object->modifiers, md);
+	if (!is_constant) {
+		ModifierData *md = modifier_new(eModifierType_MeshCache);
+		BLI_addtail(&m_object->modifiers, md);
 
-	MeshCacheModifierData *mcmd = reinterpret_cast<MeshCacheModifierData *>(md);
-	mcmd->type = MOD_MESHCACHE_TYPE_ABC;
-	mcmd->time_mode = MOD_MESHCACHE_TIME_SECONDS;
-	mcmd->forward_axis = OB_POSZ;
-	mcmd->up_axis = OB_NEGY;
+		MeshCacheModifierData *mcmd = reinterpret_cast<MeshCacheModifierData *>(md);
+		mcmd->type = MOD_MESHCACHE_TYPE_ABC;
+		mcmd->time_mode = MOD_MESHCACHE_TIME_SECONDS;
+		mcmd->forward_axis = OB_POSZ;
+		mcmd->up_axis = OB_NEGY;
 
-	BLI_strncpy(mcmd->filepath, m_iobject.getArchive().getName().c_str(), 1024);
-	BLI_strncpy(mcmd->sub_object, m_iobject.getFullName().c_str(), 1024);
+		BLI_strncpy(mcmd->filepath, m_iobject.getArchive().getName().c_str(), 1024);
+		BLI_strncpy(mcmd->sub_object, m_iobject.getFullName().c_str(), 1024);
+	}
 }
 
 void AbcMeshReader::readVertexDataSample(Mesh *mesh, const P3fArraySamplePtr &positions)
