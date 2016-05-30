@@ -92,7 +92,7 @@ protected:
 	ImportSettings *m_settings;
 
 public:
-	explicit AbcObjectReader(const Alembic::Abc::IObject &object, ImportSettings &settings, bool has_data = true);
+	explicit AbcObjectReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
 
 	virtual ~AbcObjectReader();
 

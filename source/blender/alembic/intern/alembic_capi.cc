@@ -451,7 +451,7 @@ static void create_hierarchy(Main *bmain, Scene *scene, AbcObjectReader *root)
 
 	/* Either object doesn't have any parents, since its path only contain its name,
 	 * and its data name, or is an empty with no parents. */
-	if (parts.size() == 2 || parts.size() == 1) {
+	if (parts.size() <= 2) {
 		return;
 	}
 

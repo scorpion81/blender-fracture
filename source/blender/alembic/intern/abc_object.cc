@@ -306,7 +306,7 @@ bool AbcObjectWriter::getPropertyValue(ID *id, const std::string &name, double &
 
 /* ****************************** object reader ***************************** */
 
-AbcObjectReader::AbcObjectReader(const IObject &object, ImportSettings &settings, bool has_data)
+AbcObjectReader::AbcObjectReader(const IObject &object, ImportSettings &settings)
     : m_name("")
     , m_object_name("")
     , m_data_name("")
@@ -318,9 +318,7 @@ AbcObjectReader::AbcObjectReader(const IObject &object, ImportSettings &settings
 	std::vector<std::string> parts;
 	split(m_name, '/', parts);
 
-	if (has_data) {
-		assert(parts.size() >= 2);
-
+	if (parts.size() >= 2) {
 		m_object_name = parts[parts.size() - 2];
 		m_data_name = parts[parts.size() - 1];
 	}

@@ -1295,7 +1295,7 @@ void AbcMeshReader::readFaceSetsSample(Main *bmain, Mesh *mesh, size_t poly_star
 /* ***************************** AbcEmptyReader ***************************** */
 
 AbcEmptyReader::AbcEmptyReader(const Alembic::Abc::IObject &object, ImportSettings &settings)
-    : AbcObjectReader(object, settings, false)
+    : AbcObjectReader(object, settings)
 {}
 
 bool AbcEmptyReader::valid() const

@@ -207,10 +207,26 @@ void create_transform_matrix(float r_mat[4][4])
 static void get_matrix(const Alembic::AbcGeom::ISampleSelector &sample_sel,
                        const Alembic::AbcGeom::IXform &leaf, Imath::M44d &m)
 {
-	Alembic::AbcGeom::IXformSchema xform_schema = leaf.getSchema();
+	Alembic::AbcGeom::IXformSchema leaf_schema = leaf.getSchema();
     Alembic::AbcGeom::XformSample xs;
-	xform_schema.get(xs, sample_sel);
+	leaf_schema.get(xs, sample_sel);
 	m = xs.getMatrix();
+
+	if (!xs.getInheritsXforms()) {
+		return;
+	}
+
+	Alembic::AbcGeom::IObject obj = leaf.getParent();
+
+	if (!obj.valid() || !Alembic::AbcGeom::IXform::matches(obj.getHeader())) {
+		return;
+	}
+
+	Alembic::AbcGeom::IXform parent(obj, Alembic::AbcGeom::kWrapExisting);
+	Alembic::AbcGeom::IXformSchema parent_schema = parent.getSchema();
+    Alembic::AbcGeom::XformSample parent_xs;
+	parent_schema.get(parent_xs, sample_sel);
+	m = parent_xs.getMatrix() * m;
 }
 
 void create_input_transform(const Alembic::AbcGeom::ISampleSelector &sample_sel,
