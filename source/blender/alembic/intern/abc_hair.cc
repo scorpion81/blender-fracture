@@ -95,9 +95,9 @@ void AbcHairWriter::do_write()
 	std::vector<Imath::V2f> uv_values;
 	std::vector<Imath::V3f> norm_values;
 
-	ParticleSettings *part = m_psys->part;
+	if (m_psys->pathcache) {
+		ParticleSettings *part = m_psys->part;
 
-	if (part->type == PART_HAIR && m_psys->pathcache) {
 		write_hair_sample(dm, part, verts, norm_values, uv_values, hvertices);
 
 		if (m_settings.export_child_hairs && m_psys->childcache) {
