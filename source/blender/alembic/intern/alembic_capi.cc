@@ -376,7 +376,7 @@ static void visit_object(const IObject &object,
 		const MetaData &md = child.getMetaData();
 
 		if (IXform::matches(md)) {
-			if (is_locator(child)) {
+			if (is_locator(child) || child.getNumChildren() == 0) {
 				reader = new AbcEmptyReader(child, settings);
 			}
 		}
@@ -449,9 +449,9 @@ static void create_hierarchy(Main *bmain, Scene *scene, AbcObjectReader *root)
 	std::vector<std::string> parts;
 	split(full_name, '/', parts);
 
-	/* object doesn't have any parents, since its path only contain its name,
-	 * and its data name. */
-	if (parts.size() == 2) {
+	/* Either object doesn't have any parents, since its path only contain its name,
+	 * and its data name, or is an empty with no parents. */
+	if (parts.size() == 2 || parts.size() == 1) {
 		return;
 	}
 
