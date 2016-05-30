@@ -2173,7 +2173,7 @@ static void dag_object_time_update_flags(Main *bmain, Scene *scene, Object *ob)
 			
 			if (cti) {
 				/* special case for camera tracking -- it doesn't use targets to define relations */
-				if (ELEM(cti->type, CONSTRAINT_TYPE_FOLLOWTRACK, CONSTRAINT_TYPE_CAMERASOLVER, CONSTRAINT_TYPE_OBJECTSOLVER)) {
+				if (ELEM(cti->type, CONSTRAINT_TYPE_FOLLOWTRACK, CONSTRAINT_TYPE_CAMERASOLVER, CONSTRAINT_TYPE_OBJECTSOLVER, CONSTRAINT_TYPE_TRANSFORMCACHE)) {
 					ob->recalc |= OB_RECALC_OB;
 				}
 				else if (cti->get_constraint_targets) {
