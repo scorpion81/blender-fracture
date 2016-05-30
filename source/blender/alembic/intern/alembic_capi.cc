@@ -564,8 +564,10 @@ void ABC_import(bContext *C, const char *filename, float scale)
 
 /* ******************************* */
 
-static IXform get_xform(const IObject &object,  const std::string &name, bool &found)
+static IXform get_xform(const IObject &object, const std::string &name, bool &found, bool &locator)
 {
+	locator = false;
+
 	if (!object.valid()) {
 		return IXform();
 	}
@@ -592,13 +594,37 @@ static IXform get_xform(const IObject &object,  const std::string &name, bool &f
 
 	found = true;
 
+#if 1
 	const MetaData &md = tmp.getMetaData();
 
-	if (IXform::matches(md)) {
+	if (IXform::matches(md)/* && is_locator(tmp)*/) {
 		return IXform(tmp, kWrapExisting);
 	}
+#endif
 
 	return IXform(tmp.getParent(), kWrapExisting);
+}
+
+void get_matrix(const ISampleSelector &sample_sel, const IXform &leaf, Imath::M44d &m)
+{
+	IXformSchema xform_schema = leaf.getSchema();
+    XformSample xs;
+	xform_schema.get(xs, sample_sel);
+	m = xs.getMatrix();
+
+	if (!xs.getInheritsXforms()) {
+		return;
+	}
+
+	IObject obj = leaf.getParent();
+
+	if (IXform::matches(obj.getHeader())) {
+		IXform parent = IXform(obj, kWrapExisting);
+		xform_schema = parent.getSchema();
+		xform_schema.get(xs, sample_sel);
+
+		m = m * xs.getMatrix();
+	}
 }
 
 void ABC_get_transform(Object *ob, const char *filename, const char *object_path, float r_mat[4][4], float time)
@@ -610,21 +636,23 @@ void ABC_get_transform(Object *ob, const char *filename, const char *object_path
 	}
 
 	bool found = false;
-	const IXform ixform = get_xform(archive.getTop(), object_path, found);
+	bool locator = false;
+	const IXform ixform = get_xform(archive.getTop(), object_path, found, locator);
 	const IXformSchema xform_schema = ixform.getSchema();
 
 	if (!found || !xform_schema.valid()) {
 		return;
 	}
 
-	XformSample xs;
 	ISampleSelector sample_sel(time);
-	xform_schema.get(xs, sample_sel);
 
-	Imath::M44d xform = xs.getMatrix();
+	Imath::M44d xform;
+	xform.makeIdentity();
+
+	get_matrix(sample_sel, ixform, xform);
 
 	for (int i = 0; i < 4; ++i) {
-		for(int j = 0; j < 4; ++j) {
+		for (int j = 0; j < 4; ++j) {
 			r_mat[i][j] = xform[i][j];
 		}
 	}
@@ -637,4 +665,8 @@ void ABC_get_transform(Object *ob, const char *filename, const char *object_path
 	}
 
 	create_transform_matrix(r_mat);
+
+	if (ob->parent) {
+		mul_m4_m4m4(r_mat, ob->parent->obmat, r_mat);
+	}
 }
