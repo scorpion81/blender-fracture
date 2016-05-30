@@ -33,6 +33,7 @@ extern "C" {
 #include "BKE_depsgraph.h"
 #include "BKE_object.h"
 
+#include "BLI_math.h"
 #include "BLI_string.h"
 
 #include "WM_api.h"
@@ -156,14 +157,11 @@ void AbcCameraReader::readObjectData(Main *bmain, Scene *scene, float time)
 	bcam->sensor_x = apperture_x * 10;
 	bcam->sensor_y = apperture_y * 10;
 	bcam->shiftx = h_film_offset / apperture_x;
-	bcam->shifty = v_film_offset / (apperture_y * film_aspect);
-	bcam->clipsta = cam_sample.getNearClippingPlane();
+	bcam->shifty = v_film_offset / apperture_y / film_aspect;
+	bcam->clipsta = max_ff(0.1f, cam_sample.getNearClippingPlane());
 	bcam->clipend = cam_sample.getFarClippingPlane();
 	bcam->gpu_dof.focus_distance = cam_sample.getFocusDistance();
 	bcam->gpu_dof.fstop = cam_sample.getFStop();
-	bcam->shifty = v_film_offset / apperture_y / film_aspect;
-	bcam->clipsta = cam_sample.getNearClippingPlane();
-	bcam->clipend = cam_sample.getFarClippingPlane();
 
 	BLI_strncpy(bcam->id.name + 2, m_data_name.c_str(), m_data_name.size() + 1);
 
