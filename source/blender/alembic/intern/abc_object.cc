@@ -352,34 +352,11 @@ void AbcObjectReader::readObjectMatrix(const float time)
 		return;
 	}
 
-	Alembic::AbcGeom::ISampleSelector xform_sample(time);
+	Alembic::AbcGeom::ISampleSelector sample_sel(time);
 	Alembic::AbcGeom::XformSample xs;
-	schema.get(xs, xform_sample);
+	schema.get(xs, sample_sel);
 
-	Alembic::Abc::M44d xfrom = xs.getMatrix();
-
-	for (int i = 0; i < 4; ++i) {
-		for (int j = 0; j < 4; j++) {
-			m_object->obmat[i][j] = xfrom[i][j];
-		}
-	}
-
-	if (m_object->type == OB_CAMERA) {
-		float cam_to_yup[4][4];
-		unit_m4(cam_to_yup);
-		rotate_m4(cam_to_yup, 'X', M_PI_2);
-		mul_m4_m4m4(m_object->obmat, m_object->obmat, cam_to_yup);
-	}
-
-	create_transform_matrix(m_object->obmat);
-
-	/* TODO: apply global scale */
-#if 0
-	float global_scale[4][4];
-	scale_m4_fl(global_scale, m_settings->scale);
-	mul_m4_m4m4(m_object->obmat, m_object->obmat, global_scale);
-	mul_v3_fl(m_object->obmat[3], m_settings->scale);
-#endif
+	create_input_transform(sample_sel, x, m_object, m_object->obmat);
 
 	invert_m4_m4(m_object->imat, m_object->obmat);
 

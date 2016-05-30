@@ -24,6 +24,7 @@
 #define __ABC_UTIL_H__
 
 #include <Alembic/Abc/All.h>
+#include <Alembic/AbcGeom/All.h>
 
 struct ID;
 struct Object;
@@ -47,5 +48,9 @@ bool begins_with(const TContainer &input, const TContainer &match)
 	return input.size() >= match.size()
 	        && std::equal(match.begin(), match.end(), input.begin());
 }
+
+void create_input_transform(const Alembic::AbcGeom::ISampleSelector &sample_sel,
+                            const Alembic::AbcGeom::IXform &ixform, Object *ob,
+                            float r_mat[4][4]);
 
 #endif  /* __ABC_UTIL_H__ */

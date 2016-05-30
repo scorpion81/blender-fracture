@@ -204,6 +204,66 @@ void create_transform_matrix(float r_mat[4][4])
     copy_m4_m4(r_mat, transform_mat);
 }
 
+static void get_matrix(const Alembic::AbcGeom::ISampleSelector &sample_sel,
+                       const Alembic::AbcGeom::IXform &leaf, Imath::M44d &m)
+{
+	Alembic::AbcGeom::IXformSchema xform_schema = leaf.getSchema();
+    Alembic::AbcGeom::XformSample xs;
+	xform_schema.get(xs, sample_sel);
+	m = xs.getMatrix();
+
+	if (!xs.getInheritsXforms()) {
+		return;
+	}
+
+	Alembic::AbcGeom::IObject obj = leaf.getParent();
+
+	if (Alembic::AbcGeom::IXform::matches(obj.getHeader())) {
+		Alembic::AbcGeom::IXform parent = Alembic::AbcGeom::IXform(obj, Alembic::AbcGeom::kWrapExisting);
+		xform_schema = parent.getSchema();
+		xform_schema.get(xs, sample_sel);
+
+		m = m * xs.getMatrix();
+	}
+}
+
+void create_input_transform(const Alembic::AbcGeom::ISampleSelector &sample_sel,
+                            const Alembic::AbcGeom::IXform &ixform, Object *ob,
+                            float r_mat[4][4])
+{
+	Imath::M44d xform;
+	xform.makeIdentity();
+
+	get_matrix(sample_sel, ixform, xform);
+
+	for (int i = 0; i < 4; ++i) {
+		for (int j = 0; j < 4; ++j) {
+			r_mat[i][j] = xform[i][j];
+		}
+	}
+
+	if (ob->type == OB_CAMERA) {
+		float cam_to_yup[4][4];
+		unit_m4(cam_to_yup);
+		rotate_m4(cam_to_yup, 'X', M_PI_2);
+		mul_m4_m4m4(r_mat, r_mat, cam_to_yup);
+	}
+
+	create_transform_matrix(r_mat);
+
+	/* TODO: apply global scale */
+#if 0
+	float global_scale[4][4];
+	scale_m4_fl(global_scale, m_settings->scale);
+	mul_m4_m4m4(m_object->obmat, m_object->obmat, global_scale);
+	mul_v3_fl(m_object->obmat[3], m_settings->scale);
+#endif
+
+	if (ob->parent) {
+		mul_m4_m4m4(r_mat, ob->parent->obmat, r_mat);
+	}
+}
+
 /* recompute transform matrix of object in new coordinate system (from Z-Up to Y-Up) */
 void create_transform_matrix(Object *obj, float transform_mat[4][4])
 {

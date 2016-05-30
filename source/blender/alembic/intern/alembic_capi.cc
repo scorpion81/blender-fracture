@@ -605,28 +605,6 @@ static IXform get_xform(const IObject &object, const std::string &name, bool &fo
 	return IXform(tmp.getParent(), kWrapExisting);
 }
 
-void get_matrix(const ISampleSelector &sample_sel, const IXform &leaf, Imath::M44d &m)
-{
-	IXformSchema xform_schema = leaf.getSchema();
-    XformSample xs;
-	xform_schema.get(xs, sample_sel);
-	m = xs.getMatrix();
-
-	if (!xs.getInheritsXforms()) {
-		return;
-	}
-
-	IObject obj = leaf.getParent();
-
-	if (IXform::matches(obj.getHeader())) {
-		IXform parent = IXform(obj, kWrapExisting);
-		xform_schema = parent.getSchema();
-		xform_schema.get(xs, sample_sel);
-
-		m = m * xs.getMatrix();
-	}
-}
-
 void ABC_get_transform(Object *ob, const char *filename, const char *object_path, float r_mat[4][4], float time)
 {
 	IArchive archive = open_archive(filename);
@@ -646,27 +624,5 @@ void ABC_get_transform(Object *ob, const char *filename, const char *object_path
 
 	ISampleSelector sample_sel(time);
 
-	Imath::M44d xform;
-	xform.makeIdentity();
-
-	get_matrix(sample_sel, ixform, xform);
-
-	for (int i = 0; i < 4; ++i) {
-		for (int j = 0; j < 4; ++j) {
-			r_mat[i][j] = xform[i][j];
-		}
-	}
-
-	if (ob->type == OB_CAMERA) {
-		float cam_to_yup[4][4];
-		unit_m4(cam_to_yup);
-		rotate_m4(cam_to_yup, 'X', M_PI_2);
-		mul_m4_m4m4(r_mat, r_mat, cam_to_yup);
-	}
-
-	create_transform_matrix(r_mat);
-
-	if (ob->parent) {
-		mul_m4_m4m4(r_mat, ob->parent->obmat, r_mat);
-	}
+	create_input_transform(sample_sel, ixform, ob, r_mat);
 }
