@@ -27,13 +27,16 @@
 #include "abc_util.h"
 
 extern "C" {
+#include "DNA_constraint_types.h"
+#include "DNA_object_types.h"
+
+#include "BKE_constraint.h"
 #include "BKE_idprop.h"
 #include "BKE_object.h"
 
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
-
-#include "DNA_object_types.h"
+#include "BLI_string.h"
 
 #include "BKE_depsgraph.h"
 }
@@ -345,38 +348,47 @@ void AbcObjectReader::readObjectMatrix(const float time)
 	Alembic::AbcGeom::IXform x(m_iobject.getParent(), Alembic::AbcGeom::kWrapExisting);
 	Alembic::AbcGeom::IXformSchema &schema(x.getSchema());
 
-	if (schema.valid()) {
-		Alembic::AbcGeom::ISampleSelector xform_sample(time);
-		Alembic::AbcGeom::XformSample xs;
-		schema.get(xs, xform_sample);
+	if (!schema.valid()) {
+		return;
+	}
 
-		Alembic::Abc::M44d xfrom = xs.getMatrix();
+	Alembic::AbcGeom::ISampleSelector xform_sample(time);
+	Alembic::AbcGeom::XformSample xs;
+	schema.get(xs, xform_sample);
 
-		for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; j++) {
-                m_object->obmat[i][j] = xfrom[i][j];
-            }
-        }
+	Alembic::Abc::M44d xfrom = xs.getMatrix();
 
-		if (m_object->type == OB_CAMERA) {
-			float cam_to_yup[4][4];
-			unit_m4(cam_to_yup);
-			rotate_m4(cam_to_yup, 'X', M_PI_2);
-			mul_m4_m4m4(m_object->obmat, m_object->obmat, cam_to_yup);
+	for (int i = 0; i < 4; ++i) {
+		for (int j = 0; j < 4; j++) {
+			m_object->obmat[i][j] = xfrom[i][j];
 		}
+	}
 
-		create_transform_matrix(m_object->obmat);
+	if (m_object->type == OB_CAMERA) {
+		float cam_to_yup[4][4];
+		unit_m4(cam_to_yup);
+		rotate_m4(cam_to_yup, 'X', M_PI_2);
+		mul_m4_m4m4(m_object->obmat, m_object->obmat, cam_to_yup);
+	}
 
-		/* TODO: apply global scale */
+	create_transform_matrix(m_object->obmat);
+
+	/* TODO: apply global scale */
 #if 0
-		float global_scale[4][4];
-		scale_m4_fl(global_scale, m_settings->scale);
-		mul_m4_m4m4(m_object->obmat, m_object->obmat, global_scale);
-		mul_v3_fl(m_object->obmat[3], m_settings->scale);
+	float global_scale[4][4];
+	scale_m4_fl(global_scale, m_settings->scale);
+	mul_m4_m4m4(m_object->obmat, m_object->obmat, global_scale);
+	mul_v3_fl(m_object->obmat[3], m_settings->scale);
 #endif
 
-		invert_m4_m4(m_object->imat, m_object->obmat);
+	invert_m4_m4(m_object->imat, m_object->obmat);
 
-		BKE_object_apply_mat4(m_object, m_object->obmat, false,  false);
+	BKE_object_apply_mat4(m_object, m_object->obmat, false,  false);
+
+	if (!schema.isConstant()) {
+		bConstraint *con = BKE_constraint_add_for_object(m_object, NULL, CONSTRAINT_TYPE_TRANSFORMCACHE);
+		bTransformCacheConstraint *data = static_cast<bTransformCacheConstraint *>(con->data);
+		BLI_strncpy(data->filepath, m_iobject.getArchive().getName().c_str(), 1024);
+		BLI_strncpy(data->abc_object_path, m_iobject.getFullName().c_str(), 1024);
 	}
 }

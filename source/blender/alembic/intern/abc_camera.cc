@@ -27,15 +27,13 @@
 
 extern "C" {
 #include "DNA_camera_types.h"
-#include "DNA_constraint_types.h"
 #include "DNA_object_types.h"
 
-#include "BLI_string.h"
-
 #include "BKE_camera.h"
-#include "BKE_constraint.h"
 #include "BKE_depsgraph.h"
 #include "BKE_object.h"
+
+#include "BLI_string.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
@@ -171,11 +169,4 @@ void AbcCameraReader::readObjectData(Main *bmain, Scene *scene, float time)
 
 	m_object = BKE_object_add(bmain, scene, OB_CAMERA, m_object_name.c_str());
 	m_object->data = bcam;
-
-	if (!m_schema.isConstant()) {
-		bConstraint *con = BKE_constraint_add_for_object(m_object, NULL, CONSTRAINT_TYPE_TRANSFORMCACHE);
-		bTransformCacheConstraint *data = static_cast<bTransformCacheConstraint *>(con->data);
-		BLI_strncpy(data->filepath, m_iobject.getArchive().getName().c_str(), 1024);
-		BLI_strncpy(data->abc_object_path, m_iobject.getFullName().c_str(), 1024);
-	}
 }
