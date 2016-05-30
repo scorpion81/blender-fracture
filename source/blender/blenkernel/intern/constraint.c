@@ -4346,8 +4346,6 @@ static void transformcache_evaluate(bConstraint *con, bConstraintOb *cob, ListBa
 
 	const float ctime = BKE_scene_frame_get(scene) / (float)scene->r.frs_sec;
 
-	printf("%s: time: %f\n", __func__, ctime);
-
 	ABC_get_transform(cob->ob, data->filepath, data->abc_object_path, cob->matrix, ctime);
 
 	UNUSED_VARS(targets);
