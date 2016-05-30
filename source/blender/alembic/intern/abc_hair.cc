@@ -71,7 +71,7 @@ AbcHairWriter::AbcHairWriter(Scene *scene,
 	m_psys = psys;
 
 	OCurves curves(parent->alembicXform(), m_name, m_time_sampling);
-	m_curves_schema = curves.getSchema();
+	m_schema = curves.getSchema();
 }
 
 void AbcHairWriter::do_write()
@@ -108,22 +108,25 @@ void AbcHairWriter::do_write()
 	dm->release(dm);
 
 	Alembic::Abc::P3fArraySample iPos(verts);
-	m_curves_schema_sample = OCurvesSchema::Sample(iPos, hvertices);
+	m_sample = OCurvesSchema::Sample(iPos, hvertices);
+	m_sample.setBasis(Alembic::AbcGeom::kNoBasis);
+	m_sample.setType(Alembic::AbcGeom::kLinear);
+	m_sample.setWrap(Alembic::AbcGeom::kNonPeriodic);
 
 	if (!uv_values.empty()) {
 		OV2fGeomParam::Sample uv_smp;
 		uv_smp.setVals(uv_values);
-		m_curves_schema_sample.setUVs(uv_smp);
+		m_sample.setUVs(uv_smp);
 	}
 
 	if (!norm_values.empty()) {
 		ON3fGeomParam::Sample norm_smp;
 		norm_smp.setVals(norm_values);
-		m_curves_schema_sample.setNormals(norm_smp);
+		m_sample.setNormals(norm_smp);
 	}
 
-	m_curves_schema_sample.setSelfBounds(bounds());
-	m_curves_schema.set(m_curves_schema_sample);
+	m_sample.setSelfBounds(bounds());
+	m_schema.set(m_sample);
 }
 
 void AbcHairWriter::write_hair_sample(DerivedMesh *dm,

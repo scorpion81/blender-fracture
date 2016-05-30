@@ -35,8 +35,8 @@ struct ParticleSystem;
 class AbcHairWriter : public AbcShapeWriter {
     ParticleSystem *m_psys;
 
-	Alembic::AbcGeom::OCurvesSchema m_curves_schema;
-	Alembic::AbcGeom::OCurvesSchema::Sample m_curves_schema_sample;
+	Alembic::AbcGeom::OCurvesSchema m_schema;
+	Alembic::AbcGeom::OCurvesSchema::Sample m_sample;
 
 public:
 	AbcHairWriter(Scene *scene,
