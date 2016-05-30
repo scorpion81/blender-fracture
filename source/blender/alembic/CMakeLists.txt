@@ -53,6 +53,7 @@ set(SRC
 	intern/abc_mesh.cc
 	intern/abc_nurbs.cc
 	intern/abc_object.cc
+	intern/abc_points.cc
 	intern/abc_shape.cc
 	intern/abc_transform.cc
 	intern/abc_util.cc
@@ -66,6 +67,7 @@ set(SRC
 	intern/abc_mesh.h
 	intern/abc_nurbs.h
 	intern/abc_object.h
+	intern/abc_points.h
 	intern/abc_shape.h
 	intern/abc_transform.h
 	intern/abc_util.h

@@ -28,9 +28,10 @@
 #include <Alembic/AbcCoreOgawa/All.h>
 
 #include "abc_camera.h"
+#include "abc_hair.h"
 #include "abc_mesh.h"
 #include "abc_nurbs.h"
-#include "abc_hair.h"
+#include "abc_points.h"
 #include "abc_util.h"
 
 extern "C" {
@@ -453,9 +454,12 @@ void AbcExporter::createShapeWriter(Object *ob, Object *dupliObParent)
 		if (!psys_check_enabled(ob, psys))
 			continue;
 
-		if (enable_hair && psys->part && (psys->part->type == PART_HAIR)) {
+		if ((psys->part->type == PART_HAIR) && enable_hair && psys->part) {
 			m_settings.export_child_hairs = enable_hair_child;
 			m_shapes.push_back(new AbcHairWriter(m_scene, ob, xform, m_shape_sampling_index, m_settings, psys));
+		}
+		else if (psys->part->type == PART_EMITTER) {
+			m_shapes.push_back(new AbcPointsWriter(m_scene, ob, xform, m_shape_sampling_index, m_settings, psys));
 		}
 	}
 
