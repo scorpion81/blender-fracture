@@ -128,11 +128,11 @@ void AbcCameraReader::readObjectData(Main *bmain, Scene *scene, float time)
 {
 	Camera *bcam = static_cast<Camera *>(BKE_camera_add(bmain, "abc_camera"));
 
-	ISampleSelector sample_sel(0.0f);
+	ISampleSelector sample_sel(time);
 	CameraSample cam_sample;
 	m_schema.get(cam_sample, sample_sel);
 
-	ICompoundProperty customDataContainer =  m_schema.getUserProperties();
+	ICompoundProperty customDataContainer = m_schema.getUserProperties();
 
 	if (customDataContainer.valid() &&
 	    customDataContainer.getPropertyHeader("stereoDistance") &&
