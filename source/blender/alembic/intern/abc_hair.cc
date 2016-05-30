@@ -69,15 +69,9 @@ AbcHairWriter::AbcHairWriter(Scene *scene,
     : AbcShapeWriter(scene, ob, parent, timeSampling, settings)
 {
 	m_psys = psys;
-	m_is_animated = isAnimated();
 
 	OCurves curves(parent->alembicXform(), m_name, m_time_sampling);
 	m_curves_schema = curves.getSchema();
-}
-
-bool AbcHairWriter::isAnimated() const
-{
-	return true;
 }
 
 void AbcHairWriter::do_write()

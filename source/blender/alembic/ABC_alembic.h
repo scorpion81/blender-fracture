@@ -39,7 +39,7 @@ enum {
 #define BL_ABC_NO_ERR 0
 #define BL_ABC_UNKNOWN_ERROR 1
 
-int ABC_export(struct Scene *scene, struct bContext *C, const char *filename,
+int ABC_export(struct Scene *scene, struct bContext *C, const char *filepath,
                double start, double end,
                double xformstep, double geomstep,
                double shutter_open, double shutter_close,
@@ -54,13 +54,13 @@ int ABC_export(struct Scene *scene, struct bContext *C, const char *filename,
                int geogroups, int compression,
                bool packuv, float scale);
 
-void ABC_import(struct bContext *C, const char *filename, float scale);
+void ABC_import(struct bContext *C, const char *filepath, float scale);
 
-void ABC_get_vertex_cache(const char *filepath, float time, void *verts, int max_verts, const char *sub_obj, int is_mvert);
+void ABC_get_vertex_cache(const char *filepath, float time, void *verts, int max_verts, const char *object_path, int is_mvert);
 
-int ABC_check_subobject_valid(const char *name, const char *sub_obj);
+int ABC_check_subobject_valid(const char *filepath, const char *object_path);
 
-void ABC_get_transform(struct Object *ob, const char *filename, const char *object_path, float r_mat[4][4], float time);
+void ABC_get_transform(struct Object *ob, const char *filepath, const char *object_path, float r_mat[4][4], float time);
 
 #ifdef __cplusplus
 }

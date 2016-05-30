@@ -151,14 +151,14 @@ static size_t update_points(std::pair<IPolyMeshSchema, IObject> schema,
 }
 
 static void find_mesh_object(const IObject &object, IObject &ret,
-                             const std::string &name, bool &found)
+                             const std::string &object_path, bool &found)
 {
 	if (!object.valid()) {
 		return;
 	}
 
 	std::vector<std::string> tokens;
-	split(name, '/', tokens);
+	split(object_path, '/', tokens);
 
 	IObject tmp = object;
 
@@ -183,7 +183,7 @@ static void find_mesh_object(const IObject &object, IObject &ret,
 }
 
 void ABC_get_vertex_cache(const char *filepath, float time, void *verts,
-                          int max_verts, const char *sub_obj, int is_mverts)
+                          int max_verts, const char *object_path, int is_mverts)
 {
 	IArchive archive = open_archive(filepath);
 
@@ -200,7 +200,7 @@ void ABC_get_vertex_cache(const char *filepath, float time, void *verts,
 	IObject mesh_obj;
 	bool found = false;
 
-	find_mesh_object(object, mesh_obj, sub_obj, found);
+	find_mesh_object(object, mesh_obj, object_path, found);
 
 	if (!found) {
 		return;
@@ -221,13 +221,13 @@ void ABC_get_vertex_cache(const char *filepath, float time, void *verts,
 	}
 }
 
-int ABC_check_subobject_valid(const char *name, const char *sub_obj)
+int ABC_check_subobject_valid(const char *filepath, const char *object_path)
 {
-	if ((name[0] == '\0') || (sub_obj[0] == '\0')) {
+	if ((filepath[0] == '\0') || (object_path[0] == '\0')) {
 		return 0;
 	}
 
-	IArchive archive = open_archive(name);
+	IArchive archive = open_archive(filepath);
 
 	if (!archive.valid()) {
 		return 0;
@@ -235,7 +235,7 @@ int ABC_check_subobject_valid(const char *name, const char *sub_obj)
 
 	bool found = false;
 	IObject ob;
-	find_mesh_object(archive.getTop(), ob, sub_obj, found);
+	find_mesh_object(archive.getTop(), ob, object_path, found);
 
 	return (found && ob.valid());
 }
@@ -283,7 +283,7 @@ static void export_endjob(void */*customdata*/)
     BKE_spacedata_draw_locks(false);
 }
 
-int ABC_export(Scene *scene, bContext *C, const char *filename,
+int ABC_export(Scene *scene, bContext *C, const char *filepath,
                double start, double end,
                double xformstep, double geomstep,
                double shutter_open, double shutter_close,
@@ -299,7 +299,7 @@ int ABC_export(Scene *scene, bContext *C, const char *filename,
 {
 	ExportJobData *job = static_cast<ExportJobData *>(MEM_mallocN(sizeof(ExportJobData), "ExportJobData"));
 	job->scene = scene;
-	BLI_strncpy(job->filename, filename, 1024);
+	BLI_strncpy(job->filename, filepath, 1024);
 
 	job->settings.scene = job->scene;
 	job->settings.startframe = start;
@@ -531,12 +531,12 @@ static void import_startjob(void *cjv, short *stop, short *do_update, float *pro
 	WM_main_add_notifier(NC_SCENE | ND_FRAME, data->scene);
 }
 
-void ABC_import(bContext *C, const char *filename, float scale)
+void ABC_import(bContext *C, const char *filepath, float scale)
 {
 	ImportJobData *job = static_cast<ImportJobData *>(MEM_mallocN(sizeof(ImportJobData), "ImportJobData"));
 	job->bmain = CTX_data_main(C);
 	job->scene = CTX_data_scene(C);
-	BLI_strncpy(job->filename, filename, 1024);
+	BLI_strncpy(job->filename, filepath, 1024);
 
 	job->settings.scale = scale;
 
@@ -598,9 +598,9 @@ static IXform get_xform(const IObject &object, const std::string &name, bool &fo
 	return IXform(tmp.getParent(), kWrapExisting);
 }
 
-void ABC_get_transform(Object *ob, const char *filename, const char *object_path, float r_mat[4][4], float time)
+void ABC_get_transform(Object *ob, const char *filepath, const char *object_path, float r_mat[4][4], float time)
 {
-	IArchive archive = open_archive(filename);
+	IArchive archive = open_archive(filepath);
 
 	if (!archive.valid()) {
 		return;

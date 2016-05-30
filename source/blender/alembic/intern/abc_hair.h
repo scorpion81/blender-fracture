@@ -33,7 +33,6 @@ struct ParticleSettings;
 struct ParticleSystem;
 
 class AbcHairWriter : public AbcShapeWriter {
-	bool m_is_animated;
     ParticleSystem *m_psys;
 
 	Alembic::AbcGeom::OCurvesSchema m_curves_schema;
@@ -49,8 +48,6 @@ public:
 
 private:
 	virtual void do_write();
-
-    bool isAnimated() const;
 
 	void write_hair_sample(DerivedMesh *dm,
                            ParticleSettings *part,
