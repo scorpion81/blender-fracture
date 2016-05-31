@@ -2668,9 +2668,6 @@ void node_gamma(vec4 col, float gamma, out vec4 outcol)
 
 void node_attribute(vec3 attr, out vec4 outcol, out vec3 outvec, out float outf)
 {
-	/* TODO(sergey): This needs linearization for vertex color.
-	 * But how to detect cases when input is linear and when it's srgb?
-	 */
 	outcol = vec4(attr, 1.0);
 	outvec = attr;
 	outf = (attr.x + attr.y + attr.z) / 3.0;
@@ -2804,11 +2801,11 @@ void node_tex_checker(vec3 co, vec4 color1, vec4 color2, float scale, out vec4 c
 	p.y = (p.y + 0.000001) * 0.999999;
 	p.z = (p.z + 0.000001) * 0.999999;
 
-	int xi = abs(int(floor(p.x)));
-	int yi = abs(int(floor(p.y)));
-	int zi = abs(int(floor(p.z)));
+	int xi = int(abs(floor(p.x)));
+	int yi = int(abs(floor(p.y)));
+	int zi = int(abs(floor(p.z)));
 
-	bool check = ((xi % 2 == yi % 2) == bool(zi % 2));
+	bool check = ((mod(xi, 2) == mod(yi, 2)) == bool(mod(zi, 2)));
 
 	color = check ? color1 : color2;
 	fac = check ? 1.0 : 0.0;
@@ -2976,7 +2973,7 @@ void node_tex_image_box(vec3 texco,
 		/* Desperate mode, no valid choice anyway, fallback to one side.*/
 		weight.x = 1.0;
 	}
-
+	color = vec4(0);
 	if (weight.x > 0.0) {
 		color += weight.x * texture2D(ima, texco.yz);
 	}
