@@ -28,6 +28,7 @@ extern "C" {
 #endif
 
 struct bContext;
+struct DerivedMesh;
 struct Object;
 struct Scene;
 
@@ -61,6 +62,8 @@ void ABC_get_vertex_cache(const char *filepath, float time, void *verts, int max
 int ABC_check_subobject_valid(const char *filepath, const char *object_path);
 
 void ABC_get_transform(struct Object *ob, const char *filepath, const char *object_path, float r_mat[4][4], float time);
+
+struct DerivedMesh *ABC_read_mesh(const char *filepath, const char *object_path, const float path);
 
 #ifdef __cplusplus
 }

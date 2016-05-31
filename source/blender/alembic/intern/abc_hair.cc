@@ -35,11 +35,13 @@ extern "C" {
 
 #include "BLI_listbase.h"
 #include "BLI_math_geom.h"
+#include "BLI_string.h"
 
 #include "BKE_curve.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_object.h"
 #include "BKE_particle.h"
+#include "BKE_modifier.h"
 
 #include "ED_curve.h"
 }
@@ -307,9 +309,10 @@ bool AbcHairReader::valid() const
 	return m_curves_schema.valid();
 }
 
+
 void AbcHairReader::readObjectData(Main *bmain, Scene *scene, float time)
 {
-	Curve *cu = BKE_curve_add(bmain, "abc_hair", OB_CURVE);
+	Curve *cu = BKE_curve_add(bmain, m_data_name.c_str(), OB_CURVE);
 	cu->flag |= CU_DEFORM_FILL | CU_PATH | CU_3D;
 
 	const ISampleSelector sample_sel(time);
@@ -359,4 +362,18 @@ void AbcHairReader::readObjectData(Main *bmain, Scene *scene, float time)
 
 	cu->actnu = hvertices->size() - 1;
 	cu->actvert = CU_ACT_NONE;
+
+	if (true) {
+		ModifierData *md = modifier_new(eModifierType_MeshSequenceCache);
+		BLI_addtail(&m_object->modifiers, md);
+
+		MeshSeqCacheModifierData *mcmd = reinterpret_cast<MeshSeqCacheModifierData *>(md);
+//		mcmd->type = MOD_MESHCACHE_TYPE_ABC;
+//		mcmd->time_mode = MOD_MESHCACHE_TIME_SECONDS;
+//		mcmd->forward_axis = OB_POSZ;
+//		mcmd->up_axis = OB_NEGY;
+
+		BLI_strncpy(mcmd->filepath, m_iobject.getArchive().getName().c_str(), 1024);
+		BLI_strncpy(mcmd->abc_object_path, m_iobject.getFullName().c_str(), 1024);
+	}
 }

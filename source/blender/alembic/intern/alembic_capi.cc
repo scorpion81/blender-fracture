@@ -182,6 +182,27 @@ static void find_mesh_object(const IObject &object, IObject &ret,
 	}
 }
 
+static void find_object(const IObject &object, IObject &ret,
+                        const std::string &path)
+{
+	if (!object.valid()) {
+		return;
+	}
+
+	std::vector<std::string> tokens;
+	split(path, '/', tokens);
+
+	IObject tmp = object;
+
+	std::vector<std::string>::iterator iter;
+	for (iter = tokens.begin(); iter != tokens.end(); ++iter) {
+		IObject child = tmp.getChild(*iter);
+		tmp = child;
+	}
+
+	ret = tmp;
+}
+
 void ABC_get_vertex_cache(const char *filepath, float time, void *verts,
                           int max_verts, const char *object_path, int is_mverts)
 {
@@ -618,4 +639,174 @@ void ABC_get_transform(Object *ob, const char *filepath, const char *object_path
 	ISampleSelector sample_sel(time);
 
 	create_input_transform(sample_sel, ixform, ob, r_mat);
+}
+
+/* ***************************************** */
+
+#ifdef PARALLEL_READ
+#include "BLI_task.h"
+
+struct MeshReadData {
+	MVert *mverts;
+	MPoly *mpolys;
+	MLoop *mloops;
+
+	Alembic::Abc::P3fArraySamplePtr positions;
+	Alembic::Abc::Int32ArraySamplePtr face_indices;
+	Alembic::Abc::Int32ArraySamplePtr face_counts;
+};
+
+static void read_verts_cb(void *userdata, const int x)
+{
+	MeshReadData *data = static_cast<MeshReadData *>(userdata);
+
+	MVert &mvert = data->mverts[x];
+	Imath::V3f pos_in = (*data->positions)[x];
+
+	/* Convert Y-up to Z-up. */
+	mvert.co[0] = pos_in[0];
+	mvert.co[1] = -pos_in[2];
+	mvert.co[2] = pos_in[1];
+	mvert.bweight = 0;
+}
+
+static void read_faces_cb(void *userdata, const int x)
+{
+	MeshReadData *data = static_cast<MeshReadData *>(userdata);
+
+	int face_size = (*data->face_counts)[x];
+	MPoly &poly = data->mpolys[x];
+
+	poly.loopstart = loopcount;
+	poly.totloop = face_size;
+
+	/* TODO: reverse */
+	int rev_loop = loopcount;
+	for (int f = face_size; f-- ;) {
+		MLoop &loop = data->mloops[rev_loop + f];
+		loop.v = (*data->face_indices)[loopcount++];
+	}
+}
+#endif
+
+static DerivedMesh *read_mesh_sample(const IObject &iobject, const float time)
+{
+	IPolyMesh mesh(iobject, kWrapExisting);
+	IPolyMeshSchema schema = mesh.getSchema();
+	ISampleSelector sample_sel(time);
+	const IPolyMeshSchema::Sample sample = schema.getValue(sample_sel);
+
+	const P3fArraySamplePtr &positions = sample.getPositions();
+	const Alembic::Abc::Int32ArraySamplePtr &face_indices = sample.getFaceIndices();
+	const Alembic::Abc::Int32ArraySamplePtr &face_counts = sample.getFaceCounts();
+
+	const size_t num_verts = positions->size();
+	const size_t num_edges = 0;
+	const size_t num_faces = 0;
+	const size_t num_loops = face_indices->size();
+	const size_t num_polys = face_counts->size();
+
+	DerivedMesh *dm = CDDM_new(num_verts, num_edges, num_faces, num_loops, num_polys);
+
+	MVert *mverts = dm->getVertArray(dm);
+	MPoly *mpolys = dm->getPolyArray(dm);
+	MLoop *mloops = dm->getLoopArray(dm);
+
+#ifdef PARALLEL_READ
+	MeshReadData data;
+	data.mverts = mverts;
+	data.mpolys = mpolys;
+	data.mloops = mloops;
+	data.positions = positions;
+	data.face_indices = face_indices;
+	data.face_counts = face_counts;
+
+	BLI_task_parallel_range(0, num_verts, &data, read_verts_cb, num_verts > 10000);
+	BLI_task_parallel_range(0, num_polys, &data, read_faces_cb, num_verts > 10000);
+#else
+	read_mverts(mverts, positions);
+	read_mpolys(mpolys, mloops, NULL, face_indices, face_counts);
+#endif
+
+	CDDM_calc_edges(dm);
+	dm->dirty = static_cast<DMDirtyFlag>(static_cast<int>(dm->dirty) | static_cast<int>(DM_DIRTY_NORMALS));
+
+	return dm;
+}
+
+using Alembic::Abc::ObjectHeader;
+using Alembic::AbcGeom::IPointsSchema;
+using Alembic::AbcGeom::ICurvesSchema;
+
+static DerivedMesh *read_points_sample(const IObject &iobject, const float time)
+{
+	IPoints points(iobject, kWrapExisting);
+	IPointsSchema schema = points.getSchema();
+	ISampleSelector sample_sel(time);
+	const IPointsSchema::Sample sample = schema.getValue(sample_sel);
+
+	const P3fArraySamplePtr &positions = sample.getPositions();
+
+	const size_t num_verts = positions->size();
+	DerivedMesh *dm = CDDM_new(num_verts, 0, 0, 0, 0);
+
+	MVert *mverts = dm->getVertArray(dm);
+
+	read_mverts(mverts, positions);
+
+	return dm;
+}
+
+#if 0
+DerivedMesh *read_curves_sample(const IObject &iobject, const float time)
+{
+	ICurves points(iobject, kWrapExisting);
+	ICurvesSchema schema = points.getSchema();
+	ISampleSelector sample_sel(time);
+	const ICurvesSchema::Sample sample = schema.getValue(sample_sel);
+
+	const P3fArraySamplePtr &positions = sample.getPositions();
+
+	const size_t num_verts = positions->size();
+	DerivedMesh *dm = CDDM_new(num_verts, 0, 0, 0, 0);
+
+	MVert *mverts = dm->getVertArray(dm);
+
+	read_mverts(mverts, positions);
+
+	return dm;
+}
+#endif
+
+DerivedMesh *ABC_read_mesh(const char *filepath, const char *object_path, const float time)
+{
+	IArchive archive = open_archive(filepath);
+
+	if (!archive.valid()) {
+		return NULL;
+	}
+
+	IObject iobject;
+
+	find_object(archive.getTop(), iobject, object_path);
+
+	if (!iobject.valid()) {
+		return NULL;
+	}
+
+	const Alembic::Abc::ObjectHeader &header = iobject.getHeader();
+
+	if (IPolyMesh::matches(header)) {
+		return read_mesh_sample(iobject, time);
+	}
+	else if (IPoints::matches(header)) {
+		return read_points_sample(iobject, time);
+	}
+#if 0
+	else if (ICurves::matches(header)) {
+		return read_curves_sample(iobject, time);
+	}
+#endif
+
+	return NULL;
 }

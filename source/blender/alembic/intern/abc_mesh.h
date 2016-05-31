@@ -121,12 +121,26 @@ private:
 
 	void readPolyDataSample(Mesh *mesh,
 	                        const Alembic::AbcGeom::Int32ArraySamplePtr &face_indices,
-                            const Alembic::AbcGeom::Int32ArraySamplePtr &face_counts,
-                            const size_t poly_start);
+                            const Alembic::AbcGeom::Int32ArraySamplePtr &face_counts);
 
 	void readVertexDataSample(Mesh *mesh,
 	                          const Alembic::AbcGeom::P3fArraySamplePtr &positions);
 };
+
+/* *********************************** */
+
+struct MLoop;
+struct MLoopUV;
+struct MPoly;
+struct MVert;
+
+void read_mverts(MVert *mverts, const Alembic::AbcGeom::P3fArraySamplePtr &positions);
+void read_mpolys(MPoly *mpolys, MLoop *mloops, MLoopUV *mloopuvs,
+                 const Alembic::AbcGeom::Int32ArraySamplePtr &face_indices,
+                 const Alembic::AbcGeom::Int32ArraySamplePtr &face_counts,
+                 const Alembic::AbcGeom::V2fArraySamplePtr &uvs = Alembic::AbcGeom::V2fArraySamplePtr());
+
+/* *********************************** */
 
 class AbcEmptyReader : public AbcObjectReader {
 	Alembic::AbcGeom::IXformSchema m_schema;

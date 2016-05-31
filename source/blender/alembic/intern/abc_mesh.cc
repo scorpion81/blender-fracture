@@ -1131,7 +1131,7 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 		const ISubDSchema::Sample sample = m_subd_schema.getValue(sample_sel);
 
 		readVertexDataSample(mesh, sample.getPositions());
-		readPolyDataSample(mesh, sample.getFaceIndices(), sample.getFaceCounts(), poly_start);
+		readPolyDataSample(mesh, sample.getFaceIndices(), sample.getFaceCounts());
 	}
 	else {
 		is_constant = m_schema.isConstant();
@@ -1139,7 +1139,7 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 		const IPolyMeshSchema::Sample sample = m_schema.getValue(sample_sel);
 
 		readVertexDataSample(mesh, sample.getPositions());
-		readPolyDataSample(mesh, sample.getFaceIndices(), sample.getFaceCounts(), poly_start);
+		readPolyDataSample(mesh, sample.getFaceIndices(), sample.getFaceCounts());
 	}
 
 	BKE_mesh_validate(mesh, false, false);
@@ -1156,48 +1156,33 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 
 	/* Add a default mesh cache modifier */
 
-	if (!is_constant) {
-		ModifierData *md = modifier_new(eModifierType_MeshCache);
+	if (true || !is_constant) {
+		ModifierData *md = modifier_new(eModifierType_MeshSequenceCache);
 		BLI_addtail(&m_object->modifiers, md);
 
-		MeshCacheModifierData *mcmd = reinterpret_cast<MeshCacheModifierData *>(md);
-		mcmd->type = MOD_MESHCACHE_TYPE_ABC;
-		mcmd->time_mode = MOD_MESHCACHE_TIME_SECONDS;
-		mcmd->forward_axis = OB_POSZ;
-		mcmd->up_axis = OB_NEGY;
+		MeshSeqCacheModifierData *mcmd = reinterpret_cast<MeshSeqCacheModifierData *>(md);
+//		mcmd->type = MOD_MESHCACHE_TYPE_ABC;
+//		mcmd->time_mode = MOD_MESHCACHE_TIME_SECONDS;
+//		mcmd->forward_axis = OB_POSZ;
+//		mcmd->up_axis = OB_NEGY;
 
 		BLI_strncpy(mcmd->filepath, m_iobject.getArchive().getName().c_str(), 1024);
-		BLI_strncpy(mcmd->sub_object, m_iobject.getFullName().c_str(), 1024);
+		BLI_strncpy(mcmd->abc_object_path, m_iobject.getFullName().c_str(), 1024);
 	}
 }
 
 void AbcMeshReader::readVertexDataSample(Mesh *mesh, const P3fArraySamplePtr &positions)
 {
-	const size_t vertex_count = positions->size();
-	const size_t vertex_start = mesh->totvert;
-
-	utils::mesh_add_verts(mesh, vertex_count);
-
-	for (int i = 0, j = vertex_start; i < vertex_count; ++i, ++j) {
-		MVert &mvert = mesh->mvert[j];
-		Imath::V3f pos_in = (*positions)[i];
-
-		/* Convert Y-up to Z-up. */
-		mvert.co[0] = pos_in[0];
-		mvert.co[1] = -pos_in[2];
-		mvert.co[2] = pos_in[1];
-		mvert.bweight = 0;
-	}
+	utils::mesh_add_verts(mesh, positions->size());
+	read_mverts(mesh->mvert, positions);
 }
 
 void AbcMeshReader::readPolyDataSample(Mesh *mesh,
                                        const Int32ArraySamplePtr &face_indices,
-                                       const Int32ArraySamplePtr &face_counts,
-                                       const size_t poly_start)
+                                       const Int32ArraySamplePtr &face_counts)
 {
 	const size_t num_poly = face_counts->size();
 	const size_t num_loops = face_indices->size();
-	const size_t loop_pos = mesh->totloop;
 
 	utils::mesh_add_mpolygons(mesh, num_poly);
 	utils::mesh_add_mloops(mesh, num_loops);
@@ -1211,29 +1196,8 @@ void AbcMeshReader::readPolyDataSample(Mesh *mesh,
 		uvsamp_vals = uvsamp.getVals();
 	}
 
-	int j = poly_start;
-	int loopcount = loop_pos;
-	for (int i = 0; i < num_poly; ++i, ++j) {
-		int face_size = (*face_counts)[i];
-		MPoly &poly = mesh->mpoly[j];
-
-		poly.loopstart = loopcount;
-		poly.totloop = face_size;
-
-		/* TODO: reverse */
-		int rev_loop = loopcount;
-		for (int f = face_size; f-- ;) {
-			MLoop &loop 	= mesh->mloop[rev_loop + f];
-			MLoopUV &loopuv = mesh->mloopuv[rev_loop + f];
-
-			if (uvsamp_vals) {
-				loopuv.uv[0] = (*uvsamp_vals)[loopcount][0];
-				loopuv.uv[1] = (*uvsamp_vals)[loopcount][1];
-			}
-
-			loop.v = (*face_indices)[loopcount++];
-		}
-	}
+	read_mpolys(mesh->mpoly, mesh->mloop, mesh->mloopuv,
+	            face_indices, face_counts, uvsamp_vals);
 }
 
 void AbcMeshReader::readFaceSetsSample(Main *bmain, Mesh *mesh, size_t poly_start,
@@ -1290,6 +1254,51 @@ void AbcMeshReader::readFaceSetsSample(Main *bmain, Mesh *mesh, size_t poly_star
 	}
 
 	utils::assign_materials(bmain, m_object, mat_map);
+}
+
+/* ********************************************************** */
+
+void read_mverts(MVert *mverts, const Alembic::AbcGeom::P3fArraySamplePtr &positions)
+{
+	for (int i = 0; i < positions->size(); ++i) {
+		MVert &mvert = mverts[i];
+		Imath::V3f pos_in = (*positions)[i];
+
+		/* Convert Y-up to Z-up. */
+		mvert.co[0] = pos_in[0];
+		mvert.co[1] = -pos_in[2];
+		mvert.co[2] = pos_in[1];
+		mvert.bweight = 0;
+	}
+}
+
+void read_mpolys(MPoly *mpolys, MLoop *mloops, MLoopUV *mloopuvs,
+                 const Alembic::AbcGeom::Int32ArraySamplePtr &face_indices,
+                 const Alembic::AbcGeom::Int32ArraySamplePtr &face_counts,
+                 const Alembic::AbcGeom::V2fArraySamplePtr &uvs)
+{
+	int loopcount = 0;
+	for (int i = 0; i < face_counts->size(); ++i) {
+		int face_size = (*face_counts)[i];
+		MPoly &poly = mpolys[i];
+
+		poly.loopstart = loopcount;
+		poly.totloop = face_size;
+
+		/* TODO: reverse */
+		int rev_loop = loopcount;
+		for (int f = face_size; f-- ;) {
+			MLoop &loop 	= mloops[rev_loop + f];
+
+			if (mloopuvs && uvs) {
+				MLoopUV &loopuv = mloopuvs[rev_loop + f];
+				loopuv.uv[0] = (*uvs)[loopcount][0];
+				loopuv.uv[1] = (*uvs)[loopcount][1];
+			}
+
+			loop.v = (*face_indices)[loopcount++];
+		}
+	}
 }
 
 /* ***************************** AbcEmptyReader ***************************** */

@@ -85,6 +85,7 @@ typedef enum ModifierType {
 	eModifierType_DataTransfer      = 49,
 	eModifierType_NormalEdit        = 50,
 	eModifierType_CorrectiveSmooth  = 51,
+	eModifierType_MeshSequenceCache = 52,
 	NUM_MODIFIER_TYPES
 } ModifierType;
 
@@ -1542,5 +1543,12 @@ enum {
 	MOD_NORMALEDIT_MIX_SUB  = 2,
 	MOD_NORMALEDIT_MIX_MUL  = 3,
 };
+
+typedef struct MeshSeqCacheModifierData {
+	ModifierData modifier;
+
+	char filepath[1024];
+	char abc_object_path[1024];
+} MeshSeqCacheModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

@@ -65,6 +65,7 @@ EnumPropertyItem rna_enum_object_modifier_type_items[] = {
 	{0, "", 0, N_("Modify"), ""},
 	{eModifierType_DataTransfer, "DATA_TRANSFER", ICON_MOD_DATA_TRANSFER, "Data Transfer", ""},
 	{eModifierType_MeshCache, "MESH_CACHE", ICON_MOD_MESHDEFORM, "Mesh Cache", ""},
+    {eModifierType_MeshSequenceCache, "MESH_SEQUENCE_CACHE", ICON_MOD_MESHDEFORM, "Mesh Sequence Cache", ""},
 	{eModifierType_NormalEdit, "NORMAL_EDIT", ICON_MOD_NORMALEDIT, "Normal Edit", ""},
 	{eModifierType_UVProject, "UV_PROJECT", ICON_MOD_UVPROJECT, "UV Project", ""},
 	{eModifierType_UVWarp, "UV_WARP", ICON_MOD_UVPROJECT, "UV Warp", ""},
@@ -399,6 +400,8 @@ static StructRNA *rna_Modifier_refine(struct PointerRNA *ptr)
 			return &RNA_NormalEditModifier;
 		case eModifierType_CorrectiveSmooth:
 			return &RNA_CorrectiveSmoothModifier;
+		case eModifierType_MeshSequenceCache:
+			return &RNA_MeshSequenceCacheModifier;
 		/* Default */
 		case eModifierType_None:
 		case eModifierType_ShapeKey:
@@ -4227,6 +4230,25 @@ static void rna_def_modifier_meshcache(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
+static void rna_def_modifier_meshseqcache(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna = RNA_def_struct(brna, "MeshSequenceCacheModifier", "Modifier");
+	RNA_def_struct_ui_text(srna, "Cache Modifier", "Cache Mesh");
+	RNA_def_struct_sdna(srna, "MeshSeqCacheModifierData");
+	RNA_def_struct_ui_icon(srna, ICON_MOD_MESHDEFORM);  /* XXX, needs own icon */
+
+	prop = RNA_def_property(srna, "filepath", PROP_STRING, PROP_FILEPATH);
+	RNA_def_property_ui_text(prop, "File Path", "Path to external displacements file");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "abc_object_path", PROP_STRING, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Object", "Path to the object in the Alembic archive");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+}
+
 static void rna_def_modifier_laplaciandeform(BlenderRNA *brna)
 {
 	StructRNA *srna;
@@ -4751,6 +4773,7 @@ void RNA_def_modifier(BlenderRNA *brna)
 	rna_def_modifier_wireframe(brna);
 	rna_def_modifier_datatransfer(brna);
 	rna_def_modifier_normaledit(brna);
+	rna_def_modifier_meshseqcache(brna);
 }
 
 #endif

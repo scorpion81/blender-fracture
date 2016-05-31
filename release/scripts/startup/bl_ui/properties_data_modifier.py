@@ -222,6 +222,10 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         row = split.row()
         row.prop(md, "flip_axis")
 
+    def MESH_SEQUENCE_CACHE(self, layout, ob, md):
+        layout.prop(md, "filepath")
+        layout.prop(md, "abc_object_path")
+
     def CAST(self, layout, ob, md):
         split = layout.split(percentage=0.25)
 
