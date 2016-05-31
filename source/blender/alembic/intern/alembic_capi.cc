@@ -722,30 +722,6 @@ static DerivedMesh *read_points_sample(const IObject &iobject, const float time)
 	return dm;
 }
 
-#if 1
-DerivedMesh *read_curves_sample(DerivedMesh *dm, const IObject &iobject, const float time)
-{
-	ICurves points(iobject, kWrapExisting);
-	ICurvesSchema schema = points.getSchema();
-	ISampleSelector sample_sel(time);
-	const ICurvesSchema::Sample sample = schema.getValue(sample_sel);
-
-	const P3fArraySamplePtr &positions = sample.getPositions();
-
-	const size_t num_verts = positions->size();
-
-	if (num_verts != dm->getNumVerts(dm)) {
-		return dm;
-	}
-
-	MVert *mverts = dm->getVertArray(dm);
-
-	read_mverts(mverts, positions);
-
-	return dm;
-}
-#endif
-
 void read_curves_sample(float (*vertexCos)[3], int max_verts, const IObject &iobject, const float time)
 {
 	ICurves points(iobject, kWrapExisting);
