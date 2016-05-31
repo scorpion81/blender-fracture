@@ -1161,10 +1161,6 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 		BLI_addtail(&m_object->modifiers, md);
 
 		MeshSeqCacheModifierData *mcmd = reinterpret_cast<MeshSeqCacheModifierData *>(md);
-//		mcmd->type = MOD_MESHCACHE_TYPE_ABC;
-//		mcmd->time_mode = MOD_MESHCACHE_TIME_SECONDS;
-//		mcmd->forward_axis = OB_POSZ;
-//		mcmd->up_axis = OB_NEGY;
 
 		BLI_strncpy(mcmd->filepath, m_iobject.getArchive().getName().c_str(), 1024);
 		BLI_strncpy(mcmd->abc_object_path, m_iobject.getFullName().c_str(), 1024);
