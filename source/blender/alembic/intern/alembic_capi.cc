@@ -150,39 +150,7 @@ static size_t update_points(std::pair<IPolyMeshSchema, IObject> schema,
 	return vtx_start + vertex_count;
 }
 
-static void find_mesh_object(const IObject &object, IObject &ret,
-                             const std::string &object_path, bool &found)
-{
-	if (!object.valid()) {
-		return;
-	}
-
-	std::vector<std::string> tokens;
-	split(object_path, '/', tokens);
-
-	IObject tmp = object;
-
-	std::vector<std::string>::iterator iter;
-	for (iter = tokens.begin(); iter != tokens.end(); ++iter) {
-		IObject child = tmp.getChild(*iter);
-
-		if (!child.valid()) {
-			continue;
-		}
-
-		const MetaData &md = child.getMetaData();
-
-		if (IPolyMesh::matches(md)) {
-			ret = child;
-			found = true;
-			return;
-		}
-
-		tmp = child;
-	}
-}
-
-static void find_object(const IObject &object, IObject &ret,
+static void find_iobject(const IObject &object, IObject &ret,
                         const std::string &path)
 {
 	if (!object.valid()) {
@@ -212,32 +180,30 @@ void ABC_get_vertex_cache(const char *filepath, float time, void *verts,
 		return;
 	}
 
-	IObject object = archive.getTop();
+	IObject top = archive.getTop();
 
-	if (!object.valid()) {
+	if (!top.valid()) {
 		return;
 	}
 
-	IObject mesh_obj;
-	bool found = false;
+	IObject iobject;
+	find_iobject(top, iobject, object_path);
 
-	find_mesh_object(object, mesh_obj, object_path, found);
-
-	if (!found) {
+	if (!IPolyMesh::matches(iobject.getHeader())) {
 		return;
 	}
 
-	IPolyMesh mesh(mesh_obj, kWrapExisting);
+	IPolyMesh mesh(iobject, kWrapExisting);
 	IPolyMeshSchema schema = mesh.getSchema();
 	ISampleSelector sample_sel(time);
 
 	if (is_mverts) {
-		update_points(std::pair<IPolyMeshSchema, IObject>(schema, mesh_obj),
+		update_points(std::pair<IPolyMeshSchema, IObject>(schema, iobject),
 		              sample_sel, (MVert *)verts, 0, max_verts, NULL);
 	}
 	else {
 		float (*vcos)[3] = static_cast<float (*)[3]>(verts);
-		update_points(std::pair<IPolyMeshSchema, IObject>(schema, mesh_obj),
+		update_points(std::pair<IPolyMeshSchema, IObject>(schema, iobject),
 		              sample_sel, NULL, 0, max_verts, vcos);
 	}
 }
@@ -254,11 +220,10 @@ int ABC_check_subobject_valid(const char *filepath, const char *object_path)
 		return 0;
 	}
 
-	bool found = false;
 	IObject ob;
-	find_mesh_object(archive.getTop(), ob, object_path, found);
+	find_iobject(archive.getTop(), ob, object_path);
 
-	return (found && ob.valid());
+	return (ob.valid());
 }
 
 struct ExportJobData {
@@ -810,8 +775,7 @@ DerivedMesh *ABC_read_mesh(const char *filepath, const char *object_path, const 
 	}
 
 	IObject iobject;
-
-	find_object(archive.getTop(), iobject, object_path);
+	find_iobject(archive.getTop(), iobject, object_path);
 
 	if (!iobject.valid()) {
 		return NULL;
@@ -839,8 +803,7 @@ void ABC_read_vertex_cache(const char *filepath, const char *object_path, const 
 	}
 
 	IObject iobject;
-
-	find_object(archive.getTop(), iobject, object_path);
+	find_iobject(archive.getTop(), iobject, object_path);
 
 	if (!iobject.valid()) {
 		return;
