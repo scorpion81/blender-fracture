@@ -106,6 +106,44 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 #endif
 }
 
+static void deformVerts(ModifierData *md, Object *ob,
+                        DerivedMesh *derivedData,
+                        float (*vertexCos)[3],
+                        int numVerts,
+                        ModifierApplyFlag flag)
+{
+	MeshSeqCacheModifierData *mcmd = (MeshSeqCacheModifierData *) md;
+
+	Scene *scene = md->scene;
+	const float frame = BKE_scene_frame_get(scene);
+	const float time = frame / FPS;
+
+	char filepath[1024];
+	BLI_strncpy(filepath, mcmd->filepath, 1024);
+
+	int fframe;
+	int frame_len;
+
+	if (BLI_path_frame_get(filepath, &fframe, &frame_len)) {
+		char ext[32];
+		BLI_path_frame_strip(filepath, true, ext);
+		BLI_path_frame(filepath, frame, frame_len);
+		BLI_ensure_extension(filepath, 1024, ext);
+
+		if (!BLI_exists(filepath)) {
+			return;
+		}
+	}
+
+	ABC_read_vertex_cache(filepath,
+	                      mcmd->abc_object_path,
+                          time,
+	                      vertexCos,
+	                      numVerts);
+
+	UNUSED_VARS(ob, derivedData, flag);
+}
+
 static bool dependsOnTime(ModifierData *md)
 {
 	UNUSED_VARS(md);
@@ -116,10 +154,11 @@ ModifierTypeInfo modifierType_MeshSequenceCache = {
     /* name */              "Mesh Cache Seq",
     /* structName */        "MeshSeqCacheModifierData",
     /* structSize */        sizeof(MeshSeqCacheModifierData),
-    /* type */              eModifierTypeType_Nonconstructive,
-    /* flags */             eModifierTypeFlag_AcceptsMesh | eModifierTypeFlag_Single,
+    /* type */              eModifierTypeType_DeformOrConstruct,
+    /* flags */             eModifierTypeFlag_AcceptsMesh |
+                            eModifierTypeFlag_AcceptsCVs,
     /* copyData */          copyData,
-    /* deformVerts */       NULL,
+    /* deformVerts */       deformVerts,
     /* deformMatrices */    NULL,
     /* deformVertsEM */     NULL,
     /* deformMatricesEM */  NULL,

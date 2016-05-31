@@ -757,8 +757,8 @@ static DerivedMesh *read_points_sample(const IObject &iobject, const float time)
 	return dm;
 }
 
-#if 0
-DerivedMesh *read_curves_sample(const IObject &iobject, const float time)
+#if 1
+DerivedMesh *read_curves_sample(DerivedMesh *dm, const IObject &iobject, const float time)
 {
 	ICurves points(iobject, kWrapExisting);
 	ICurvesSchema schema = points.getSchema();
@@ -768,7 +768,10 @@ DerivedMesh *read_curves_sample(const IObject &iobject, const float time)
 	const P3fArraySamplePtr &positions = sample.getPositions();
 
 	const size_t num_verts = positions->size();
-	DerivedMesh *dm = CDDM_new(num_verts, 0, 0, 0, 0);
+
+	if (num_verts != dm->getNumVerts(dm)) {
+		return dm;
+	}
 
 	MVert *mverts = dm->getVertArray(dm);
 
@@ -777,6 +780,26 @@ DerivedMesh *read_curves_sample(const IObject &iobject, const float time)
 	return dm;
 }
 #endif
+
+void read_curves_sample(float (*vertexCos)[3], int max_verts, const IObject &iobject, const float time)
+{
+	ICurves points(iobject, kWrapExisting);
+	ICurvesSchema schema = points.getSchema();
+	ISampleSelector sample_sel(time);
+	const ICurvesSchema::Sample sample = schema.getValue(sample_sel);
+
+	const P3fArraySamplePtr &positions = sample.getPositions();
+
+	for (int i = 0; i < min_ff(max_verts, positions->size()); ++i) {
+		float *vert = vertexCos[i];
+		Imath::V3f pos_in = (*positions)[i];
+
+		/* Convert Y-up to Z-up. */
+		vert[0] = pos_in[0];
+		vert[1] = -pos_in[2];
+		vert[2] = pos_in[1];
+	}
+}
 
 DerivedMesh *ABC_read_mesh(const char *filepath, const char *object_path, const float time)
 {
@@ -802,11 +825,30 @@ DerivedMesh *ABC_read_mesh(const char *filepath, const char *object_path, const 
 	else if (IPoints::matches(header)) {
 		return read_points_sample(iobject, time);
 	}
-#if 0
-	else if (ICurves::matches(header)) {
-		return read_curves_sample(iobject, time);
-	}
-#endif
 
 	return NULL;
+}
+
+void ABC_read_vertex_cache(const char *filepath, const char *object_path, const float time,
+                           float (*vertexCos)[3], int max_verts)
+{
+	IArchive archive = open_archive(filepath);
+
+	if (!archive.valid()) {
+		return;
+	}
+
+	IObject iobject;
+
+	find_object(archive.getTop(), iobject, object_path);
+
+	if (!iobject.valid()) {
+		return;
+	}
+
+	const Alembic::Abc::ObjectHeader &header = iobject.getHeader();
+
+	if (ICurves::matches(header)) {
+		return read_curves_sample(vertexCos, max_verts, iobject, time);
+	}
 }
