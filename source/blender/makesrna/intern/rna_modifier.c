@@ -4247,6 +4247,10 @@ static void rna_def_modifier_meshseqcache(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "abc_object_path", PROP_STRING, PROP_NONE);
 	RNA_def_property_ui_text(prop, "Object", "Path to the object in the Alembic archive");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "is_sequence", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Sequence", "Whether the cache is separated in a series of files");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 static void rna_def_modifier_laplaciandeform(BlenderRNA *brna)

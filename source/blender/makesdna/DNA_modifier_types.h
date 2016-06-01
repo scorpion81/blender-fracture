@@ -1549,6 +1549,8 @@ typedef struct MeshSeqCacheModifierData {
 
 	char filepath[1024];
 	char abc_object_path[1024];
+	char is_sequence;
+	char pad[7];
 } MeshSeqCacheModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

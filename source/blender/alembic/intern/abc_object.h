@@ -79,6 +79,7 @@ struct ImportSettings {
 	int from_up;
 	int from_forward;
 	float scale;
+	bool is_sequence;
 };
 
 class AbcObjectReader {

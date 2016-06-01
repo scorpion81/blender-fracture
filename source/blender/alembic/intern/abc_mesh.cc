@@ -1156,7 +1156,7 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 
 	/* Add a default mesh cache modifier */
 
-	if (true || !is_constant) {
+	if (m_settings->is_sequence || !is_constant) {
 		ModifierData *md = modifier_new(eModifierType_MeshSequenceCache);
 		BLI_addtail(&m_object->modifiers, md);
 
@@ -1164,6 +1164,7 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 
 		BLI_strncpy(mcmd->filepath, m_iobject.getArchive().getName().c_str(), 1024);
 		BLI_strncpy(mcmd->abc_object_path, m_iobject.getFullName().c_str(), 1024);
+		mcmd->is_sequence = m_settings->is_sequence;
 	}
 }
 
