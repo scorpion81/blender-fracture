@@ -94,7 +94,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		}
 	}
 
-	DerivedMesh *result = ABC_read_mesh(filepath,
+	DerivedMesh *result = ABC_read_mesh(dm,
+	                                    filepath,
 	                                    mcmd->abc_object_path,
 	                                    time);
 

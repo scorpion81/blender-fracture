@@ -654,7 +654,7 @@ static void read_faces_cb(void *userdata, const int x)
 }
 #endif
 
-static DerivedMesh *read_mesh_sample(const IObject &iobject, const float time)
+static DerivedMesh *read_mesh_sample(DerivedMesh *dm, const IObject &iobject, const float time)
 {
 	IPolyMesh mesh(iobject, kWrapExisting);
 	IPolyMeshSchema schema = mesh.getSchema();
@@ -665,13 +665,9 @@ static DerivedMesh *read_mesh_sample(const IObject &iobject, const float time)
 	const Alembic::Abc::Int32ArraySamplePtr &face_indices = sample.getFaceIndices();
 	const Alembic::Abc::Int32ArraySamplePtr &face_counts = sample.getFaceCounts();
 
-	const size_t num_verts = positions->size();
-	const size_t num_edges = 0;
-	const size_t num_faces = 0;
-	const size_t num_loops = face_indices->size();
-	const size_t num_polys = face_counts->size();
-
-	DerivedMesh *dm = CDDM_new(num_verts, num_edges, num_faces, num_loops, num_polys);
+	if (dm->getNumVerts(dm) != positions->size()) {
+		dm = CDDM_new(positions->size(), 0, 0, face_indices->size(), face_counts->size());
+	}
 
 	MVert *mverts = dm->getVertArray(dm);
 	MPoly *mpolys = dm->getPolyArray(dm);
@@ -703,7 +699,7 @@ using Alembic::Abc::ObjectHeader;
 using Alembic::AbcGeom::IPointsSchema;
 using Alembic::AbcGeom::ICurvesSchema;
 
-static DerivedMesh *read_points_sample(const IObject &iobject, const float time)
+static DerivedMesh *read_points_sample(DerivedMesh *dm, const IObject &iobject, const float time)
 {
 	IPoints points(iobject, kWrapExisting);
 	IPointsSchema schema = points.getSchema();
@@ -712,8 +708,9 @@ static DerivedMesh *read_points_sample(const IObject &iobject, const float time)
 
 	const P3fArraySamplePtr &positions = sample.getPositions();
 
-	const size_t num_verts = positions->size();
-	DerivedMesh *dm = CDDM_new(num_verts, 0, 0, 0, 0);
+	if (dm->getNumVerts(dm) != positions->size()) {
+		dm = CDDM_new(positions->size(), 0, 0, 0, 0);
+	}
 
 	MVert *mverts = dm->getVertArray(dm);
 
@@ -742,7 +739,7 @@ void read_curves_sample(float (*vertexCos)[3], int max_verts, const IObject &iob
 	}
 }
 
-DerivedMesh *ABC_read_mesh(const char *filepath, const char *object_path, const float time)
+DerivedMesh *ABC_read_mesh(DerivedMesh *dm, const char *filepath, const char *object_path, const float time)
 {
 	IArchive archive = open_archive(filepath);
 
@@ -760,10 +757,10 @@ DerivedMesh *ABC_read_mesh(const char *filepath, const char *object_path, const 
 	const Alembic::Abc::ObjectHeader &header = iobject.getHeader();
 
 	if (IPolyMesh::matches(header)) {
-		return read_mesh_sample(iobject, time);
+		return read_mesh_sample(dm, iobject, time);
 	}
 	else if (IPoints::matches(header)) {
-		return read_points_sample(iobject, time);
+		return read_points_sample(dm, iobject, time);
 	}
 
 	return NULL;
