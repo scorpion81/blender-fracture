@@ -35,13 +35,11 @@ extern "C" {
 
 #include "BLI_listbase.h"
 #include "BLI_math_geom.h"
-#include "BLI_string.h"
 
 #include "BKE_curve.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_object.h"
 #include "BKE_particle.h"
-#include "BKE_modifier.h"
 
 #include "ED_curve.h"
 }
@@ -364,13 +362,6 @@ void AbcHairReader::readObjectData(Main *bmain, Scene *scene, float time)
 	cu->actvert = CU_ACT_NONE;
 
 	if (m_settings->is_sequence || !m_curves_schema.isConstant()) {
-		ModifierData *md = modifier_new(eModifierType_MeshSequenceCache);
-		BLI_addtail(&m_object->modifiers, md);
-
-		MeshSeqCacheModifierData *mcmd = reinterpret_cast<MeshSeqCacheModifierData *>(md);
-
-		BLI_strncpy(mcmd->filepath, m_iobject.getArchive().getName().c_str(), 1024);
-		BLI_strncpy(mcmd->abc_object_path, m_iobject.getFullName().c_str(), 1024);
-		mcmd->is_sequence = m_settings->is_sequence;
+		addDefaultModifier();
 	}
 }

@@ -28,12 +28,15 @@
 
 extern "C" {
 #include "DNA_constraint_types.h"
+#include "DNA_modifier_types.h"
 #include "DNA_object_types.h"
 
 #include "BKE_constraint.h"
 #include "BKE_idprop.h"
+#include "BKE_modifier.h"
 #include "BKE_object.h"
 
+#include "BLI_listbase.h"
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 #include "BLI_string.h"
@@ -371,4 +374,16 @@ void AbcObjectReader::readObjectMatrix(const float time)
 		BLI_strncpy(data->filepath, m_iobject.getArchive().getName().c_str(), 1024);
 		BLI_strncpy(data->abc_object_path, m_iobject.getFullName().c_str(), 1024);
 	}
+}
+
+void AbcObjectReader::addDefaultModifier() const
+{
+	ModifierData *md = modifier_new(eModifierType_MeshSequenceCache);
+	BLI_addtail(&m_object->modifiers, md);
+
+	MeshSeqCacheModifierData *mcmd = reinterpret_cast<MeshSeqCacheModifierData *>(md);
+
+	BLI_strncpy(mcmd->filepath, m_iobject.getArchive().getName().c_str(), 1024);
+	BLI_strncpy(mcmd->abc_object_path, m_iobject.getFullName().c_str(), 1024);
+	mcmd->is_sequence = m_settings->is_sequence;
 }
