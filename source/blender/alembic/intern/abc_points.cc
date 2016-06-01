@@ -26,10 +26,15 @@
 
 #include <Alembic/Abc/All.h>
 
+#include "abc_mesh.h"
 #include "abc_transform.h"
 
 extern "C" {
+#include "DNA_mesh_types.h"
+
 #include "BKE_lattice.h"
+#include "BKE_mesh.h"
+#include "BKE_object.h"
 #include "BKE_particle.h"
 #include "BKE_scene.h"
 
@@ -37,9 +42,17 @@ extern "C" {
 }
 
 using Alembic::AbcGeom::kVertexScope;
+using Alembic::AbcGeom::kWrapExisting;
+using Alembic::AbcGeom::P3fArraySamplePtr;
+
+using Alembic::AbcGeom::IPoints;
+using Alembic::AbcGeom::IPointsSchema;
+using Alembic::AbcGeom::ISampleSelector;
 
 using Alembic::AbcGeom::OPoints;
 using Alembic::AbcGeom::OPointsSchema;
+
+/* ****************************************** */
 
 AbcPointsWriter::AbcPointsWriter(Scene *scene,
                                  Object *ob,
@@ -117,4 +130,40 @@ void AbcPointsWriter::do_write()
 	m_sample.setSelfBounds(bounds());
 
 	m_schema.set(m_sample);
+}
+
+/* ****************************************** */
+
+AbcPointsReader::AbcPointsReader(const Alembic::Abc::IObject &object, ImportSettings &settings)
+    : AbcObjectReader(object, settings)
+{
+	IPoints ipoints(m_iobject, kWrapExisting);
+	m_schema = ipoints.getSchema();
+}
+
+bool AbcPointsReader::valid() const
+{
+	return m_schema.valid();
+}
+
+void AbcPointsReader::readObjectData(Main *bmain, Scene *scene, float time)
+{
+	Mesh *mesh = BKE_mesh_add(bmain, m_data_name.c_str());
+
+	const ISampleSelector sample_sel(time);
+	m_sample = m_schema.getValue(sample_sel);
+
+	const P3fArraySamplePtr &positions = m_sample.getPositions();
+
+	utils::mesh_add_verts(mesh, positions->size());
+	read_mverts(mesh->mvert, positions);
+
+	BKE_mesh_validate(mesh, false, false);
+
+	m_object = BKE_object_add(bmain, scene, OB_MESH, m_object_name.c_str());
+	m_object->data = mesh;
+
+	if (m_settings->is_sequence || !m_schema.isConstant()) {
+		addDefaultModifier();
+	}
 }

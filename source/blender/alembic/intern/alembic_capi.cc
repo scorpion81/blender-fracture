@@ -31,6 +31,7 @@
 #include "abc_hair.h"
 #include "abc_mesh.h"
 #include "abc_nurbs.h"
+#include "abc_points.h"
 #include "abc_util.h"
 
 extern "C" {
@@ -372,7 +373,7 @@ static void visit_object(const IObject &object,
 			reader = new AbcCameraReader(child, settings);
 		}
 		else if (IPoints::matches(md)) {
-			/* Pass for now. */
+			reader = new AbcPointsReader(child, settings);
 		}
 		else if (IMaterial::matches(md)) {
 			/* Pass for now. */

@@ -961,7 +961,7 @@ void AbcMeshWriter::getGeoGroups(
 /* Some helpers for mesh generation */
 namespace utils {
 
-static void mesh_add_verts(Mesh *mesh, size_t len)
+void mesh_add_verts(Mesh *mesh, size_t len)
 {
 	if (len == 0) {
 		return;

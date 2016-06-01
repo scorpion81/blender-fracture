@@ -140,6 +140,12 @@ void read_mpolys(MPoly *mpolys, MLoop *mloops, MLoopUV *mloopuvs,
                  const Alembic::AbcGeom::Int32ArraySamplePtr &face_counts,
                  const Alembic::AbcGeom::V2fArraySamplePtr &uvs = Alembic::AbcGeom::V2fArraySamplePtr());
 
+namespace utils {
+
+void mesh_add_verts(struct Mesh *mesh, size_t len);
+
+}
+
 /* *********************************** */
 
 class AbcEmptyReader : public AbcObjectReader {

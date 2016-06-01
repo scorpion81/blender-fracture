@@ -24,9 +24,12 @@
 
 #pragma once
 
+#include "abc_object.h"
 #include "abc_shape.h"
 
 class ParticleSystem;
+
+/* ****************************************** */
 
 class AbcPointsWriter : public AbcShapeWriter {
 	Alembic::AbcGeom::OPointsSchema m_schema;
@@ -42,4 +45,18 @@ public:
                     ParticleSystem *psys);
 
 	void do_write();
+};
+
+/* ****************************************** */
+
+class AbcPointsReader : public AbcObjectReader {
+	Alembic::AbcGeom::IPointsSchema m_schema;
+	Alembic::AbcGeom::IPointsSchema::Sample m_sample;
+
+public:
+	AbcPointsReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
+
+	bool valid() const;
+
+	void readObjectData(Main *bmain, Scene *scene, float time);
 };
