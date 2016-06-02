@@ -422,13 +422,6 @@ static void visit_object(const IObject &object,
 	}
 }
 
-static void create_readers(IArchive &archive,
-                           std::vector<AbcObjectReader *> &readers,
-                           ImportSettings &settings)
-{
-	visit_object(archive.getTop(), readers, settings);
-}
-
 static Object *find_object(Scene *scene, const std::string &name)
 {
 	Base *base;
@@ -501,7 +494,7 @@ static void import_startjob(void *cjv, short *stop, short *do_update, float *pro
 	*data->progress = 0.05f;
 
 	std::vector<AbcObjectReader *> readers;
-	create_readers(archive, readers, data->settings);
+	visit_object(archive.getTop(), readers, data->settings);
 
 	*data->do_update = true;
 	*data->progress = 0.1f;
@@ -562,47 +555,6 @@ void ABC_import(bContext *C, const char *filepath, float scale, bool is_sequence
 
 /* ******************************* */
 
-static IXform get_xform(const IObject &object, const std::string &name, bool &found, bool &locator)
-{
-	locator = false;
-
-	if (!object.valid()) {
-		return IXform();
-	}
-
-	std::vector<std::string> tokens;
-	split(name, '/', tokens);
-
-	IObject tmp = object;
-
-	std::vector<std::string>::iterator iter;
-	for (iter = tokens.begin(); iter != tokens.end(); ++iter) {
-		IObject child = tmp.getChild(*iter);
-
-		if (!child.valid()) {
-			continue;
-		}
-
-		tmp = child;
-	}
-
-	if (!tmp.valid()) {
-		return IXform();
-	}
-
-	found = true;
-
-#if 1
-	const MetaData &md = tmp.getMetaData();
-
-	if (IXform::matches(md)/* && is_locator(tmp)*/) {
-		return IXform(tmp, kWrapExisting);
-	}
-#endif
-
-	return IXform(tmp.getParent(), kWrapExisting);
-}
-
 void ABC_get_transform(Object *ob, const char *filepath, const char *object_path, float r_mat[4][4], float time)
 {
 	IArchive archive = open_archive(filepath);
@@ -611,12 +563,21 @@ void ABC_get_transform(Object *ob, const char *filepath, const char *object_path
 		return;
 	}
 
-	bool found = false;
-	bool locator = false;
-	const IXform ixform = get_xform(archive.getTop(), object_path, found, locator);
-	const IXformSchema xform_schema = ixform.getSchema();
+	IObject tmp;
+	find_iobject(archive.getTop(), tmp, object_path);
 
-	if (!found || !xform_schema.valid()) {
+	IXform ixform;
+
+	if (IXform::matches(tmp.getHeader())) {
+		ixform = IXform(tmp, kWrapExisting);
+	}
+	else {
+		ixform = IXform(tmp.getParent(), kWrapExisting);
+	}
+
+	IXformSchema schema = ixform.getSchema();
+
+	if (!!schema.valid()) {
 		return;
 	}
 
