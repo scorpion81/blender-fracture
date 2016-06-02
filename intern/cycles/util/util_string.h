@@ -50,12 +50,22 @@ string string_from_bool(const bool var);
 /* Wide char strings are only used on Windows to deal with non-ascii
  * characters in file names and such. No reason to use such strings
  * for something else at this moment.
+ *
+ * Please note that strings are expected to be in UTF-8 codepage, and
+ * if ANSI is needed then explicit conversion required.
+ *
  */
 #ifdef _WIN32
 using std::wstring;
 wstring string_to_wstring(const string& path);
 string string_from_wstring(const wstring& path);
+string string_to_ansi(const string& str);
 #endif
+
+/* Make a string from a size in bytes in human readable form */
+string string_human_readable_size(size_t size);
+/* Make a string from a unitless quantity in human readable form */
+string string_human_readable_number(size_t num);
 
 CCL_NAMESPACE_END
 

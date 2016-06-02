@@ -194,11 +194,31 @@ void id_us_clear_real(ID *id)
 	}
 }
 
+/**
+ * Same as \a id_us_plus, but does not handle lib indirect -> extern.
+ * Only used by readfile.c so far, but simpler/safer to keep it here nonetheless.
+ */
+void id_us_plus_no_lib(ID *id)
+{
+	if (id) {
+		if ((id->tag & LIB_TAG_EXTRAUSER) && (id->tag & LIB_TAG_EXTRAUSER_SET)) {
+			BLI_assert(id->us >= 1);
+			/* No need to increase count, just tag extra user as no more set.
+			 * Avoids annoying & inconsistent +1 in user count. */
+			id->tag &= ~LIB_TAG_EXTRAUSER_SET;
+		}
+		else {
+			BLI_assert(id->us >= 0);
+			id->us++;
+		}
+	}
+}
+
+
 void id_us_plus(ID *id)
 {
 	if (id) {
-		BLI_assert(id->us >= 0);
-		id->us++;
+		id_us_plus_no_lib(id);
 		id_lib_extern(id);
 	}
 }
@@ -911,7 +931,7 @@ void BKE_libblock_init_empty(ID *id)
 			BKE_texture_default((Tex *)id);
 			break;
 		case ID_IM:
-			/* Image is a bit complicated, for now assume NULLified im is OK. */
+			BKE_image_init((Image *)id);
 			break;
 		case ID_LT:
 			BKE_lattice_init((Lattice *)id);
@@ -1066,7 +1086,7 @@ void *BKE_libblock_copy(ID *id)
 	return BKE_libblock_copy_ex(G.main, id);
 }
 
-static bool id_relink_looper(void *UNUSED(user_data), ID **id_pointer, const int cd_flag)
+static int id_relink_looper(void *UNUSED(user_data), ID *UNUSED(self_id), ID **id_pointer, const int cd_flag)
 {
 	ID *id = *id_pointer;
 	if (id) {
@@ -1080,7 +1100,7 @@ static bool id_relink_looper(void *UNUSED(user_data), ID **id_pointer, const int
 			BKE_libblock_relink(id);
 		}
 	}
-	return true;
+	return IDWALK_RET_NOP;
 }
 
 void BKE_libblock_relink(ID *id)
@@ -1763,7 +1783,7 @@ void BKE_main_id_clear_newpoins(Main *bmain)
 	}
 }
 
-static void lib_indirect_test_id(ID *id, Library *lib)
+static void lib_indirect_test_id(ID *id, const Library *lib)
 {
 #define LIBTAG(a) \
 	if (a && a->id.lib) { a->id.tag &= ~LIB_TAG_INDIRECT; a->id.tag |= LIB_TAG_EXTERN; } (void)0
@@ -1810,9 +1830,14 @@ static void lib_indirect_test_id(ID *id, Library *lib)
 #undef LIBTAG
 }
 
-/* if lib!=NULL, only all from lib local
- * bmain is almost certainly G.main */
-void BKE_library_make_local(Main *bmain, Library *lib, bool untagged_only, bool set_fake)
+/** Make linked datablocks local.
+ *
+ * \param bmain Almost certainly G.main.
+ * \param lib If not NULL, only make local datablocks from this library.
+ * \param untagged_only If true, only make local datablocks not tagged with LIB_TAG_PRE_EXISTING.
+ * \param set_fake If true, set fake user on all localized datablocks (except group and objects ones).
+ */
+void BKE_library_make_local(Main *bmain, const Library *lib, const bool untagged_only, const bool set_fake)
 {
 	ListBase *lbarray[MAX_LIBARRAY];
 	ID *id, *idn;

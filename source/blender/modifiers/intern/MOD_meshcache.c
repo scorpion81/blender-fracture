@@ -48,6 +48,10 @@
 
 #include "MOD_modifiertypes.h"
 
+#ifdef WITH_ALEMBIC
+#include "ABC_alembic.h"
+#endif
+
 static void initData(ModifierData *md)
 {
 	MeshCacheModifierData *mcmd = (MeshCacheModifierData *)md;
@@ -84,7 +88,13 @@ static bool isDisabled(ModifierData *md, int UNUSED(useRenderParams))
 	MeshCacheModifierData *mcmd = (MeshCacheModifierData *) md;
 
 	/* leave it up to the modifier to check the file is valid on calculation */
-	return (mcmd->factor <= 0.0f) || (mcmd->filepath[0] == '\0');
+	bool is_disabled = (mcmd->factor <= 0.0f) || (mcmd->filepath[0] == '\0');
+
+	if (mcmd->type == MOD_MESHCACHE_TYPE_ABC) {
+		is_disabled |= (mcmd->sub_object[0] == '\0');
+	}
+
+	return is_disabled;
 }
 
 
@@ -170,6 +180,12 @@ static void meshcache_do(
 			break;
 		case MOD_MESHCACHE_TYPE_PC2:
 			ok = MOD_meshcache_read_pc2_times(filepath, vertexCos, numVerts,
+			                                  mcmd->interp, time, fps, mcmd->time_mode, &err_str);
+			break;
+		case MOD_MESHCACHE_TYPE_ABC:
+			/* TODO(kevin): we pass the modifierdata since it is used as a key
+			 * to map abc archives to modifiers */
+			ok = MOD_meshcache_read_abc_times(filepath, mcmd->sub_object, vertexCos, numVerts,
 			                                  mcmd->interp, time, fps, mcmd->time_mode, &err_str);
 			break;
 		default:
@@ -299,6 +315,7 @@ ModifierTypeInfo modifierType_MeshCache = {
 	/* structSize */        sizeof(MeshCacheModifierData),
 	/* type */              eModifierTypeType_OnlyDeform,
 	/* flags */             eModifierTypeFlag_AcceptsCVs |
+	                        eModifierTypeFlag_AcceptsLattice |
 	                        eModifierTypeFlag_SupportsEditmode,
 
 	/* copyData */          copyData,

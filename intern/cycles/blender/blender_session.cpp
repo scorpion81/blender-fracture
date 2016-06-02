@@ -43,6 +43,8 @@
 CCL_NAMESPACE_BEGIN
 
 bool BlenderSession::headless = false;
+int BlenderSession::num_resumable_chunks = 0;
+int BlenderSession::current_resumable_chunk = 0;
 
 BlenderSession::BlenderSession(BL::RenderEngine& b_engine,
                                BL::UserPreferences& b_userpref,
@@ -153,7 +155,7 @@ void BlenderSession::create_session()
 		 * do some basic syncing here, no objects or materials for speed */
 		sync->sync_render_layers(b_v3d, NULL);
 		sync->sync_integrator();
-		sync->sync_camera(b_render, b_camera_override, width, height);
+		sync->sync_camera(b_render, b_camera_override, width, height, "");
 	}
 
 	/* set buffer parameters */
@@ -161,6 +163,8 @@ void BlenderSession::create_session()
 	session->reset(buffer_params, session_params.samples);
 
 	b_engine.use_highlight_tiles(session_params.progressive_refine == false);
+
+	update_resumable_tile_manager(session_params.samples);
 }
 
 void BlenderSession::reset_session(BL::BlendData& b_data_, BL::Scene& b_scene_)
@@ -209,7 +213,7 @@ void BlenderSession::reset_session(BL::BlendData& b_data_, BL::Scene& b_scene_)
 	BL::Object b_camera_override(b_engine.camera_override());
 	sync->sync_render_layers(b_v3d, NULL);
 	sync->sync_integrator();
-	sync->sync_camera(b_render, b_camera_override, width, height);
+	sync->sync_camera(b_render, b_camera_override, width, height, "");
 
 	BL::SpaceView3D b_null_space_view3d(PointerRNA_NULL);
 	BL::RegionView3D b_null_region_view3d(PointerRNA_NULL);
@@ -469,7 +473,7 @@ void BlenderSession::render()
 		BL::RenderLayer b_rlay = *b_single_rlay;
 
 		/* add passes */
-		vector<Pass> passes;
+		array<Pass> passes;
 		Pass::add(PASS_COMBINED, passes);
 
 		if(session_params.device.advanced_shading) {
@@ -502,7 +506,7 @@ void BlenderSession::render()
 
 			/* update scene */
 			BL::Object b_camera_override(b_engine.camera_override());
-			sync->sync_camera(b_render, b_camera_override, width, height);
+			sync->sync_camera(b_render, b_camera_override, width, height, b_rview_name.c_str());
 			sync->sync_data(b_render,
 			                b_v3d,
 			                b_camera_override,
@@ -510,14 +514,21 @@ void BlenderSession::render()
 			                &python_thread_state,
 			                b_rlay_name.c_str());
 
-			/* update number of samples per layer */
+			/* Update number of samples per layer. */
 			int samples = sync->get_layer_samples();
 			bool bound_samples = sync->get_layer_bound_samples();
+			int effective_layer_samples;
 
 			if(samples != 0 && (!bound_samples || (samples < session_params.samples)))
-				session->reset(buffer_params, samples);
+				effective_layer_samples = samples;
 			else
-				session->reset(buffer_params, session_params.samples);
+				effective_layer_samples = session_params.samples;
+
+			/* Update tile manager if we're doing resumable render. */
+			update_resumable_tile_manager(effective_layer_samples);
+
+			/* Update session itself. */
+			session->reset(buffer_params, effective_layer_samples);
 
 			/* render */
 			session->start();
@@ -632,7 +643,7 @@ void BlenderSession::bake(BL::Object& b_object,
 	bake_pass_filter = BakeManager::shader_type_to_pass_filter(shader_type, bake_pass_filter);
 
 	/* force use_light_pass to be true if we bake more than just colors */
-	if (bake_pass_filter & ~BAKE_FILTER_COLOR) {
+	if(bake_pass_filter & ~BAKE_FILTER_COLOR) {
 		Pass::add(PASS_LIGHT, scene->film->passes);
 	}
 
@@ -642,7 +653,7 @@ void BlenderSession::bake(BL::Object& b_object,
 
 	/* update scene */
 	BL::Object b_camera_override(b_engine.camera_override());
-	sync->sync_camera(b_render, b_camera_override, width, height);
+	sync->sync_camera(b_render, b_camera_override, width, height, "");
 	sync->sync_data(b_render,
 	                b_v3d,
 	                b_camera_override,
@@ -712,6 +723,13 @@ void BlenderSession::do_write_update_render_result(BL::RenderResult& b_rr,
 
 	vector<float> pixels(params.width*params.height*4);
 
+	/* Adjust absolute sample number to the range. */
+	int sample = rtile.sample;
+	const int range_start_sample = session->tile_manager.range_start_sample;
+	if(range_start_sample != -1) {
+		sample -= range_start_sample;
+	}
+
 	if(!do_update_only) {
 		/* copy each pass */
 		BL::RenderLayer::passes_iterator b_iter;
@@ -724,7 +742,7 @@ void BlenderSession::do_write_update_render_result(BL::RenderResult& b_rr,
 			int components = b_pass.channels();
 
 			/* copy pixels */
-			if(!buffers->get_pass_rect(pass_type, exposure, rtile.sample, components, &pixels[0]))
+			if(!buffers->get_pass_rect(pass_type, exposure, sample, components, &pixels[0]))
 				memset(&pixels[0], 0, pixels.size()*sizeof(float));
 
 			b_pass.rect(&pixels[0]);
@@ -733,7 +751,7 @@ void BlenderSession::do_write_update_render_result(BL::RenderResult& b_rr,
 	else {
 		/* copy combined pass */
 		BL::RenderPass b_combined_pass(b_rlay.passes.find_by_type(BL::RenderPass::type_COMBINED, b_rview_name.c_str()));
-		if(buffers->get_pass_rect(PASS_COMBINED, exposure, rtile.sample, 4, &pixels[0]))
+		if(buffers->get_pass_rect(PASS_COMBINED, exposure, sample, 4, &pixels[0]))
 			b_combined_pass.rect(&pixels[0]);
 	}
 
@@ -808,7 +826,7 @@ void BlenderSession::synchronize()
 	if(b_rv3d)
 		sync->sync_view(b_v3d, b_rv3d, width, height);
 	else
-		sync->sync_camera(b_render, b_camera_override, width, height);
+		sync->sync_camera(b_render, b_camera_override, width, height, "");
 
 	/* unlock */
 	session->scene->mutex.unlock();
@@ -909,16 +927,16 @@ void BlenderSession::get_progress(float& progress, double& total_time, double& r
 	int tile, sample, samples_per_tile;
 	int tile_total = session->tile_manager.state.num_tiles;
 	int samples = session->tile_manager.state.sample + 1;
-	int total_samples = session->tile_manager.num_samples;
+	int total_samples = session->tile_manager.get_num_effective_samples();
 
 	session->progress.get_tile(tile, total_time, render_time, tile_time);
 
 	sample = session->progress.get_sample();
-	samples_per_tile = session->tile_manager.num_samples;
+	samples_per_tile = session->tile_manager.get_num_effective_samples();
 
 	if(background && samples_per_tile && tile_total)
 		progress = ((float)sample / (float)(tile_total * samples_per_tile));
-	else if(!background && samples > 0 && total_samples != USHRT_MAX)
+	else if(!background && samples > 0 && total_samples != INT_MAX)
 		progress = ((float)samples) / total_samples;
 	else
 		progress = 0.0;
@@ -1059,8 +1077,8 @@ void BlenderSession::builtin_image_info(const string &builtin_name, void *builti
 {
 	/* empty image */
 	is_float = false;
-	width = 0;
-	height = 0;
+	width = 1;
+	height = 1;
 	depth = 0;
 	channels = 0;
 
@@ -1087,25 +1105,37 @@ void BlenderSession::builtin_image_info(const string &builtin_name, void *builti
 		BL::Object b_ob(b_id);
 		BL::SmokeDomainSettings b_domain = object_smoke_domain_find(b_ob);
 
+		is_float = true;
+		depth = 1;
+		channels = 1;
+
 		if(!b_domain)
 			return;
 
 		if(builtin_name == Attribute::standard_name(ATTR_STD_VOLUME_DENSITY) ||
-		   builtin_name == Attribute::standard_name(ATTR_STD_VOLUME_FLAME))
+		   builtin_name == Attribute::standard_name(ATTR_STD_VOLUME_FLAME) ||
+		   builtin_name == Attribute::standard_name(ATTR_STD_VOLUME_HEAT))
 			channels = 1;
 		else if(builtin_name == Attribute::standard_name(ATTR_STD_VOLUME_COLOR))
 			channels = 4;
+		else if(builtin_name == Attribute::standard_name(ATTR_STD_VOLUME_VELOCITY))
+			channels = 3;
 		else
 			return;
 
 		int3 resolution = get_int3(b_domain.domain_resolution());
 		int amplify = (b_domain.use_high_resolution())? b_domain.amplify() + 1: 1;
 
+		/* Velocity and heat data is always low-resolution. */
+		if(builtin_name == Attribute::standard_name(ATTR_STD_VOLUME_VELOCITY) ||
+		   builtin_name == Attribute::standard_name(ATTR_STD_VOLUME_HEAT))
+		{
+			amplify = 1;
+		}
+
 		width = resolution.x * amplify;
 		height = resolution.y * amplify;
 		depth = resolution.z * amplify;
-
-		is_float = true;
 	}
 	else {
 		/* TODO(sergey): Check we're indeed in shader node tree. */
@@ -1226,6 +1256,13 @@ bool BlenderSession::builtin_image_float_pixels(const string &builtin_name, void
 		int3 resolution = get_int3(b_domain.domain_resolution());
 		int length, amplify = (b_domain.use_high_resolution())? b_domain.amplify() + 1: 1;
 
+		/* Velocity and heat data is always low-resolution. */
+		if(builtin_name == Attribute::standard_name(ATTR_STD_VOLUME_VELOCITY) ||
+		   builtin_name == Attribute::standard_name(ATTR_STD_VOLUME_HEAT))
+		{
+			amplify = 1;
+		}
+
 		int width = resolution.x * amplify;
 		int height = resolution.y * amplify;
 		int depth = resolution.z * amplify;
@@ -1233,7 +1270,6 @@ bool BlenderSession::builtin_image_float_pixels(const string &builtin_name, void
 
 		if(builtin_name == Attribute::standard_name(ATTR_STD_VOLUME_DENSITY)) {
 			SmokeDomainSettings_density_grid_get_length(&b_domain.ptr, &length);
-
 			if(length == num_pixels) {
 				SmokeDomainSettings_density_grid_get(&b_domain.ptr, pixels);
 				return true;
@@ -1243,7 +1279,6 @@ bool BlenderSession::builtin_image_float_pixels(const string &builtin_name, void
 			/* this is in range 0..1, and interpreted by the OpenGL smoke viewer
 			 * as 1500..3000 K with the first part faded to zero density */
 			SmokeDomainSettings_flame_grid_get_length(&b_domain.ptr, &length);
-
 			if(length == num_pixels) {
 				SmokeDomainSettings_flame_grid_get(&b_domain.ptr, pixels);
 				return true;
@@ -1252,11 +1287,31 @@ bool BlenderSession::builtin_image_float_pixels(const string &builtin_name, void
 		else if(builtin_name == Attribute::standard_name(ATTR_STD_VOLUME_COLOR)) {
 			/* the RGB is "premultiplied" by density for better interpolation results */
 			SmokeDomainSettings_color_grid_get_length(&b_domain.ptr, &length);
-
 			if(length == num_pixels*4) {
 				SmokeDomainSettings_color_grid_get(&b_domain.ptr, pixels);
 				return true;
 			}
+		}
+		else if(builtin_name == Attribute::standard_name(ATTR_STD_VOLUME_VELOCITY)) {
+			SmokeDomainSettings_velocity_grid_get_length(&b_domain.ptr, &length);
+			if(length == num_pixels*3) {
+				SmokeDomainSettings_velocity_grid_get(&b_domain.ptr, pixels);
+				return true;
+			}
+		}
+		else if(builtin_name == Attribute::standard_name(ATTR_STD_VOLUME_HEAT)) {
+			SmokeDomainSettings_heat_grid_get_length(&b_domain.ptr, &length);
+			if(length == num_pixels) {
+				SmokeDomainSettings_heat_grid_get(&b_domain.ptr, pixels);
+				return true;
+			}
+		}
+		else {
+			fprintf(stderr,
+			        "Cycles error: unknown volume attribute %s, skipping\n",
+			        builtin_name.c_str());
+			pixels[0] = 0.0f;
+			return false;
 		}
 
 		fprintf(stderr, "Cycles error: unexpected smoke volume resolution, skipping\n");
@@ -1277,5 +1332,26 @@ bool BlenderSession::builtin_image_float_pixels(const string &builtin_name, void
 	return false;
 }
 
-CCL_NAMESPACE_END
+void BlenderSession::update_resumable_tile_manager(int num_samples)
+{
+	const int num_resumable_chunks = BlenderSession::num_resumable_chunks,
+	          current_resumable_chunk = BlenderSession::current_resumable_chunk;
+	if(num_resumable_chunks == 0) {
+		return;
+	}
 
+	int num_samples_per_chunk = (int)ceilf((float)num_samples / num_resumable_chunks);
+	int range_start_sample = num_samples_per_chunk * (current_resumable_chunk - 1);
+	int range_num_samples = num_samples_per_chunk;
+	if(range_start_sample + range_num_samples > num_samples) {
+		range_num_samples = num_samples - range_num_samples;
+	}
+
+	VLOG(1) << "Samples range start is " << range_start_sample << ", "
+	        << "number of samples to render is " << range_num_samples;
+
+	session->tile_manager.range_start_sample = range_start_sample;
+	session->tile_manager.range_num_samples = range_num_samples;
+}
+
+CCL_NAMESPACE_END

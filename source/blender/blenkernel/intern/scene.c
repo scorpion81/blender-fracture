@@ -101,11 +101,6 @@
 
 #include "bmesh.h"
 
-#ifdef WIN32
-#else
-#  include <sys/time.h>
-#endif
-
 const char *RE_engine_id_BLENDER_RENDER = "BLENDER_RENDER";
 const char *RE_engine_id_BLENDER_GAME = "BLENDER_GAME";
 const char *RE_engine_id_CYCLES = "CYCLES";
@@ -555,7 +550,7 @@ void BKE_scene_init(Scene *sce)
 	sce->r.bake.im_format.compress = 15;
 
 	sce->r.scemode = R_DOCOMP | R_DOSEQ | R_EXTENSION;
-	sce->r.stamp = R_STAMP_TIME | R_STAMP_FRAME | R_STAMP_DATE | R_STAMP_CAMERA | R_STAMP_SCENE | R_STAMP_FILENAME | R_STAMP_RENDERTIME;
+	sce->r.stamp = R_STAMP_TIME | R_STAMP_FRAME | R_STAMP_DATE | R_STAMP_CAMERA | R_STAMP_SCENE | R_STAMP_FILENAME | R_STAMP_RENDERTIME | R_STAMP_MEMORY;
 	sce->r.stamp_font_id = 12;
 	sce->r.fg_stamp[0] = sce->r.fg_stamp[1] = sce->r.fg_stamp[2] = 0.8f;
 	sce->r.fg_stamp[3] = 1.0f;
@@ -620,6 +615,12 @@ void BKE_scene_init(Scene *sce)
 	sce->toolsettings->skgen_subdivisions[0] = SKGEN_SUB_CORRELATION;
 	sce->toolsettings->skgen_subdivisions[1] = SKGEN_SUB_LENGTH;
 	sce->toolsettings->skgen_subdivisions[2] = SKGEN_SUB_ANGLE;
+
+	sce->toolsettings->curve_paint_settings.curve_type = CU_BEZIER;
+	sce->toolsettings->curve_paint_settings.flag |= CURVE_PAINT_FLAG_CORNERS_DETECT;
+	sce->toolsettings->curve_paint_settings.error_threshold = 8;
+	sce->toolsettings->curve_paint_settings.radius_max = 1.0f;
+	sce->toolsettings->curve_paint_settings.corner_angle = DEG2RADF(70.0f);
 
 	sce->toolsettings->statvis.overhang_axis = OB_NEGZ;
 	sce->toolsettings->statvis.overhang_min = 0;
@@ -894,7 +895,7 @@ void BKE_scene_set_background(Main *bmain, Scene *scene)
 	/* no full animation update, this to enable render code to work (render code calls own animation updates) */
 }
 
-/* called from creator.c */
+/* called from creator_args.c */
 Scene *BKE_scene_set_name(Main *bmain, const char *name)
 {
 	Scene *sce = (Scene *)BKE_libblock_find_name_ex(bmain, ID_SCE, name);
@@ -1773,7 +1774,7 @@ static void prepare_mesh_for_viewport_render(Main *bmain, Scene *scene)
 		{
 			if (check_rendered_viewport_visible(bmain)) {
 				BMesh *bm = mesh->edit_btmesh->bm;
-				BM_mesh_bm_to_me(bm, mesh, false);
+				BM_mesh_bm_to_me(bm, mesh, (&(struct BMeshToMeshParams){0}));
 				DAG_id_tag_update(&mesh->id, 0);
 			}
 		}
@@ -2197,6 +2198,12 @@ bool BKE_scene_use_shading_nodes_custom(Scene *scene)
 	return (type && type->flag & RE_USE_SHADING_NODES_CUSTOM);
 }
 
+bool BKE_scene_use_spherical_stereo(Scene *scene)
+{
+	RenderEngineType *type = RE_engines_find(scene->r.engine);
+	return (type && type->flag & RE_USE_SPHERICAL_STEREO);
+}
+
 bool BKE_scene_uses_blender_internal(const  Scene *scene)
 {
 	return STREQ(scene->r.engine, RE_engine_id_BLENDER_RENDER);
@@ -2422,7 +2429,6 @@ SceneRenderView *BKE_scene_multiview_render_view_findindex(const RenderData *rd,
 	if ((rd->scemode & R_MULTIVIEW) == 0)
 		return NULL;
 
-	nr = 0;
 	for (srv = rd->views.first, nr = 0; srv; srv = srv->next) {
 		if (BKE_scene_multiview_is_render_view_active(rd, srv)) {
 			if (nr++ == view_id)
@@ -2453,7 +2459,6 @@ int BKE_scene_multiview_view_id_get(const RenderData *rd, const char *viewname)
 	if ((!viewname) || (!viewname[0]))
 		return 0;
 
-	nr = 0;
 	for (srv = rd->views.first, nr = 0; srv; srv = srv->next) {
 		if (BKE_scene_multiview_is_render_view_active(rd, srv)) {
 			if (STREQ(viewname, srv->name)) {

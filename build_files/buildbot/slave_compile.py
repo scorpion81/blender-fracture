@@ -56,7 +56,6 @@ if 'cmake' in builder:
     chroot_name = None  # If not None command will be delegated to that chroot
     cuda_chroot_name = None  # If not None cuda compilationcommand will be delegated to that chroot
     build_cubins = True  # Whether to build Cycles CUDA kernels
-    remove_install_dir = False  # Remove installation folder before building
     bits = 64
 
     # Config file to be used (relative to blender's sources root)
@@ -70,30 +69,41 @@ if 'cmake' in builder:
     cuda_cmake_options = []
 
     if builder.startswith('mac'):
-        install_dir = None
         # Set up OSX architecture
         if builder.endswith('x86_64_10_6_cmake'):
             cmake_extra_options.append('-DCMAKE_OSX_ARCHITECTURES:STRING=x86_64')
+        cmake_extra_options.append('-DCUDA_NVCC_EXECUTABLE=/usr/local/cuda-hack/bin/nvcc')
 
     elif builder.startswith('win'):
-        install_dir = None
+      if builder.endswith('_vc2015'):
         if builder.startswith('win64'):
-            cmake_options.append(['-G', '"Visual Studio 12 2013 Win64"'])
+            cmake_options.extend(['-G', 'Visual Studio 14 2015 Win64'])
         elif builder.startswith('win32'):
             bits = 32
-            cmake_options.append(['-G', '"Visual Studio 12 2013"'])
+            cmake_options.extend(['-G', 'Visual Studio 14 2015'])
+      else:
+        if builder.startswith('win64'):
+            cmake_options.extend(['-G', 'Visual Studio 12 2013 Win64'])
+        elif builder.startswith('win32'):
+            bits = 32
+            cmake_options.extend(['-G', 'Visual Studio 12 2013'])
 
     elif builder.startswith('linux'):
-        remove_install_dir = True
+        tokens = builder.split("_")
+        glibc = tokens[1]
+        if glibc == 'glibc219':
+            deb_name = "jessie"
+        elif glibc == 'glibc211':
+            deb_name = "squeeze"
         cmake_config_file = "build_files/buildbot/config/blender_linux.cmake"
         cmake_player_config_file = "build_files/buildbot/config/blender_linux_player.cmake"
         if builder.endswith('x86_64_cmake'):
-            chroot_name = 'buildbot_squeeze_x86_64'
+            chroot_name = 'buildbot_' + deb_name + '_x86_64'
             targets = ['player', 'blender']
-        elif builder.endswith('i386_cmake'):
+        elif builder.endswith('i686_cmake'):
             bits = 32
-            chroot_name = 'buildbot_squeeze_i686'
-            cuda_chroot_name = 'buildbot_squeeze_x86_64'
+            chroot_name = 'buildbot_' + deb_name + '_i686'
+            cuda_chroot_name = 'buildbot_' + deb_name + '_x86_64'
             targets = ['player', 'blender', 'cuda']
 
     cmake_options.append("-C" + os.path.join(blender_dir, cmake_config_file))
@@ -110,8 +120,7 @@ if 'cmake' in builder:
     if 'cuda' not in targets:
         cmake_options += cuda_cmake_options
 
-    if install_dir:
-        cmake_options.append("-DCMAKE_INSTALL_PREFIX=%s" % (install_dir))
+    cmake_options.append("-DCMAKE_INSTALL_PREFIX=%s" % (install_dir))
 
     cmake_options += cmake_extra_options
 
@@ -126,10 +135,8 @@ if 'cmake' in builder:
         cuda_chroot_prefix = chroot_prefix[:]
 
     # Make sure no garbage remained from the previous run
-    # (only do it if builder requested this)
-    if remove_install_dir:
-        if os.path.isdir(install_dir):
-            shutil.rmtree(install_dir)
+    if os.path.isdir(install_dir):
+        shutil.rmtree(install_dir)
 
     for target in targets:
         print("Building target %s" % (target))
@@ -181,7 +188,7 @@ if 'cmake' in builder:
             sys.exit(retcode)
 
         if builder.startswith('linux') and target == 'cuda':
-            blender_h = os.path.join(blender_dir, "source", "blender", "blenkernel", "BKE_blender.h")
+            blender_h = os.path.join(blender_dir, "source", "blender", "blenkernel", "BKE_blender_version.h")
             blender_version = int(parse_header_file(blender_h, 'BLENDER_VERSION'))
             blender_version = "%d.%d" % (blender_version // 100, blender_version % 100)
             kernels = os.path.join(target_build_dir, 'intern', 'cycles', 'kernel')

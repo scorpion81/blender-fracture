@@ -457,7 +457,7 @@ static void wm_window_ghostwindow_add(wmWindowManager *wm, const char *title, wm
 		/* displays with larger native pixels, like Macbook. Used to scale dpi with */
 		/* needed here, because it's used before it reads userdef */
 		U.pixelsize = wm_window_pixelsize(win);
-		BKE_userdef_state();
+		BKE_blender_userdef_refresh();
 		
 		wm_window_swap_buffers(win);
 		
@@ -678,10 +678,10 @@ wmWindow *WM_window_open_temp(bContext *C, const rcti *rect_init, int type)
 	CTX_wm_area_set(C, sa);
 	
 	if (type == WM_WINDOW_RENDER) {
-		ED_area_newspace(C, sa, SPACE_IMAGE);
+		ED_area_newspace(C, sa, SPACE_IMAGE, false);
 	}
 	else {
-		ED_area_newspace(C, sa, SPACE_USERPREF);
+		ED_area_newspace(C, sa, SPACE_USERPREF, false);
 	}
 	
 	ED_screen_set(C, win->screen);
@@ -834,7 +834,7 @@ void wm_window_make_drawable(wmWindowManager *wm, wmWindow *win)
 		
 		/* this can change per window */
 		U.pixelsize = wm_window_pixelsize(win);
-		BKE_userdef_state();
+		BKE_blender_userdef_refresh();
 	}
 }
 
@@ -1197,7 +1197,7 @@ static int ghost_event_proc(GHOST_EventHandle evt, GHOST_TUserDataPtr C_void_ptr
 				// printf("change, pixel size %f\n", GHOST_GetNativePixelSize(win->ghostwin));
 				
 				U.pixelsize = wm_window_pixelsize(win);
-				BKE_userdef_state();
+				BKE_blender_userdef_refresh();
 				WM_event_add_notifier(C, NC_SCREEN | NA_EDITED, NULL);
 				WM_event_add_notifier(C, NC_WINDOW | NA_EDITED, NULL);
 

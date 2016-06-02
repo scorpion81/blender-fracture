@@ -137,7 +137,7 @@ static int vertex_parent_set_exec(bContext *C, wmOperator *op)
 		BMEditMesh *em;
 
 		EDBM_mesh_load(obedit);
-		EDBM_mesh_make(scene->toolsettings, obedit);
+		EDBM_mesh_make(scene->toolsettings, obedit, true);
 
 		DAG_id_tag_update(obedit->data, 0);
 
@@ -2129,12 +2129,14 @@ enum {
 	MAKE_LOCAL_ALL                    = 4,
 };
 
-static bool tag_localizable_looper(void *UNUSED(user_data), ID **id_pointer, const int UNUSED(cd_flag))
+static int tag_localizable_looper(
+        void *UNUSED(user_data), ID *UNUSED(self_id), ID **id_pointer, const int UNUSED(cd_flag))
 {
 	if (*id_pointer) {
 		(*id_pointer)->tag &= ~LIB_TAG_DOIT;
 	}
-	return true;
+
+	return IDWALK_RET_NOP;
 }
 
 static void tag_localizable_objects(bContext *C, const int mode)

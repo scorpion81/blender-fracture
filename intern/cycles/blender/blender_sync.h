@@ -69,7 +69,8 @@ public:
 	void sync_integrator();
 	void sync_camera(BL::RenderSettings& b_render,
 	                 BL::Object& b_override,
-	                 int width, int height);
+	                 int width, int height,
+	                 const char *viewname);
 	void sync_view(BL::SpaceView3D& b_v3d,
 	               BL::RegionView3D& b_rv3d,
 	               int width, int height);
@@ -145,7 +146,7 @@ private:
 	void sync_images();
 
 	/* util */
-	void find_shader(BL::ID& id, vector<uint>& used_shaders, int default_shader);
+	void find_shader(BL::ID& id, vector<Shader*>& used_shaders, Shader *default_shader);
 	bool BKE_object_is_modified(BL::Object& b_ob);
 	bool object_is_mesh(BL::Object& b_ob);
 	bool object_is_light(BL::Object& b_ob);
@@ -171,6 +172,9 @@ private:
 	bool experimental;
 	bool is_cpu;
 
+	float dicing_rate;
+	int max_subdivisions;
+
 	struct RenderLayerInfo {
 		RenderLayerInfo()
 		: scene_layer(0), layer(0),
@@ -181,7 +185,6 @@ private:
 		  use_surfaces(true),
 		  use_hair(true),
 		  use_viewport_visibility(false),
-		  use_localview(false),
 		  samples(0), bound_samples(false)
 		{}
 
@@ -196,7 +199,6 @@ private:
 		bool use_surfaces;
 		bool use_hair;
 		bool use_viewport_visibility;
-		bool use_localview;
 		int samples;
 		bool bound_samples;
 	} render_layer;

@@ -61,7 +61,8 @@ set(SRC
 	bpy_interface.c
 	bpy_interface_atexit.c
 	bpy_intern_string.c
-	bpy_library.c
+	bpy_library_load.c
+	bpy_library_write.c
 	bpy_operator.c
 	bpy_operator_wrap.c
 	bpy_path.c
@@ -70,6 +71,7 @@ set(SRC
 	bpy_rna_anim.c
 	bpy_rna_array.c
 	bpy_rna_callback.c
+	bpy_rna_driver.c
 	bpy_rna_id_collection.c
 	bpy_traceback.c
 	bpy_util.c
@@ -98,6 +100,7 @@ set(SRC
 	bpy_rna.h
 	bpy_rna_anim.h
 	bpy_rna_callback.h
+	bpy_rna_driver.h
 	bpy_rna_id_collection.h
 	bpy_traceback.h
 	bpy_util.h
@@ -259,6 +262,10 @@ endif()
 
 if(WITH_OPENCOLLADA)
 	add_definitions(-DWITH_COLLADA)
+endif()
+
+if(WITH_ALEMBIC)
+	add_definitions(-DWITH_ALEMBIC)
 endif()
 
 if(WITH_OPENCOLORIO)

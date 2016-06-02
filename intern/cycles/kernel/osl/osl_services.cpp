@@ -45,7 +45,7 @@
 #include "kernel_differential.h"
 #include "kernel_montecarlo.h"
 #include "kernel_camera.h"
-
+#include "kernels/cpu/kernel_cpu_image.h"
 #include "geom/geom.h"
 
 #include "kernel_projection.h"
@@ -53,7 +53,7 @@
 #include "kernel_shader.h"
 
 #ifdef WITH_PTEX
-#include <Ptexture.h>
+#  include <Ptexture.h>
 #endif
 
 CCL_NAMESPACE_BEGIN

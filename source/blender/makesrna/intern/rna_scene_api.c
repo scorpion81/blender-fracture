@@ -37,12 +37,25 @@
 #include "BLI_path_util.h"
 
 #include "RNA_define.h"
+#include "RNA_enum_types.h"
 
 #include "DNA_anim_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
 #include "rna_internal.h"  /* own include */
+
+#ifdef WITH_ALEMBIC
+#	include "../../alembic/ABC_alembic.h"
+#endif
+
+EnumPropertyItem rna_enum_abc_compression_items[] = {
+#ifdef WITH_ALEMBIC
+	{ ABC_ARCHIVE_OGAWA, "OGAWA", 0, "Ogawa", "" },
+    { ABC_ARCHIVE_HDF5, "HDF5", 0, "HDF5", "" },
+#endif
+	{ 0, NULL, 0, NULL, NULL }
+};
 
 #ifdef RNA_RUNTIME
 
@@ -55,6 +68,7 @@
 #include "BKE_writeavi.h"
 
 #include "ED_transform.h"
+#include "ED_transform_snap_object_context.h"
 #include "ED_uvedit.h"
 
 #ifdef WITH_PYTHON
@@ -145,13 +159,22 @@ static void rna_Scene_ray_cast(
 {
 	normalize_v3(direction);
 
-	if (snapObjectsRayEx(
-	        scene, NULL, NULL, NULL, NULL,
-	        NULL, SNAP_ALL, SCE_SNAP_MODE_FACE,
+	SnapObjectContext *sctx = ED_transform_snap_object_context_create(
+	        G.main, scene, 0);
+
+	bool ret = ED_transform_snap_object_project_ray_ex(
+	        sctx,
+	        &(const struct SnapObjectParams){
+	            .snap_select = SNAP_ALL,
+	            .snap_to = SCE_SNAP_MODE_FACE,
+	        },
 	        origin, direction, &ray_dist,
-	        r_location, r_normal, NULL, r_index,
-	        r_ob, (float(*)[4])r_obmat))
-	{
+	        r_location, r_normal, r_index,
+	        r_ob, (float(*)[4])r_obmat);
+
+	ED_transform_snap_object_context_destroy(sctx);
+
+	if (ret) {
 		*r_success = true;
 	}
 	else {
@@ -162,6 +185,53 @@ static void rna_Scene_ray_cast(
 		zero_v3(r_normal);
 	}
 }
+
+#ifdef WITH_ALEMBIC
+
+static void rna_Scene_alembic_export(
+        Scene *scene,
+        bContext *C,
+        const char *filepath,
+        int start,
+        int end,
+        int xformsamples,
+        int geomsamples,
+        float shutter_open,
+        float shutter_close,
+        int selected_only,
+        int uvs,
+        int normals,
+        int vcolors,
+        int force_meshes,
+        int flatten_hierarchy,
+        int custom_props_as_geodata,
+        int vislayers,
+        int renderable,
+        int facesets,
+        int matindices,
+        int subdiv_schema,
+        int ogawa,
+        int packuv,
+        float scale)
+{
+// We have to enable allow_threads, because we may change scene frame number during export
+#ifdef WITH_PYTHON
+	BPy_BEGIN_ALLOW_THREADS;
+#endif
+
+	ABC_export(scene, C, filepath, start, end, 1.0 / xformsamples, 1.0 / geomsamples,
+	           shutter_open, shutter_close,
+	           selected_only, uvs, normals, vcolors,
+	           force_meshes, flatten_hierarchy, custom_props_as_geodata,
+	           vislayers, renderable, facesets, matindices, subdiv_schema,
+	           ogawa, packuv, scale);
+
+#ifdef WITH_PYTHON
+	BPy_END_ALLOW_THREADS;
+#endif
+}
+
+#endif
 
 #ifdef WITH_COLLADA
 /* don't remove this, as COLLADA exporting cannot be done through operators in render() callback. */
@@ -186,6 +256,7 @@ static void rna_Scene_collada_export(
 
         int use_ngons,
         int use_object_instantiation,
+		int use_blender_profile,
         int sort_by_name,
         int export_transformation_type,
         int open_sim)
@@ -193,7 +264,7 @@ static void rna_Scene_collada_export(
 	collada_export(scene, filepath, apply_modifiers, export_mesh_type, selected,
 	               include_children, include_armatures, include_shapekeys, deform_bones_only,
 	               active_uv_only, include_uv_textures, include_material_textures,
-	               use_texture_copies, use_ngons, use_object_instantiation, sort_by_name, export_transformation_type, open_sim);
+	               use_texture_copies, use_ngons, use_object_instantiation, use_blender_profile, sort_by_name, export_transformation_type, open_sim);
 }
 
 #endif
@@ -276,6 +347,7 @@ void RNA_api_scene(StructRNA *srna)
 
 	parm = RNA_def_boolean(func, "use_ngons", 1, "Use NGons", "Keep NGons in Export");
 	parm = RNA_def_boolean(func, "use_object_instantiation", 1, "Use Object Instances", "Instantiate multiple Objects from same Data");
+	parm = RNA_def_boolean(func, "use_blender_profile", 1, "Use Blender Profile", "Export additional Blender specific information (for material, shaders, bones, etc.)");
 	parm = RNA_def_boolean(func, "sort_by_name", 0, "Sort by Object name", "Sort exported data by Object name");
 	parm = RNA_def_boolean(func, "open_sim", 0, "Export for SL/OpenSim", "Compatibility mode for SL, OpenSim and similar online worlds");
 
@@ -283,6 +355,39 @@ void RNA_api_scene(StructRNA *srna)
 	            "Transformation", "Transformation type for translation, scale and rotation", INT_MIN, INT_MAX);
 
 	RNA_def_function_ui_description(func, "Export to collada file");
+#endif
+
+#ifdef WITH_ALEMBIC
+	func = RNA_def_function(srna, "alembic_export", "rna_Scene_alembic_export");
+	RNA_def_function_ui_description(func, "Export to Alembic file");
+
+	parm = RNA_def_string(func, "filepath", NULL, FILE_MAX, "File Path", "File path to write Alembic file");
+	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_property_subtype(parm, PROP_FILEPATH); /* allow non utf8 */
+
+	RNA_def_int(func, "start", 1, INT_MIN, INT_MAX, "Start", "Start Frame", INT_MIN, INT_MAX);
+	RNA_def_int(func, "end", 1, INT_MIN, INT_MAX, "End", "End Frame", INT_MIN, INT_MAX);
+	RNA_def_int(func, "xformsamples", 1, 1, 128, "Xform samples", "Transform samples per frame", 1, 128);
+	RNA_def_int(func, "geomsamples", 1, 1, 128, "Geom samples", "Geometry samples per frame", 1, 128);
+	RNA_def_float(func, "sh_open", 0.0f, -1.0f, 1.0f, "Shutter open", "", -1.0f, 1.0f);
+	RNA_def_float(func, "sh_close", 1.0f, -1.0f, 1.0f, "Shutter close", "", -1.0f, 1.0f);
+	RNA_def_boolean(func, "selected_only"	, 0, "Selected only", "Export only selected objects");
+	RNA_def_boolean(func, "uvs"			, 1, "UVs", "Export UVs");
+	RNA_def_boolean(func, "normals"		, 1, "Normals", "Export cormals");
+	RNA_def_boolean(func, "vcolors"		, 0, "Vertex colors", "Export vertex colors");
+	RNA_def_boolean(func, "forcemeshes"	, 1, "Subsurfs as meshes", "Export subdivision surfaces as meshes");
+	RNA_def_boolean(func, "flatten"		, 0, "Flatten hierarchy", "Flatten hierarchy");
+	RNA_def_boolean(func, "geoprops"	, 1, "Custom props as geom data", "Write custom properties as geometry props");
+	RNA_def_boolean(func, "vislayers"	, 0, "Visible layers only", "Export only objects in visible layers");
+	RNA_def_boolean(func, "renderable"	, 0, "Renderable objects only", "Export only objects marked renderable in the outliner");
+	RNA_def_boolean(func, "facesets"	, 0, "Facesets", "Export facesets");
+	RNA_def_boolean(func, "matindices"	, 0, "Material indices", "Export per face material indices");
+	RNA_def_boolean(func, "subdiv_schema", 0, "Use Alembic subdivision Schema", "Use Alembic subdivision Schema");
+	RNA_def_enum(func, "compression_type", rna_enum_abc_compression_items, 0, "Compression", "");
+	RNA_def_boolean(func, "packuv"		, 0, "Export with packed UV islands", "Export with packed UV islands");
+	RNA_def_float(func, "scale", 1.0f, 0.0f, 1000.0f, "Scale", "", 0.0f, 1000.0f);
+
+	RNA_def_function_flag(func, FUNC_USE_CONTEXT);
 #endif
 }
 

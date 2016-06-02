@@ -85,6 +85,7 @@ typedef enum ModifierType {
 	eModifierType_DataTransfer      = 49,
 	eModifierType_NormalEdit        = 50,
 	eModifierType_CorrectiveSmooth  = 51,
+	eModifierType_MeshSequenceCache = 52,
 	eModifierType_Fracture          = (1 << 20),
 	NUM_MODIFIER_TYPES
 } ModifierType;
@@ -826,6 +827,8 @@ enum {
 	MOD_SHRINKWRAP_CULL_TARGET_BACKFACE  = (1 << 4),
 
 	MOD_SHRINKWRAP_KEEP_ABOVE_SURFACE    = (1 << 5),  /* distance is measure to the front face of the target */
+
+	MOD_SHRINKWRAP_INVERT_VGROUP         = (1 << 6),
 };
 
 /* Shrinkwrap->projAxis */
@@ -847,9 +850,16 @@ typedef struct SimpleDeformModifierData {
 
 	char mode;              /* deform function */
 	char axis;              /* lock axis (for taper and strech) */
-	char pad[2];
+	char flag;
+	char pad;
 
 } SimpleDeformModifierData;
+
+/* SimpleDeform->flag */
+enum {
+	MOD_SIMPLEDEFORM_FLAG_INVERT_VGROUP = (1 << 0),
+};
+
 
 enum {
 	MOD_SIMPLEDEFORM_MODE_TWIST   = 1,
@@ -1391,11 +1401,13 @@ typedef struct MeshCacheModifierData {
 	float eval_factor;
 
 	char filepath[1024];  /* FILE_MAX */
+	char sub_object[1024];  /* Alembic sub object */
 } MeshCacheModifierData;
 
 enum {
 	MOD_MESHCACHE_TYPE_MDD  = 1,
 	MOD_MESHCACHE_TYPE_PC2  = 2,
+	MOD_MESHCACHE_TYPE_ABC  = 3,
 };
 
 enum {
@@ -1832,5 +1844,12 @@ enum {
 	MOD_NORMALEDIT_MIX_SUB  = 2,
 	MOD_NORMALEDIT_MIX_MUL  = 3,
 };
+
+typedef struct MeshSeqCacheModifierData {
+	ModifierData modifier;
+
+	char filepath[1024];
+	char abc_object_path[1024];
+} MeshSeqCacheModifierData;
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

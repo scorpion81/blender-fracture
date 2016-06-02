@@ -67,6 +67,7 @@ EnumPropertyItem rna_enum_object_modifier_type_items[] = {
 	{0, "", 0, N_("Modify"), ""},
 	{eModifierType_DataTransfer, "DATA_TRANSFER", ICON_MOD_DATA_TRANSFER, "Data Transfer", ""},
 	{eModifierType_MeshCache, "MESH_CACHE", ICON_MOD_MESHDEFORM, "Mesh Cache", ""},
+    {eModifierType_MeshSequenceCache, "MESH_SEQUENCE_CACHE", ICON_MOD_MESHDEFORM, "Mesh Sequence Cache", ""},
 	{eModifierType_NormalEdit, "NORMAL_EDIT", ICON_MOD_NORMALEDIT, "Normal Edit", ""},
 	{eModifierType_UVProject, "UV_PROJECT", ICON_MOD_UVPROJECT, "UV Project", ""},
 	{eModifierType_UVWarp, "UV_WARP", ICON_MOD_UVPROJECT, "UV Warp", ""},
@@ -409,6 +410,8 @@ static StructRNA *rna_Modifier_refine(struct PointerRNA *ptr)
 			return &RNA_NormalEditModifier;
 		case eModifierType_CorrectiveSmooth:
 			return &RNA_CorrectiveSmoothModifier;
+		case eModifierType_MeshSequenceCache:
+			return &RNA_MeshSequenceCacheModifier;
 		case eModifierType_Fracture:
 			return &RNA_FractureModifier;
 		/* Default */
@@ -3959,6 +3962,11 @@ static void rna_def_modifier_shrinkwrap(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "shrinkOpts", MOD_SHRINKWRAP_KEEP_ABOVE_SURFACE);
 	RNA_def_property_ui_text(prop, "Keep Above Surface", "");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "invert_vertex_group", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "shrinkOpts", MOD_SHRINKWRAP_INVERT_VGROUP);
+	RNA_def_property_ui_text(prop, "Invert", "Invert vertex group influence");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 static void rna_def_modifier_fluidsim(BlenderRNA *brna)
@@ -4084,6 +4092,11 @@ static void rna_def_modifier_simpledeform(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "lock_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "axis", MOD_SIMPLEDEFORM_LOCK_AXIS_Y);
 	RNA_def_property_ui_text(prop, "Lock Y Axis", "Do not allow deformation along the Y axis");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "invert_vertex_group", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_SIMPLEDEFORM_FLAG_INVERT_VGROUP);
+	RNA_def_property_ui_text(prop, "Invert", "Invert vertex group influence");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
@@ -4986,6 +4999,9 @@ static void rna_def_modifier_meshcache(BlenderRNA *brna)
 	static EnumPropertyItem prop_format_type_items[] = {
 		{MOD_MESHCACHE_TYPE_MDD, "MDD", 0, "MDD ", ""},
 		{MOD_MESHCACHE_TYPE_PC2, "PC2", 0, "PC2", ""},
+#ifdef WITH_ALEMBIC
+	    {MOD_MESHCACHE_TYPE_ABC, "ABC", 0, "Alembic", ""},
+#endif
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -5064,6 +5080,10 @@ static void rna_def_modifier_meshcache(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "File Path", "Path to external displacements file");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
+	prop = RNA_def_property(srna, "sub_object", PROP_STRING, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Object", "Path to the object in the Alembic archive");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
 	prop = RNA_def_property(srna, "factor", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "factor");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
@@ -5123,6 +5143,25 @@ static void rna_def_modifier_meshcache(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "eval_factor");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
 	RNA_def_property_ui_text(prop, "Evaluation Factor", "Evaluation time in seconds");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+}
+
+static void rna_def_modifier_meshseqcache(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna = RNA_def_struct(brna, "MeshSequenceCacheModifier", "Modifier");
+	RNA_def_struct_ui_text(srna, "Cache Modifier", "Cache Mesh");
+	RNA_def_struct_sdna(srna, "MeshSeqCacheModifierData");
+	RNA_def_struct_ui_icon(srna, ICON_MOD_MESHDEFORM);  /* XXX, needs own icon */
+
+	prop = RNA_def_property(srna, "filepath", PROP_STRING, PROP_FILEPATH);
+	RNA_def_property_ui_text(prop, "File Path", "Path to external displacements file");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "abc_object_path", PROP_STRING, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Object", "Path to the object in the Alembic archive");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
@@ -6695,8 +6734,6 @@ void RNA_def_modifier(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 
-	
-
 	/* types */
 	rna_def_modifier_subsurf(brna);
 	rna_def_modifier_lattice(brna);
@@ -6748,6 +6785,7 @@ void RNA_def_modifier(BlenderRNA *brna)
 	rna_def_modifier_wireframe(brna);
 	rna_def_modifier_datatransfer(brna);
 	rna_def_modifier_normaledit(brna);
+	rna_def_modifier_meshseqcache(brna);
 	rna_def_modifier_fracture(brna);
 }
 

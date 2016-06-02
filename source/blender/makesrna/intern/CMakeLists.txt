@@ -290,6 +290,10 @@ if(WITH_INTERNATIONAL)
 	add_definitions(-DWITH_INTERNATIONAL)
 endif()
 
+if(WITH_ALEMBIC)
+	add_definitions(-DWITH_ALEMBIC)
+endif()
+
 if(WITH_BULLET)
 	list(APPEND INC
 		../../../../intern/rigidbody

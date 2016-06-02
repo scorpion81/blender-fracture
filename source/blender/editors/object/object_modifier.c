@@ -1503,7 +1503,7 @@ static int skin_edit_poll(bContext *C)
 	        edit_modifier_poll_generic(C, &RNA_SkinModifier, (1 << OB_MESH)));
 }
 
-static void skin_root_clear(BMesh *bm, BMVert *bm_vert, GSet *visited)
+static void skin_root_clear(BMVert *bm_vert, GSet *visited, const int cd_vert_skin_offset)
 {
 	BMEdge *bm_edge;
 	BMIter bm_iter;
@@ -1511,16 +1511,13 @@ static void skin_root_clear(BMesh *bm, BMVert *bm_vert, GSet *visited)
 	BM_ITER_ELEM (bm_edge, &bm_iter, bm_vert, BM_EDGES_OF_VERT) {
 		BMVert *v2 = BM_edge_other_vert(bm_edge, bm_vert);
 
-		if (!BLI_gset_haskey(visited, v2)) {
-			MVertSkin *vs = CustomData_bmesh_get(&bm->vdata,
-			                                     v2->head.data,
-			                                     CD_MVERT_SKIN);
+		if (BLI_gset_add(visited, v2)) {
+			MVertSkin *vs = BM_ELEM_CD_GET_VOID_P(v2, cd_vert_skin_offset);
 
 			/* clear vertex root flag and add to visited set */
 			vs->flag &= ~MVERT_SKIN_ROOT;
-			BLI_gset_insert(visited, v2);
 
-			skin_root_clear(bm, v2, visited);
+			skin_root_clear(v2, visited, cd_vert_skin_offset);
 		}
 	}
 }
@@ -1530,6 +1527,7 @@ static int skin_root_mark_exec(bContext *C, wmOperator *UNUSED(op))
 	Object *ob = CTX_data_edit_object(C);
 	BMEditMesh *em = BKE_editmesh_from_object(ob);
 	BMesh *bm = em->bm;
+	const int cd_vert_skin_offset = CustomData_get_offset(&bm->vdata, CD_MVERT_SKIN);
 	BMVert *bm_vert;
 	BMIter bm_iter;
 	GSet *visited;
@@ -1539,19 +1537,16 @@ static int skin_root_mark_exec(bContext *C, wmOperator *UNUSED(op))
 	BKE_mesh_ensure_skin_customdata(ob->data);
 
 	BM_ITER_MESH (bm_vert, &bm_iter, bm, BM_VERTS_OF_MESH) {
-		if (!BLI_gset_haskey(visited, bm_vert) &&
-		    BM_elem_flag_test(bm_vert, BM_ELEM_SELECT))
+		if (BM_elem_flag_test(bm_vert, BM_ELEM_SELECT) &&
+		    BLI_gset_add(visited, bm_vert))
 		{
-			MVertSkin *vs = CustomData_bmesh_get(&bm->vdata,
-			                                     bm_vert->head.data,
-			                                     CD_MVERT_SKIN);
+			MVertSkin *vs = BM_ELEM_CD_GET_VOID_P(bm_vert, cd_vert_skin_offset);
 
 			/* mark vertex as root and add to visited set */
 			vs->flag |= MVERT_SKIN_ROOT;
-			BLI_gset_insert(visited, bm_vert);
 
 			/* clear root flag from all connected vertices (recursively) */
-			skin_root_clear(bm, bm_vert, visited);
+			skin_root_clear(bm_vert, visited, cd_vert_skin_offset);
 		}
 	}
 
@@ -3297,17 +3292,17 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 				copy_v3_v3(ob_new->size, size);
 			}
 
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 0, i, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 1, i, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 2, i, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
 
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 0, i, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 1, i, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 2, i, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
 
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 0, i, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 1, i, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 2, i, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
 		}
 
 		if (i == end)

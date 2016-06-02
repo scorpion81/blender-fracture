@@ -302,7 +302,7 @@ createWindow(const STR_String& title,
 		const bool exclusive,
 		const GHOST_TEmbedderWindowID parentWindow)
 {
-	GHOST_WindowX11 *window = 0;
+	GHOST_WindowX11 *window = NULL;
 	
 	if (!m_display) return 0;
 	
@@ -324,7 +324,7 @@ createWindow(const STR_String& title,
 		}
 		else {
 			delete window;
-			window = 0;
+			window = NULL;
 		}
 	}
 	return window;
@@ -787,40 +787,40 @@ GHOST_SystemX11::processEvent(XEvent *xe)
 			GHOST_TKey gkey;
 
 #ifdef USE_NON_LATIN_KB_WORKAROUND
-            /* XXX Code below is kinda awfully convoluted... Issues are:
-             *
-             *     - In keyboards like latin ones, numbers need a 'Shift' to be accessed but key_sym
-             *       is unmodified (or anyone swapping the keys with xmodmap).
-             *
-             *     - XLookupKeysym seems to always use first defined keymap (see T47228), which generates
-             *       keycodes unusable by convertXKey for non-latin-compatible keymaps.
-             *
-             * To address this, we:
-             *
-             *     - Try to get a 'number' key_sym using XLookupKeysym (with or without shift modifier).
-             *     - Fallback to XLookupString to get a key_sym from active user-defined keymap.
-             *
-             * Note that this enforces users to use an ascii-compatible keymap with Blender - but at least it gives
-             * predictable and consistent results.
-             *
-             * Also, note that nothing in XLib sources [1] makes it obvious why those two functions give different
-             * key_sym results...
-             *
-             * [1] http://cgit.freedesktop.org/xorg/lib/libX11/tree/src/KeyBind.c
-             */
-            if ((xke->keycode >= 10 && xke->keycode < 20)) {
-                key_sym = XLookupKeysym(xke, ShiftMask);
-                if (!((key_sym >= XK_0) && (key_sym <= XK_9))) {
+			/* XXX Code below is kinda awfully convoluted... Issues are:
+			 *
+			 *     - In keyboards like latin ones, numbers need a 'Shift' to be accessed but key_sym
+			 *       is unmodified (or anyone swapping the keys with xmodmap).
+			 *
+			 *     - XLookupKeysym seems to always use first defined keymap (see T47228), which generates
+			 *       keycodes unusable by convertXKey for non-latin-compatible keymaps.
+			 *
+			 * To address this, we:
+			 *
+			 *     - Try to get a 'number' key_sym using XLookupKeysym (with or without shift modifier).
+			 *     - Fallback to XLookupString to get a key_sym from active user-defined keymap.
+			 *
+			 * Note that this enforces users to use an ascii-compatible keymap with Blender - but at least it gives
+			 * predictable and consistent results.
+			 *
+			 * Also, note that nothing in XLib sources [1] makes it obvious why those two functions give different
+			 * key_sym results...
+			 *
+			 * [1] http://cgit.freedesktop.org/xorg/lib/libX11/tree/src/KeyBind.c
+			 */
+			if ((xke->keycode >= 10 && xke->keycode < 20)) {
+				key_sym = XLookupKeysym(xke, ShiftMask);
+				if (!((key_sym >= XK_0) && (key_sym <= XK_9))) {
 					key_sym = XLookupKeysym(xke, 0);
-                }
-            }
+				}
+			}
 			else {
 				key_sym = XLookupKeysym(xke, 0);
 			}
 
-            if (!XLookupString(xke, &ascii, 1, &key_sym_str, NULL)) {
-                ascii = '\0';
-            }
+			if (!XLookupString(xke, &ascii, 1, &key_sym_str, NULL)) {
+				ascii = '\0';
+			}
 
 			if ((gkey = convertXKey(key_sym)) == GHOST_kKeyUnknown) {
 				gkey = convertXKey(key_sym_str);
@@ -1239,7 +1239,8 @@ GHOST_SystemX11::processEvent(XEvent *xe)
 				 *       events). So we have to check which values this event actually contains!
 				 */
 
-#define AXIS_VALUE_GET(axis, val)  ((axis_first <= axis && axes_end > axis) && ((void)(val = data->axis_data[axis]), true))
+#define AXIS_VALUE_GET(axis, val) \
+	((axis_first <= axis && axes_end > axis) && ((void)(val = data->axis_data[axis - axis_first]), true))
 
 				if (AXIS_VALUE_GET(2, axis_value)) {
 					window->GetTabletData()->Pressure = axis_value / ((float)m_xtablet.PressureLevels);
@@ -1385,8 +1386,8 @@ GHOST_TSuccess
 GHOST_SystemX11::
 setCursorPosition(
 		GHOST_TInt32 x,
-		GHOST_TInt32 y
-        ) {
+		GHOST_TInt32 y)
+{
 
 	/* This is a brute force move in screen coordinates
 	 * XWarpPointer does relative moves so first determine the
@@ -1500,6 +1501,7 @@ convertXKey(KeySym key)
 			GXMAP(type, XK_quoteright,   GHOST_kKeyQuote);
 			GXMAP(type, XK_quoteleft,    GHOST_kKeyAccentGrave);
 			GXMAP(type, XK_minus,        GHOST_kKeyMinus);
+			GXMAP(type, XK_plus,         GHOST_kKeyPlus);
 			GXMAP(type, XK_slash,        GHOST_kKeySlash);
 			GXMAP(type, XK_backslash,    GHOST_kKeyBackslash);
 			GXMAP(type, XK_equal,        GHOST_kKeyEqual);
@@ -1925,10 +1927,19 @@ GHOST_TSuccess GHOST_SystemX11::pushDragDropEvent(GHOST_TEventType eventType,
  * Basically it will not crash blender now if you have a X device that
  * is configured but not plugged in.
  */
-int GHOST_X11_ApplicationErrorHandler(Display * /*display*/, XErrorEvent *theEvent)
+int GHOST_X11_ApplicationErrorHandler(Display *display, XErrorEvent *event)
 {
-	fprintf(stderr, "Ignoring Xlib error: error code %d request code %d\n",
-	        theEvent->error_code, theEvent->request_code);
+	char error_code_str[512];
+
+	XGetErrorText(display, event->error_code, error_code_str, sizeof(error_code_str));
+
+	fprintf(stderr,
+	        "Received X11 Error:\n"
+	        "\terror code:   %d\n"
+	        "\trequest code: %d\n"
+	        "\tminor code:   %d\n"
+	        "\terror text:   %s\n",
+	        event->error_code, event->request_code, event->minor_code, error_code_str);
 
 	/* No exit! - but keep lint happy */
 	return 0;

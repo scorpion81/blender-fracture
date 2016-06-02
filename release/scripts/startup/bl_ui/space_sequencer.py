@@ -180,6 +180,7 @@ class SEQUENCER_MT_view(Menu):
             layout.operator_context = 'INVOKE_REGION_WIN'
             layout.operator("sequencer.view_all", text="View all Sequences")
             layout.operator("sequencer.view_selected")
+            layout.operator("sequencer.view_frame")
             layout.operator_context = 'INVOKE_DEFAULT'
         if is_preview:
             layout.operator_context = 'INVOKE_REGION_PREVIEW'
@@ -294,6 +295,24 @@ class SEQUENCER_MT_frame(Menu):
 
         layout.operator("anim.previewrange_clear")
         layout.operator("anim.previewrange_set")
+
+        layout.separator()
+
+        props = layout.operator("sequencer.strip_jump", text="Jump to Previous Strip")
+        props.next = False
+        props.center = False
+        props = layout.operator("sequencer.strip_jump", text="Jump to Next Strip")
+        props.next = True
+        props.center = False
+
+        layout.separator()
+
+        props = layout.operator("sequencer.strip_jump", text="Jump to Previous Strip (Center)")
+        props.next = False
+        props.center = True
+        props = layout.operator("sequencer.strip_jump", text="Jump to Next Strip (Center)")
+        props.next = True
+        props.center = True
 
 
 class SEQUENCER_MT_add(Menu):
@@ -649,7 +668,15 @@ class SEQUENCER_PT_effect(SequencerButtonsPanel, Panel):
             col = layout.column()
             col.prop(strip, "text")
             col.prop(strip, "font_size")
-            col.prop(strip, "use_shadow")
+
+            row = col.row()
+            row.prop(strip, "color")
+            row = col.row()
+            row.prop(strip, "use_shadow")
+            rowsub = row.row()
+            rowsub.active = strip.use_shadow
+            rowsub.prop(strip, "shadow_color", text="")
+
             col.prop(strip, "align_x")
             col.prop(strip, "align_y")
             col.prop(strip, "location")

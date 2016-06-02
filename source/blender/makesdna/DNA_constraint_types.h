@@ -458,6 +458,16 @@ typedef struct bObjectSolverConstraint {
 	struct Object *camera;
 } bObjectSolverConstraint;
 
+/* Transform matrix cache constraint */
+typedef struct bTransformCacheConstraint {
+	char filepath[1024];  /* FILE_MAX */
+	char abc_object_path[1024];  /* FILE_MAX */
+
+	char forward_axis;
+	char up_axis;
+	char pad[2];
+} bTransformCacheConstraint;
+
 /* ------------------------------------------ */
 
 /* bConstraint->type 
@@ -494,6 +504,7 @@ typedef enum eBConstraint_Types {
 	CONSTRAINT_TYPE_FOLLOWTRACK = 26,		/* Follow Track Constraint */
 	CONSTRAINT_TYPE_CAMERASOLVER = 27,		/* Camera Solver Constraint */
 	CONSTRAINT_TYPE_OBJECTSOLVER = 28,		/* Object Solver Constraint */
+	CONSTRAINT_TYPE_TRANSFORMCACHE = 29,		/* Object Solver Constraint */
 	
 	/* NOTE: no constraints are allowed to be added after this */
 	NUM_CONSTRAINT_TYPES
@@ -516,7 +527,9 @@ typedef enum eBConstraint_Flags {
 		/* indicates that constraint was added locally (i.e.  didn't come from the proxy-lib) */
 	CONSTRAINT_PROXY_LOCAL = (1<<8),
 		/* indicates that constraint is temporarily disabled (only used in GE) */
-	CONSTRAINT_OFF = (1<<9)
+	CONSTRAINT_OFF = (1<<9),
+		/* use bbone curve shape when calculating headtail values */
+	CONSTRAINT_BBONE_SHAPE = (1<<10),
 } eBConstraint_Flags;
 
 /* bConstraint->ownspace/tarspace */

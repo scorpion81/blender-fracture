@@ -139,17 +139,24 @@ static void rna_userdef_dpi_update(Main *UNUSED(bmain), Scene *UNUSED(scene), Po
 	/* font's are stored at each DPI level, without this we can easy load 100's of fonts */
 	BLF_cache_clear();
 
-	BKE_userdef_state();
+	BKE_blender_userdef_refresh();
 	WM_main_add_notifier(NC_WINDOW, NULL);      /* full redraw */
 	WM_main_add_notifier(NC_SCREEN | NA_EDITED, NULL);    /* refresh region sizes */
 }
 
-static void rna_userdef_virtual_pixel_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *UNUSED(ptr))
+static void rna_userdef_virtual_pixel_update(Main *bmain, Scene *UNUSED(scene), PointerRNA *UNUSED(ptr))
 {
 	/* font's are stored at each DPI level, without this we can easy load 100's of fonts */
 	BLF_cache_clear();
 	
-	BKE_userdef_state();
+	BKE_blender_userdef_refresh();
+
+	/* force setting drawable again */
+	wmWindowManager *wm = bmain->wm.first;
+	if (wm) {
+		wm->windrawable = NULL;
+	}
+
 	WM_main_add_notifier(NC_WINDOW, NULL);      /* full redraw */
 	WM_main_add_notifier(NC_SCREEN | NA_EDITED, NULL);    /* refresh region sizes */
 }
@@ -3782,10 +3789,6 @@ static void rna_def_userdef_edit(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0, 100);
 	RNA_def_property_ui_text(prop, "Grease Pencil Euclidean Distance",
 	                         "Distance moved by mouse when drawing stroke to include");
-
-	prop = RNA_def_property(srna, "use_grease_pencil_smooth_stroke", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "gp_settings", GP_PAINT_DOSMOOTH);
-	RNA_def_property_ui_text(prop, "Grease Pencil Smooth Stroke", "Smooth the final stroke");
 
 	prop = RNA_def_property(srna, "use_grease_pencil_simplify_stroke", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "gp_settings", GP_PAINT_DOSIMPLIFY);

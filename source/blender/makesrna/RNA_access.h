@@ -95,6 +95,7 @@ extern StructRNA RNA_Brush;
 extern StructRNA RNA_BrushTextureSlot;
 extern StructRNA RNA_BuildModifier;
 extern StructRNA RNA_MeshCacheModifier;
+extern StructRNA RNA_MeshSequenceCacheModifier;
 extern StructRNA RNA_Camera;
 extern StructRNA RNA_CastModifier;
 extern StructRNA RNA_ChildOfConstraint;
@@ -832,6 +833,14 @@ bool RNA_property_enum_value(struct bContext *C, PointerRNA *ptr, PropertyRNA *p
 bool RNA_property_enum_identifier(struct bContext *C, PointerRNA *ptr, PropertyRNA *prop, const int value, const char **identifier);
 bool RNA_property_enum_name(struct bContext *C, PointerRNA *ptr, PropertyRNA *prop, const int value, const char **name);
 bool RNA_property_enum_name_gettexted(struct bContext *C, PointerRNA *ptr, PropertyRNA *prop, const int value, const char **name);
+
+bool RNA_property_enum_item_from_value(
+        struct bContext *C, PointerRNA *ptr, PropertyRNA *prop, const int value,
+        EnumPropertyItem *r_item);
+bool RNA_property_enum_item_from_value_gettexted(
+        struct bContext *C, PointerRNA *ptr, PropertyRNA *prop, const int value,
+        EnumPropertyItem *r_item);
+
 int RNA_property_enum_bitflag_identifiers(struct bContext *C, PointerRNA *ptr, PropertyRNA *prop, const int value, const char **identifier);
 
 StructRNA *RNA_property_pointer_type(PointerRNA *ptr, PropertyRNA *prop);
@@ -972,6 +981,7 @@ bool RNA_path_resolve_elements(PointerRNA *ptr, const char *path, struct ListBas
 
 char *RNA_path_from_ID_to_struct(PointerRNA *ptr);
 char *RNA_path_from_ID_to_property(PointerRNA *ptr, PropertyRNA *prop);
+char *RNA_path_from_ID_to_property_index(PointerRNA *ptr, PropertyRNA *prop, int array_dim, int index);
 
 char *RNA_path_resolve_from_type_to_property(
         struct PointerRNA *ptr, struct PropertyRNA *prop,

@@ -73,6 +73,7 @@ void id_lib_extern(struct ID *id);
 void BKE_library_filepath_set(struct Library *lib, const char *filepath);
 void id_us_ensure_real(struct ID *id);
 void id_us_clear_real(struct ID *id);
+void id_us_plus_no_lib(struct ID *id);
 void id_us_plus(struct ID *id);
 void id_us_min(struct ID *id);
 void id_fake_user_set(struct ID *id);
@@ -108,7 +109,7 @@ void BKE_main_id_tag_idcode(struct Main *mainvar, const short type, const int ta
 void BKE_main_id_tag_listbase(struct ListBase *lb, const int tag, const bool value);
 void BKE_main_id_tag_all(struct Main *mainvar, const int tag, const bool value);
 
-void BKE_main_id_flag_listbase(ListBase *lb, const int flag, const bool value);
+void BKE_main_id_flag_listbase(struct ListBase *lb, const int flag, const bool value);
 void BKE_main_id_flag_all(struct Main *bmain, const int flag, const bool value);
 
 void BKE_main_id_clear_newpoins(struct Main *bmain);
@@ -118,7 +119,8 @@ void BKE_main_lib_objects_recalc_all(struct Main *bmain);
 /* (MAX_ID_NAME - 2) + 3 */
 void BKE_id_ui_prefix(char name[66 + 1], const struct ID *id);
 
-void BKE_library_make_local(struct Main *bmain, struct Library *lib, bool untagged_only, bool set_fake);
+void BKE_library_make_local(
+        struct Main *bmain, const struct Library *lib, const bool untagged_only, const bool set_fake);
 
 typedef void (*BKE_library_free_window_manager_cb)(struct bContext *, struct wmWindowManager *);
 typedef void (*BKE_library_free_notifier_reference_cb)(const void *);

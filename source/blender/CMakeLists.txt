@@ -153,3 +153,6 @@ if(WITH_FREESTYLE)
 	add_subdirectory(freestyle)
 endif()
 
+if(WITH_ALEMBIC)
+	add_subdirectory(alembic)
+endif()

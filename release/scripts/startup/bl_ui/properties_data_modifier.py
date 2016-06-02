@@ -185,6 +185,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.prop(md, "cache_format")
         layout.prop(md, "filepath")
 
+        if md.cache_format == 'ABC':
+            layout.prop(md, "sub_object")
+
         layout.label(text="Evaluation:")
         layout.prop(md, "factor", slider=True)
         layout.prop(md, "deform_mode")
@@ -218,6 +221,10 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         split.label(text="Flip Axis:")
         row = split.row()
         row.prop(md, "flip_axis")
+
+    def MESH_SEQUENCE_CACHE(self, layout, ob, md):
+        layout.prop(md, "filepath")
+        layout.prop(md, "abc_object_path")
 
     def CAST(self, layout, ob, md):
         split = layout.split(percentage=0.25)
@@ -506,13 +513,12 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         split = layout.split()
 
         col = split.column()
-        col.active = not md.is_bound
+        col.enabled = not md.is_bound
         col.label(text="Object:")
         col.prop(md, "object", text="")
 
         col = split.column()
         col.label(text="Vertex Group:")
-
         row = col.row(align=True)
         row.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
         sub = row.row(align=True)
@@ -520,15 +526,16 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         sub.prop(md, "invert_vertex_group", text="", icon='ARROW_LEFTRIGHT')
 
         layout.separator()
+        row = layout.row()
+        row.enabled = not md.is_bound
+        row.prop(md, "precision")
+        row.prop(md, "use_dynamic_bind")
 
+        layout.separator()
         if md.is_bound:
             layout.operator("object.meshdeform_bind", text="Unbind")
         else:
             layout.operator("object.meshdeform_bind", text="Bind")
-
-            row = layout.row()
-            row.prop(md, "precision")
-            row.prop(md, "use_dynamic_bind")
 
     def MIRROR(self, layout, ob, md):
         split = layout.split(percentage=0.25)
@@ -741,7 +748,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.prop(md, "target", text="")
         col = split.column()
         col.label(text="Vertex Group:")
-        col.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
+        row = col.row(align=True)
+        row.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
+        row.prop(md, "invert_vertex_group", text="", icon='ARROW_LEFTRIGHT')
 
         split = layout.split()
 
@@ -789,7 +798,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
         col = split.column()
         col.label(text="Vertex Group:")
-        col.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
+        row = col.row(align=True)
+        row.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
+        row.prop(md, "invert_vertex_group", text="", icon='ARROW_LEFTRIGHT')
 
         split = layout.split()
 

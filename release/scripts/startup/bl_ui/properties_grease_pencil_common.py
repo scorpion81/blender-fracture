@@ -570,16 +570,21 @@ class GreasePencilDataPanel:
         col.prop(gpl, "fill_alpha", text="Opacity", slider=True)
 
         # Options
+        col = layout.column(align=True)
+        col.active = not gpl.lock
+        col.prop(gpl, "line_width", slider=True)
+
+
         split = layout.split(percentage=0.5)
         split.active = not gpl.lock
 
         col = split.column(align=True)
-        col.prop(gpl, "line_width", slider=True)
         col.prop(gpl, "use_volumetric_strokes")
-
-        col = split.column(align=True)
-        col.prop(gpl, "show_x_ray")
         col.prop(gpl, "show_points", text="Points")
+        
+        col = split.column(align=True)
+        col.prop(gpl, "use_hq_fill")
+        col.prop(gpl, "show_x_ray")
 
         layout.separator()
 
@@ -621,6 +626,15 @@ class GreasePencilDataPanel:
         row.active = gpl.use_ghost_custom_colors
         row.prop(gpl, "after_color", text="")
         sub.prop(gpl, "ghost_after_range", text="After")
+
+        # Smooth and subdivide new strokes
+        layout.separator()
+        col = layout.column(align=True)
+        col.label(text="New Stroke Quality:")
+        col.prop(gpl, "pen_smooth_factor")
+        col.prop(gpl, "pen_smooth_steps")
+        col.separator()
+        col.prop(gpl, "pen_subdivision_steps")
 
 
 class GreasePencilToolsPanel:
