@@ -356,7 +356,30 @@ static void visit_object(const IObject &object,
 		const MetaData &md = child.getMetaData();
 
 		if (IXform::matches(md)) {
-			if (is_locator(child) || child.getNumChildren() == 0) {
+			bool create_xform = false;
+
+			if (is_locator(child)) {
+				create_xform = true;
+			}
+			else {
+				/* Avoid creating an empty object if the child of this transform
+				 * is not a transform (that is an empty). */
+				if (child.getNumChildren() == 1) {
+					if (IXform::matches(child.getChild(0).getMetaData())) {
+						create_xform = true;
+					}
+#if 0
+					else {
+						std::cerr << "Skipping " << child.getFullName() << '\n';
+					}
+#endif
+				}
+				else {
+					create_xform = true;
+				}
+			}
+
+			if (create_xform) {
 				reader = new AbcEmptyReader(child, settings);
 			}
 		}
@@ -429,16 +452,10 @@ static void create_hierarchy(Main *bmain, Scene *scene, AbcObjectReader *root)
 	std::vector<std::string> parts;
 	split(full_name, '/', parts);
 
-	/* Either object doesn't have any parents, since its path only contain its name,
-	 * and its data name, or is an empty with no parents. */
-	if (parts.size() <= 2) {
-		return;
-	}
-
 	Object *parent = NULL;
 
 	std::vector<std::string>::reverse_iterator iter;
-	for (iter = parts.rbegin() + 2; iter != parts.rend(); ++iter) {
+	for (iter = parts.rbegin() + 1; iter != parts.rend(); ++iter) {
 		parent = find_object(scene, *iter);
 
 		if (parent != NULL && root->object() != parent) {

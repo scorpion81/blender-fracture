@@ -45,6 +45,8 @@ extern "C" {
 }
 
 using Alembic::AbcGeom::IObject;
+using Alembic::AbcGeom::IXform;
+using Alembic::AbcGeom::IXformSchema;
 
 using Alembic::AbcGeom::OCompoundProperty;
 using Alembic::AbcGeom::ODoubleArrayProperty;
@@ -321,13 +323,7 @@ AbcObjectReader::AbcObjectReader(const IObject &object, ImportSettings &settings
 	std::vector<std::string> parts;
 	split(m_name, '/', parts);
 
-	if (parts.size() >= 2) {
-		m_object_name = parts[parts.size() - 2];
-		m_data_name = parts[parts.size() - 1];
-	}
-	else {
-		m_object_name = m_data_name = parts[parts.size() - 1];
-	}
+	m_object_name = m_data_name = parts[parts.size() - 1];
 }
 
 AbcObjectReader::~AbcObjectReader()
@@ -345,14 +341,19 @@ Object *AbcObjectReader::object() const
 
 void AbcObjectReader::readObjectMatrix(const float time)
 {
-	const Alembic::AbcGeom::MetaData &md = m_iobject.getParent().getMetaData();
+	IXform ixform;
 
-	if (!Alembic::AbcGeom::IXformSchema::matches(md)) {
+	if (IXform::matches(m_iobject.getMetaData())) {
+		ixform = IXform(m_iobject, Alembic::AbcGeom::kWrapExisting);
+	}
+	else if (IXform::matches(m_iobject.getParent().getMetaData())) {
+		ixform = IXform(m_iobject.getParent(), Alembic::AbcGeom::kWrapExisting);
+	}
+	else {
 		return;
 	}
 
-	Alembic::AbcGeom::IXform x(m_iobject.getParent(), Alembic::AbcGeom::kWrapExisting);
-	Alembic::AbcGeom::IXformSchema &schema(x.getSchema());
+	const IXformSchema &schema(ixform.getSchema());
 
 	if (!schema.valid()) {
 		return;
@@ -362,7 +363,7 @@ void AbcObjectReader::readObjectMatrix(const float time)
 	Alembic::AbcGeom::XformSample xs;
 	schema.get(xs, sample_sel);
 
-	create_input_transform(sample_sel, x, m_object, m_object->obmat);
+	create_input_transform(sample_sel, ixform, m_object, m_object->obmat);
 
 	invert_m4_m4(m_object->imat, m_object->obmat);
 
