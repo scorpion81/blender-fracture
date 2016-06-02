@@ -82,6 +82,11 @@ using Alembic::AbcGeom::XformSample;
 
 using Alembic::AbcMaterial::IMaterial;
 
+int ABC_get_version()
+{
+	return ALEMBIC_LIBRARY_VERSION;
+}
+
 static IArchive open_archive(const std::string &filename)
 {
 	Alembic::AbcCoreAbstract::ReadArraySampleCachePtr cache_ptr;
