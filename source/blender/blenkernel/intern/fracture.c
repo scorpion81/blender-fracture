@@ -2202,7 +2202,7 @@ static Shard* fracture_object_to_shard( Object *own, Object* target)
 	MPoly* mpoly;
 	MLoop* mloop;
 	SpaceTransform trans;
-	float mat[4][4], size[3];
+	float mat[4][4], size[3] = {1.0f, 1.0f, 1.0f};
 
 	int totvert, totpoly, totloop, v;
 	bool do_free = false;
@@ -2237,7 +2237,7 @@ static Shard* fracture_object_to_shard( Object *own, Object* target)
 
 	for (v = 0, mv = s->mvert; v < s->totvert; v++, mv++)
 	{
-		mul_v3_v3(mv->co, size);
+		//mul_v3_v3(mv->co, size);
 
 		//shrink the shard ? (and take centroid diff into account here, too)
 		BLI_space_transform_apply(&trans, mv->co);
@@ -2246,7 +2246,7 @@ static Shard* fracture_object_to_shard( Object *own, Object* target)
 		//sub_v3_v3(mv->co, s->raw_centroid);
 	}
 
-	//BLI_space_transform_apply(&trans, s->raw_centroid);
+//	BLI_space_transform_apply(&trans, s->raw_centroid);
 	BLI_space_transform_apply(&trans, s->centroid);
 
 	s = BKE_custom_data_to_shard(s, dm);
@@ -2317,8 +2317,10 @@ static MeshIsland* fracture_shard_to_island(FractureModifierData *fmd, Shard *s,
 	mi->locs = MEM_mallocN(sizeof(float)*3, "mi->locs");
 	mi->rots = MEM_mallocN(sizeof(float)*4, "mi->rots");
 	mi->frame_count = 0;
-	if (fmd->modifier.scene->rigidbody_world)
+	if (fmd->modifier.scene && fmd->modifier.scene->rigidbody_world)
 	{
+		/*modifier might have no linked scene yet after creation on an inactive layer */
+		/*so just try a fallback here */
 		mi->start_frame = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
 	}
 	else
@@ -2393,7 +2395,7 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 	//update existing island's vert refs, if any...should have used indexes instead :S
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 	{
-		//MVert *pvert = mi->physics_mesh->getVertArray(mi->physics_mesh);
+		MVert *pvert = mi->physics_mesh->getVertArray(mi->physics_mesh);
 		float inv_size[3] = {1.0f, 1.0f, 1.0f};
 		Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, mi->id);
 		if (!s)
@@ -2406,7 +2408,7 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 		for (i = 0; i < mi->vertex_count; i++)
 		{
 			//just update pointers, dont need to reallocate something
-			MVert *v = NULL;
+			MVert *v = NULL, *pv = NULL;
 			int index;
 
 			//also correct indexes
@@ -2420,6 +2422,9 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 			index = mi->vertex_indices[i];
 			v = mv + index;
 			mi->vertices_cached[i] = v;
+
+			pv = pvert + i;
+			mul_v3_v3(pv->co, inv_size);
 
 			//transform vertex properly ? compensate for shrunken shard ?
 			//sub_v3_v3v3(loc, mi->centroid, s->raw_centroid);
@@ -2782,6 +2787,21 @@ RigidBodyShardCon *BKE_fracture_mesh_islands_connect(FractureModifierData *fmd, 
 	rbsc = BKE_rigidbody_create_shard_constraint(fmd->modifier.scene, con_type, false);
 	rbsc->mi1 = mi1;
 	rbsc->mi2 = mi2;
+
+	if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+	{
+		/* disable breaking flag here by default, only enable later via python if necessary */
+		rbsc->flag &= ~RBC_FLAG_USE_BREAKING;
+
+		/* also delete all other "default" flags here, let them being overriden from python too */
+		rbsc->flag &= ~RBC_FLAG_ENABLED;
+		rbsc->flag &= ~RBC_FLAG_DISABLE_COLLISIONS;
+
+#if 0
+		/* and dont allow to let constrained objects collide per default, as with regular constraints */
+		rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
+#endif
+	}
 
 	/* moved default meshconstraint pos calculation here to creation, so you can override it later on*/
 	/* do this for all constraints */

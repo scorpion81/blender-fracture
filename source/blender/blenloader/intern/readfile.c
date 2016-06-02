@@ -5214,6 +5214,14 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			Shard *s, **shards = NULL;
 			RigidBodyShardCon *con;
 
+			/*just to be sure we dont have stale data from dynamic*/
+			fmd->shard_sequence.first = NULL;
+			fmd->shard_sequence.last = NULL;
+			fmd->meshIsland_sequence.first = NULL;
+			fmd->meshIsland_sequence.last = NULL;
+			fmd->current_mi_entry = NULL;
+			fmd->current_shard_entry = NULL;
+
 			link_list(fd, &fmd->frac_mesh->shard_map);
 			link_list(fd, &fmd->islandShards);
 			islandShardCount = BLI_listbase_count(&fmd->islandShards);
