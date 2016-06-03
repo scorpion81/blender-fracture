@@ -90,6 +90,14 @@ Imath::Box3d AbcObjectWriter::bounds()
 {
 	BoundBox *bb = BKE_object_boundbox_get(this->m_object);
 
+	if (!bb) {
+		if (this->m_object->type != OB_CAMERA) {
+			std::cerr << "Boundbox is null!\n";
+		}
+
+		return Imath::Box3d();
+	}
+
 	/* Convert Z-up to Y-up. */
 	this->m_bounds.min.x = bb->vec[0][0];
 	this->m_bounds.min.y = bb->vec[0][2];
