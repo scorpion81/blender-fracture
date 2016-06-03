@@ -60,11 +60,11 @@ using Alembic::AbcGeom::OStringProperty;
 
 /* ************************************************************************** */
 
-AbcObjectWriter::AbcObjectWriter::AbcObjectWriter(Scene *scene,
-                                                  Object *ob,
-				                                  uint32_t sampling_time,
-				                                  ExportSettings &settings,
-				                                  AbcObjectWriter *parent)
+AbcObjectWriter::AbcObjectWriter(Scene *scene,
+                                 Object *ob,
+                                 uint32_t sampling_time,
+                                 ExportSettings &settings,
+                                 AbcObjectWriter *parent)
     : m_object(ob)
     , m_settings(settings)
     , m_scene(scene)
