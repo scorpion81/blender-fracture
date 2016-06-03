@@ -20,12 +20,13 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef __ABC_TRANSFORM_WRITER_H__
-#define __ABC_TRANSFORM_WRITER_H__
+#pragma once
 
 #include "abc_object.h"
 
 #include <Alembic/AbcGeom/All.h>
+
+/* ************************************************************************** */
 
 class AbcTransformWriter : public AbcObjectWriter {
 	Alembic::AbcGeom::OXform m_xform;
@@ -35,13 +36,12 @@ class AbcTransformWriter : public AbcObjectWriter {
 	Alembic::Abc::M44d m_matrix;
 
 	bool m_is_animated;
-	bool m_no_parent_invert;
 	Object *m_parent;
 	bool m_visible;
 
 public:
-	AbcTransformWriter(Object *obj,
-	                   Alembic::Abc::OObject abcParent,
+	AbcTransformWriter(Object *ob,
+	                   const Alembic::AbcGeom::OObject &abcParent,
 	                   AbcTransformWriter *writerParent,
 	                   unsigned int timeSampling,
 	                   ExportSettings &settings);
@@ -53,7 +53,18 @@ public:
 private:
 	virtual void do_write();
 
-	bool hasAnimation(Object *obj) const;
+	bool hasAnimation(Object *ob) const;
 };
 
-#endif  /* __ABC_TRANSFORM_WRITER_H__ */
+/* ************************************************************************** */
+
+class AbcEmptyReader : public AbcObjectReader {
+	Alembic::AbcGeom::IXformSchema m_schema;
+
+public:
+	AbcEmptyReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
+
+	bool valid() const;
+
+	void readObjectData(Main *bmain, Scene *scene, float time);
+};

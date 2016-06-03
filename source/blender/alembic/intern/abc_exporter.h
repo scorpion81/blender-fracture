@@ -20,8 +20,7 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef __ABC_EXPORTER_H__
-#define __ABC_EXPORTER_H__
+#pragma once
 
 #include <map>
 #include <vector>
@@ -73,5 +72,3 @@ private:
 	bool objectIsShape(Object *ob);
 	bool objectIsSmokeSim(Object *ob);
 };
-
-#endif  /* __ABC_EXPORTER_H__ */

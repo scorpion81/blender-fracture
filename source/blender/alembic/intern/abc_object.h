@@ -20,8 +20,7 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef __ABC_OBJECT_WRITER_H__
-#define __ABC_OBJECT_WRITER_H__
+#pragma once
 
 #include <Alembic/Abc/All.h>
 
@@ -32,6 +31,8 @@ extern "C" {
 }
 
 struct Main;
+
+/* ************************************************************************** */
 
 class AbcObjectWriter {
 protected:
@@ -47,7 +48,8 @@ protected:
 	std::string m_name;
 
 public:
-    AbcObjectWriter(Object *obj, ExportSettings &settings);
+    AbcObjectWriter(Object *ob, ExportSettings &settings);
+
     virtual ~AbcObjectWriter();
 
 	void addChild(AbcObjectWriter *child);
@@ -72,6 +74,8 @@ protected:
 	bool getPropertyValue(ID *id, const std::string &name, double &val);
 };
 
+/* ************************************************************************** */
+
 struct ImportSettings {
 	bool do_convert_mat;
 	float conversion_mat[4][4];
@@ -81,6 +85,8 @@ struct ImportSettings {
 	float scale;
 	bool is_sequence;
 };
+
+/* ************************************************************************** */
 
 class AbcObjectReader {
 protected:
@@ -109,5 +115,3 @@ public:
 
 	void addDefaultModifier() const;
 };
-
-#endif

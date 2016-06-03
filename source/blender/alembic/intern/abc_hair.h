@@ -20,17 +20,16 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef __ABC_HAIR_WRITER_H__
-#define __ABC_HAIR_WRITER_H__
+#pragma once
 
 #include "abc_object.h"
 #include "abc_shape.h"
 
-struct CustomDataLayer;
 struct DerivedMesh;
-struct ModifierData;
 struct ParticleSettings;
 struct ParticleSystem;
+
+/* ************************************************************************** */
 
 class AbcHairWriter : public AbcShapeWriter {
     ParticleSystem *m_psys;
@@ -64,6 +63,8 @@ private:
                                  std::vector<int32_t> &hvertices);
 };
 
+/* ************************************************************************** */
+
 class AbcHairReader : public AbcObjectReader {
 	Alembic::AbcGeom::ICurvesSchema m_curves_schema;
 
@@ -74,5 +75,3 @@ public:
 
 	void readObjectData(Main *bmain, Scene *scene, float time);
 };
-
-#endif  /* __ABC_HAIR_WRITER_H__ */

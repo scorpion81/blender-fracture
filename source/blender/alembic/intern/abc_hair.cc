@@ -60,6 +60,8 @@ using Alembic::AbcGeom::OV2fGeomParam;
 
 static const float nscale = 1.0f / 32767.0f;
 
+/* ************************************************************************** */
+
 AbcHairWriter::AbcHairWriter(Scene *scene,
                              Object *ob,
                              AbcTransformWriter *parent,
@@ -295,6 +297,8 @@ void AbcHairWriter::write_hair_child_sample(DerivedMesh *dm,
 	}
 }
 
+/* ************************************************************************** */
+
 AbcHairReader::AbcHairReader(const Alembic::Abc::IObject &object, ImportSettings &settings)
     : AbcObjectReader(object, settings)
 {
@@ -306,7 +310,6 @@ bool AbcHairReader::valid() const
 {
 	return m_curves_schema.valid();
 }
-
 
 void AbcHairReader::readObjectData(Main *bmain, Scene *scene, float time)
 {

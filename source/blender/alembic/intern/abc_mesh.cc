@@ -92,6 +92,8 @@ using Alembic::AbcGeom::kVertexScope;
 using Alembic::AbcGeom::kWrapExisting;
 using Alembic::AbcGeom::UInt32ArraySample;
 
+/* ************************************************************************** */
+
 AbcMeshWriter::AbcMeshWriter(Scene *scene,
                              Object *ob,
                              AbcTransformWriter *parent,
@@ -456,8 +458,6 @@ void AbcMeshWriter::getPoints(DerivedMesh *dm, std::vector<float> &points)
 		points.push_back(verts[i].co[2]);
 		points.push_back(-verts[i].co[1]);
 	}
-
-	calcBounds(points);
 }
 
 void AbcMeshWriter::getTopology(DerivedMesh *dm,
@@ -956,7 +956,7 @@ void AbcMeshWriter::getGeoGroups(
 	}
 }
 
-/* ******************************* mesh reader ****************************** */
+/* ************************************************************************** */
 
 /* Some helpers for mesh generation */
 namespace utils {
@@ -1095,7 +1095,7 @@ static void assign_materials(Main *bmain, Object *ob, const std::map<std::string
 
 }  /* namespace utils */
 
-/* ****************************** AbcMeshReader ***************************** */
+/* ************************************************************************** */
 
 AbcMeshReader::AbcMeshReader(const IObject &object, ImportSettings &settings, bool is_subd)
     : AbcObjectReader(object, settings)
@@ -1243,7 +1243,7 @@ void AbcMeshReader::readFaceSetsSample(Main *bmain, Mesh *mesh, size_t poly_star
 	utils::assign_materials(bmain, m_object, mat_map);
 }
 
-/* ********************************************************** */
+/* ************************************************************************** */
 
 void read_mverts(MVert *mverts, const Alembic::AbcGeom::P3fArraySamplePtr &positions)
 {
@@ -1286,20 +1286,4 @@ void read_mpolys(MPoly *mpolys, MLoop *mloops, MLoopUV *mloopuvs,
 			loop.v = (*face_indices)[loopcount++];
 		}
 	}
-}
-
-/* ***************************** AbcEmptyReader ***************************** */
-
-AbcEmptyReader::AbcEmptyReader(const Alembic::Abc::IObject &object, ImportSettings &settings)
-    : AbcObjectReader(object, settings)
-{}
-
-bool AbcEmptyReader::valid() const
-{
-	return true; // TODO? m_schema.valid();
-}
-
-void AbcEmptyReader::readObjectData(Main *bmain, Scene *scene, float /*time*/)
-{
-	m_object = BKE_object_add(bmain, scene, OB_EMPTY, m_object_name.c_str());
 }

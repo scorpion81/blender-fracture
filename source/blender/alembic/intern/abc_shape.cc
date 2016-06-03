@@ -24,6 +24,8 @@
 
 #include "abc_transform.h"
 
+#include "BKE_object.h"
+
 AbcShapeWriter::AbcShapeWriter(Scene *sce,
                                Object *obj,
                                AbcTransformWriter *parent,
@@ -43,11 +45,11 @@ void AbcShapeWriter::calcBounds(const std::vector<float> &points)
 
 	for (int i = 0, e = points.size() / 3; i < e; i += 3) {
 		m_bounds.min.x = std::min(m_bounds.min.x, (double) points[i]);
-		m_bounds.min.y = std::min(m_bounds.min.y, (double) points[i+1]);
-		m_bounds.min.z = std::min(m_bounds.min.z, (double) points[i+2]);
+		m_bounds.min.y = std::min(m_bounds.min.y, (double) points[i + 1]);
+		m_bounds.min.z = std::min(m_bounds.min.z, (double) points[i + 2]);
 
 		m_bounds.max.x = std::max(m_bounds.max.x, (double) points[i]);
-		m_bounds.max.y = std::max(m_bounds.max.y, (double) points[i+1]);
-		m_bounds.max.z = std::max(m_bounds.max.z, (double) points[i+2]);
+		m_bounds.max.y = std::max(m_bounds.max.y, (double) points[i + 1]);
+		m_bounds.max.z = std::max(m_bounds.max.z, (double) points[i + 2]);
 	}
 }

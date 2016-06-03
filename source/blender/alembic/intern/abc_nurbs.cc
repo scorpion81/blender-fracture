@@ -62,6 +62,8 @@ using Alembic::AbcGeom::OCompoundProperty;
 using Alembic::AbcGeom::ONuPatch;
 using Alembic::AbcGeom::ONuPatchSchema;
 
+/* ************************************************************************** */
+
 AbcNurbsWriter::AbcNurbsWriter(Scene *scene,
                                Object *ob,
                                AbcTransformWriter *parent,
@@ -206,7 +208,7 @@ void AbcNurbsWriter::do_write()
 	}
 }
 
-/* ****************************** nurbs reader ****************************** */
+/* ************************************************************************** */
 
 AbcNurbsReader::AbcNurbsReader(const IObject &object, ImportSettings &settings)
     : AbcObjectReader(object, settings)

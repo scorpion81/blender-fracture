@@ -58,8 +58,10 @@ using Alembic::AbcGeom::OInt32Property;
 using Alembic::AbcGeom::OStringArrayProperty;
 using Alembic::AbcGeom::OStringProperty;
 
-AbcObjectWriter::AbcObjectWriter(Object *obj, ExportSettings &settings)
-    : m_object(obj)
+/* ************************************************************************** */
+
+AbcObjectWriter::AbcObjectWriter(Object *ob, ExportSettings &settings)
+    : m_object(ob)
     , m_settings(settings)
     , m_first_frame(true)
 {
@@ -309,7 +311,7 @@ bool AbcObjectWriter::getPropertyValue(ID *id, const std::string &name, double &
 	return false;
 }
 
-/* ****************************** object reader ***************************** */
+/* ************************************************************************** */
 
 AbcObjectReader::AbcObjectReader(const IObject &object, ImportSettings &settings)
     : m_name("")

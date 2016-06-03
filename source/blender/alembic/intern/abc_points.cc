@@ -52,7 +52,7 @@ using Alembic::AbcGeom::ISampleSelector;
 using Alembic::AbcGeom::OPoints;
 using Alembic::AbcGeom::OPointsSchema;
 
-/* ****************************************** */
+/* ************************************************************************** */
 
 AbcPointsWriter::AbcPointsWriter(Scene *scene,
                                  Object *ob,
@@ -132,7 +132,7 @@ void AbcPointsWriter::do_write()
 	m_schema.set(m_sample);
 }
 
-/* ****************************************** */
+/* ************************************************************************** */
 
 AbcPointsReader::AbcPointsReader(const Alembic::Abc::IObject &object, ImportSettings &settings)
     : AbcObjectReader(object, settings)

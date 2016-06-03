@@ -30,21 +30,24 @@ extern "C" {
 #include "DNA_object_types.h"
 
 #include "BLI_math.h"
+
+#include "BKE_object.h"
 }
 
 using Alembic::AbcGeom::OObject;
 using Alembic::AbcGeom::OXform;
 
-AbcTransformWriter::AbcTransformWriter(Object *obj,
-                                       OObject abcParent,
+/* ************************************************************************** */
+
+AbcTransformWriter::AbcTransformWriter(Object *ob,
+                                       const OObject &abcParent,
                                        AbcTransformWriter *writerParent,
                                        unsigned int timeSampling,
                                        ExportSettings &settings)
-    : AbcObjectWriter(obj, settings)
+    : AbcObjectWriter(ob, settings)
 {
 	m_is_animated = hasAnimation(m_object);
 	m_parent = NULL;
-	m_no_parent_invert = false;
 
 	if (!m_is_animated) {
 		timeSampling = 0;
@@ -73,8 +76,7 @@ void AbcTransformWriter::do_write()
 		m_visibility = Alembic::AbcGeom::CreateVisibilityProperty(m_xform, m_xform.getSchema().getTimeSampling());
 	}
 
-	bool visibility = ! (m_object->restrictflag & OB_RESTRICT_VIEW);
-	m_visibility.set(visibility);
+	m_visibility.set(!(m_object->restrictflag & OB_RESTRICT_VIEW));
 
 	if (!m_first_frame && !m_is_animated) {
 		return;
@@ -108,8 +110,24 @@ Imath::Box3d AbcTransformWriter::bounds() const
 	return Imath::transform(bounds, m_matrix);
 }
 
-bool AbcTransformWriter::hasAnimation(Object *obj) const
+bool AbcTransformWriter::hasAnimation(Object */*ob*/) const
 {
 	/* TODO: implement this */
 	return true;
+}
+
+/* ************************************************************************** */
+
+AbcEmptyReader::AbcEmptyReader(const Alembic::Abc::IObject &object, ImportSettings &settings)
+    : AbcObjectReader(object, settings)
+{}
+
+bool AbcEmptyReader::valid() const
+{
+	return true; // TODO? m_schema.valid();
+}
+
+void AbcEmptyReader::readObjectData(Main *bmain, Scene *scene, float /*time*/)
+{
+	m_object = BKE_object_add(bmain, scene, OB_EMPTY, m_object_name.c_str());
 }

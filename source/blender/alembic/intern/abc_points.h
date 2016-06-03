@@ -29,7 +29,7 @@
 
 class ParticleSystem;
 
-/* ****************************************** */
+/* ************************************************************************** */
 
 class AbcPointsWriter : public AbcShapeWriter {
 	Alembic::AbcGeom::OPointsSchema m_schema;
@@ -47,7 +47,7 @@ public:
 	void do_write();
 };
 
-/* ****************************************** */
+/* ************************************************************************** */
 
 class AbcPointsReader : public AbcObjectReader {
 	Alembic::AbcGeom::IPointsSchema m_schema;

@@ -20,14 +20,15 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef __ABC_MESH_WRITER_H__
-#define __ABC_MESH_WRITER_H__
+#pragma once
 
 #include "abc_shape.h"
 
 struct DerivedMesh;
 struct Mesh;
 struct ModifierData;
+
+/* ************************************************************************** */
 
 class AbcMeshWriter : public AbcShapeWriter {
 	Alembic::AbcGeom::OPolyMeshSchema m_mesh_schema;
@@ -104,6 +105,8 @@ private:
     void getVelocities(DerivedMesh *dm, std::vector<float> &vels);
 };
 
+/* ************************************************************************** */
+
 class AbcMeshReader : public AbcObjectReader {
 	Alembic::AbcGeom::IPolyMeshSchema m_schema;
 	Alembic::AbcGeom::ISubDSchema m_subd_schema;
@@ -127,7 +130,7 @@ private:
 	                          const Alembic::AbcGeom::P3fArraySamplePtr &positions);
 };
 
-/* *********************************** */
+/* ************************************************************************** */
 
 struct MLoop;
 struct MLoopUV;
@@ -145,18 +148,3 @@ namespace utils {
 void mesh_add_verts(struct Mesh *mesh, size_t len);
 
 }
-
-/* *********************************** */
-
-class AbcEmptyReader : public AbcObjectReader {
-	Alembic::AbcGeom::IXformSchema m_schema;
-
-public:
-	AbcEmptyReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
-
-	bool valid() const;
-
-	void readObjectData(Main *bmain, Scene *scene, float time);
-};
-
-#endif  /* __ABC_MESH_WRITER_H__ */

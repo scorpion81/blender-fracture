@@ -20,10 +20,11 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef __ABC_NURBS_WRITER_H__
-#define __ABC_NURBS_WRITER_H__
+#pragma once
 
 #include "abc_shape.h"
+
+/* ************************************************************************** */
 
 class AbcNurbsWriter : public AbcShapeWriter {
 	std::vector<Alembic::AbcGeom::ONuPatchSchema> m_nurbs_schema;
@@ -42,6 +43,8 @@ private:
     bool isAnimated() const;
 };
 
+/* ************************************************************************** */
+
 class AbcNurbsReader : public AbcObjectReader {
 	std::vector< std::pair<Alembic::AbcGeom::INuPatchSchema, Alembic::Abc::IObject> > m_schemas;
 
@@ -55,5 +58,3 @@ public:
 private:
 	void getNurbsPatches(const Alembic::Abc::IObject &obj);
 };
-
-#endif  /* __ABC_NURBS_WRITER_H__ */

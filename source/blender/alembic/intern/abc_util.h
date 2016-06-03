@@ -20,8 +20,7 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef __ABC_UTIL_H__
-#define __ABC_UTIL_H__
+#pragma once
 
 #include <Alembic/Abc/All.h>
 #include <Alembic/AbcGeom/All.h>
@@ -54,5 +53,3 @@ bool is_locator(const Alembic::AbcGeom::IObject &object);
 void create_input_transform(const Alembic::AbcGeom::ISampleSelector &sample_sel,
                             const Alembic::AbcGeom::IXform &ixform, Object *ob,
                             float r_mat[4][4]);
-
-#endif  /* __ABC_UTIL_H__ */

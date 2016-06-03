@@ -51,6 +51,8 @@ using Alembic::AbcGeom::OFloatProperty;
 using Alembic::AbcGeom::CameraSample;
 using Alembic::AbcGeom::kWrapExisting;
 
+/* ************************************************************************** */
+
 AbcCameraWriter::AbcCameraWriter(Scene *scene,
                                  Object *ob,
                                  AbcTransformWriter *parent,
@@ -111,7 +113,7 @@ void AbcCameraWriter::do_write()
 	m_camera_schema.set(m_camera_sample);
 }
 
-/* ****************************** camera reader ***************************** */
+/* ************************************************************************** */
 
 AbcCameraReader::AbcCameraReader(const Alembic::Abc::IObject &object, ImportSettings &settings)
     : AbcObjectReader(object, settings)

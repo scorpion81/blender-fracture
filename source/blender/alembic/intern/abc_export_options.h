@@ -20,8 +20,7 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef __ABC_EXPORT_OPTIONS_H__
-#define __ABC_EXPORT_OPTIONS_H__
+#pragma once
 
 struct Object;
 struct Scene;
@@ -66,5 +65,3 @@ struct ExportSettings {
 
 	Scene *scene;
 };
-
-#endif  /* __ABC_EXPORT_OPTIONS_H__ */

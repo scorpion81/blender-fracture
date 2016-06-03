@@ -20,8 +20,7 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef __ABC_SHAPE_WRITER_H__
-#define __ABC_SHAPE_WRITER_H__
+#pragma once
 
 #include "abc_object.h"
 
@@ -46,5 +45,3 @@ public:
 protected:
 	void calcBounds(const std::vector<float> &points);
 };
-
-#endif  /* __ABC_SHAPE_WRITER_H__ */

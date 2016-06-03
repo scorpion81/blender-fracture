@@ -20,10 +20,11 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef __ABC_CAMERA_WRITER_H__
-#define __ABC_CAMERA_WRITER_H__
+#pragma once
 
 #include "abc_shape.h"
+
+/* ************************************************************************** */
 
 class AbcCameraWriter : public AbcShapeWriter {
 	Alembic::AbcGeom::OCameraSchema m_camera_schema;
@@ -43,6 +44,8 @@ private:
 	virtual void do_write();
 };
 
+/* ************************************************************************** */
+
 class AbcCameraReader : public AbcObjectReader {
 	Alembic::AbcGeom::ICameraSchema m_schema;
 
@@ -53,5 +56,3 @@ public:
 
 	void readObjectData(Main *bmain, Scene *scene, float time);
 };
-
-#endif  /* __ABC_CAMERA_WRITER_H__ */
