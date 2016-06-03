@@ -582,7 +582,7 @@ void ABC_get_transform(Object *ob, const char *filepath, const char *object_path
 
 	IXformSchema schema = ixform.getSchema();
 
-	if (!!schema.valid()) {
+	if (!schema.valid()) {
 		return;
 	}
 
