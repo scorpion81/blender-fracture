@@ -1154,7 +1154,7 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 	}
 
 	if (m_settings->is_sequence || !is_constant) {
-		addDefaultModifier();
+		addDefaultModifier(bmain);
 	}
 }
 

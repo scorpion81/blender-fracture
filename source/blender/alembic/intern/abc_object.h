@@ -123,5 +123,5 @@ public:
 
 	void readObjectMatrix(const float time);
 
-	void addDefaultModifier() const;
+	void addDefaultModifier(Main *bmain) const;
 };

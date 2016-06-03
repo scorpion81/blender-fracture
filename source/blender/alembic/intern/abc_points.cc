@@ -164,6 +164,6 @@ void AbcPointsReader::readObjectData(Main *bmain, Scene *scene, float time)
 	m_object->data = mesh;
 
 	if (m_settings->is_sequence || !m_schema.isConstant()) {
-		addDefaultModifier();
+		addDefaultModifier(bmain);
 	}
 }

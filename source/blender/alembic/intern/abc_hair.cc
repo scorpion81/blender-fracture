@@ -365,6 +365,6 @@ void AbcHairReader::readObjectData(Main *bmain, Scene *scene, float time)
 	cu->actvert = CU_ACT_NONE;
 
 	if (m_settings->is_sequence || !m_curves_schema.isConstant()) {
-		addDefaultModifier();
+		addDefaultModifier(bmain);
 	}
 }

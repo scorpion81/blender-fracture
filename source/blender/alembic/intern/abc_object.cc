@@ -32,6 +32,7 @@ extern "C" {
 #include "DNA_object_types.h"
 
 #include "BKE_constraint.h"
+#include "BKE_depsgraph.h"
 #include "BKE_idprop.h"
 #include "BKE_modifier.h"
 #include "BKE_object.h"
@@ -40,8 +41,6 @@ extern "C" {
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 #include "BLI_string.h"
-
-#include "BKE_depsgraph.h"
 }
 
 using Alembic::AbcGeom::IObject;
@@ -408,7 +407,7 @@ void AbcObjectReader::readObjectMatrix(const float time)
 	}
 }
 
-void AbcObjectReader::addDefaultModifier() const
+void AbcObjectReader::addDefaultModifier(Main *bmain) const
 {
 	ModifierData *md = modifier_new(eModifierType_MeshSequenceCache);
 	BLI_addtail(&m_object->modifiers, md);
@@ -418,4 +417,7 @@ void AbcObjectReader::addDefaultModifier() const
 	BLI_strncpy(mcmd->filepath, m_iobject.getArchive().getName().c_str(), 1024);
 	BLI_strncpy(mcmd->abc_object_path, m_iobject.getFullName().c_str(), 1024);
 	mcmd->is_sequence = m_settings->is_sequence;
+
+	DAG_id_tag_update(&m_object->id, OB_RECALC_DATA);
+	DAG_relations_tag_update(bmain);
 }
