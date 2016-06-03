@@ -38,7 +38,6 @@ extern "C" {
 #include "BLI_string.h"
 
 #include "BKE_DerivedMesh.h"
-#include "BKE_depsgraph.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
 #include "BKE_mesh.h"
@@ -46,9 +45,6 @@ extern "C" {
 #include "BKE_object.h"
 
 #include "ED_object.h"
-
-#include "WM_api.h"
-#include "WM_types.h"
 }
 
 using Alembic::Abc::FloatArraySample;

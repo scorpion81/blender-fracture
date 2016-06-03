@@ -36,11 +36,7 @@ extern "C" {
 #include "BLI_string.h"
 
 #include "BKE_curve.h"
-#include "BKE_depsgraph.h"
 #include "BKE_object.h"
-
-#include "WM_api.h"
-#include "WM_types.h"
 }
 
 using Alembic::AbcGeom::bool_t;

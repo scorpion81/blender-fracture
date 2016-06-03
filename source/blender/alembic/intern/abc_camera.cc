@@ -30,14 +30,10 @@ extern "C" {
 #include "DNA_object_types.h"
 
 #include "BKE_camera.h"
-#include "BKE_depsgraph.h"
 #include "BKE_object.h"
 
 #include "BLI_math.h"
 #include "BLI_string.h"
-
-#include "WM_api.h"
-#include "WM_types.h"
 }
 
 using Alembic::AbcGeom::ICamera;
@@ -145,7 +141,7 @@ void AbcCameraReader::readObjectData(Main *bmain, Scene *scene, float time)
 		IFloatProperty eye_separation(customDataContainer, "eyeSeparation");
 
 		bcam->stereo.interocular_distance = eye_separation.getValue(sample_sel);
-		bcam->stereo.convergence_distance = convergence_plane.getValue(sample_sel);;
+		bcam->stereo.convergence_distance = convergence_plane.getValue(sample_sel);
 	}
 
 	const float lens = cam_sample.getFocalLength();
