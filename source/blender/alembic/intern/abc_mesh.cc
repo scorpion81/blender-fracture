@@ -97,9 +97,9 @@ using Alembic::AbcGeom::UInt32ArraySample;
 AbcMeshWriter::AbcMeshWriter(Scene *scene,
                              Object *ob,
                              AbcTransformWriter *parent,
-                             uint32_t timeSampling,
+                             uint32_t sampling_time,
                              ExportSettings &settings)
-    : AbcShapeWriter(scene, ob, parent, timeSampling, settings)
+    : AbcObjectWriter(scene, ob, sampling_time, settings, parent)
 {
 	m_is_animated = isAnimated();
 	m_subsurf_mod = NULL;
@@ -109,7 +109,7 @@ AbcMeshWriter::AbcMeshWriter(Scene *scene,
 
 	/* if the object is static, use the default static time sampling */
 	if (!m_is_animated) {
-		timeSampling = 0;
+		sampling_time = 0;
 	}
 
 	if (!m_settings.export_subsurfs_as_meshes) {

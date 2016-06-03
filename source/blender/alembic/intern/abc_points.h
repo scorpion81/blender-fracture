@@ -25,13 +25,12 @@
 #pragma once
 
 #include "abc_object.h"
-#include "abc_shape.h"
 
 class ParticleSystem;
 
 /* ************************************************************************** */
 
-class AbcPointsWriter : public AbcShapeWriter {
+class AbcPointsWriter : public AbcObjectWriter {
 	Alembic::AbcGeom::OPointsSchema m_schema;
 	Alembic::AbcGeom::OPointsSchema::Sample m_sample;
 	ParticleSystem *m_psys;
@@ -40,7 +39,7 @@ public:
 	AbcPointsWriter(Scene *scene,
 	                Object *ob,
                     AbcTransformWriter *parent,
-                    uint32_t timeSampling,
+                    uint32_t sampling_time,
                     ExportSettings &settings,
                     ParticleSystem *psys);
 

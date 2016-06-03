@@ -41,13 +41,13 @@ class AbcTransformWriter : public AbcObjectWriter {
 
 public:
 	AbcTransformWriter(Object *ob,
-	                   const Alembic::AbcGeom::OObject &abcParent,
-	                   AbcTransformWriter *writerParent,
-	                   unsigned int timeSampling,
+	                   const Alembic::AbcGeom::OObject &abc_parent,
+	                   AbcTransformWriter *parent,
+	                   unsigned int sampling_time,
 	                   ExportSettings &settings);
 
 	Alembic::AbcGeom::OXform &alembicXform() { return m_xform;}
-    virtual Imath::Box3d bounds() const;
+    virtual Imath::Box3d bounds();
     void setParent(Object *p) { m_parent = p; }
 
 private:

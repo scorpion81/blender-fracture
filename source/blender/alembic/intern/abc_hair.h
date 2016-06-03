@@ -23,7 +23,6 @@
 #pragma once
 
 #include "abc_object.h"
-#include "abc_shape.h"
 
 struct DerivedMesh;
 struct ParticleSettings;
@@ -31,7 +30,7 @@ struct ParticleSystem;
 
 /* ************************************************************************** */
 
-class AbcHairWriter : public AbcShapeWriter {
+class AbcHairWriter : public AbcObjectWriter {
     ParticleSystem *m_psys;
 
 	Alembic::AbcGeom::OCurvesSchema m_schema;
@@ -41,7 +40,7 @@ public:
 	AbcHairWriter(Scene *scene,
 	              Object *ob,
                   AbcTransformWriter *parent,
-                  uint32_t timeSampling,
+                  uint32_t sampling_time,
                   ExportSettings &settings,
                   ParticleSystem *psys);
 

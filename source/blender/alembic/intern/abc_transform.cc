@@ -40,25 +40,21 @@ using Alembic::AbcGeom::OXform;
 /* ************************************************************************** */
 
 AbcTransformWriter::AbcTransformWriter(Object *ob,
-                                       const OObject &abcParent,
-                                       AbcTransformWriter *writerParent,
-                                       unsigned int timeSampling,
+                                       const OObject &abc_parent,
+                                       AbcTransformWriter *parent,
+                                       unsigned int sampling_time,
                                        ExportSettings &settings)
-    : AbcObjectWriter(ob, settings)
+    : AbcObjectWriter(NULL, ob, sampling_time, settings, parent)
 {
 	m_is_animated = hasAnimation(m_object);
 	m_parent = NULL;
 
 	if (!m_is_animated) {
-		timeSampling = 0;
+		sampling_time = 0;
 	}
 
-    m_xform = OXform(abcParent, get_id_name(m_object), timeSampling);
+    m_xform = OXform(abc_parent, get_id_name(m_object), sampling_time);
 	m_schema = m_xform.getSchema();
-
-	if (writerParent) {
-		writerParent->addChild(this);
-	}
 }
 
 void AbcTransformWriter::do_write()
@@ -98,7 +94,7 @@ void AbcTransformWriter::do_write()
 	m_schema.set(m_sample);
 }
 
-Imath::Box3d AbcTransformWriter::bounds() const
+Imath::Box3d AbcTransformWriter::bounds()
 {
 	Imath::Box3d bounds;
 

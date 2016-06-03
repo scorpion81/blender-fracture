@@ -22,11 +22,11 @@
 
 #pragma once
 
-#include "abc_shape.h"
+#include "abc_object.h"
 
 /* ************************************************************************** */
 
-class AbcCameraWriter : public AbcShapeWriter {
+class AbcCameraWriter : public AbcObjectWriter {
 	Alembic::AbcGeom::OCameraSchema m_camera_schema;
     Alembic::AbcGeom::CameraSample m_camera_sample;
     Alembic::AbcGeom::OCompoundProperty m_custom_data_container;
@@ -37,7 +37,7 @@ public:
 	AbcCameraWriter(Scene *scene,
 	                Object *ob,
 	                AbcTransformWriter *parent,
-	                uint32_t timeSampling,
+	                uint32_t sampling_time,
 	                ExportSettings &settings);
 
 private:

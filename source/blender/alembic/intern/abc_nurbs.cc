@@ -67,15 +67,15 @@ using Alembic::AbcGeom::ONuPatchSchema;
 AbcNurbsWriter::AbcNurbsWriter(Scene *scene,
                                Object *ob,
                                AbcTransformWriter *parent,
-                               uint32_t timeSampling,
+                               uint32_t sampling_time,
                                ExportSettings &settings)
-    : AbcShapeWriter(scene, ob, parent, timeSampling, settings)
+    : AbcObjectWriter(scene, ob, sampling_time, settings, parent)
 {
 	m_is_animated = isAnimated();
 
 	/* if the object is static, use the default static time sampling */
 	if (!m_is_animated) {
-		timeSampling = 0;
+		sampling_time = 0;
 	}
 
 	Curve *curve = static_cast<Curve *>(m_object->data);

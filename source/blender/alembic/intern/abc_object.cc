@@ -60,12 +60,22 @@ using Alembic::AbcGeom::OStringProperty;
 
 /* ************************************************************************** */
 
-AbcObjectWriter::AbcObjectWriter(Object *ob, ExportSettings &settings)
+AbcObjectWriter::AbcObjectWriter::AbcObjectWriter(Scene *scene,
+                                                  Object *ob,
+				                                  uint32_t sampling_time,
+				                                  ExportSettings &settings,
+				                                  AbcObjectWriter *parent)
     : m_object(ob)
     , m_settings(settings)
+    , m_scene(scene)
+    , m_time_sampling(sampling_time)
     , m_first_frame(true)
 {
 	m_name = get_id_name(m_object) + "Shape";
+
+	if (parent) {
+		parent->addChild(this);
+	}
 }
 
 AbcObjectWriter::~AbcObjectWriter()
@@ -76,9 +86,20 @@ void AbcObjectWriter::addChild(AbcObjectWriter *child)
 	m_children.push_back(child);
 }
 
-Imath::Box3d AbcObjectWriter::bounds() const
+Imath::Box3d AbcObjectWriter::bounds()
 {
-	return m_bounds;
+	BoundBox *bb = BKE_object_boundbox_get(this->m_object);
+
+	/* Convert Z-up to Y-up. */
+	this->m_bounds.min.x = bb->vec[0][0];
+	this->m_bounds.min.y = bb->vec[0][2];
+	this->m_bounds.min.z = -bb->vec[0][1];
+
+	this->m_bounds.max.x = bb->vec[6][0];
+	this->m_bounds.max.y = bb->vec[6][2];
+	this->m_bounds.max.z = -bb->vec[6][1];
+
+	return this->m_bounds;
 }
 
 void AbcObjectWriter::write()

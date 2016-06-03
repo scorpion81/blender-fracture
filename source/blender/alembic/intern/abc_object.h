@@ -23,12 +23,15 @@
 #pragma once
 
 #include <Alembic/Abc/All.h>
+#include <Alembic/AbcGeom/All.h>
 
 #include "abc_export_options.h"
 
 extern "C" {
 #include "DNA_ID.h"
 }
+
+class AbcTransformWriter;
 
 struct Main;
 
@@ -39,6 +42,9 @@ protected:
 	Object *m_object;
     ExportSettings &m_settings;
 
+	Scene *m_scene;
+	uint32_t m_time_sampling;
+
     Imath::Box3d m_bounds;
     std::vector<AbcObjectWriter *> m_children;
 
@@ -48,13 +54,17 @@ protected:
 	std::string m_name;
 
 public:
-    AbcObjectWriter(Object *ob, ExportSettings &settings);
+	AbcObjectWriter(Scene *scene,
+	                Object *ob,
+	                uint32_t sampling_time,
+	                ExportSettings &settings,
+	                AbcObjectWriter *parent = NULL);
 
     virtual ~AbcObjectWriter();
 
 	void addChild(AbcObjectWriter *child);
 
-    virtual Imath::Box3d bounds() const;
+    virtual Imath::Box3d bounds();
 
     void write();
 

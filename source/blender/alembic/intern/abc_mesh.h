@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "abc_shape.h"
+#include "abc_object.h"
 
 struct DerivedMesh;
 struct Mesh;
@@ -30,7 +30,7 @@ struct ModifierData;
 
 /* ************************************************************************** */
 
-class AbcMeshWriter : public AbcShapeWriter {
+class AbcMeshWriter : public AbcObjectWriter {
 	Alembic::AbcGeom::OPolyMeshSchema m_mesh_schema;
 	Alembic::AbcGeom::OPolyMeshSchema::Sample m_mesh_sample;
 
@@ -60,7 +60,7 @@ public:
 	AbcMeshWriter(Scene *scene,
 	              Object *ob,
                   AbcTransformWriter *parent,
-                  uint32_t timeSampling,
+                  uint32_t sampling_time,
                   ExportSettings &settings);
 
 	~AbcMeshWriter();

@@ -57,10 +57,10 @@ using Alembic::AbcGeom::OPointsSchema;
 AbcPointsWriter::AbcPointsWriter(Scene *scene,
                                  Object *ob,
 	                             AbcTransformWriter *parent,
-	                             uint32_t timeSampling,
+	                             uint32_t sampling_time,
 	                             ExportSettings &settings,
 	                             ParticleSystem *psys)
-    : AbcShapeWriter(scene, ob, parent, timeSampling, settings)
+    : AbcObjectWriter(scene, ob, sampling_time, settings, parent)
 {
 	m_psys = psys;
 

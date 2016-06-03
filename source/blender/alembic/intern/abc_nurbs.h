@@ -22,11 +22,11 @@
 
 #pragma once
 
-#include "abc_shape.h"
+#include "abc_object.h"
 
 /* ************************************************************************** */
 
-class AbcNurbsWriter : public AbcShapeWriter {
+class AbcNurbsWriter : public AbcObjectWriter {
 	std::vector<Alembic::AbcGeom::ONuPatchSchema> m_nurbs_schema;
 	bool m_is_animated;
 
@@ -34,7 +34,7 @@ public:
 	AbcNurbsWriter(Scene *scene,
 	               Object *ob,
                    AbcTransformWriter *parent,
-                   uint32_t timeSampling,
+                   uint32_t sampling_time,
                    ExportSettings &settings);
 
 private:
