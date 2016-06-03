@@ -570,7 +570,7 @@ void DepsgraphRelationBuilder::build_constraints(Scene *scene, ID *id, eDepsNode
 
 		/* special case for camera tracking -- it doesn't use targets to define relations */
 		// TODO: we can now represent dependencies in a much richer manner, so review how this is done...
-		if (ELEM(cti->type, CONSTRAINT_TYPE_FOLLOWTRACK, CONSTRAINT_TYPE_CAMERASOLVER, CONSTRAINT_TYPE_OBJECTSOLVER)) {
+		if (ELEM(cti->type, CONSTRAINT_TYPE_FOLLOWTRACK, CONSTRAINT_TYPE_CAMERASOLVER, CONSTRAINT_TYPE_OBJECTSOLVER, CONSTRAINT_TYPE_TRANSFORMCACHE)) {
 			bool depends_on_camera = false;
 
 			if (cti->type == CONSTRAINT_TYPE_FOLLOWTRACK) {
