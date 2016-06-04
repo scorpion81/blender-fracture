@@ -2769,6 +2769,7 @@ static Object* do_convert_meshisland_to_object(MeshIsland *mi, Scene* scene, Gro
 		Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, mi->id);
 		if (s)
 		{
+			float inv_size[3] = {1.0f, 1.0f, 1.0f};
 			copy_v3_v3(ob_new->size, s->impact_size);
 			copy_v3_v3(ob_new->loc, mi->centroid);
 			copy_qt_qt(ob_new->quat, mi->rot);
@@ -2777,12 +2778,20 @@ static Object* do_convert_meshisland_to_object(MeshIsland *mi, Scene* scene, Gro
 
 			loc_quat_size_to_mat4(mat, loc, ob_new->quat, ob_new->size);
 			invert_m4_m4(imat, mat);
+
+			inv_size[0] = 1.0f / s->impact_size[0];
+			inv_size[1] = 1.0f / s->impact_size[1];
+			inv_size[2] = 1.0f / s->impact_size[2];
+
 			//compensate for rot, size
 			for (i = 0; i < me->totvert; i++)
 			{
 				sub_v3_v3(me->mvert[i].co, mi->centroid);
 				add_v3_v3(me->mvert[i].co, s->raw_centroid);
 				mul_m4_v3(imat, me->mvert[i].co);
+
+				//extra compensate the scale factor ?
+				//mul_v3_v3(me->mvert[i].co, inv_size);
 			}
 
 			mat4_to_axis_angle(ob_new->rotAxis, &ob_new->rotAngle, ob_new->obmat);
@@ -2877,6 +2886,10 @@ static Object* do_convert_constraints(FractureModifierData *fmd, RigidBodyShardC
 	}
 
 	rbcon = BKE_object_add(G.main, scene, OB_EMPTY, name);
+	if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+	{
+		rbcon->rotmode = ROT_MODE_QUAT;
+	}
 
 	*base = scene->basact;
 
@@ -2900,6 +2913,7 @@ static Object* do_convert_constraints(FractureModifierData *fmd, RigidBodyShardC
 	{
 		/*TODO XXX, take own transform into account too*/
 		float loc[3], rot[4], mat[4][4], size[3] = {1.0f, 1.0f, 1.0f};
+
 		mat4_to_quat(rot, ob->obmat);
 		mul_v3_m4v3(loc, ob->obmat, con->pos);
 		mul_qt_qtqt(rot, rot, con->orn);

@@ -868,7 +868,7 @@ static void count_dm_contents(FractureModifierData *fmd, int *num_verts, int *nu
 }
 
 
-static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm, Object* ob)
+static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm, Object* ob, bool do_refresh)
 {
 	/* combine derived meshes from group objects into 1, trigger submodifiers if ob->derivedFinal is empty */
 	int num_verts = 0, num_polys = 0, num_loops = 0;
@@ -879,7 +879,7 @@ static DerivedMesh *get_group_dm(FractureModifierData *fmd, DerivedMesh *dm, Obj
 
 	GHash *mat_index_map = NULL;
 
-	if (fmd->dm_group && (fmd->refresh == true || fmd->auto_execute == true))
+	if (fmd->dm_group && do_refresh)
 	{
 		mat_index_map = BLI_ghash_int_new("mat_index_map");
 		if (fmd->vert_index_map != NULL) {
@@ -3611,7 +3611,10 @@ static void do_island_index_map(FractureModifierData *fmd)
 		{	/* might not existing yet for older files ! */
 			for (i = 0; i < mi->vertex_count; i++)
 			{
-				BLI_ghash_insert(fmd->vertex_island_map, SET_INT_IN_POINTER(mi->vertex_indices[i]), mi);
+				if (!BLI_ghash_haskey(fmd->vertex_island_map, SET_INT_IN_POINTER(mi->vertex_indices[i])))
+				{
+					BLI_ghash_insert(fmd->vertex_island_map, SET_INT_IN_POINTER(mi->vertex_indices[i]), mi);
+				}
 			}
 		}
 	}
@@ -4000,7 +4003,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 					//BKE_free_constraints(fmd);
 					printf("REFRESH: %s \n", ob->id.name);
 					fmd->modifier.scene->rigidbody_world->flag |= RBW_FLAG_OBJECT_CHANGED;
-					fmd->modifier.scene->rigidbody_world->flag &= ~RBW_FLAG_REFRESH_MODIFIERS;
+					fmd->modifier.scene->rigidbody_world->flag |= RBW_FLAG_REFRESH_MODIFIERS;
 					fmd->refresh = true;
 				}
 			}
@@ -4012,18 +4015,28 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 
 static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, DerivedMesh *derivedData)
 {
+	Scene *scene = fmd->modifier.scene;
+	RigidBodyWorld *rbw = scene != NULL ? scene->rigidbody_world : NULL;
+	PointCache *cache = rbw != NULL ? rbw->pointcache : NULL;
+	int frame = scene != NULL ? (int)BKE_scene_frame_get(scene) : 1;
+
+	/* hrm need to differentiate between on startframe and on startframe directly after loading */
+	/* in latter case the rigidbodyworld is still empty, so if loaded do not execute (it damages FM data) */
+	bool is_start = scene && rbw && cache && rbw->numbodies > 0 ? frame == cache->startframe : false;
+	bool do_refresh = fmd->auto_execute && is_start;
+
 	DerivedMesh *final_dm = derivedData;
-	DerivedMesh *group_dm = get_group_dm(fmd, derivedData, ob);
+	DerivedMesh *group_dm = get_group_dm(fmd, derivedData, ob, do_refresh || fmd->refresh);
 	DerivedMesh *clean_dm = get_clean_dm(ob, group_dm);
 
-	/* TODO_3, this must not be needed, for interactive preview make sure this gets called from transform ops, or keep here as exception for now,
-	 * this might be simpler */
-	/* disable that automatically if sim is started, but must be re-enabled manually */
-/*	if (BKE_rigidbody_check_sim_running(fmd->modifier.scene->rigidbody_world, BKE_scene_frame_get(fmd->modifier.scene))) {
-		fmd->auto_execute = false;
-	}*/
+	if (fmd->auto_execute && rbw && rbw->numbodies == 0 && cache && cache->startframe == frame)
+	{
+		/*hack to force update of rigidbody world after loading*/
+		BKE_rigidbody_cache_reset(rbw);
+		BKE_rigidbody_rebuild_world(scene, -1.0f);
+	}
 
-	if (fmd->auto_execute) {
+	if (do_refresh) {
 		fmd->refresh = true;
 	}
 
