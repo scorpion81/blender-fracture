@@ -264,6 +264,7 @@ ARGUMENTS_INFO="\"COMMAND LINE ARGUMENTS:
 ##### Main Vars #####
 
 DO_SHOW_DEPS=false
+STATIC=true
 
 SUDO="sudo"
 
@@ -1297,7 +1298,13 @@ compile_ILMBASE() {
     cmake_d="-D CMAKE_BUILD_TYPE=Release"
     cmake_d="$cmake_d -D CMAKE_PREFIX_PATH=$_inst"
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
-    cmake_d="$cmake_d -D BUILD_SHARED_LIBS=ON"
+	
+	if [ "$STATIC" = true ]; then
+		cmake_d="$cmake_d -D BUILD_SHARED_LIBS=OFF" 	
+	else
+		cmake_d="$cmake_d -D BUILD_SHARED_LIBS=ON"
+	fi
+ 
     cmake_d="$cmake_d -D NAMESPACE_VERSIONING=OFF"  # VERY IMPORTANT!!!
 
     if file /bin/cp | grep -q '32-bit'; then
@@ -1405,7 +1412,13 @@ compile_OPENEXR() {
     cmake_d="$cmake_d -D CMAKE_PREFIX_PATH=$_inst"
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
     cmake_d="$cmake_d -D ILMBASE_PACKAGE_PREFIX=$_ilmbase_inst"
-    cmake_d="$cmake_d -D BUILD_SHARED_LIBS=ON"
+	
+	if [ "$STATIC" = true ]; then
+		cmake_d="$cmake_d -D BUILD_SHARED_LIBS=OFF" 	
+	else
+		cmake_d="$cmake_d -D BUILD_SHARED_LIBS=ON"
+	fi
+
     cmake_d="$cmake_d -D NAMESPACE_VERSIONING=OFF"  # VERY IMPORTANT!!!
 
     if file /bin/cp | grep -q '32-bit'; then
@@ -1510,8 +1523,15 @@ compile_OIIO() {
     cmake_d="$cmake_d -D CMAKE_PREFIX_PATH=$_inst"
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
     cmake_d="$cmake_d -D STOP_ON_WARNING=OFF"
-    cmake_d="$cmake_d -D BUILDSTATIC=OFF"
-    cmake_d="$cmake_d -D LINKSTATIC=OFF"
+
+	if [ "$STATIC" = true ]; then
+		cmake_d="$cmake_d -D BUILDSTATIC=ON"
+    	cmake_d="$cmake_d -D LINKSTATIC=ON" 	
+	else
+    	cmake_d="$cmake_d -D BUILDSTATIC=OFF"
+    	cmake_d="$cmake_d -D LINKSTATIC=OFF"
+	fi
+    
     cmake_d="$cmake_d -D USE_SIMD=sse2"
 
     cmake_d="$cmake_d -D ILMBASE_VERSION=$ILMBASE_VERSION"
@@ -1740,7 +1760,13 @@ compile_OSL() {
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
     cmake_d="$cmake_d -D BUILD_TESTING=OFF"
     cmake_d="$cmake_d -D STOP_ON_WARNING=OFF"
-    cmake_d="$cmake_d -D BUILDSTATIC=OFF"
+	
+	if [ "$STATIC" = true ]; then
+		cmake_d="$cmake_d -D BUILDSTATIC=ON"
+	else
+    	cmake_d="$cmake_d -D BUILDSTATIC=OFF"
+	fi
+
     cmake_d="$cmake_d -D OSL_BUILD_PLUGINS=OFF"
     cmake_d="$cmake_d -D OSL_BUILD_TESTS=OFF"
     cmake_d="$cmake_d -D USE_SIMD=sse2"
@@ -1943,7 +1969,13 @@ compile_BLOSC() {
 
     cmake_d="-D CMAKE_BUILD_TYPE=Release"
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
-    cmake_d="$cmake_d -D BUILD_STATIC=OFF"
+
+	if [ "$STATIC" = true ]; then
+		cmake_d="$cmake_d -D BUILD_STATIC=ON" 	
+	else
+    	cmake_d="$cmake_d -D BUILD_STATIC=OFF"
+	fi
+
     cmake_d="$cmake_d -D BUILD_TESTS=OFF"
     cmake_d="$cmake_d -D BUILD_BENCHMARKS=OFF"
     INFO "$cmake_d"
@@ -2027,6 +2059,7 @@ compile_OPENVDB() {
     cd openvdb
 
     make_d="DESTDIR=$_inst"
+	make_d="$make_d shared=no"
     make_d="$make_d HDSO=/usr"
 
     if [ -d $INST/boost ]; then
@@ -2666,7 +2699,6 @@ install_DEB() {
     fi
   fi
 
-
   if [ "$WITH_OPENCOLLADA" = true ]; then
     _do_compile_collada=false
     PRINT ""
@@ -3201,6 +3233,23 @@ install_RPM() {
   else
     # No package currently!
     compile_OPENVDB
+  fi
+
+
+  PRINT ""
+  if [ "$OPENVDB_SKIP" = true ]; then
+    WARNING "Skipping OpenVDB installation, as requested..."
+  elif [ "$OPENVDB_FORCE_BUILD" = true ]; then
+    INFO "Forced OpenVDB building, as requested..."
+    compile_OPENVDB
+  else
+    check_package_version_ge_DEB libopenvdb-dev $OPENVDB_VERSION_MIN
+    if [ $? -eq 0 ]; then
+      install_packages_DEB libopenvdb-dev libblosc-dev
+      clean_OPENVDB
+    else
+      compile_OPENVDB
+    fi
   fi
 
 
