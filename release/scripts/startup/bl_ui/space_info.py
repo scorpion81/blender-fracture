@@ -159,7 +159,7 @@ class INFO_MT_file_import(Menu):
         if bpy.app.build_options.collada:
             self.layout.operator("wm.collada_import", text="Collada (Default) (.dae)")
         if bpy.app.build_options.alembic:
-            self.layout.operator("wm.alembic_import", text="Alembic (Default) (.abc)")
+            self.layout.operator("wm.alembic_import", text="Alembic (.abc)")
 
 
 class INFO_MT_file_export(Menu):
@@ -170,7 +170,7 @@ class INFO_MT_file_export(Menu):
         if bpy.app.build_options.collada:
             self.layout.operator("wm.collada_export", text="Collada (Default) (.dae)")
         if bpy.app.build_options.alembic:
-            self.layout.operator("wm.alembic_export", text="Alembic (Default) (.abc)")
+            self.layout.operator("wm.alembic_export", text="Alembic (.abc)")
 
 
 class INFO_MT_file_external_data(Menu):

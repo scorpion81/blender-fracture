@@ -299,6 +299,13 @@ static void ui_alembic_import_settings(uiLayout *layout, PointerRNA *imfptr)
 
 	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "scale", 0, NULL, ICON_NONE);
+
+	box = uiLayoutBox(layout);
+	row = uiLayoutRow(box, false);
+	uiItemL(row, IFACE_("Options:"), ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "is_sequence", 0, NULL, ICON_NONE);
 }
 
 static void wm_alembic_import_draw(bContext *UNUSED(C), wmOperator *op)
@@ -320,8 +327,9 @@ static int wm_alembic_import_exec(bContext *C, wmOperator *op)
 	RNA_string_get(op->ptr, "filepath", filename);
 
 	const float scale = RNA_float_get(op->ptr, "scale");
+	const bool is_sequence = RNA_boolean_get(op->ptr, "is_sequence");
 
-	ABC_import(C, filename, scale);
+	ABC_import(C, filename, scale, is_sequence);
 
 	return OPERATOR_FINISHED;
 }
@@ -340,6 +348,8 @@ void WM_OT_alembic_import(wmOperatorType *ot)
 	                               FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 
 	RNA_def_float(ot->srna, "scale", 1.0f, 0.0f, 1000.0f, "Scale", "", 0.0f, 1000.0f);
+	RNA_def_boolean(ot->srna, "is_sequence", false,
+	                "Sequence", "Whether the cache is separated in a series of file");
 }
 
 #endif

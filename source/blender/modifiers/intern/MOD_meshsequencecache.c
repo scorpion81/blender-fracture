@@ -47,6 +47,7 @@ static void initData(ModifierData *md)
 
 	mcmd->filepath[0] = '\0';
 	mcmd->abc_object_path[0] = '\0';
+	mcmd->is_sequence = false;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -83,7 +84,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	int fframe;
 	int frame_len;
 
-	if (BLI_path_frame_get(filepath, &fframe, &frame_len)) {
+	if (mcmd->is_sequence && BLI_path_frame_get(filepath, &fframe, &frame_len)) {
 		char ext[32];
 		BLI_path_frame_strip(filepath, true, ext);
 		BLI_path_frame(filepath, frame, frame_len);
@@ -94,7 +95,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		}
 	}
 
-	DerivedMesh *result = ABC_read_mesh(filepath,
+	DerivedMesh *result = ABC_read_mesh(dm,
+	                                    filepath,
 	                                    mcmd->abc_object_path,
 	                                    time);
 
@@ -124,7 +126,7 @@ static void deformVerts(ModifierData *md, Object *ob,
 	int fframe;
 	int frame_len;
 
-	if (BLI_path_frame_get(filepath, &fframe, &frame_len)) {
+	if (mcmd->is_sequence && BLI_path_frame_get(filepath, &fframe, &frame_len)) {
 		char ext[32];
 		BLI_path_frame_strip(filepath, true, ext);
 		BLI_path_frame(filepath, frame, frame_len);

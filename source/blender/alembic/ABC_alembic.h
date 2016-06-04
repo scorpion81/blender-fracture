@@ -40,6 +40,8 @@ enum {
 #define BL_ABC_NO_ERR 0
 #define BL_ABC_UNKNOWN_ERROR 1
 
+int ABC_get_version(void);
+
 int ABC_export(struct Scene *scene, struct bContext *C, const char *filepath,
                double start, double end,
                double xformstep, double geomstep,
@@ -55,7 +57,7 @@ int ABC_export(struct Scene *scene, struct bContext *C, const char *filepath,
                int geogroups, int compression,
                bool packuv, float scale);
 
-void ABC_import(struct bContext *C, const char *filepath, float scale);
+void ABC_import(struct bContext *C, const char *filepath, float scale, bool is_sequence);
 
 void ABC_get_vertex_cache(const char *filepath, float time, void *verts, int max_verts, const char *object_path, int is_mvert);
 
@@ -63,7 +65,7 @@ int ABC_check_subobject_valid(const char *filepath, const char *object_path);
 
 void ABC_get_transform(struct Object *ob, const char *filepath, const char *object_path, float r_mat[4][4], float time);
 
-struct DerivedMesh *ABC_read_mesh(const char *filepath, const char *object_path, const float time);
+struct DerivedMesh *ABC_read_mesh(struct DerivedMesh *dm, const char *filepath, const char *object_path, const float time);
 
 void ABC_read_vertex_cache(const char *filepath, const char *object_path, const float time,
                            float (*vertexCos)[3], int max_verts);

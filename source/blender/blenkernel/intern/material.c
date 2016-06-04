@@ -45,7 +45,6 @@
 #include "DNA_customdata_types.h"
 #include "DNA_ID.h"
 #include "DNA_meta_types.h"
-#include "DNA_modifier_types.h"
 #include "DNA_node_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
@@ -58,7 +57,6 @@
 
 #include "BKE_animsys.h"
 #include "BKE_displist.h"
-#include "BKE_DerivedMesh.h"
 #include "BKE_global.h"
 #include "BKE_icons.h"
 #include "BKE_image.h"
@@ -66,7 +64,6 @@
 #include "BKE_main.h"
 #include "BKE_material.h"
 #include "BKE_mesh.h"
-#include "BKE_modifier.h"
 #include "BKE_scene.h"
 #include "BKE_node.h"
 #include "BKE_curve.h"
@@ -1151,7 +1148,6 @@ static void init_render_nodetree(bNodeTree *ntree, Material *basemat, int r_mode
 
 	/* parses the geom+tex nodes */
 	ntreeShaderGetTexcoMode(ntree, r_mode, &basemat->texco, &basemat->mode_l);
-	basemat->nmap_tangent_names_count = 0;
 	for (node = ntree->nodes.first; node; node = node->next) {
 		if (node->id) {
 			if (GS(node->id->name) == ID_MA) {
@@ -1202,7 +1198,7 @@ void init_render_material(Material *mat, int r_mode, float *amb)
 		 * mode_l will have it set when all node materials are shadeless. */
 		mat->mode_l = (mat->mode & MA_MODE_PIPELINE) | MA_SHLESS;
 		mat->mode2_l = mat->mode2 & MA_MODE2_PIPELINE;
-
+		mat->nmap_tangent_names_count = 0;
 		init_render_nodetree(mat->nodetree, mat, r_mode, amb);
 		
 		if (!mat->nodetree->execdata)
@@ -1357,7 +1353,6 @@ bool object_remove_material_slot(Object *ob)
 	Object *obt;
 	short *totcolp;
 	short a, actcol;
-	FractureModifierData *fmd;
 	
 	if (ob == NULL || ob->totcol == 0) {
 		return false;
@@ -1436,14 +1431,6 @@ bool object_remove_material_slot(Object *ob)
 		if (ob->curve_cache) {
 			BKE_displist_free(&ob->curve_cache->disp);
 		}
-	}
-
-	/* also check the Fracture Modifier stored Derivedmesh, its polys may point to invalid index by now */
-	fmd = (FractureModifierData *)modifiers_findByType(ob, eModifierType_Fracture);
-	if (fmd && fmd->visible_mesh_cached) {
-		/* this effectively removes materials, but regenerates atleast 2 of them (as being necessary for modifier,
-		 * thus avoiding crashes and messing up the mesh, an ugly solution but better than crash... */
-		fmd->refresh = true;
 	}
 
 	return true;
