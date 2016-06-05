@@ -533,7 +533,7 @@ static void import_startjob(void *cjv, short *stop, short *do_update, float *pro
 	WM_main_add_notifier(NC_SCENE | ND_FRAME, data->scene);
 }
 
-void ABC_import(bContext *C, const char *filepath, float scale, bool is_sequence)
+void ABC_import(bContext *C, const char *filepath, float scale, bool is_sequence, bool do_smooth)
 {
 	ImportJobData *job = static_cast<ImportJobData *>(MEM_mallocN(sizeof(ImportJobData), "ImportJobData"));
 	job->bmain = CTX_data_main(C);
@@ -542,6 +542,7 @@ void ABC_import(bContext *C, const char *filepath, float scale, bool is_sequence
 
 	job->settings.scale = scale;
 	job->settings.is_sequence = is_sequence;
+	job->settings.do_smooth = do_smooth;
 
 	wmJob *wm_job = WM_jobs_get(CTX_wm_manager(C),
 	                            CTX_wm_window(C),

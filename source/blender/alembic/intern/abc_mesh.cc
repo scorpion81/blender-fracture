@@ -53,6 +53,7 @@ using Alembic::Abc::Int32ArraySamplePtr;
 using Alembic::Abc::P3fArraySamplePtr;
 using Alembic::Abc::V2fArraySample;
 using Alembic::Abc::V3fArraySample;
+using Alembic::Abc::N3fArraySamplePtr;
 
 using Alembic::AbcGeom::IFaceSet;
 using Alembic::AbcGeom::IFaceSetSchema;
@@ -63,6 +64,7 @@ using Alembic::AbcGeom::ISampleSelector;
 using Alembic::AbcGeom::ISubD;
 using Alembic::AbcGeom::ISubDSchema;
 using Alembic::AbcGeom::IV2fGeomParam;
+using Alembic::AbcGeom::IN3fGeomParam;
 
 using Alembic::AbcGeom::OArrayProperty;
 using Alembic::AbcGeom::OBoolProperty;
@@ -268,6 +270,8 @@ void AbcMeshWriter::writeMesh()
 
 			uvSamp.setIndices(idxSamp);
 		}
+
+		getNormals(dm, normals);
 
 		/* Normals export */
 		ON3fGeomParam::Sample normalsSamp;
@@ -483,12 +487,43 @@ void AbcMeshWriter::getTopology(DerivedMesh *dm,
 
 void AbcMeshWriter::getNormals(DerivedMesh *dm, std::vector<float> &norms)
 {
+	MPoly *mp;
+	MLoop *ml;
+	MVert *verts = dm->getVertArray(dm);
+	int i, j;
+
+	if (m_settings.export_normals)
+	{
+		printf("NORMALS\n");
+		norms.clear();
+		norms.reserve(dm->getNumVerts(dm) * 3);
+
+		for (i = 0, mp = dm->getPolyArray(dm); i < dm->getNumPolys(dm); i++, mp++)
+		{
+			for (j = 0, ml = dm->getLoopArray(dm) + mp->loopstart; j < mp->totloop; ml++, j++)
+			{
+				int index = ml->v;
+
+				float vals[3];
+				normal_short_to_float_v3(vals, verts[index].no);
+				norms.push_back(vals[0]);
+				norms.push_back(vals[1]);
+				norms.push_back(vals[2]);
+			}
+		}
+	}
+}
+
+#if 0
+void AbcMeshWriter::getNormals(DerivedMesh *dm, std::vector<float> &norms)
+{
 	/* TODO: check if we need to reverse the normals. */
 
 	const float nscale = 1.0f / 32767.0f;
 	norms.clear();
 
-	if (m_settings.export_normals) {
+	if (m_settings.export_normals)
+	{
 		norms.reserve(m_num_face_verts);
 
 		MVert *verts = dm->getVertArray(dm);
@@ -551,6 +586,7 @@ void AbcMeshWriter::getNormals(DerivedMesh *dm, std::vector<float> &norms)
 		}
 	}
 }
+#endif
 
 void AbcMeshWriter::getUVs(DerivedMesh *dm,
                            std::vector<Imath::V2f> &uvs,
@@ -1181,6 +1217,15 @@ void AbcMeshReader::readPolyDataSample(Mesh *mesh,
 
 	read_mpolys(mesh->mpoly, mesh->mloop, mesh->mloopuv,
 	            face_indices, face_counts, uvsamp_vals);
+
+	IN3fGeomParam::Sample::samp_ptr_type normal_vals;
+	const IN3fGeomParam normals = m_schema.getNormalsParam();
+
+	if (normals.valid()) {
+		IN3fGeomParam::Sample normsamp = normals.getExpandedValue();
+		normal_vals = normsamp.getVals();
+		read_normals(mesh, normal_vals, m_settings->do_smooth);
+	}
 }
 
 void AbcMeshReader::readFaceSetsSample(Main *bmain, Mesh *mesh, size_t poly_start,
@@ -1240,6 +1285,52 @@ void AbcMeshReader::readFaceSetsSample(Main *bmain, Mesh *mesh, size_t poly_star
 }
 
 /* ************************************************************************** */
+
+void read_normals(Mesh *mesh, const N3fArraySamplePtr &norms, bool do_smooth)
+{
+	MPoly *mp;
+	MLoop *ml;
+	MVert *verts = mesh->mvert;
+	int i, j;
+	float (*pnors)[3];
+
+	pnors = (float (*)[3])CustomData_get_layer(&mesh->pdata, CD_NORMAL);
+	if (!pnors) {
+		pnors =  (float (*)[3])CustomData_add_layer(&mesh->pdata, CD_NORMAL, CD_CALLOC, NULL, mesh->totpoly);
+	}
+
+	for (i = 0, mp = mesh->mpoly; i < mesh->totpoly; i++, mp++)
+	{
+		zero_v3(pnors[i]);
+		MLoop *l_prev = mesh->mloop + mp->loopstart + mp->totloop - 1;
+		const float *prev = (*norms)[l_prev->v].getValue();
+		float p[3];
+		normalize_v3_v3(p, prev);
+
+		for (j = 0, ml = mesh->mloop + mp->loopstart; j < mp->totloop; ml++, j++)
+		{
+			int index = ml->v;
+
+			const float *norm = (*norms)[index].getValue();
+			float n[3];
+			normalize_v3_v3(n, norm);
+			normal_float_to_short_v3(verts[index].no, n);
+
+			//calc poly normal (from vert normals ?!)
+			/* Newell's Method */
+			add_newell_cross_v3_v3v3(pnors[i], p, n);
+			copy_v3_v3(p, n);
+		}
+
+		if (UNLIKELY(normalize_v3(pnors[i]) == 0.0f)) {
+			pnors[i][2] = 1.0f; /* other axis set to 0.0 */
+		}
+
+		//hack, somehow need to give possibility of smoothing
+		if (do_smooth)
+			mp->flag |= ME_SMOOTH;
+	}
+}
 
 void read_mverts(MVert *mverts, const Alembic::AbcGeom::P3fArraySamplePtr &positions)
 {
