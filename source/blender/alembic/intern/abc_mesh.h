@@ -55,6 +55,7 @@ class AbcMeshWriter : public AbcObjectWriter {
 	bool m_is_fluid;
 	bool m_subd_type;
 	Alembic::Abc::OArrayProperty m_velocity;
+	Alembic::Abc::OBoolArrayProperty m_smooth;
 
 public:
 	AbcMeshWriter(Scene *scene,
@@ -90,6 +91,7 @@ private:
 	void getNormals(DerivedMesh *dm, std::vector<float> &norms);
     void getUVs(DerivedMesh *dm, std::vector< Imath::V2f > &uvs, std::vector<uint32_t> &, int layer_idx);
     void getMaterialIndices(DerivedMesh *dm, std::vector<int32_t> &indices);
+	void getSmooth(DerivedMesh *dm, std::vector<char> &smooth);
 
 	void createArbGeoParams(DerivedMesh *dm);
 	void createVertexLayerParam(DerivedMesh *dm, int index, const Alembic::Abc::OCompoundProperty &arbGeoParams);
@@ -137,13 +139,13 @@ struct MLoopUV;
 struct MPoly;
 struct MVert;
 
-void read_mverts(MVert *mverts, const Alembic::AbcGeom::P3fArraySamplePtr &positions);
+void read_mverts(MVert *mverts, const Alembic::AbcGeom::P3fArraySamplePtr &positions,
+                 const Alembic::AbcGeom::N3fArraySamplePtr &normals = Alembic::AbcGeom::N3fArraySamplePtr());
 void read_mpolys(MPoly *mpolys, MLoop *mloops, MLoopUV *mloopuvs,
                  const Alembic::AbcGeom::Int32ArraySamplePtr &face_indices,
                  const Alembic::AbcGeom::Int32ArraySamplePtr &face_counts,
-                 const Alembic::AbcGeom::V2fArraySamplePtr &uvs = Alembic::AbcGeom::V2fArraySamplePtr());
-
-void read_normals(Mesh *mesh, const Alembic::AbcGeom::N3fArraySamplePtr &normals = Alembic::AbcGeom::N3fArraySamplePtr(), bool do_smooth = false);
+                 const Alembic::AbcGeom::V2fArraySamplePtr &uvs = Alembic::AbcGeom::V2fArraySamplePtr(),
+                 const Alembic::AbcGeom::BoolArraySamplePtr &smooth = Alembic::AbcGeom::BoolArraySamplePtr());
 
 namespace utils {
 

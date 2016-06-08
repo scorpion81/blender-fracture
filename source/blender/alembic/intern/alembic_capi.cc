@@ -44,6 +44,7 @@ extern "C" {
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
 #include "BKE_global.h"
+#include "BKE_scene.h"
 
 /* SpaceType struct has a member called 'new' which obviously conflicts with C++
  * so temporarily redefining the new keyword to make it compile. */
@@ -62,6 +63,9 @@ using Alembic::AbcGeom::ErrorHandler;
 using Alembic::AbcGeom::Exception;
 using Alembic::AbcGeom::MetaData;
 using Alembic::AbcGeom::P3fArraySamplePtr;
+using Alembic::AbcGeom::N3fArraySamplePtr;
+using Alembic::AbcGeom::IN3fGeomParam;
+using Alembic::AbcGeom::IV2fGeomParam;
 using Alembic::AbcGeom::kWrapExisting;
 
 using Alembic::AbcGeom::IArchive;
@@ -79,6 +83,7 @@ using Alembic::AbcGeom::ISubD;
 using Alembic::AbcGeom::IXform;
 using Alembic::AbcGeom::IXformSchema;
 using Alembic::AbcGeom::XformSample;
+using Alembic::AbcGeom::IBoolGeomParam;
 
 using Alembic::AbcMaterial::IMaterial;
 
@@ -331,7 +336,7 @@ int ABC_export(Scene *scene, bContext *C, const char *filepath,
 
 	/* setup job */
 	WM_jobs_customdata_set(wm_job, job, MEM_freeN);
-	WM_jobs_timer(wm_job, 0.1, NC_SCENE | ND_COMPO_RESULT, NC_SCENE | ND_COMPO_RESULT);
+	WM_jobs_timer(wm_job, 0.1, NC_SCENE | ND_FRAME, NC_SCENE | ND_FRAME);
 	WM_jobs_callbacks(wm_job, export_startjob, NULL, NULL, export_endjob);
 
 	WM_jobs_start(CTX_wm_manager(C), wm_job);
@@ -533,7 +538,7 @@ static void import_startjob(void *cjv, short *stop, short *do_update, float *pro
 	WM_main_add_notifier(NC_SCENE | ND_FRAME, data->scene);
 }
 
-void ABC_import(bContext *C, const char *filepath, float scale, bool is_sequence, bool do_smooth)
+void ABC_import(bContext *C, const char *filepath, float scale, bool is_sequence)
 {
 	ImportJobData *job = static_cast<ImportJobData *>(MEM_mallocN(sizeof(ImportJobData), "ImportJobData"));
 	job->bmain = CTX_data_main(C);
@@ -542,7 +547,6 @@ void ABC_import(bContext *C, const char *filepath, float scale, bool is_sequence
 
 	job->settings.scale = scale;
 	job->settings.is_sequence = is_sequence;
-	job->settings.do_smooth = do_smooth;
 
 	wmJob *wm_job = WM_jobs_get(CTX_wm_manager(C),
 	                            CTX_wm_window(C),
@@ -651,6 +655,41 @@ static DerivedMesh *read_mesh_sample(DerivedMesh *dm, const IObject &iobject, co
 	const Alembic::Abc::Int32ArraySamplePtr &face_indices = sample.getFaceIndices();
 	const Alembic::Abc::Int32ArraySamplePtr &face_counts = sample.getFaceCounts();
 
+	IV2fGeomParam::Sample::samp_ptr_type uvsamp_vals;
+	const IV2fGeomParam uv = schema.getUVsParam();
+
+	if (uv.valid()) {
+		IV2fGeomParam::Sample uvsamp = uv.getExpandedValue(sample_sel);
+		uvsamp_vals = uvsamp.getVals();
+	}
+
+	IN3fGeomParam::Sample::samp_ptr_type normal_vals;
+	const IN3fGeomParam normals = schema.getNormalsParam();
+
+	if (normals.valid()) {
+		IN3fGeomParam::Sample normsamp = normals.getExpandedValue(sample_sel);
+		normal_vals = normsamp.getVals();
+
+		//printf("Reading normal sample: %d %d\n", (int)normal_vals->size(), (int)time);
+	}
+
+	IBoolGeomParam::Sample::samp_ptr_type smooth_vals;
+
+	try {
+		const IBoolGeomParam smooth = IBoolGeomParam(schema.getArbGeomParams(), "smooth");
+
+		if (smooth.valid()) {
+			IBoolGeomParam::Sample smoothsamp = smooth.getExpandedValue(sample_sel);
+			smooth_vals = smoothsamp.getVals();
+
+			//printf("Reading smooth sample: %d %d\n", (int)smooth_vals->size(), (int)time);
+		}
+	}
+	catch (...)
+	{
+		printf("No Smooth Data found, skipping.\n");
+	}
+
 	if (dm->getNumVerts(dm) != positions->size()) {
 		dm = CDDM_new(positions->size(), 0, 0, face_indices->size(), face_counts->size());
 	}
@@ -659,6 +698,7 @@ static DerivedMesh *read_mesh_sample(DerivedMesh *dm, const IObject &iobject, co
 	MPoly *mpolys = dm->getPolyArray(dm);
 	MLoop *mloops = dm->getLoopArray(dm);
 
+//TODO make parallelizable, dont forget UV and normals here
 #ifdef PARALLEL_READ
 	MeshReadData data;
 	data.mverts = mverts;
@@ -671,12 +711,12 @@ static DerivedMesh *read_mesh_sample(DerivedMesh *dm, const IObject &iobject, co
 	BLI_task_parallel_range(0, num_verts, &data, read_verts_cb, num_verts > 10000);
 	BLI_task_parallel_range(0, num_polys, &data, read_faces_cb, num_verts > 10000);
 #else
-	read_mverts(mverts, positions);
-	read_mpolys(mpolys, mloops, NULL, face_indices, face_counts);
+	read_mverts(mverts, positions, normal_vals);
+	read_mpolys(mpolys, mloops, NULL, face_indices, face_counts, uvsamp_vals, smooth_vals);
 #endif
 
 	CDDM_calc_edges(dm);
-	dm->dirty = static_cast<DMDirtyFlag>(static_cast<int>(dm->dirty) | static_cast<int>(DM_DIRTY_NORMALS));
+	dm->dirty = static_cast<DMDirtyFlag>(static_cast<int>(dm->dirty) &~ static_cast<int>(DM_DIRTY_NORMALS));
 
 	return dm;
 }

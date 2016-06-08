@@ -43,6 +43,7 @@ extern "C" {
 #include "BKE_mesh.h"
 #include "BKE_modifier.h"
 #include "BKE_object.h"
+#include "BKE_scene.h"
 
 #include "ED_object.h"
 }
@@ -65,9 +66,11 @@ using Alembic::AbcGeom::ISubD;
 using Alembic::AbcGeom::ISubDSchema;
 using Alembic::AbcGeom::IV2fGeomParam;
 using Alembic::AbcGeom::IN3fGeomParam;
+using Alembic::AbcGeom::IBoolGeomParam;
 
 using Alembic::AbcGeom::OArrayProperty;
 using Alembic::AbcGeom::OBoolProperty;
+using Alembic::AbcGeom::OBoolArrayProperty;
 using Alembic::AbcGeom::OC3fArrayProperty;
 using Alembic::AbcGeom::OC3fGeomParam;
 using Alembic::AbcGeom::OCompoundProperty;
@@ -83,6 +86,7 @@ using Alembic::AbcGeom::OSubD;
 using Alembic::AbcGeom::OSubDSchema;
 using Alembic::AbcGeom::OV2fGeomParam;
 using Alembic::AbcGeom::OV3fGeomParam;
+using Alembic::AbcGeom::OBoolGeomParam;
 
 using Alembic::AbcGeom::kFacevaryingScope;
 using Alembic::AbcGeom::kVaryingScope;
@@ -219,6 +223,7 @@ void AbcMeshWriter::writeMesh()
 
 		std::vector<uint32_t> uvIdx;
 		std::vector<Imath::V2f> uvValArray;
+		std::vector<bool> smooth;
 
 		int active_uvlayer = CustomData_get_active_layer(&dm->loopData, CD_MLOOPUV);
 
@@ -276,6 +281,7 @@ void AbcMeshWriter::writeMesh()
 		/* Normals export */
 		ON3fGeomParam::Sample normalsSamp;
 		if (!normals.empty()) {
+			//printf("Writing normals sample: %d %d\n", (int)normals.size(), (int)BKE_scene_frame_get(m_scene));
 			normalsSamp.setScope(kFacevaryingScope);
 			normalsSamp.setVals(
 			            V3fArraySample(
@@ -283,6 +289,7 @@ void AbcMeshWriter::writeMesh()
 			                normals.size() / 3));
 		}
 
+		//printf("Writing mesh sample: %d %d\n", (int)points.size(),(int)BKE_scene_frame_get(m_scene));
 		m_mesh_sample = OPolyMeshSchema::Sample(
 		                    V3fArraySample(
 		                        (const Imath::V3f *) &points.front(),
@@ -485,108 +492,75 @@ void AbcMeshWriter::getTopology(DerivedMesh *dm,
 	}
 }
 
+void AbcMeshWriter::getSmooth(DerivedMesh *dm, std::vector<char> &smooth)
+{
+	MPoly *mp, *mpoly = dm->getPolyArray(dm);
+	int i;
+
+	smooth.clear();
+	smooth.reserve(dm->getNumPolys(dm));
+
+	for (i = 0, mp = mpoly; i < dm->getNumPolys(dm); i++, mp++)
+	{
+		smooth.push_back(mp->flag & ME_SMOOTH);
+	}
+}
+
 void AbcMeshWriter::getNormals(DerivedMesh *dm, std::vector<float> &norms)
 {
-	MPoly *mp;
-	MLoop *ml;
+	MPoly *mp, *mpoly = dm->getPolyArray(dm);
+	MLoop *ml, *mloop = dm->getLoopArray(dm);
 	MVert *verts = dm->getVertArray(dm);
 	int i, j;
 
 	if (m_settings.export_normals)
 	{
-		printf("NORMALS\n");
+		int num_normals = dm->getNumVerts(dm) * 3;
 		norms.clear();
-		norms.reserve(dm->getNumVerts(dm) * 3);
+		norms.reserve(num_normals);
+		float* normals = new float[num_normals];
 
-		for (i = 0, mp = dm->getPolyArray(dm); i < dm->getNumPolys(dm); i++, mp++)
+		for (i = 0, mp = mpoly; i < dm->getNumPolys(dm); i++, mp++)
 		{
-			for (j = 0, ml = dm->getLoopArray(dm) + mp->loopstart; j < mp->totloop; ml++, j++)
+			float no[3];
+			ml = mloop + mp->loopstart;
+
+			if ((mp->flag & ME_SMOOTH) == 0)
 			{
+				//flat shaded, use common normal for all verts
+				BKE_mesh_calc_poly_normal(mp, ml, verts, no);
+			}
+
+			for (j = 0; j < mp->totloop; ml++, j++)
+			{
+				//smooth shaded, use individual vert normals
 				int index = ml->v;
 
-				float vals[3];
-				normal_short_to_float_v3(vals, verts[index].no);
-				norms.push_back(vals[0]);
-				norms.push_back(vals[1]);
-				norms.push_back(vals[2]);
-			}
-		}
-	}
-}
-
-#if 0
-void AbcMeshWriter::getNormals(DerivedMesh *dm, std::vector<float> &norms)
-{
-	/* TODO: check if we need to reverse the normals. */
-
-	const float nscale = 1.0f / 32767.0f;
-	norms.clear();
-
-	if (m_settings.export_normals)
-	{
-		norms.reserve(m_num_face_verts);
-
-		MVert *verts = dm->getVertArray(dm);
-		MFace *faces = dm->getTessFaceArray(dm);
-
-		for (int i = 0, e = dm->getNumTessFaces(dm); i < e; ++i) {
-			MFace *face = &faces[i];
-
-			if (face->flag & ME_SMOOTH) {
-				int index = face->v4;
-
-				if (face->v4) {
-					norms.push_back(verts[index].no[0] * nscale);
-					norms.push_back(verts[index].no[1] * nscale);
-					norms.push_back(verts[index].no[2] * nscale);
-				}
-
-				index = face->v3;
-				norms.push_back(verts[index].no[0] * nscale);
-				norms.push_back(verts[index].no[1] * nscale);
-				norms.push_back(verts[index].no[2] * nscale);
-
-				index = face->v2;
-				norms.push_back(verts[index].no[0] * nscale);
-				norms.push_back(verts[index].no[1] * nscale);
-				norms.push_back(verts[index].no[2] * nscale);
-
-				index = face->v1;
-				norms.push_back(verts[index].no[0] * nscale);
-				norms.push_back(verts[index].no[1] * nscale);
-				norms.push_back(verts[index].no[2] * nscale);
-			}
-			else {
-				float no[3];
-
-				if (face->v4) {
-					normal_quad_v3(no, verts[face->v1].co, verts[face->v2].co,
-					        verts[face->v3].co, verts[face->v4].co);
-
-					norms.push_back(no[0]);
-					norms.push_back(no[1]);
-					norms.push_back(no[2]);
+				if (mp->flag & ME_SMOOTH)
+				{
+					float vals[3];
+					normal_short_to_float_v3(vals, verts[index].no);
+					normals[index*3] = vals[0];
+					normals[index*3+1] = vals[1];
+					normals[index*3+2] = vals[2];
 				}
 				else
-					normal_tri_v3(no, verts[face->v1].co, verts[face->v2].co,
-					        verts[face->v3].co);
-
-				norms.push_back(no[0]);
-				norms.push_back(no[1]);
-				norms.push_back(no[2]);
-
-				norms.push_back(no[0]);
-				norms.push_back(no[1]);
-				norms.push_back(no[2]);
-
-				norms.push_back(no[0]);
-				norms.push_back(no[1]);
-				norms.push_back(no[2]);
+				{
+					normals[index*3] = no[0];
+					normals[index*3+1] = no[1];
+					normals[index*3+2] = no[2];
+				}
 			}
 		}
+
+		for (i = 0; i < num_normals; i++)
+		{
+			norms.push_back(normals[i]);
+		}
+
+		delete [] normals;
 	}
 }
-#endif
 
 void AbcMeshWriter::getUVs(DerivedMesh *dm,
                            std::vector<Imath::V2f> &uvs,
@@ -657,6 +631,16 @@ void AbcMeshWriter::getMaterialIndices(DerivedMesh *dm,
 
 void AbcMeshWriter::createArbGeoParams(DerivedMesh *dm)
 {
+	if (m_settings.export_normals)
+	{
+		OBoolGeomParam param;
+		param = OBoolGeomParam(
+		            m_mesh_schema.getArbGeomParams(), "smooth", false,
+		            kFacevaryingScope, 1, m_time_sampling);
+
+		m_smooth = param.getValueProperty();
+	}
+
 	if (m_is_fluid) {
 		/* TODO: replace this, when velocities are added by default to schemas. */
 		OV3fGeomParam param;
@@ -783,6 +767,17 @@ void AbcMeshWriter::createFaceLayerParam(DerivedMesh *dm, int index,
 
 void AbcMeshWriter::writeArbGeoParams(DerivedMesh *dm)
 {
+	if (m_settings.export_normals) {
+		std::vector<char> smooth;
+		getSmooth(dm, smooth);
+
+		Alembic::AbcCoreAbstract::ArraySample samp(&smooth.front(),
+		                                           m_smooth.getDataType(),
+		                                           Alembic::Util::Dimensions(dm->getNumPolys(dm)));
+
+		m_smooth.set(samp);
+	}
+
 	if (m_is_fluid) {
 		std::vector<float> velocities;
 		getVelocities(dm, velocities);
@@ -1193,7 +1188,16 @@ void AbcMeshReader::readObjectData(Main *bmain, Scene *scene, float time)
 void AbcMeshReader::readVertexDataSample(Mesh *mesh, const P3fArraySamplePtr &positions)
 {
 	utils::mesh_add_verts(mesh, positions->size());
-	read_mverts(mesh->mvert, positions);
+
+	N3fArraySamplePtr normal_vals;
+	const IN3fGeomParam normals = m_schema.getNormalsParam();
+
+	if (normals.valid()) {
+		IN3fGeomParam::Sample normsamp = normals.getExpandedValue();
+		normal_vals = normsamp.getVals();
+	}
+
+	read_mverts(mesh->mvert, positions, normal_vals);
 }
 
 void AbcMeshReader::readPolyDataSample(Mesh *mesh,
@@ -1215,17 +1219,23 @@ void AbcMeshReader::readPolyDataSample(Mesh *mesh,
 		uvsamp_vals = uvsamp.getVals();
 	}
 
-	read_mpolys(mesh->mpoly, mesh->mloop, mesh->mloopuv,
-	            face_indices, face_counts, uvsamp_vals);
+	IBoolGeomParam::Sample::samp_ptr_type smooth_vals;
 
-	IN3fGeomParam::Sample::samp_ptr_type normal_vals;
-	const IN3fGeomParam normals = m_schema.getNormalsParam();
+	try {
+		const IBoolGeomParam smooth = IBoolGeomParam(m_schema.getArbGeomParams(), "smooth");
 
-	if (normals.valid()) {
-		IN3fGeomParam::Sample normsamp = normals.getExpandedValue();
-		normal_vals = normsamp.getVals();
-		read_normals(mesh, normal_vals, m_settings->do_smooth);
+		if (smooth.valid()) {
+			IBoolGeomParam::Sample smoothsamp = smooth.getExpandedValue();
+			smooth_vals = smoothsamp.getVals();
+		}
 	}
+	catch ( ... )
+	{
+		printf("No Smooth Data found, skipping.\n");
+	}
+
+	read_mpolys(mesh->mpoly, mesh->mloop, mesh->mloopuv,
+	            face_indices, face_counts, uvsamp_vals, smooth_vals);
 }
 
 void AbcMeshReader::readFaceSetsSample(Main *bmain, Mesh *mesh, size_t poly_start,
@@ -1286,53 +1296,9 @@ void AbcMeshReader::readFaceSetsSample(Main *bmain, Mesh *mesh, size_t poly_star
 
 /* ************************************************************************** */
 
-void read_normals(Mesh *mesh, const N3fArraySamplePtr &norms, bool do_smooth)
-{
-	MPoly *mp;
-	MLoop *ml;
-	MVert *verts = mesh->mvert;
-	int i, j;
-	float (*pnors)[3];
-
-	pnors = (float (*)[3])CustomData_get_layer(&mesh->pdata, CD_NORMAL);
-	if (!pnors) {
-		pnors =  (float (*)[3])CustomData_add_layer(&mesh->pdata, CD_NORMAL, CD_CALLOC, NULL, mesh->totpoly);
-	}
-
-	for (i = 0, mp = mesh->mpoly; i < mesh->totpoly; i++, mp++)
-	{
-		zero_v3(pnors[i]);
-		MLoop *l_prev = mesh->mloop + mp->loopstart + mp->totloop - 1;
-		const float *prev = (*norms)[l_prev->v].getValue();
-		float p[3];
-		normalize_v3_v3(p, prev);
-
-		for (j = 0, ml = mesh->mloop + mp->loopstart; j < mp->totloop; ml++, j++)
-		{
-			int index = ml->v;
-
-			const float *norm = (*norms)[index].getValue();
-			float n[3];
-			normalize_v3_v3(n, norm);
-			normal_float_to_short_v3(verts[index].no, n);
-
-			//calc poly normal (from vert normals ?!)
-			/* Newell's Method */
-			add_newell_cross_v3_v3v3(pnors[i], p, n);
-			copy_v3_v3(p, n);
-		}
-
-		if (UNLIKELY(normalize_v3(pnors[i]) == 0.0f)) {
-			pnors[i][2] = 1.0f; /* other axis set to 0.0 */
-		}
-
-		//hack, somehow need to give possibility of smoothing
-		if (do_smooth)
-			mp->flag |= ME_SMOOTH;
-	}
-}
-
-void read_mverts(MVert *mverts, const Alembic::AbcGeom::P3fArraySamplePtr &positions)
+void read_mverts(MVert *mverts,
+                 const Alembic::AbcGeom::P3fArraySamplePtr &positions,
+                 const Alembic::AbcGeom::N3fArraySamplePtr &normals)
 {
 	for (int i = 0; i < positions->size(); ++i) {
 		MVert &mvert = mverts[i];
@@ -1343,13 +1309,24 @@ void read_mverts(MVert *mverts, const Alembic::AbcGeom::P3fArraySamplePtr &posit
 		mvert.co[1] = -pos_in[2];
 		mvert.co[2] = pos_in[1];
 		mvert.bweight = 0;
+
+		if (normals)
+		{
+			short no[3];
+			Imath::V3f norm_in = (*normals)[i];
+			normal_float_to_short_v3(no, norm_in.getValue());
+			mvert.no[0] = no[0];
+			mvert.no[1] = no[1];
+			mvert.no[2] = no[2];
+		}
 	}
 }
 
 void read_mpolys(MPoly *mpolys, MLoop *mloops, MLoopUV *mloopuvs,
                  const Alembic::AbcGeom::Int32ArraySamplePtr &face_indices,
                  const Alembic::AbcGeom::Int32ArraySamplePtr &face_counts,
-                 const Alembic::AbcGeom::V2fArraySamplePtr &uvs)
+                 const Alembic::AbcGeom::V2fArraySamplePtr &uvs,
+                 const Alembic::AbcGeom::BoolArraySamplePtr &smooth)
 {
 	int loopcount = 0;
 	for (int i = 0; i < face_counts->size(); ++i) {
@@ -1358,9 +1335,14 @@ void read_mpolys(MPoly *mpolys, MLoop *mloops, MLoopUV *mloopuvs,
 
 		poly.loopstart = loopcount;
 		poly.totloop = face_size;
+		if (smooth && (*smooth)[i] == true)
+		{
+			poly.flag |= ME_SMOOTH;
+		}
 
 		/* TODO: reverse */
 		int rev_loop = loopcount;
+
 		for (int f = face_size; f-- ;) {
 			MLoop &loop 	= mloops[rev_loop + f];
 

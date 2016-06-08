@@ -1618,6 +1618,8 @@ static void do_marking(FractureModifierData *fmd, DerivedMesh *result)
 
 			if (fmd->use_smooth)
 				mp->flag |= ME_SMOOTH;
+			else
+				mp->flag &= ~ME_SMOOTH;
 		}
 		else
 		{

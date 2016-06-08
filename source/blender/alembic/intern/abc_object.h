@@ -94,7 +94,6 @@ struct ImportSettings {
 	int from_forward;
 	float scale;
 	bool is_sequence;
-	bool do_smooth;
 };
 
 /* ************************************************************************** */
