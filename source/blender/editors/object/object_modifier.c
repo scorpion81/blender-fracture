@@ -2727,7 +2727,7 @@ static Object* do_convert_meshisland_to_object(MeshIsland *mi, Scene* scene, Gro
 		//BKE_group_object_add(rbw->group, ob_new, scene, NULL);
 		do_add_group_unchecked(rbw->group, ob_new, *base);
 
-		DAG_id_tag_update(&ob_new->id, OB_RECALC_OB);
+		DAG_id_tag_update(&ob_new->id, OB_RECALC_ALL);
 	}
 //}
 
@@ -3056,6 +3056,8 @@ static void convert_modifier_to_objects(ReportList *reports, Scene* scene, Objec
 	MEM_freeN(objs);
 	BLI_kdtree_free(objtree);
 
+
+
 	/*argh, need to trigger a world rebuild, by all means */
 	/*if (rbw)
 		BKE_rigidbody_rebuild_world(scene, rbw->pointcache->startframe+1);*/
@@ -3118,24 +3120,22 @@ static int rigidbody_convert_exec(bContext *C, wmOperator *op)
 		/* delete has to handle all open scenes, copied from delete operator */
 		BKE_main_id_flag_listbase(&bmain->scene, LIB_TAG_DOIT, 1);
 		for (win = wm->windows.first; win; win = win->next) {
-			scene = win->screen->scene;
+			Scene* sc = win->screen->scene;
 
-			if (scene->id.flag & LIB_TAG_DOIT) {
-				scene->id.flag &= ~LIB_TAG_DOIT;
+			if (sc->id.flag & LIB_TAG_DOIT) {
+				sc->id.flag &= ~LIB_TAG_DOIT;
 
 				DAG_relations_tag_update(bmain);
 
-				WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
-				WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, scene);
+				WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, sc);
+				WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, sc);
 			}
 		}
 	}
-	else
-	{
-		//DAG_relations_tag_update(bmain);
-		WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
-		WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, scene);
-	}
+
+	DAG_relations_tag_update(bmain);
+	WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
+	WM_event_add_notifier(C, NC_SCENE | ND_LAYER_CONTENT, scene);
 	
 	return OPERATOR_FINISHED;
 }
