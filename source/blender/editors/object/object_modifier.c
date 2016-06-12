@@ -2707,12 +2707,15 @@ static Object* do_convert_meshisland_to_object(MeshIsland *mi, Scene* scene, Gro
 	/*set by BKE_object_add ! */
 	*base = scene->basact;
 
-	copy_m4_m4(ob_new->obmat, ob->obmat);
-	copy_v3_v3(ob_new->rot, ob->rot);
-	copy_qt_qt(ob_new->quat, ob->quat);
-	copy_v3_v3(ob_new->rotAxis, ob->rotAxis);
-	ob_new->rotAngle = ob->rotAngle;
-	copy_v3_v3(ob_new->size, ob->size);
+	if (!mode)
+	{	//TODO, this still necessary ?
+		copy_m4_m4(ob_new->obmat, ob->obmat);
+		copy_v3_v3(ob_new->rot, ob->rot);
+		copy_qt_qt(ob_new->quat, ob->quat);
+		copy_v3_v3(ob_new->rotAxis, ob->rotAxis);
+		ob_new->rotAngle = ob->rotAngle;
+		copy_v3_v3(ob_new->size, ob->size);
+	}
 
 	if (rbw) {
 		rbw->pointcache->flag |= PTCACHE_OUTDATED;
@@ -2768,39 +2771,40 @@ static Object* do_convert_meshisland_to_object(MeshIsland *mi, Scene* scene, Gro
 	}
 	else
 	{
-		int i;
-		float loc[3] = {0.0f, 0.0f, 0.0f}, mat[4][4], imat[4][4];
-
+		//int j;
 		Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, mi->id);
 		if (s)
 		{
-			float inv_size[3] = {1.0f, 1.0f, 1.0f};
-			copy_v3_v3(ob_new->size, s->impact_size);
-			copy_v3_v3(ob_new->loc, mi->centroid);
-			copy_qt_qt(ob_new->quat, mi->rot);
-			loc_quat_size_to_mat4(ob_new->obmat, ob_new->loc, ob_new->quat, ob_new->size);
+			float loc[3], rot[4], mat[4][4], size[3] = {1.0f, 1.0f, 1.0f};
+			//float inv_size[3] = {1.0f, 1.0f, 1.0f};
+
+			mat4_to_loc_quat(loc, rot, ob->obmat);
+			add_v3_v3(loc, mi->rigidbody->pos);
+			copy_v3_v3(size, s->impact_size);
+
+			copy_v3_v3(ob_new->size, size);
+			copy_v3_v3(ob_new->loc, loc);
+			copy_qt_qt(ob_new->quat, rot);
+			quat_to_eulO(ob_new->rot, ob_new->rotmode, rot);
+			quat_to_axis_angle(ob_new->rotAxis, &ob_new->rotAngle, rot);
+
+			loc_quat_size_to_mat4(mat, loc, rot, size);
+			copy_m4_m4(ob_new->obmat, mat);
 			invert_m4_m4(ob_new->imat, ob_new->obmat);
 
-			loc_quat_size_to_mat4(mat, loc, ob_new->quat, ob_new->size);
-			invert_m4_m4(imat, mat);
-
+#if 0
 			inv_size[0] = 1.0f / s->impact_size[0];
 			inv_size[1] = 1.0f / s->impact_size[1];
 			inv_size[2] = 1.0f / s->impact_size[2];
 
+
 			//compensate for rot, size
-			for (i = 0; i < me->totvert; i++)
+			for (j = 0; j < me->totvert; j++)
 			{
-				sub_v3_v3(me->mvert[i].co, mi->centroid);
-				add_v3_v3(me->mvert[i].co, s->raw_centroid);
-				mul_m4_v3(imat, me->mvert[i].co);
-
 				//extra compensate the scale factor ?
-				//mul_v3_v3(me->mvert[i].co, inv_size);
+				mul_v3_v3(me->mvert[j].co, inv_size);
 			}
-
-			mat4_to_axis_angle(ob_new->rotAxis, &ob_new->rotAngle, ob_new->obmat);
-			mat4_to_eulO(ob_new->rot, ob_new->rotmode, ob_new->obmat);
+#endif
 		}
 	}
 
