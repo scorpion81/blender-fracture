@@ -1615,8 +1615,14 @@ compile_OPENEXR() {
         download OPENEXR_SOURCE[@] $_src.tar.gz
         INFO "Unpacking OpenEXR-$OPENEXR_VERSION"
         tar -C $SRC --transform "s,(.*/?)openexr[^/]*(.*),\1OpenEXR-$OPENEXR_VERSION\2,x" -xf $_src.tar.gz
-      fi
 
+		if [ "$STATIC" = true ]; then
+			# XXX Ugly patching hack!
+		  cd $_src
+    	  patch -p1 -i "$SCRIPT_DIR/install_deps_patches/openexr_static.patch"
+		  cd ..
+		fi
+      fi
     fi
 
     cd $_src
@@ -1631,6 +1637,8 @@ compile_OPENEXR() {
     else
       oiio_src_path=".."
     fi
+
+	
 
     # Always refresh the whole build!
     if [ -d build ]; then
