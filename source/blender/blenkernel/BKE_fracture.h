@@ -51,6 +51,8 @@ struct MVert;
 struct MPoly;
 struct MLoop;
 
+struct BMesh;
+
 typedef int ShardID;
 
 typedef struct FracPoint {
@@ -117,5 +119,7 @@ void BKE_fracture_mesh_constraint_remove_all(struct FractureModifierData *fmd);
 void BKE_fracture_free_mesh_island(struct FractureModifierData *rmd, struct MeshIsland *mi, bool remove_rigidbody);
 int BKE_fracture_update_visual_mesh(struct FractureModifierData *fmd, struct Object *ob, bool do_custom_data);
 short BKE_fracture_collect_materials(struct Object* o, struct Object* ob, short matstart, struct GHash** mat_index_map);
+
+void BKE_bm_mesh_hflag_flush_vert(struct BMesh *bm, const char hflag);
 
 #endif /* BKE_FRACTURE_H */

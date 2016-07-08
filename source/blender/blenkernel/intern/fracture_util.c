@@ -44,6 +44,7 @@
 #include "BLI_math.h"
 #include "BLI_rand.h"
 #include "BLI_sys_types.h"
+#include "BLI_kdtree.h"
 
 #include "DNA_fracture_types.h"
 #include "DNA_meshdata_types.h"
@@ -788,20 +789,122 @@ static void do_bisect(BMesh* bm_parent, BMesh* bm_child, float obmat[4][4], bool
 	}
 }
 
+BMesh *do_preselection(BMesh* bm_orig, Shard *child, KDTree *preselect_tree)
+{
+	int i = 0, r = 0;
+	float max_dist = 0;
+	KDTreeNearest* n, *n2;
+	BMesh *bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
+	BMWalker walker;
+	BMEdge *e;
+	BMVert *seed = NULL;
+
+	n2 = MEM_mallocN(sizeof(KDTreeNearest) * child->totvert, "n2 kdtreenearest");
+	n = MEM_mallocN(sizeof(KDTreeNearest) * bm_orig->totvert, "n kdtreenearest");
+
+	BM_mesh_elem_toolflags_ensure(bm_new);  /* needed for 'duplicate' bmo */
+
+	CustomData_copy(&bm_orig->vdata, &bm_new->vdata, CD_MASK_BMESH, CD_CALLOC, 0);
+	CustomData_copy(&bm_orig->edata, &bm_new->edata, CD_MASK_BMESH, CD_CALLOC, 0);
+	CustomData_copy(&bm_orig->ldata, &bm_new->ldata, CD_MASK_BMESH, CD_CALLOC, 0);
+	CustomData_copy(&bm_orig->pdata, &bm_new->pdata, CD_MASK_BMESH, CD_CALLOC, 0);
+
+	CustomData_bmesh_init_pool(&bm_new->vdata, bm_mesh_allocsize_default.totvert, BM_VERT);
+	CustomData_bmesh_init_pool(&bm_new->edata, bm_mesh_allocsize_default.totedge, BM_EDGE);
+	CustomData_bmesh_init_pool(&bm_new->ldata, bm_mesh_allocsize_default.totloop, BM_LOOP);
+	CustomData_bmesh_init_pool(&bm_new->pdata, bm_mesh_allocsize_default.totface, BM_FACE);
+
+	for (i = 0; i < child->totvert; i++)
+	{
+		float dist = len_squared_v3v3(child->raw_centroid, child->mvert[i].co);
+		if (dist > max_dist) {
+			max_dist = dist;
+		}
+	}
+
+	max_dist = sqrt(max_dist);
+
+	BM_mesh_elem_hflag_disable_all(bm_orig, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
+
+	//do a range search first in case we have many verts as in dense geometry
+	r = BLI_kdtree_range_search(preselect_tree, child->raw_centroid, &n, max_dist * 2);
+
+	//if we have sparse geometry, do a nearest n search as fallback (if we do have too little verts)
+	if (r < child->totvert) {
+		r = BLI_kdtree_find_nearest_n(preselect_tree, child->raw_centroid, n2, child->totvert);
+		for (i = 0; i < r; i++) {
+			int index = n2[i].index;
+			BMVert *v = BM_vert_at_index(bm_orig, index);
+			BM_elem_flag_enable(v, BM_ELEM_TAG);
+		}
+		seed = BM_vert_at_index(bm_orig, n2[0].index);
+		MEM_freeN(n2);
+		n2 = NULL;
+	}
+	else {
+		for (i = 0; i < r; i++) {
+			int index = n[i].index;
+			BMVert *v = BM_vert_at_index(bm_orig, index);
+			BM_elem_flag_enable(v, BM_ELEM_TAG);
+		}
+
+		seed = BM_vert_at_index(bm_orig, n[0].index);
+		MEM_freeN(n);
+		n = NULL;
+	}
+
+	/* Walk from the single vertex, selecting everything connected
+	 * to it */
+	BMW_init(&walker, bm_orig, BMW_VERT_SHELL,
+	         BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
+	         BMW_FLAG_NOP,
+	         BMW_NIL_LAY);
+
+	e = BMW_begin(&walker, seed);
+	for (; e; e = BMW_step(&walker)) {
+		//only find tagged data
+		if ((!BM_elem_flag_test(e->v1, BM_ELEM_TAG)) &&
+			(!BM_elem_flag_test(e->v2, BM_ELEM_TAG)))
+		{
+			break;
+		}
+	}
+	BMW_end(&walker);
+
+	/* Flush the selection to get edge/face selections matching
+	 * the vertex selection */
+	BKE_bm_mesh_hflag_flush_vert(bm_orig, BM_ELEM_TAG);
+
+	BMO_op_callf(bm_orig, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+	             "duplicate geom=%hvef dest=%p", BM_ELEM_TAG, bm_new);
+
+	BM_mesh_elem_index_ensure(bm_new, BM_VERT | BM_EDGE | BM_FACE);
+
+	return bm_new;
+}
+
 
 Shard *BKE_fracture_shard_bisect(BMesh *bm_orig, Shard *child, float obmat[4][4], bool use_fill, bool clear_inner,
-                                 bool clear_outer, int cutlimit, float centroid[3], short inner_mat_index, char uv_layer[64])
+                                 bool clear_outer, int cutlimit, float centroid[3], short inner_mat_index, char uv_layer[64],
+                                 KDTree *preselect_tree)
 {
 
 	Shard *output_s;
 	DerivedMesh *dm_child = BKE_shard_create_dm(child, false);
 
-	BMesh *bm_parent = BM_mesh_copy(bm_orig);
+	BMesh *bm_parent;
 	BMesh *bm_child;
 
 	unwrap_shard_dm(dm_child, uv_layer);
 	bm_child = DM_to_bmesh(dm_child, true);
 
+	//hmmm need to copy only preselection !!! or rebuild bm_parent from selected data only....
+	if (preselect_tree != NULL) {
+		bm_parent = do_preselection(bm_orig, child, preselect_tree);
+	}
+	else {
+		bm_parent = BM_mesh_copy(bm_orig);
+	}
 
 	BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
 

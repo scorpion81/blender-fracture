@@ -1951,43 +1951,6 @@ static float mesh_separate_tagged(FractureModifierData *fmd, Object *ob, BMVert 
 	return vol;
 }
 
-/* flush a hflag to from verts to edges/faces */
-static void bm_mesh_hflag_flush_vert(BMesh *bm, const char hflag)
-{
-	BMEdge *e;
-	BMLoop *l_iter;
-	BMLoop *l_first;
-	BMFace *f;
-
-	BMIter eiter;
-	BMIter fiter;
-
-	int ok;
-
-	BM_ITER_MESH (e, &eiter, bm, BM_EDGES_OF_MESH) {
-		if (BM_elem_flag_test(e->v1, hflag) &&
-		    BM_elem_flag_test(e->v2, hflag))
-		{
-			BM_elem_flag_enable(e, hflag);
-		}
-		else {
-			BM_elem_flag_disable(e, hflag);
-		}
-	}
-	BM_ITER_MESH (f, &fiter, bm, BM_FACES_OF_MESH) {
-		ok = true;
-		l_iter = l_first = BM_FACE_FIRST_LOOP(f);
-		do {
-			if (!BM_elem_flag_test(l_iter->v, hflag)) {
-				ok = false;
-				break;
-			}
-		} while ((l_iter = l_iter->next) != l_first);
-
-		BM_elem_flag_set(f, hflag, ok);
-	}
-}
-
 static void handle_vert(FractureModifierData *fmd, DerivedMesh *dm, BMVert* vert, BMVert** orig_work,
                         float **startco, short **startno, BMVert*** v_tag, int *tot, int *tag_counter)
 {
@@ -2095,7 +2058,7 @@ static void mesh_separate_loose_partition(FractureModifierData *fmd, Object *ob,
 
 		/* Flush the selection to get edge/face selections matching
 		 * the vertex selection */
-		bm_mesh_hflag_flush_vert(bm_old, BM_ELEM_TAG);
+		BKE_bm_mesh_hflag_flush_vert(bm_old, BM_ELEM_TAG);
 
 		/* Move selection into a separate object */
 		mesh_separate_tagged(fmd, ob, v_tag, tag_counter, startco, bm_old, startno, dm);
@@ -2236,7 +2199,7 @@ static void halve(FractureModifierData *rmd, Object *ob, int minsize, BMesh **bm
 		i++;
 	}
 
-	bm_mesh_hflag_flush_vert(bm_old, BM_ELEM_SELECT);
+	BKE_bm_mesh_hflag_flush_vert(bm_old, BM_ELEM_SELECT);
 	select_linked(&bm_old);
 
 	new_count = bm_old->totvertsel;
@@ -3889,7 +3852,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 			}
 		}
 
-		if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
+		if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC && fmd->reset_shards)
 		{
 			if (fmd->dm != NULL) {
 				fmd->dm->needsFree = 1;
@@ -3900,7 +3863,7 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 
 		if (fmd->frac_mesh != NULL) {
 
-			if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
+			if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC && fmd->reset_shards)
 			{
 				BKE_fracmesh_free(fmd->frac_mesh, true);
 				fmd->frac_mesh = NULL;
