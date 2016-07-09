@@ -789,17 +789,44 @@ static void do_bisect(BMesh* bm_parent, BMesh* bm_child, float obmat[4][4], bool
 	}
 }
 
-BMesh *do_preselection(BMesh* bm_orig, Shard *child, KDTree *preselect_tree)
+static void walk_bmesh(BMesh *bm, BMVert *seed) {
+
+	BMWalker walker;
+	BMEdge *e;
+
+	/* Walk from the single vertex, selecting everything connected
+	 * to it */
+	BMW_init(&walker, bm, BMW_VERT_SHELL,
+	         BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
+	         BMW_FLAG_NOP,
+	         BMW_NIL_LAY);
+
+	e = BMW_begin(&walker, seed);
+	for (; e; e = BMW_step(&walker)) {
+		if (!BM_elem_flag_test(e->v1, BM_ELEM_TAG) &&
+		   (!BM_elem_flag_test(e->v2, BM_ELEM_TAG)))
+		{
+			break;
+		}
+
+		if (BM_elem_flag_test(e->v1, BM_ELEM_TAG)) {
+			BM_elem_flag_enable(e->v2, BM_ELEM_INTERNAL_TAG);
+		}
+
+		if (BM_elem_flag_test(e->v2, BM_ELEM_TAG)) {
+			BM_elem_flag_enable(e->v1, BM_ELEM_INTERNAL_TAG);
+		}
+	}
+	BMW_end(&walker);
+}
+
+static BMesh *do_preselection(BMesh* bm_orig, Shard *child, KDTree *preselect_tree)
 {
 	int i = 0, r = 0;
 	float max_dist = 0;
-	KDTreeNearest* n, *n2;
+	KDTreeNearest* n = NULL;
 	BMesh *bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
-	BMWalker walker;
-	BMEdge *e;
-	BMVert *seed = NULL;
 
-	n2 = MEM_mallocN(sizeof(KDTreeNearest) * child->totvert, "n2 kdtreenearest");
 	n = MEM_mallocN(sizeof(KDTreeNearest) * bm_orig->totvert, "n kdtreenearest");
 
 	BM_mesh_elem_toolflags_ensure(bm_new);  /* needed for 'duplicate' bmo */
@@ -824,52 +851,30 @@ BMesh *do_preselection(BMesh* bm_orig, Shard *child, KDTree *preselect_tree)
 
 	max_dist = sqrt(max_dist);
 
-	BM_mesh_elem_hflag_disable_all(bm_orig, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
+	BM_mesh_elem_hflag_disable_all(bm_orig, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG | BM_ELEM_INTERNAL_TAG, false);
 
 	//do a range search first in case we have many verts as in dense geometry
-	r = BLI_kdtree_range_search(preselect_tree, child->raw_centroid, &n, max_dist * 2);
+	r = BLI_kdtree_range_search(preselect_tree, child->raw_centroid, &n, max_dist * 2.0f);
 
-	//if we have sparse geometry, do a nearest n search as fallback (if we do have too little verts)
-	if (r < child->totvert) {
-		r = BLI_kdtree_find_nearest_n(preselect_tree, child->raw_centroid, n2, child->totvert);
-		for (i = 0; i < r; i++) {
-			int index = n2[i].index;
-			BMVert *v = BM_vert_at_index(bm_orig, index);
-			BM_elem_flag_enable(v, BM_ELEM_TAG);
-		}
-		seed = BM_vert_at_index(bm_orig, n2[0].index);
-		MEM_freeN(n2);
-		n2 = NULL;
+	//if we have sparse geometry, just return all
+	if (r < 750) {
+
+		BM_mesh_free(bm_new);
+		return BM_mesh_copy(bm_orig);
 	}
 	else {
+		BMVert *v = NULL;
 		for (i = 0; i < r; i++) {
 			int index = n[i].index;
-			BMVert *v = BM_vert_at_index(bm_orig, index);
+			v = BM_vert_at_index(bm_orig, index);
 			BM_elem_flag_enable(v, BM_ELEM_TAG);
+			walk_bmesh(bm_orig, v);
 		}
 
-		seed = BM_vert_at_index(bm_orig, n[0].index);
+		BM_mesh_elem_hflag_enable_test(bm_orig, BM_VERT, BM_ELEM_TAG, true, false, BM_ELEM_INTERNAL_TAG);
 		MEM_freeN(n);
 		n = NULL;
 	}
-
-	/* Walk from the single vertex, selecting everything connected
-	 * to it */
-	BMW_init(&walker, bm_orig, BMW_VERT_SHELL,
-	         BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
-	         BMW_FLAG_NOP,
-	         BMW_NIL_LAY);
-
-	e = BMW_begin(&walker, seed);
-	for (; e; e = BMW_step(&walker)) {
-		//only find tagged data
-		if ((!BM_elem_flag_test(e->v1, BM_ELEM_TAG)) &&
-			(!BM_elem_flag_test(e->v2, BM_ELEM_TAG)))
-		{
-			break;
-		}
-	}
-	BMW_end(&walker);
 
 	/* Flush the selection to get edge/face selections matching
 	 * the vertex selection */

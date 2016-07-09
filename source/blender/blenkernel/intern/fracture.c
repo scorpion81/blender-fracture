@@ -660,15 +660,8 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 
 	if (fm->last_shard_tree)
 	{
-		/*if (expected_shards <= fm->last_expected_shards)
-		{
-
-		}
-		else*/
-		{
-			copy_vn_i(deletemap, fm->shard_count, 1);
-			copy_vn_i(skipmap, expected_shards, 1);
-		}
+		copy_vn_i(deletemap, fm->shard_count, 1);
+		copy_vn_i(skipmap, expected_shards, 1);
 
 		for (i = 0; i < expected_shards; i++)
 		{
@@ -693,26 +686,21 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 			{
 				float epsilon = 0.00001;
 				Shard *t = fm->last_shards[j];
-				//float dist = len_squared_v3v3(n.co, cells[i].centroid);
 				if (t != NULL && n.dist < max)
 				{
 					if (n.dist < epsilon) {
 						if ((fabsf(cells[i].volume - t->raw_volume) < epsilon))
 						{
-							//printf("Tagging skip: %d\n", i);
-							//skipmap[i] = true;
 							deletemap[j] = false;
 						}
 						else
 						{
-							//deletemap[j] = true;
 							skipmap[i] = false;
 						}
 					}
 					else
 					{
 						skipmap[i] = false;
-						//deletemap[j] = true;
 					}
 				}
 				else
