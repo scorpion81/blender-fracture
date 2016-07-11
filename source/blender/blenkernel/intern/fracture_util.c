@@ -756,7 +756,7 @@ static void do_bisect(BMesh* bm_parent, BMesh* bm_child, float obmat[4][4], bool
 			break;
 		}
 
-		if (cutlimit > 0) {
+		if (cutlimit > -1) {
 			f = BM_face_at_index_find(bm_child, cutlimit);
 			copy_v3_v3(plane_co, centroid);
 			copy_v3_v3(plane_no, f->no /*normal*/);
