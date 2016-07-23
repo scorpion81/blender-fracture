@@ -1294,29 +1294,42 @@ void FLUID_3D::setObstacleBoundaries(float *_pressure, int zBegin, int zEnd)
 	}	// z-loop
 }
 
-void FLUID_3D::replaceComponentRec(int *buffer, size_t limit, size_t pos, int from, int to)
+void FLUID_3D::floodFillComponent(int *buffer, size_t *queue, size_t limit, size_t pos, int from, int to)
 {
-	/* Recursively replace 'from' with 'to' in the grid. Rely on (from != 0 && edges == 0) to stop. */
+	/* Flood 'from' cells with 'to' in the grid. Rely on (from != 0 && from != to && edges == 0) to stop. */
 	int offsets[] = { -1, +1, -_xRes, +_xRes, -_slabSize, +_slabSize };
+	size_t qend = 0;
 
 	buffer[pos] = to;
+	queue[qend++] = pos;
 
-	for (int i = 0; i < 6; i++) {
-		size_t next = pos + offsets[i];
+	for (size_t qidx = 0; qidx < qend; qidx++)
+	{
+		pos = queue[qidx];
 
-		if (next < limit && buffer[next] == from)
-			replaceComponentRec(buffer, limit, next, from, to);
+		for (int i = 0; i < 6; i++)
+		{
+			size_t next = pos + offsets[i];
+
+			if (next < limit && buffer[next] == from)
+			{
+				buffer[next] = to;
+				queue[qend++] = next;
+			}
+		}
 	}
 }
 
-void FLUID_3D::mergeComponents(int *buffer, size_t cur, size_t other)
+void FLUID_3D::mergeComponents(int *buffer, size_t *queue, size_t cur, size_t other)
 {
 	/* Replace higher value with lower. */
-	if (buffer[other] < buffer[cur]) {
-		replaceComponentRec(buffer, cur, cur, buffer[cur], buffer[other]);
+	if (buffer[other] < buffer[cur])
+	{
+		floodFillComponent(buffer, queue, cur, cur, buffer[cur], buffer[other]);
 	}
-	else if (buffer[cur] < buffer[other]) {
-		replaceComponentRec(buffer, cur, other, buffer[other], buffer[cur]);
+	else if (buffer[cur] < buffer[other])
+	{
+		floodFillComponent(buffer, queue, cur, other, buffer[other], buffer[cur]);
 	}
 }
 
@@ -1328,6 +1341,8 @@ void FLUID_3D::fixObstacleCompression(float *divergence)
 	/* Find compartments completely separated by obstacles.
 	 * Edge of the domain is automatically component 0. */
 	int *component = new int[_totalCells];
+	size_t *queue = new size_t[_totalCells];
+
 	memset(component, 0, sizeof(int) * _totalCells);
 
 	int next_id = 1;
@@ -1352,11 +1367,11 @@ void FLUID_3D::fixObstacleCompression(float *divergence)
 					}
 
 					if (!_obstacles[index - 1])
-						mergeComponents(component, index, index - 1);
+						mergeComponents(component, queue, index, index - 1);
 					if (!_obstacles[index - _xRes])
-						mergeComponents(component, index, index - _xRes);
+						mergeComponents(component, queue, index, index - _xRes);
 					if (!_obstacles[index - _slabSize])
-						mergeComponents(component, index, index - _slabSize);
+						mergeComponents(component, queue, index, index - _slabSize);
 
 					if (component[index] == next_id)
 						next_id++;
@@ -1364,6 +1379,8 @@ void FLUID_3D::fixObstacleCompression(float *divergence)
 			}
 		}
 	}
+
+	delete[] queue;
 
 	/* Compute average divergence within each component. */
 	float *total_divergence = new float[next_id];

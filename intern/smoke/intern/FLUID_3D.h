@@ -204,8 +204,8 @@ struct FLUID_3D
 		void advectMacCormackEnd1(int zBegin, int zEnd);
 		void advectMacCormackEnd2(int zBegin, int zEnd);
 
-		void replaceComponentRec(int *components, size_t limit, size_t pos, int from, int to);
-		void mergeComponents(int *components, size_t cur, size_t other);
+		void floodFillComponent(int *components, size_t *queue, size_t limit, size_t start, int from, int to);
+		void mergeComponents(int *components, size_t *queue, size_t cur, size_t other);
 
 		/* burning */
 		float *_burning_rate; // RNA pointer
