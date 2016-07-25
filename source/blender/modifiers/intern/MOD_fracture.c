@@ -2952,6 +2952,11 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "delete_keep_normals geom=%hf context=%i", BM_ELEM_SELECT, DEL_FACES);
 
+	if (del_faces == 0) {
+		/*fallback if you want to merge verts but use no filling method, whose faces could be hidden (and you dont have any selection then) */
+		BM_mesh_elem_hflag_enable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
+	}
+
 	if (fmd->automerge_dist > 0) {
 		//separate this, because it costs performance and might not work so well with thin objects, but its useful for smooth objects
 		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
