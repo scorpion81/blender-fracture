@@ -117,7 +117,7 @@ static BMesh *shard_to_bmesh(Shard *s)
 
 	dm_parent = BKE_shard_create_dm(s, true);
 	bm_parent = DM_to_bmesh(dm_parent, true);
-	BM_mesh_elem_table_ensure(bm_parent, BM_FACE);
+	BM_mesh_elem_table_ensure(bm_parent, BM_VERT | BM_FACE);
 
 	BM_ITER_MESH (f, &iter, bm_parent, BM_FACES_OF_MESH)
 	{
@@ -152,6 +152,27 @@ static void shard_boundbox(Shard *s, float r_loc[3], float r_size[3])
 	r_size[0] = (max[0] - min[0]) / 2.0f;
 	r_size[1] = (max[1] - min[1]) / 2.0f;
 	r_size[2] = (max[2] - min[2]) / 2.0f;
+}
+
+static int shard_sortdist(const void *s1, const void *s2, void* context)
+{
+	Shard **sh1 = (Shard **)s1;
+	Shard **sh2 = (Shard **)s2;
+	cell *sh = (cell*)context;
+
+	float val_a,  val_b;
+
+	if ((*sh1 == NULL) || (*sh2 == NULL)) {
+		return -1;
+	}
+
+	val_a = len_squared_v3v3(sh->centroid, (*sh1)->centroid);
+	val_b = len_squared_v3v3(sh->centroid, (*sh2)->centroid);
+
+	/* sort descending */
+	if      (val_a < val_b) return -1;
+	else if (val_a > val_b) return 1;
+	return 0;
 }
 
 static int shard_sortsize(const void *s1, const void *s2, void* UNUSED(context))
@@ -401,15 +422,14 @@ FracMesh *BKE_create_fracture_container(void)
 
 static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm, BMesh** bm_parent, float obmat[4][4],
                                float centroid[3], short inner_material_index, int parent_id, Shard **tempshards, Shard ***tempresults,
-                               char uv_layer[64])
+                               char uv_layer[64], cell* cells)
 {
-	int i = 0;
+	int i = 0, index = 0;
 
 	for (i = 0; i < expected_shards; i++) {
 		Shard *s = NULL;
 		Shard *s2 = NULL;
 		Shard *t;
-		int index = 0;
 
 		if (fm->cancel == 1) {
 			break;
@@ -425,21 +445,29 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 
 		if (t == NULL || t->totvert == 0 || t->totloop == 0 || t->totpoly == 0) {
 			/* invalid shard, stop parsing*/
-			break;
+			continue;
 		}
 
-		index = (int)(BLI_frand() * (t->totpoly - 1));
-		if (index == 0) {
-			index = 1;
+		//index = (int)(BLI_frand() * (t->totpoly - 1));
+
+		if (index > (t->totpoly - 1)){
+			index = 0;
 		}
 
 		printf("Bisecting cell %d...\n", i);
 		printf("Bisecting cell %d...\n", i + 1);
 
 		s = BKE_fracture_shard_bisect(*bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL,
-		                              false, true, index, centroid, inner_material_index, uv_layer);
+		                              false, true, index, centroid, inner_material_index, uv_layer, NULL);
 		s2 = BKE_fracture_shard_bisect(*bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL,
-		                               true, false, index, centroid, inner_material_index, uv_layer);
+		                               true, false, index, centroid, inner_material_index, uv_layer, NULL);
+
+		index++;
+
+		if (s == NULL || s2 == NULL) {
+			printf("Shard missed....\n");
+			continue;
+		}
 
 		if (s != NULL && s2 != NULL && tempresults != NULL) {
 			int j = 0;
@@ -460,7 +488,7 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 			(*tempresults)[i] = s;
 			(*tempresults)[i + 1] = s2;
 
-			BLI_qsort_r(*tempresults, i + 1, sizeof(Shard *), shard_sortsize, &i);
+			BLI_qsort_r(*tempresults, i + 1, sizeof(Shard *), shard_sortdist, &(cells[i]));
 
 			while ((*tempresults)[j] == NULL && j < (i + 1)) {
 				/* ignore invalid shards */
@@ -573,7 +601,8 @@ static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, Deri
 
 static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards, int algorithm, int parent_id, Shard **tempshards,
                                   DerivedMesh *dm_parent, BMesh* bm_parent, float obmat[4][4], short inner_material_index, int num_cuts,
-                                  int num_levels, float fractal, int *i, bool smooth, Shard*** tempresults, DerivedMesh **dm_p, char uv_layer[64])
+                                  int num_levels, float fractal, int *i, bool smooth, Shard*** tempresults, DerivedMesh **dm_p, char uv_layer[64],
+                                  KDTree *preselect_tree)
 {
 	Shard *s = NULL, *t = NULL;
 	if (fm->cancel == 1)
@@ -604,7 +633,8 @@ static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards
 	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL) {
 		float co[3] = {0, 0, 0};
 		printf("Bisecting cell %d...\n", *i);
-		s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, 0, co, inner_material_index, uv_layer);
+		s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, -1, co, inner_material_index, uv_layer,
+		                              preselect_tree);
 	}
 	else {
 		/* do not fracture case */
@@ -658,14 +688,8 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 
 	if (fm->last_shard_tree)
 	{
-		if (expected_shards <= fm->last_expected_shards)
-		{
-			copy_vn_i(deletemap, fm->shard_count, 1);
-		}
-		else
-		{
-			copy_vn_i(skipmap, expected_shards, 1);
-		}
+		copy_vn_i(deletemap, fm->shard_count, 1);
+		copy_vn_i(skipmap, expected_shards, 1);
 
 		for (i = 0; i < expected_shards; i++)
 		{
@@ -688,28 +712,32 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 			j = BLI_kdtree_find_nearest(fm->last_shard_tree, cells[i].centroid, &n);
 			if (j > -1)
 			{
+				float epsilon = 0.00001;
 				Shard *t = fm->last_shards[j];
-				float dist = len_squared_v3v3(n.co, cells[i].centroid);
-				if (t != NULL && dist < max)
+				if (t != NULL && n.dist < max)
 				{
-					if (dist < 0.00001) {
-						if (fabsf(cells[i].volume - t->raw_volume) < 0.00001) {
-							//printf("Tagging skip: %d\n", i);
-							skipmap[i] = true;
+					if (n.dist < epsilon) {
+						if ((fabsf(cells[i].volume - t->raw_volume) < epsilon))
+						{
 							deletemap[j] = false;
 						}
 						else
 						{
-							deletemap[j] = true;
 							skipmap[i] = false;
 						}
 					}
 					else
 					{
 						skipmap[i] = false;
-						deletemap[j] = true;
 					}
 				}
+				else
+				{
+					skipmap[i] = false;
+				}
+			}
+			else {
+				skipmap[i] = true;
 			}
 		}
 	}
@@ -727,7 +755,7 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 
 		if (skipmap[i] /*&& ((t &&
 		    t->setting_id == active_setting &&
-		    t->shard_id > num_settings) || !t)*/)
+		    t->shard_id > num_settings) || !t*/)
 		{
 			printf("Skipping shard: %d\n", i);
 			(*tempshards)[i] = NULL;
@@ -825,7 +853,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	if (mode == MOD_FRACTURE_PREFRACTURED && !reset)
 	{
 		//rebuild tree
-		if (!fm->last_shard_tree && (fm->shard_count > 0) && mode == MOD_FRACTURE_PREFRACTURED)
+		if (!fm->last_shard_tree /*&& (fm->shard_count > 0)*/ && mode == MOD_FRACTURE_PREFRACTURED)
 		{
 			Shard *t;
 			int i = 0;
@@ -898,13 +926,25 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	}
 
 	if (algorithm != MOD_FRACTURE_BISECT_FAST && algorithm != MOD_FRACTURE_BISECT_FAST_FILL) {
-		for (i = 0; i < expected_shards; i++) {
+		int totvert = p->totvert;
+		MVert *mvert = p->mvert;
+
+		KDTree *preselect_tree = BLI_kdtree_new(totvert);
+		for (i = 0; i < totvert; i++) {
+			BLI_kdtree_insert(preselect_tree, i, mvert[i].co);
+		}
+
+		BLI_kdtree_balance(preselect_tree);
+
+		for (i = 0; i < expected_shards; i++)	{
 			bool stop = handle_boolean_bisect(fm, obj, expected_shards, algorithm, parent_id, tempshards, dm_parent,
 			                      bm_parent, obmat, inner_material_index, num_cuts, num_levels, fractal,
-			                      &i, smooth, &tempresults, &dm_p, uv_layer);
+			                      &i, smooth, &tempresults, &dm_p, uv_layer, preselect_tree);
 			//if (stop)
 			//	break;
 		}
+
+		BLI_kdtree_free(preselect_tree);
 	}
 	else {
 
@@ -917,7 +957,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		else
 		{
 			handle_fast_bisect(fm, expected_shards, algorithm, &bm_parent, obmat, centroid, inner_material_index, parent_id,
-			                   tempshards, &tempresults, uv_layer);
+			                   tempshards, &tempresults, uv_layer, cells);
 		}
 	}
 
@@ -2904,4 +2944,41 @@ void BKE_fracture_mesh_constraint_remove_all(FractureModifierData *fmd)
 {
 	BKE_free_constraints(fmd);
 	fmd->constraint_count = 0;
+}
+
+/* flush a hflag to from verts to edges/faces */
+void BKE_bm_mesh_hflag_flush_vert(BMesh *bm, const char hflag)
+{
+	BMEdge *e;
+	BMLoop *l_iter;
+	BMLoop *l_first;
+	BMFace *f;
+
+	BMIter eiter;
+	BMIter fiter;
+
+	int ok;
+
+	BM_ITER_MESH (e, &eiter, bm, BM_EDGES_OF_MESH) {
+		if (BM_elem_flag_test(e->v1, hflag) &&
+		    BM_elem_flag_test(e->v2, hflag))
+		{
+			BM_elem_flag_enable(e, hflag);
+		}
+		else {
+			BM_elem_flag_disable(e, hflag);
+		}
+	}
+	BM_ITER_MESH (f, &fiter, bm, BM_FACES_OF_MESH) {
+		ok = true;
+		l_iter = l_first = BM_FACE_FIRST_LOOP(f);
+		do {
+			if (!BM_elem_flag_test(l_iter->v, hflag)) {
+				ok = false;
+				break;
+			}
+		} while ((l_iter = l_iter->next) != l_first);
+
+		BM_elem_flag_set(f, hflag, ok);
+	}
 }
