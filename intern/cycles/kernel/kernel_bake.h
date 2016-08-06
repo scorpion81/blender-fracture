@@ -18,8 +18,12 @@ CCL_NAMESPACE_BEGIN
 
 #ifdef __BAKING__
 
-ccl_device void compute_light_pass(KernelGlobals *kg, ShaderData *sd, PathRadiance *L, RNG rng,
-                                   int pass_filter, int sample)
+ccl_device_inline void compute_light_pass(KernelGlobals *kg,
+                                          ShaderData *sd,
+                                          PathRadiance *L,
+                                          RNG rng,
+                                          int pass_filter,
+                                          int sample)
 {
 	/* initialize master radiance accumulator */
 	kernel_assert(kernel_data.film.use_light_pass);
@@ -48,7 +52,7 @@ ccl_device void compute_light_pass(KernelGlobals *kg, ShaderData *sd, PathRadian
 
 	/* evaluate surface shader */
 	float rbsdf = path_state_rng_1D(kg, &rng, &state, PRNG_BSDF);
-	shader_eval_surface(kg, sd, &state, rbsdf, state.flag, SHADER_CONTEXT_MAIN);
+	shader_eval_surface(kg, sd, &rng, &state, rbsdf, state.flag, SHADER_CONTEXT_MAIN);
 
 	/* TODO, disable the closures we won't need */
 
@@ -220,6 +224,7 @@ ccl_device_inline float3 kernel_bake_shader_bsdf(KernelGlobals *kg,
 
 ccl_device float3 kernel_bake_evaluate_direct_indirect(KernelGlobals *kg,
                                                        ShaderData *sd,
+                                                       RNG *rng,
                                                        PathState *state,
                                                        float3 direct,
                                                        float3 indirect,
@@ -239,12 +244,12 @@ ccl_device float3 kernel_bake_evaluate_direct_indirect(KernelGlobals *kg,
 		}
 		else {
 			/* surface color of the pass only */
-			shader_eval_surface(kg, sd, state, 0.0f, 0, SHADER_CONTEXT_MAIN);
+			shader_eval_surface(kg, sd, rng, state, 0.0f, 0, SHADER_CONTEXT_MAIN);
 			return kernel_bake_shader_bsdf(kg, sd, type);
 		}
 	}
 	else {
-		shader_eval_surface(kg, sd, state, 0.0f, 0, SHADER_CONTEXT_MAIN);
+		shader_eval_surface(kg, sd, rng, state, 0.0f, 0, SHADER_CONTEXT_MAIN);
 		color = kernel_bake_shader_bsdf(kg, sd, type);
 	}
 
@@ -336,7 +341,7 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 		case SHADER_EVAL_NORMAL:
 		{
 			if((sd.flag & SD_HAS_BUMP)) {
-				shader_eval_surface(kg, &sd, &state, 0.f, 0, SHADER_CONTEXT_MAIN);
+				shader_eval_surface(kg, &sd, &rng, &state, 0.f, 0, SHADER_CONTEXT_MAIN);
 			}
 
 			/* compression: normal = (2 * color) - 1 */
@@ -350,7 +355,7 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 		}
 		case SHADER_EVAL_EMISSION:
 		{
-			shader_eval_surface(kg, &sd, &state, 0.f, 0, SHADER_CONTEXT_EMISSION);
+			shader_eval_surface(kg, &sd, &rng, &state, 0.f, 0, SHADER_CONTEXT_EMISSION);
 			out = shader_emissive_eval(kg, &sd);
 			break;
 		}
@@ -403,6 +408,7 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 		{
 			out = kernel_bake_evaluate_direct_indirect(kg,
 			                                           &sd,
+			                                           &rng,
 			                                           &state,
 			                                           L.direct_diffuse,
 			                                           L.indirect_diffuse,
@@ -414,6 +420,7 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 		{
 			out = kernel_bake_evaluate_direct_indirect(kg,
 			                                           &sd,
+			                                           &rng,
 			                                           &state,
 			                                           L.direct_glossy,
 			                                           L.indirect_glossy,
@@ -425,6 +432,7 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 		{
 			out = kernel_bake_evaluate_direct_indirect(kg,
 			                                           &sd,
+			                                           &rng,
 			                                           &state,
 			                                           L.direct_transmission,
 			                                           L.indirect_transmission,
@@ -437,6 +445,7 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 #ifdef __SUBSURFACE__
 			out = kernel_bake_evaluate_direct_indirect(kg,
 			                                           &sd,
+			                                           &rng,
 			                                           &state,
 			                                           L.direct_subsurface,
 			                                           L.indirect_subsurface,

@@ -72,6 +72,7 @@
 
 #include "WM_api.h"
 
+#include "GPU_basic_shader.h"
 #include "GPU_draw.h"
 #include "GPU_extensions.h"
 
@@ -591,6 +592,7 @@ static int arg_handle_print_help(int UNUSED(argc), const char **UNUSED(argv), vo
 	printf("\n");
 	printf("Experimental Features:\n");
 	BLI_argsPrintArgDoc(ba, "--enable-new-depsgraph");
+	BLI_argsPrintArgDoc(ba, "--enable-new-basic-shader-glsl");
 
 	printf("\n");
 	printf("Argument Parsing:\n");
@@ -737,8 +739,6 @@ static const char arg_handle_debug_mode_generic_set_doc_handlers[] =
 "\n\tEnable debug messages for event handling";
 static const char arg_handle_debug_mode_generic_set_doc_wm[] =
 "\n\tEnable debug messages for the window manager, also prints every operator call";
-static const char arg_handle_debug_mode_generic_set_doc_all[] =
-"\n\tEnable all debug messages (excludes libmv)";
 static const char arg_handle_debug_mode_generic_set_doc_jobs[] =
 "\n\tEnable time profiling for background jobs.";
 static const char arg_handle_debug_mode_generic_set_doc_gpu[] =
@@ -753,6 +753,20 @@ static const char arg_handle_debug_mode_generic_set_doc_gpumem[] =
 static int arg_handle_debug_mode_generic_set(int UNUSED(argc), const char **UNUSED(argv), void *data)
 {
 	G.debug |= GET_INT_FROM_POINTER(data);
+	return 0;
+}
+
+static const char arg_handle_debug_mode_all_doc[] =
+"\n\tEnable all debug messages";
+static int arg_handle_debug_mode_all(int UNUSED(argc), const char **UNUSED(argv), void *UNUSED(data))
+{
+	G.debug |= G_DEBUG_ALL;
+#ifdef WITH_LIBMV
+	libmv_startDebugLogging();
+#endif
+#ifdef WITH_CYCLES_LOGGING
+	CCL_start_debug_logging();
+#endif
 	return 0;
 }
 
@@ -1169,6 +1183,16 @@ static int arg_handle_depsgraph_use_new(int UNUSED(argc), const char **UNUSED(ar
 {
 	printf("Using new dependency graph.\n");
 	DEG_depsgraph_switch_to_new();
+	return 0;
+}
+
+static const char arg_handle_basic_shader_glsl_use_new_doc[] =
+"\n\tUse new GLSL basic shader"
+;
+static int arg_handle_basic_shader_glsl_use_new(int UNUSED(argc), const char **UNUSED(argv), void *UNUSED(data))
+{
+	printf("Using new GLSL basic shader.\n");
+	GPU_basic_shader_use_glsl_set(true);
 	return 0;
 }
 
@@ -1779,8 +1803,7 @@ void main_args_setup(bContext *C, bArgs *ba, SYS_SystemHandle *syshandle)
 	            CB_EX(arg_handle_debug_mode_generic_set, handlers), (void *)G_DEBUG_HANDLERS);
 	BLI_argsAdd(ba, 1, NULL, "--debug-wm",
 	            CB_EX(arg_handle_debug_mode_generic_set, wm), (void *)G_DEBUG_WM);
-	BLI_argsAdd(ba, 1, NULL, "--debug-all",
-	            CB_EX(arg_handle_debug_mode_generic_set, all), (void *)G_DEBUG_ALL);
+	BLI_argsAdd(ba, 1, NULL, "--debug-all", CB(arg_handle_debug_mode_all), NULL);
 
 	BLI_argsAdd(ba, 1, NULL, "--debug-fpe",
 	            CB(arg_handle_debug_fpe_set), NULL);
@@ -1807,6 +1830,7 @@ void main_args_setup(bContext *C, bArgs *ba, SYS_SystemHandle *syshandle)
 	            CB_EX(arg_handle_debug_mode_generic_set, gpumem), (void *)G_DEBUG_GPU_MEM);
 
 	BLI_argsAdd(ba, 1, NULL, "--enable-new-depsgraph", CB(arg_handle_depsgraph_use_new), NULL);
+	BLI_argsAdd(ba, 1, NULL, "--enable-new-basic-shader-glsl", CB(arg_handle_basic_shader_glsl_use_new), NULL);
 
 	BLI_argsAdd(ba, 1, NULL, "--verbose", CB(arg_handle_verbosity_set), NULL);
 

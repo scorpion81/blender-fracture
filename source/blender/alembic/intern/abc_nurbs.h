@@ -20,7 +20,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#pragma once
+#ifndef __ABC_NURBS_H__
+#define __ABC_NURBS_H__
 
 #include "abc_object.h"
 
@@ -33,14 +34,14 @@ class AbcNurbsWriter : public AbcObjectWriter {
 public:
 	AbcNurbsWriter(Scene *scene,
 	               Object *ob,
-                   AbcTransformWriter *parent,
-                   uint32_t sampling_time,
-                   ExportSettings &settings);
+	               AbcTransformWriter *parent,
+	               uint32_t time_sampling,
+	               ExportSettings &settings);
 
 private:
 	virtual void do_write();
 
-    bool isAnimated() const;
+	bool isAnimated() const;
 };
 
 /* ************************************************************************** */
@@ -53,8 +54,10 @@ public:
 
 	bool valid() const;
 
-	void readObjectData(Main *bmain, Scene *scene, float time);
+	void readObjectData(Main *bmain, float time);
 
 private:
 	void getNurbsPatches(const Alembic::Abc::IObject &obj);
 };
+
+#endif  /* __ABC_NURBS_H__ */

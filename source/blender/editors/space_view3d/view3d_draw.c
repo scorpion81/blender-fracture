@@ -660,7 +660,6 @@ static void draw_rotation_guide(RegionView3D *rv3d)
 
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glShadeModel(GL_SMOOTH);
 	glPointSize(5);
 	glEnable(GL_POINT_SMOOTH);
 	glDepthMask(0);  /* don't overwrite zbuf */
@@ -1492,7 +1491,7 @@ unsigned int ED_view3d_backbuf_sample(ViewContext *vc, int x, int y)
 		BLI_endian_switch_uint32(&col);
 	}
 	
-	return WM_framebuffer_to_index(col);
+	return GPU_select_to_index(col);
 }
 
 /* reads full rect, converts indices */
@@ -1525,7 +1524,7 @@ ImBuf *ED_view3d_backbuf_read(ViewContext *vc, int xmin, int ymin, int xmax, int
 		IMB_convert_rgba_to_abgr(ibuf_clip);
 	}
 
-	WM_framebuffer_to_index_array(ibuf_clip->rect, size_clip[0] * size_clip[1]);
+	GPU_select_to_index_array(ibuf_clip->rect, size_clip[0] * size_clip[1]);
 	
 	if ((clip.xmin == xmin) &&
 	    (clip.xmax == xmax) &&
@@ -2603,6 +2602,7 @@ static void gpu_update_lamps_shadows_world(Scene *scene, View3D *v3d)
 		GPU_mist_update_values(world->mistype, world->miststa, world->mistdist, world->misi, &world->horr);
 		GPU_horizon_update_color(&world->horr);
 		GPU_ambient_update_color(&world->ambr);
+		GPU_zenith_update_color(&world->zenr);
 	}
 }
 
@@ -3022,18 +3022,16 @@ static void view3d_main_region_clear(Scene *scene, View3D *v3d, ARegion *ar)
 				glLoadIdentity();
 				glColor4f(0.0f, 0.0f, 0.0f, 1.0f);
 			}
-
+			// Draw world
 			glEnable(GL_DEPTH_TEST);
 			glDepthFunc(GL_ALWAYS);
-			glShadeModel(GL_SMOOTH);
 			glBegin(GL_TRIANGLE_STRIP);
 			glVertex3f(-1.0, -1.0, 1.0);
 			glVertex3f(1.0, -1.0, 1.0);
 			glVertex3f(-1.0, 1.0, 1.0);
 			glVertex3f(1.0, 1.0, 1.0);
 			glEnd();
-			glShadeModel(GL_FLAT);
-
+			//
 			if (material_not_bound) {
 				glMatrixMode(GL_PROJECTION);
 				glPopMatrix();
@@ -3070,8 +3068,6 @@ static void view3d_main_region_clear(Scene *scene, View3D *v3d, ARegion *ar)
 			glMatrixMode(GL_MODELVIEW);
 			glPushMatrix();
 			glLoadIdentity();
-
-			glShadeModel(GL_SMOOTH);
 
 			/* calculate buffers the first time only */
 			if (!buf_calculated) {
@@ -3158,8 +3154,6 @@ static void view3d_main_region_clear(Scene *scene, View3D *v3d, ARegion *ar)
 			glMatrixMode(GL_MODELVIEW);
 			glPopMatrix();
 
-			glShadeModel(GL_FLAT);
-
 #undef VIEWGRAD_RES_X
 #undef VIEWGRAD_RES_Y
 		}
@@ -3183,7 +3177,6 @@ static void view3d_main_region_clear(Scene *scene, View3D *v3d, ARegion *ar)
 
 			glEnable(GL_DEPTH_TEST);
 			glDepthFunc(GL_ALWAYS);
-			glShadeModel(GL_SMOOTH);
 			glBegin(GL_QUADS);
 			UI_ThemeColor(TH_LOW_GRAD);
 			glVertex3f(-1.0, -1.0, 1.0);
@@ -3192,8 +3185,6 @@ static void view3d_main_region_clear(Scene *scene, View3D *v3d, ARegion *ar)
 			glVertex3f(1.0, 1.0, 1.0);
 			glVertex3f(-1.0, 1.0, 1.0);
 			glEnd();
-			glShadeModel(GL_FLAT);
-
 			glDepthFunc(GL_LEQUAL);
 			glDisable(GL_DEPTH_TEST);
 
@@ -4094,6 +4085,10 @@ void view3d_main_region_draw(const bContext *C, ARegion *ar)
 	view3d_main_region_draw_info(C, scene, ar, v3d, grid_unit, render_border);
 
 	v3d->flag |= V3D_INVALID_BACKBUF;
+
+	BLI_assert(BLI_listbase_is_empty(&v3d->afterdraw_transp));
+	BLI_assert(BLI_listbase_is_empty(&v3d->afterdraw_xray));
+	BLI_assert(BLI_listbase_is_empty(&v3d->afterdraw_xraytransp));
 }
 
 #ifdef DEBUG_DRAW

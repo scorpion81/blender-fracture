@@ -65,19 +65,20 @@ void SVMShaderManager::device_update(Device *device, DeviceScene *dscene, Scene 
 		svm_nodes.push_back(make_int4(NODE_SHADER_JUMP, 0, 0, 0));
 		svm_nodes.push_back(make_int4(NODE_SHADER_JUMP, 0, 0, 0));
 	}
-	
+
 	foreach(Shader *shader, scene->shaders) {
 		if(progress.get_cancel()) return;
 
 		assert(shader->graph);
 
-		if(shader->use_mis && shader->has_surface_emission)
-			scene->light_manager->need_update = true;
-
 		SVMCompiler::Summary summary;
 		SVMCompiler compiler(scene->shader_manager, scene->image_manager);
 		compiler.background = (shader == scene->default_background);
 		compiler.compile(scene, shader, svm_nodes, shader->id, &summary);
+
+		if(shader->use_mis && shader->has_surface_emission) {
+			scene->light_manager->need_update = true;
+		}
 
 		VLOG(2) << "Compilation summary:\n"
 		        << "Shader name: " << shader->name << "\n"
@@ -192,14 +193,16 @@ int SVMCompiler::stack_assign(ShaderInput *input)
 			input->stack_offset = input->link->stack_offset;
 		}
 		else {
+			Node *node = input->parent;
+
 			/* not linked to output -> add nodes to load default value */
 			input->stack_offset = stack_find_offset(input->type());
 
 			if(input->type() == SocketType::FLOAT) {
-				add_node(NODE_VALUE_F, __float_as_int(input->value_float()), input->stack_offset);
+				add_node(NODE_VALUE_F, __float_as_int(node->get_float(input->socket_type)), input->stack_offset);
 			}
 			else if(input->type() == SocketType::INT) {
-				add_node(NODE_VALUE_F, (int)input->value_float(), input->stack_offset);
+				add_node(NODE_VALUE_F, node->get_int(input->socket_type), input->stack_offset);
 			}
 			else if(input->type() == SocketType::VECTOR ||
 			        input->type() == SocketType::NORMAL ||
@@ -208,7 +211,7 @@ int SVMCompiler::stack_assign(ShaderInput *input)
 			{
 
 				add_node(NODE_VALUE_V, input->stack_offset);
-				add_node(NODE_VALUE_V, input->value());
+				add_node(NODE_VALUE_V, node->get_float3(input->socket_type));
 			}
 			else /* should not get called for closure */
 				assert(0);
@@ -446,7 +449,7 @@ void SVMCompiler::generate_closure_node(ShaderNode *node,
 	const char *weight_name = (current_type == SHADER_TYPE_VOLUME)? "VolumeMixWeight": "SurfaceMixWeight";
 	ShaderInput *weight_in = node->input(weight_name);
 
-	if(weight_in && (weight_in->link || weight_in->value_float() != 1.0f))
+	if(weight_in && (weight_in->link || node->get_float(weight_in->socket_type) != 1.0f))
 		mix_weight_offset = stack_assign(weight_in);
 	else
 		mix_weight_offset = SVM_STACK_INVALID;

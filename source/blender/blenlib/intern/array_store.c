@@ -36,7 +36,7 @@
  *
  * This diagram is an overview of the structure of a single array-store.
  *
- * \note The only 2 structues here which are referenced externally are the.
+ * \note The only 2 structures here which are referenced externally are the.
  *
  * - BArrayStore: The whole array store.
  * - BArrayState: Represents a single state (array) of data.
@@ -92,7 +92,7 @@
  * First matches at either end of the array are detected.
  * For identical arrays this is all thats needed.
  *
- * De-duplication is performed on any remaining chunks, by hasing the first few bytes of the chunk
+ * De-duplication is performed on any remaining chunks, by hashing the first few bytes of the chunk
  * (see: BCHUNK_HASH_TABLE_ACCUMULATE_STEPS).
  *
  * \note This is cached for reuse since the referenced data never changes.
@@ -249,7 +249,7 @@ typedef struct BArrayMemory {
 /**
  * Main storage for all states
  */
-typedef struct BArrayStore {
+struct BArrayStore {
 	/* static */
 	BArrayInfo info;
 
@@ -260,7 +260,7 @@ typedef struct BArrayStore {
 	 * #BArrayState may be in any order (logic should never depend on state order).
 	 */
 	ListBase states;
-} BArrayStore;
+};
 
 /**
  * A single instance of an array.
@@ -272,13 +272,13 @@ typedef struct BArrayStore {
  * While this could be moved to a memory pool,
  * it makes it easier to trace invalid usage, so leave as-is for now.
  */
-typedef struct BArrayState {
+struct BArrayState {
 	/** linked list in #BArrayStore.states */
 	struct BArrayState *next, *prev;
 
 	struct BChunkList *chunk_list;  /* BChunkList's */
 
-} BArrayState;
+};
 
 typedef struct BChunkList {
 	ListBase chunk_refs;      /* BChunkRef's */
@@ -650,7 +650,7 @@ static void bchunk_list_append_data(
  * Use for adding arrays of arbitrary sized memory at once.
  *
  * \note This function takes care not to perform redundant chunk-merging checks,
- * so we can write succesive fixed size chunks quickly.
+ * so we can write successive fixed size chunks quickly.
  */
 static void bchunk_list_append_data_n(
         const BArrayInfo *info, BArrayMemory *bs_mem,
@@ -1680,7 +1680,7 @@ void *BLI_array_store_state_data_get_alloc(
 /** \} */
 
 
-/** \name Debigging API (for testing).
+/** \name Debugging API (for testing).
  * \{ */
 
 /* only for test validation */
@@ -1750,10 +1750,11 @@ bool BLI_array_store_is_valid(
 		} \
 	} ((void)0)
 
-
 		/* count chunk_list's */
-		int totrefs = 0;
 		GHash *chunk_list_map = BLI_ghash_ptr_new(__func__);
+		GHash *chunk_map = BLI_ghash_ptr_new(__func__);
+
+		int totrefs = 0;
 		for (BArrayState *state = bs->states.first; state; state = state->next) {
 			GHASH_PTR_ADD_USER(chunk_list_map, state->chunk_list);
 		}
@@ -1771,7 +1772,6 @@ bool BLI_array_store_is_valid(
 		}
 
 		/* count chunk's */
-		GHash *chunk_map = BLI_ghash_ptr_new(__func__);
 		GHASH_ITER (gh_iter, chunk_list_map) {
 			const struct BChunkList *chunk_list = BLI_ghashIterator_getKey(&gh_iter);
 			for (const BChunkRef *cref = chunk_list->chunk_refs.first; cref; cref = cref->next) {

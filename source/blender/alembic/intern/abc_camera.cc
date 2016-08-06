@@ -52,9 +52,9 @@ using Alembic::AbcGeom::kWrapExisting;
 AbcCameraWriter::AbcCameraWriter(Scene *scene,
                                  Object *ob,
                                  AbcTransformWriter *parent,
-                                 uint32_t sampling_time,
+                                 uint32_t time_sampling,
                                  ExportSettings &settings)
-    : AbcObjectWriter(scene, ob, sampling_time, settings, parent)
+    : AbcObjectWriter(scene, ob, time_sampling, settings, parent)
 {
 	OCamera camera(parent->alembicXform(), m_name, m_time_sampling);
 	m_camera_schema = camera.getSchema();
@@ -66,14 +66,6 @@ AbcCameraWriter::AbcCameraWriter(Scene *scene,
 
 void AbcCameraWriter::do_write()
 {
-	if (m_first_frame) {
-		ID *id = static_cast<ID *>(m_object->data);
-
-		if (hasProperties(id)) {
-			writeProperties(id, m_camera_schema.getUserProperties(), true);
-		}
-	}
-
 	Camera *cam = static_cast<Camera *>(m_object->data);
 
 	m_stereo_distance.set(cam->stereo.convergence_distance);
@@ -101,8 +93,8 @@ void AbcCameraWriter::do_write()
 		m_camera_sample.setFocusDistance(cam->gpu_dof.focus_distance);
 	}
 
-	/* blender camera does not have an fstop param, so try to find a custom prop
-	 * instead */
+	/* Blender camera does not have an fstop param, so try to find a custom prop
+	 * instead. */
 	m_camera_sample.setFStop(cam->gpu_dof.fstop);
 
 	m_camera_sample.setLensSqueezeRatio(1.0);
@@ -116,6 +108,8 @@ AbcCameraReader::AbcCameraReader(const Alembic::Abc::IObject &object, ImportSett
 {
 	ICamera abc_cam(m_iobject, kWrapExisting);
 	m_schema = abc_cam.getSchema();
+
+	get_min_max_time(m_schema, m_min_time, m_max_time);
 }
 
 bool AbcCameraReader::valid() const
@@ -123,7 +117,7 @@ bool AbcCameraReader::valid() const
 	return m_schema.valid();
 }
 
-void AbcCameraReader::readObjectData(Main *bmain, Scene *scene, float time)
+void AbcCameraReader::readObjectData(Main *bmain, float time)
 {
 	Camera *bcam = static_cast<Camera *>(BKE_camera_add(bmain, "abc_camera"));
 
@@ -163,6 +157,6 @@ void AbcCameraReader::readObjectData(Main *bmain, Scene *scene, float time)
 
 	BLI_strncpy(bcam->id.name + 2, m_data_name.c_str(), m_data_name.size() + 1);
 
-	m_object = BKE_object_add(bmain, scene, OB_CAMERA, m_object_name.c_str());
+	m_object = BKE_object_add_only_object(bmain, OB_CAMERA, m_object_name.c_str());
 	m_object->data = bcam;
 }

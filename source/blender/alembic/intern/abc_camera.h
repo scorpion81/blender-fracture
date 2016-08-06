@@ -20,7 +20,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#pragma once
+#ifndef __ABC_CAMERA_H__
+#define __ABC_CAMERA_H__
 
 #include "abc_object.h"
 
@@ -28,16 +29,16 @@
 
 class AbcCameraWriter : public AbcObjectWriter {
 	Alembic::AbcGeom::OCameraSchema m_camera_schema;
-    Alembic::AbcGeom::CameraSample m_camera_sample;
-    Alembic::AbcGeom::OCompoundProperty m_custom_data_container;
-    Alembic::AbcGeom::OFloatProperty m_stereo_distance;
-    Alembic::AbcGeom::OFloatProperty m_eye_separation;
+	Alembic::AbcGeom::CameraSample m_camera_sample;
+	Alembic::AbcGeom::OCompoundProperty m_custom_data_container;
+	Alembic::AbcGeom::OFloatProperty m_stereo_distance;
+	Alembic::AbcGeom::OFloatProperty m_eye_separation;
 
 public:
 	AbcCameraWriter(Scene *scene,
 	                Object *ob,
 	                AbcTransformWriter *parent,
-	                uint32_t sampling_time,
+	                uint32_t time_sampling,
 	                ExportSettings &settings);
 
 private:
@@ -54,5 +55,7 @@ public:
 
 	bool valid() const;
 
-	void readObjectData(Main *bmain, Scene *scene, float time);
+	void readObjectData(Main *bmain, float time);
 };
+
+#endif  /* __ABC_CAMERA_H__ */

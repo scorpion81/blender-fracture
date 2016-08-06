@@ -29,46 +29,79 @@ extern "C" {
 
 struct bContext;
 struct DerivedMesh;
+struct ListBase;
 struct Object;
 struct Scene;
+
+typedef struct AbcArchiveHandle AbcArchiveHandle;
 
 enum {
 	ABC_ARCHIVE_OGAWA = 0,
 	ABC_ARCHIVE_HDF5  = 1,
 };
 
-#define BL_ABC_NO_ERR 0
-#define BL_ABC_UNKNOWN_ERROR 1
-
 int ABC_get_version(void);
 
-int ABC_export(struct Scene *scene, struct bContext *C, const char *filepath,
-               double start, double end,
-               double xformstep, double geomstep,
-               double shutter_open, double shutter_close,
-               int selected_only,
-               int uvs, int normals,
-               int vcolors,
-               int force_meshes,
-               int flatten_hierarchy,
-               int custom_props_as_geodata,
-               int vislayers, int renderable,
-               int facesets, int matindices,
-               int geogroups, int compression,
-               bool packuv, float scale);
+struct AlembicExportParams {
+	double frame_start;
+	double frame_end;
 
-void ABC_import(struct bContext *C, const char *filepath, float scale, bool is_sequence);
+	double frame_step_xform;
+	double frame_step_shape;
 
-void ABC_get_vertex_cache(const char *filepath, float time, void *verts, int max_verts, const char *object_path, int is_mvert);
+	double shutter_open;
+	double shutter_close;
 
-int ABC_check_subobject_valid(const char *filepath, const char *object_path);
+	/* bools */
+	unsigned int selected_only : 1;
+	unsigned int uvs : 1;
+	unsigned int normals : 1;
+	unsigned int vcolors : 1;
+	unsigned int apply_subdiv : 1;
+	unsigned int flatten_hierarchy : 1;
+	unsigned int visible_layers_only : 1;
+	unsigned int renderable_only : 1;
+	unsigned int face_sets : 1;
+	unsigned int use_subdiv_schema : 1;
+	unsigned int packuv : 1;
 
-void ABC_get_transform(struct Object *ob, const char *filepath, const char *object_path, float r_mat[4][4], float time);
+	unsigned int compression_type : 1;
+	float global_scale;
+};
 
-struct DerivedMesh *ABC_read_mesh(struct DerivedMesh *dm, const char *filepath, const char *object_path, const float time);
+void ABC_export(
+        struct Scene *scene,
+        struct bContext *C,
+        const char *filepath,
+        const struct AlembicExportParams *params);
 
-void ABC_read_vertex_cache(const char *filepath, const char *object_path, const float time,
-                           float (*vertexCos)[3], int max_verts);
+void ABC_import(struct bContext *C,
+                const char *filepath,
+                float scale,
+                bool is_sequence,
+                bool set_frame_range,
+                int sequence_len,
+                int offset,
+                bool validate_meshes);
+
+AbcArchiveHandle *ABC_create_handle(const char *filename, struct ListBase *object_paths);
+
+void ABC_free_handle(AbcArchiveHandle *handle);
+
+void ABC_get_transform(AbcArchiveHandle *handle,
+                       struct Object *ob,
+                       const char *object_path,
+                       float r_mat[4][4],
+                       float time,
+                       float scale);
+
+struct DerivedMesh *ABC_read_mesh(AbcArchiveHandle *handle,
+                                  struct Object *ob,
+                                  struct DerivedMesh *dm,
+                                  const char *object_path,
+                                  const float time,
+                                  const char **err_str,
+                                  int flags);
 
 #ifdef __cplusplus
 }

@@ -18,13 +18,13 @@ CCL_NAMESPACE_BEGIN
 
 #ifdef __BRANCHED_PATH__
 
-ccl_device void kernel_branched_path_ao(KernelGlobals *kg,
-                                        ShaderData *sd,
-                                        ShaderData *emission_sd,
-                                        PathRadiance *L,
-                                        PathState *state,
-                                        RNG *rng,
-                                        float3 throughput)
+ccl_device_inline void kernel_branched_path_ao(KernelGlobals *kg,
+                                               ShaderData *sd,
+                                               ShaderData *emission_sd,
+                                               PathRadiance *L,
+                                               PathState *state,
+                                               RNG *rng,
+                                               float3 throughput)
 {
 	int num_samples = kernel_data.integrator.ao_samples;
 	float num_samples_inv = 1.0f/num_samples;
@@ -463,7 +463,7 @@ ccl_device float4 kernel_branched_path_integrate(KernelGlobals *kg, RNG *rng, in
 
 		/* setup shading */
 		shader_setup_from_ray(kg, &sd, &isect, &ray);
-		shader_eval_surface(kg, &sd, &state, 0.0f, state.flag, SHADER_CONTEXT_MAIN);
+		shader_eval_surface(kg, &sd, rng, &state, 0.0f, state.flag, SHADER_CONTEXT_MAIN);
 		shader_merge_closures(&sd);
 
 		/* holdout */

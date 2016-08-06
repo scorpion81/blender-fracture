@@ -47,6 +47,7 @@ extern "C" {
 #include "DNA_anim_types.h"
 #include "DNA_armature_types.h"
 #include "DNA_camera_types.h"
+#include "DNA_cachefile_types.h"
 #include "DNA_constraint_types.h"
 #include "DNA_curve_types.h"
 #include "DNA_effect_types.h"
@@ -271,6 +272,7 @@ void DepsgraphRelationBuilder::build_scene(Main *bmain, Scene *scene)
 
 		/* object that this is a proxy for */
 		if (ob->proxy) {
+			ob->proxy->proxy_from = ob;
 			build_object(bmain, scene, ob->proxy);
 			/* TODO(sergey): This is an inverted relation, matches old depsgraph
 			 * behavior and need to be investigated if it still need to be inverted.
@@ -433,9 +435,8 @@ void DepsgraphRelationBuilder::build_object(Main *bmain, Scene *scene, Object *o
 				break;
 			}
 
-
 			case OB_ARMATURE: /* Pose */
-				if (ob->id.lib != NULL && ob->proxy_from != NULL) {
+				if (ID_IS_LINKED_DATABLOCK(ob) && ob->proxy_from != NULL) {
 					build_proxy_rig(ob);
 				}
 				else {
@@ -598,6 +599,18 @@ void DepsgraphRelationBuilder::build_constraints(Scene *scene, ID *id, eDepsNode
 			/* TODO(sergey): This is more a TimeSource -> MovieClip -> Constraint dependency chain. */
 			TimeSourceKey time_src_key;
 			add_relation(time_src_key, constraint_op_key, DEPSREL_TYPE_TIME, "[TimeSrc -> Animation]");
+		}
+		else if (cti->type == CONSTRAINT_TYPE_TRANSFORM_CACHE) {
+			/* TODO(kevin): This is more a TimeSource -> CacheFile -> Constraint dependency chain. */
+			TimeSourceKey time_src_key;
+			add_relation(time_src_key, constraint_op_key, DEPSREL_TYPE_TIME, "[TimeSrc -> Animation]");
+
+			bTransformCacheConstraint *data = (bTransformCacheConstraint *)con->data;
+
+			if (data->cache_file) {
+				ComponentKey cache_key(&data->cache_file->id, DEPSNODE_TYPE_CACHE);
+				add_relation(cache_key, constraint_op_key, DEPSREL_TYPE_CACHE, cti->name);
+			}
 		}
 		else if (cti->get_constraint_targets) {
 			ListBase targets = {NULL, NULL};
@@ -920,6 +933,12 @@ void DepsgraphRelationBuilder::build_driver(ID *id, FCurve *fcu)
 				}
 			}
 			else {
+				if (dtar->id == id) {
+					/* Ignore input dependency if we're driving properties of the same ID,
+					 * otherwise we'll be ending up in a cyclic dependency here.
+					 */
+					continue;
+				}
 				/* resolve path to get node */
 				RNAPathKey target_key(dtar->id, dtar->rna_path ? dtar->rna_path : "");
 				add_relation(target_key, driver_key, DEPSREL_TYPE_DRIVER_TARGET, "[RNA Target -> Driver]");
@@ -1069,7 +1088,7 @@ void DepsgraphRelationBuilder::build_particles(Scene *scene, Object *ob)
 		OperationKey psys_key(&ob->id, DEPSNODE_TYPE_EVAL_PARTICLES, DEG_OPCODE_PSYS_EVAL, psys->name);
 
 		/* XXX: if particle system is later re-enabled, we must do full rebuild? */
-		if (!psys_check_enabled(ob, psys))
+		if (!psys_check_enabled(ob, psys, G.is_rendering))
 			continue;
 
 		/* TODO(sergey): Are all particle systems depends on time?
@@ -1311,10 +1330,12 @@ void DepsgraphRelationBuilder::build_ik_pose(Object *ob,
 			OperationKey done_key(&ob->id, DEPSNODE_TYPE_BONE, parchan->name, DEG_OPCODE_BONE_DONE);
 			add_relation(solver_key, done_key, DEPSREL_TYPE_TRANSFORM, "IK Chain Result");
 		}
+		else {
+			OperationKey final_transforms_key(&ob->id, DEPSNODE_TYPE_BONE, parchan->name, DEG_OPCODE_BONE_DONE);
+			add_relation(solver_key, final_transforms_key, DEPSREL_TYPE_TRANSFORM, "IK Solver Result");
+		}
 		parchan->flag |= POSE_DONE;
 
-		OperationKey final_transforms_key(&ob->id, DEPSNODE_TYPE_BONE, parchan->name, DEG_OPCODE_BONE_DONE);
-		add_relation(solver_key, final_transforms_key, DEPSREL_TYPE_TRANSFORM, "IK Solver Result");
 
 		root_map->add_bone(parchan->name, rootchan->name);
 
@@ -1426,20 +1447,20 @@ void DepsgraphRelationBuilder::build_rig(Scene *scene, Object *ob)
 	}
 
 	/* IK Solvers...
-	* - These require separate processing steps are pose-level
-	*   to be executed between chains of bones (i.e. once the
-	*   base transforms of a bunch of bones is done)
-	*
-	* - We build relations for these before the dependencies
-	*   between ops in the same component as it is necessary
-	*   to check whether such bones are in the same IK chain
-	*   (or else we get weird issues with either in-chain
-	*   references, or with bones being parented to IK'd bones)
-	*
-	* Unsolved Issues:
-	* - Care is needed to ensure that multi-headed trees work out the same as in ik-tree building
-	* - Animated chain-lengths are a problem...
-	*/
+	 * - These require separate processing steps are pose-level
+	 *   to be executed between chains of bones (i.e. once the
+	 *   base transforms of a bunch of bones is done)
+	 *
+	 * - We build relations for these before the dependencies
+	 *   between ops in the same component as it is necessary
+	 *   to check whether such bones are in the same IK chain
+	 *   (or else we get weird issues with either in-chain
+	 *   references, or with bones being parented to IK'd bones)
+	 *
+	 * Unsolved Issues:
+	 * - Care is needed to ensure that multi-headed trees work out the same as in ik-tree building
+	 * - Animated chain-lengths are a problem...
+	 */
 	RootPChanMap root_map;
 	bool pose_depends_on_local_transform = false;
 	for (bPoseChannel *pchan = (bPoseChannel *)ob->pose->chanbase.first; pchan; pchan = pchan->next) {

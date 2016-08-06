@@ -546,6 +546,8 @@ struct uiPopupBlockHandle {
 	
 	/* store data for refreshing popups */
 	struct uiPopupBlockCreate popup_create_vars;
+	/* true if we can re-create the popup using 'popup_create_vars' */
+	bool can_refresh;
 
 	struct wmTimer *scrolltimer;
 

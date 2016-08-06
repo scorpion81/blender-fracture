@@ -20,24 +20,65 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#pragma once
+#ifndef __ABC_EXPORTER_H__
+#define __ABC_EXPORTER_H__
 
+#include <Alembic/Abc/All.h>
 #include <map>
+#include <set>
 #include <vector>
 
-#include "abc_object.h"
-#include "abc_transform.h"
+class AbcObjectWriter;
+class AbcTransformWriter;
+
+struct EvaluationContext;
+struct Main;
+struct Object;
+struct Scene;
+
+struct ExportSettings {
+	ExportSettings();
+
+	Scene *scene;
+
+	bool selected_only;
+	bool visible_layers_only;
+	bool renderable_only;
+
+	double frame_start, frame_end;
+	double frame_step_xform;
+	double frame_step_shape;
+	double shutter_open;
+	double shutter_close;
+	float global_scale;
+
+	bool flatten_hierarchy;
+
+	bool export_normals;
+	bool export_uvs;
+	bool export_vcols;
+	bool export_face_sets;
+	bool export_vweigths;
+
+	bool apply_subdiv;
+	bool use_subdiv_schema;
+	bool export_child_hairs;
+	bool export_ogawa;
+	bool pack_uv;
+
+	bool do_convert_axis;
+	float convert_matrix[3][3];
+};
 
 class AbcExporter {
 	ExportSettings &m_settings;
 
 	const char *m_filename;
 
-    Alembic::Abc::OArchive m_archive;
-    unsigned int m_trans_sampling_index, m_shape_sampling_index;
+	Alembic::Abc::OArchive m_archive;
+	unsigned int m_trans_sampling_index, m_shape_sampling_index;
 
 	Scene *m_scene;
-	double m_saved_frame;
 
 	std::map<std::string, AbcTransformWriter *> m_xforms;
 	std::vector<AbcObjectWriter *> m_shapes;
@@ -46,11 +87,7 @@ public:
 	AbcExporter(Scene *scene, const char *filename, ExportSettings &settings);
 	~AbcExporter();
 
-	void operator()(float &progress);
-
-protected:
-	double getCurrentFrame() const;
-	void setCurrentFrame(double t);
+	void operator()(Main *bmain, float &progress, bool &was_canceled);
 
 private:
 	void getShutterSamples(double step, bool time_relative, std::vector<double> &samples);
@@ -59,16 +96,17 @@ private:
 
 	void getFrameSet(double step, std::set<double> &frames);
 
-	void createTransformWritersHierarchy();
+	void createTransformWritersHierarchy(EvaluationContext *eval_ctx);
 	void createTransformWritersFlat();
-    void createTransformWriter(Object *ob,  Object *parent, Object *dupliObParent);
-    void exploreTransform(Object *ob, Object *parent, Object *dupliObParent = NULL);
-    void exploreObject(Object *ob, Object *dupliObParent);
-	void createShapeWriters();
-    void createShapeWriter(Object *ob, Object *dupliObParent);
+	void createTransformWriter(Object *ob,  Object *parent, Object *dupliObParent);
+	void exploreTransform(EvaluationContext *eval_ctx, Object *ob, Object *parent, Object *dupliObParent = NULL);
+	void exploreObject(EvaluationContext *eval_ctx, Object *ob, Object *dupliObParent);
+	void createShapeWriters(EvaluationContext *eval_ctx);
+	void createShapeWriter(Object *ob, Object *dupliObParent);
 
 	AbcTransformWriter *getXForm(const std::string &name);
 
-	bool objectIsShape(Object *ob);
-	bool objectIsSmokeSim(Object *ob);
+	void setCurrentFrame(Main *bmain, double t);
 };
+
+#endif  /* __ABC_EXPORTER_H__ */

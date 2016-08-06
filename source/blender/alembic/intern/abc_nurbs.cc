@@ -63,15 +63,15 @@ using Alembic::AbcGeom::ONuPatchSchema;
 AbcNurbsWriter::AbcNurbsWriter(Scene *scene,
                                Object *ob,
                                AbcTransformWriter *parent,
-                               uint32_t sampling_time,
+                               uint32_t time_sampling,
                                ExportSettings &settings)
-    : AbcObjectWriter(scene, ob, sampling_time, settings, parent)
+    : AbcObjectWriter(scene, ob, time_sampling, settings, parent)
 {
 	m_is_animated = isAnimated();
 
 	/* if the object is static, use the default static time sampling */
 	if (!m_is_animated) {
-		sampling_time = 0;
+		m_time_sampling = 0;
 	}
 
 	Curve *curve = static_cast<Curve *>(m_object->data);
@@ -97,48 +97,32 @@ bool AbcNurbsWriter::isAnimated() const
 	return (cu->key != NULL);
 }
 
-static void recompute_pnts_cyclic(const BPoint *bps,
-                                  const int num_u, const int num_v,
-                                  const int add_u, const int add_v,
-                                  std::vector<Imath::V3f> &pos,
-                                  std::vector<float> &posWeight)
+static void get_knots(std::vector<float> &knots, const int num_knots, float *nu_knots)
 {
-	const int new_u = num_u;/* + add_u; */
-	const int new_v = num_v;/* + add_v; */
-	const int new_size = new_u * new_v;
-
-	pos.reserve(new_size);
-	posWeight.reserve(new_size);
-
-	std::vector< std::vector<Imath::Vec4<float> > > pnts;
-	pnts.resize(new_u);
-
-	for (int u = 0; u < new_u; ++u) {
-		pnts[u].resize(new_v);
-
-		for (int v = 0; v < new_v; ++v) {
-			const BPoint& bp = bps[u + (v * new_u)];
-			pnts[u][v] = Imath::Vec4<float>(bp.vec[0], bp.vec[1], bp.vec[2], bp.vec[3]);
-		}
+	if (num_knots <= 1) {
+		return;
 	}
 
-	for (int u = 0; u < new_u; ++u) {
-		for (int v = 0; v < new_v; ++v) {
-			const Imath::Vec4<float> &pnt = pnts[u][v];
+	/* Add an extra knot at the beggining and end of the array since most apps
+	 * require/expect them. */
+	knots.reserve(num_knots + 2);
 
-			/* Convert Z-up to Y-up. */
-			pos.push_back(Imath::V3f(pnt.x, pnt.z, -pnt.y));
+	knots.push_back(0.0f);
 
-			posWeight.push_back(pnt.z);
-		}
+	for (int i = 0; i < num_knots; ++i) {
+		knots.push_back(nu_knots[i]);
 	}
+
+	knots[0] = 2.0f * knots[1] - knots[2];
+	knots.push_back(2.0f * knots[num_knots] - knots[num_knots - 1]);
 }
 
 void AbcNurbsWriter::do_write()
 {
 	/* we have already stored a sample for this object. */
-	if (!m_first_frame && !m_is_animated)
+	if (!m_first_frame && !m_is_animated) {
 		return;
+	}
 
 	if (!ELEM(m_object->type, OB_SURF, OB_CURVE)) {
 		return;
@@ -155,52 +139,59 @@ void AbcNurbsWriter::do_write()
 	}
 
 	size_t count = 0;
-	for (Nurb *nu = static_cast<Nurb *>(nulb->first); nu; nu = nu->next, count++) {
-		const int numKnotsU = KNOTSU(nu);
+	for (Nurb *nu = static_cast<Nurb *>(nulb->first); nu; nu = nu->next, ++count) {
 		std::vector<float> knotsU;
-		knotsU.reserve(numKnotsU);
+		get_knots(knotsU, KNOTSU(nu), nu->knotsu);
 
-		for (int i = 0; i < numKnotsU; ++i) {
-			knotsU.push_back(nu->knotsu[i]);
-		}
-
-		const int numKnotsV = KNOTSV(nu);
 		std::vector<float> knotsV;
-		knotsV.reserve(numKnotsV);
+		get_knots(knotsV, KNOTSV(nu), nu->knotsv);
 
-		for (int i = 0; i < numKnotsV; ++i) {
-			knotsV.push_back(nu->knotsv[i]);
+		const int size = nu->pntsu * nu->pntsv;
+		std::vector<Imath::V3f> positions(size);
+		std::vector<float> weights(size);
+
+		const BPoint *bp = nu->bp;
+
+		for (int i = 0; i < size; ++i, ++bp) {
+			copy_zup_yup(positions[i].getValue(), bp->vec);
+			weights[i] = bp->vec[3];
 		}
 
-		ONuPatchSchema::Sample nuSamp;
-		nuSamp.setUOrder(nu->orderu);
-		nuSamp.setVOrder(nu->orderv);
+		ONuPatchSchema::Sample sample;
+		sample.setUOrder(nu->orderu + 1);
+		sample.setVOrder(nu->orderv + 1);
+		sample.setPositions(positions);
+		sample.setPositionWeights(weights);
+		sample.setUKnot(FloatArraySample(knotsU));
+		sample.setVKnot(FloatArraySample(knotsV));
+		sample.setNu(nu->pntsu);
+		sample.setNv(nu->pntsv);
 
-		const int add_u = (nu->flagu & CU_NURB_CYCLIC) ? nu->orderu - 1 : 0;
-		const int add_v = (nu->flagv & CU_NURB_CYCLIC) ? nu->orderv - 1 : 0;
+		/* TODO(kevin): to accomodate other software we should duplicate control
+		 * points to indicate that a NURBS is cyclic. */
+		OCompoundProperty user_props = m_nurbs_schema[count].getUserProperties();
 
-		std::vector<Imath::V3f> sampPos;
-		std::vector<float> sampPosWeights;
-		recompute_pnts_cyclic(nu->bp, nu->pntsu, nu->pntsv, add_u, add_v,
-		                      sampPos, sampPosWeights);
+		if ((nu->flagu & CU_NURB_ENDPOINT) != 0) {
+			OBoolProperty prop(user_props, "endpoint_u");
+			prop.set(true);
+		}
 
-		nuSamp.setPositions(sampPos);
-		nuSamp.setPositionWeights(sampPosWeights);
-		nuSamp.setUKnot(FloatArraySample(knotsU));
-		nuSamp.setVKnot(FloatArraySample(knotsV));
-		nuSamp.setNu(nu->pntsu);
-		nuSamp.setNv(nu->pntsv);
+		if ((nu->flagv & CU_NURB_ENDPOINT) != 0) {
+			OBoolProperty prop(user_props, "endpoint_v");
+			prop.set(true);
+		}
 
-		const bool endu = nu->flagu & CU_NURB_ENDPOINT;
-		const bool endv = nu->flagv & CU_NURB_ENDPOINT;
+		if ((nu->flagu & CU_NURB_CYCLIC) != 0) {
+			OBoolProperty prop(user_props, "cyclic_u");
+			prop.set(true);
+		}
 
-		OCompoundProperty typeContainer = m_nurbs_schema[count].getUserProperties();
-		OBoolProperty enduprop(typeContainer, "endU");
-		enduprop.set(endu);
-		OBoolProperty endvprop(typeContainer, "endV");
-		endvprop.set(endv);
+		if ((nu->flagv & CU_NURB_CYCLIC) != 0) {
+			OBoolProperty prop(user_props, "cyclic_v");
+			prop.set(true);
+		}
 
-		m_nurbs_schema[count].set(nuSamp);
+		m_nurbs_schema[count].set(sample);
 	}
 }
 
@@ -210,6 +201,7 @@ AbcNurbsReader::AbcNurbsReader(const IObject &object, ImportSettings &settings)
     : AbcObjectReader(object, settings)
 {
 	getNurbsPatches(m_iobject);
+	get_min_max_time(m_schemas[0].first, m_min_time, m_max_time);
 }
 
 bool AbcNurbsReader::valid() const
@@ -218,91 +210,112 @@ bool AbcNurbsReader::valid() const
 		return false;
 	}
 
-	/* TODO */
-	return m_schemas[0].first.valid();
+	std::vector< std::pair<INuPatchSchema, IObject> >::const_iterator it;
+	for (it = m_schemas.begin(); it != m_schemas.end(); ++it) {
+		const INuPatchSchema &schema = it->first;
+
+		if (!schema.valid()) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
-void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time)
+static bool set_knots(const FloatArraySamplePtr &knots, float *&nu_knots)
+{
+	if (!knots || knots->size() == 0) {
+		return false;
+	}
+
+	/* Skip first and last knots, as they are used for padding. */
+	const size_t num_knots = knots->size() - 2;
+	nu_knots = static_cast<float *>(MEM_callocN(num_knots * sizeof(float), "abc_setsplineknotsu"));
+
+	for (size_t i = 0; i < num_knots; ++i) {
+		nu_knots[i] = (*knots)[i + 1];
+	}
+
+	return true;
+}
+
+void AbcNurbsReader::readObjectData(Main *bmain, float time)
 {
 	Curve *cu = static_cast<Curve *>(BKE_curve_add(bmain, "abc_curve", OB_SURF));
+	cu->actvert = CU_ACT_NONE;
 
 	std::vector< std::pair<INuPatchSchema, IObject> >::iterator it;
 
 	for (it = m_schemas.begin(); it != m_schemas.end(); ++it) {
-		Nurb *nu = (Nurb *)MEM_callocN(sizeof(Nurb), "abc_getnurb");
+		Nurb *nu = static_cast<Nurb *>(MEM_callocN(sizeof(Nurb), "abc_getnurb"));
 		nu->flag  = CU_SMOOTH;
 		nu->type = CU_NURBS;
-		nu->resolu = 4;
-		nu->resolv = 4;
+		nu->resolu = cu->resolu;
+		nu->resolv = cu->resolv;
 
 		const ISampleSelector sample_sel(time);
-		const INuPatchSchema::Sample smp = it->first.getValue(sample_sel);
+		const INuPatchSchema &schema = it->first;
+		const INuPatchSchema::Sample smp = schema.getValue(sample_sel);
+
+		nu->orderu = smp.getUOrder() - 1;
+		nu->orderv = smp.getVOrder() - 1;
+		nu->pntsu = smp.getNumU();
+		nu->pntsv = smp.getNumV();
+
+		/* Read positions and weights. */
+
 		const P3fArraySamplePtr positions = smp.getPositions();
-		const FloatArraySamplePtr positionsW = smp.getPositionWeights();
-		const int32_t num_U = smp.getNumU();
-		const int32_t num_V = smp.getNumV();
-		const int32_t u_order = smp.getUOrder();
-		const int32_t v_order = smp.getVOrder();
-		const FloatArraySamplePtr u_knot = smp.getUKnot();
-		const FloatArraySamplePtr v_knot = smp.getVKnot();
+		const FloatArraySamplePtr weights = smp.getPositionWeights();
 
-		const size_t numPt = positions->size();
-		const size_t numKnotsU = u_knot->size();
-		const size_t numKnotsV = v_knot->size();
+		const size_t num_points = positions->size();
 
-		nu->orderu = u_order;
-		nu->orderv = v_order;
-		nu->pntsu = num_U;
-		nu->pntsv = num_V;
-		nu->bezt = NULL;
+		nu->bp = static_cast<BPoint *>(MEM_callocN(num_points * sizeof(BPoint), "abc_setsplinetype"));
 
-		nu->bp = (BPoint *)MEM_callocN(numPt * sizeof(BPoint), "abc_setsplinetype");
-		nu->knotsu = (float *)MEM_callocN(numKnotsU * sizeof(float), "abc_setsplineknotsu");
-		nu->knotsv = (float *)MEM_callocN(numKnotsV * sizeof(float), "abc_setsplineknotsv");
-		nu->bp->radius = 1.0f;
+		BPoint *bp = nu->bp;
+		float posw_in = 1.0f;
 
-		for (int i = 0; i < numPt; ++i) {
-			Imath::V3f pos_in = (*positions)[i];
-			float posw_in = 1.0f;
+		for (int i = 0; i < num_points; ++i, ++bp) {
+			const Imath::V3f &pos_in = (*positions)[i];
 
-			if (positionsW && i < positionsW->size()) {
-				posw_in = (*positionsW)[i];
+			if (weights) {
+				posw_in = (*weights)[i];
 			}
 
-			/* Convert Y-up to Z-up. */
-			nu->bp[i].vec[0] = pos_in[0];
-			nu->bp[i].vec[1] = -pos_in[2];
-			nu->bp[i].vec[2] = pos_in[1];
-			nu->bp[i].vec[3] = posw_in;
+			copy_yup_zup(bp->vec, pos_in.getValue());
+			bp->vec[3] = posw_in;
+			bp->f1 = SELECT;
+			bp->radius = 1.0f;
+			bp->weight = 1.0f;
 		}
 
-		for (size_t i = 0; i < numKnotsU; i++) {
-			nu->knotsu[i] = (*u_knot)[i];
+		/* Read knots. */
+
+		if (!set_knots(smp.getUKnot(), nu->knotsu)) {
+			BKE_nurb_knot_calc_u(nu);
 		}
 
-		for (size_t i = 0; i < numKnotsV; i++) {
-			nu->knotsv[i] = (*v_knot)[i];
+		if (!set_knots(smp.getVKnot(), nu->knotsv)) {
+			BKE_nurb_knot_calc_v(nu);
 		}
 
-		ICompoundProperty userProps = it->first.getUserProperties();
-		if (userProps.valid() && userProps.getPropertyHeader("endU") != 0) {
-			IBoolProperty enduProp(userProps, "endU");
-			bool_t endu;
-			enduProp.get(endu, sample_sel);
+		/* Read flags. */
 
-			if (endu) {
-				nu->flagu = CU_NURB_ENDPOINT;
-			}
+		ICompoundProperty user_props = schema.getUserProperties();
+
+		if (has_property(user_props, "enpoint_u")) {
+			nu->flagu |= CU_NURB_ENDPOINT;
 		}
 
-		if (userProps.valid() && userProps.getPropertyHeader("endV") != 0) {
-			IBoolProperty endvProp(userProps, "endV");
-			bool_t endv;
-			endvProp.get(endv, sample_sel);
+		if (has_property(user_props, "enpoint_v")) {
+			nu->flagv |= CU_NURB_ENDPOINT;
+		}
 
-			if (endv) {
-				nu->flagv = CU_NURB_ENDPOINT;
-			}
+		if (has_property(user_props, "cyclic_u")) {
+			nu->flagu |= CU_NURB_CYCLIC;
+		}
+
+		if (has_property(user_props, "cyclic_v")) {
+			nu->flagv |= CU_NURB_CYCLIC;
 		}
 
 		BLI_addtail(BKE_curve_nurbs_get(cu), nu);
@@ -310,7 +323,7 @@ void AbcNurbsReader::readObjectData(Main *bmain, Scene *scene, float time)
 
 	BLI_strncpy(cu->id.name + 2, m_data_name.c_str(), m_data_name.size() + 1);
 
-	m_object = BKE_object_add(bmain, scene, OB_CURVE, m_object_name.c_str());
+	m_object = BKE_object_add_only_object(bmain, OB_SURF, m_object_name.c_str());
 	m_object->data = cu;
 }
 
@@ -337,8 +350,9 @@ void AbcNurbsReader::getNurbsPatches(const IObject &obj)
 			ok = false;
 		}
 
-		if (!child.valid())
+		if (!child.valid()) {
 			continue;
+		}
 
 		const MetaData &md = child.getMetaData();
 

@@ -1648,9 +1648,11 @@ static void build_boundary_vertex_only(BevelParams *bp, BevVert *bv, bool constr
 	}
 }
 
-/* Special case of build_boundary when a single edge is beveled.
-  * The 'width adjust' part of build_boundary has been done already, and
- * efirst is the first beveled edge at vertex bv. */
+/**
+ * Special case of build_boundary when a single edge is beveled.
+ * The 'width adjust' part of build_boundary has been done already,
+ * and \a efirst is the first beveled edge at vertex \a bv.
+*/
 static void build_boundary_terminal_edge(BevelParams *bp, BevVert *bv, EdgeHalf *efirst, bool construct)
 {
 	MemArena *mem_arena = bp->mem_arena;
@@ -1849,11 +1851,11 @@ static void build_boundary(BevelParams *bp, BevVert *bv, bool construct)
 	do {
 		BLI_assert(e->is_bev);
 		/* Make the BoundVert for the right side of e; other side will be made
-		* when the beveled edge to the left of e is handled.
-		* Analyze edges until next beveled edge.
-		* They are either "in plane" (preceding and subsequent faces are coplanar)
-		* or not. The "non-in-plane" edges effect silhouette and we prefer to slide
-		* along one of those if possible. */
+		 * when the beveled edge to the left of e is handled.
+		 * Analyze edges until next beveled edge.
+		 * They are either "in plane" (preceding and subsequent faces are coplanar)
+		 * or not. The "non-in-plane" edges effect silhouette and we prefer to slide
+		 * along one of those if possible. */
 		nip = nnip = 0;        /* counts of in-plane / not-in-plane */
 		enip = eip = NULL;     /* representatives of each */
 		for (e2 = e->next; !e2->is_bev; e2 = e2->next) {

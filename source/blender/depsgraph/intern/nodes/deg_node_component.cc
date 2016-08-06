@@ -24,7 +24,7 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file blender/depsgraph/intern/depsnode_component.cc
+/** \file blender/depsgraph/intern/nodes/deg_node_component.cc
  *  \ingroup depsgraph
  */
 
@@ -86,7 +86,6 @@ static void comp_node_hash_value_free(void *value_v)
 ComponentDepsNode::ComponentDepsNode() :
     entry_operation(NULL),
     exit_operation(NULL),
-    flags(0),
     layers(0)
 {
 	operations_map = BLI_ghash_new(comp_node_hash_key,
@@ -117,11 +116,11 @@ string ComponentDepsNode::identifier() const
 {
 	string &idname = this->owner->name;
 
-	char typebuf[7];
+	char typebuf[16];
 	sprintf(typebuf, "(%d)", type);
 
-	char layers[7];
-	sprintf(layers, "%d", this->layers);
+	char layers[16];
+	sprintf(layers, "%u", this->layers);
 
 	return string(typebuf) + name + " : " + idname + " (Layers: " + layers + ")";
 }
@@ -257,7 +256,7 @@ OperationDepsNode *ComponentDepsNode::get_entry_operation()
 		entry_operation = op_node;
 		return op_node;
 	}
-	else if(operations.size() == 1) {
+	else if (operations.size() == 1) {
 		return operations[0];
 	}
 	return NULL;
@@ -280,7 +279,7 @@ OperationDepsNode *ComponentDepsNode::get_exit_operation()
 		exit_operation = op_node;
 		return op_node;
 	}
-	else if(operations.size() == 1) {
+	else if (operations.size() == 1) {
 		return operations[0];
 	}
 	return NULL;
@@ -367,6 +366,11 @@ static DepsNodeFactoryImpl<ParticlesComponentDepsNode> DNTI_EVAL_PARTICLES;
 DEG_DEPSNODE_DEFINE(ShadingComponentDepsNode, DEPSNODE_TYPE_SHADING, "Shading Component");
 static DepsNodeFactoryImpl<ShadingComponentDepsNode> DNTI_SHADING;
 
+/* Cache Component Defines ============================ */
+
+DEG_DEPSNODE_DEFINE(CacheComponentDepsNode, DEPSNODE_TYPE_CACHE, "Cache Component");
+static DepsNodeFactoryImpl<CacheComponentDepsNode> DNTI_CACHE;
+
 
 /* Node Types Register =================================== */
 
@@ -384,6 +388,8 @@ void deg_register_component_depsnodes()
 
 	deg_register_node_typeinfo(&DNTI_EVAL_PARTICLES);
 	deg_register_node_typeinfo(&DNTI_SHADING);
+
+	deg_register_node_typeinfo(&DNTI_CACHE);
 }
 
 }  // namespace DEG

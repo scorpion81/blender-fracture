@@ -1,4 +1,3 @@
-# $Id: CMakeLists.txt 21789 2009-07-22 05:35:12Z kazanbas $
 # ***** BEGIN GPL LICENSE BLOCK *****
 #
 # This program is free software; you can redistribute it and/or
@@ -20,11 +19,9 @@
 #
 # The Original Code is: all of this file.
 #
-# Contributor(s): Esteban Tovagliari.
+# Contributor(s): Kevin Dietrich.
 #
 # ***** END GPL LICENSE BLOCK *****
-
-remove_strict_flags()
 
 set(INC
 	.
@@ -42,13 +39,18 @@ set(INC_SYS
 	${ALEMBIC_INCLUDE_DIRS}
 	${HDF5_INCLUDE_DIRS}
 	${OPENEXR_INCLUDE_DIRS}
-	${PYTHON_INCLUDE_DIRS}
 )
+if(APPLE)
+	list(APPEND INC_SYS
+		${BOOST_INCLUDE_DIR}
+	)
+endif()
 
 set(SRC
 	intern/abc_camera.cc
+	intern/abc_customdata.cc
+	intern/abc_curves.cc
 	intern/abc_exporter.cc
-	intern/abc_export_options.cc
 	intern/abc_hair.cc
 	intern/abc_mesh.cc
 	intern/abc_nurbs.cc
@@ -60,8 +62,9 @@ set(SRC
 
 	ABC_alembic.h
 	intern/abc_camera.h
+	intern/abc_customdata.h
+	intern/abc_curves.h
 	intern/abc_exporter.h
-	intern/abc_export_options.h
 	intern/abc_hair.h
 	intern/abc_mesh.h
 	intern/abc_nurbs.h
@@ -71,4 +74,8 @@ set(SRC
 	intern/abc_util.h
 )
 
-blender_add_lib(bf_abc "${SRC}" "${INC}" "${INC_SYS}")
+if(WITH_ALEMBIC_HDF5)
+	add_definitions(-DWITH_ALEMBIC_HDF5)
+endif()
+
+blender_add_lib(bf_alembic "${SRC}" "${INC}" "${INC_SYS}")

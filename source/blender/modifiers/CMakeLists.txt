@@ -36,7 +36,6 @@ set(INC
 	../bmesh
 	../render/extern/include
 	../../../intern/elbeem/extern
-	../alembic
 	../../../intern/guardedalloc
 	../../../intern/eigen
 )
@@ -71,7 +70,6 @@ set(SRC
 	intern/MOD_lattice.c
 	intern/MOD_mask.c
 	intern/MOD_meshcache.c
-	intern/MOD_meshcache_abc.c
 	intern/MOD_meshcache_mdd.c
 	intern/MOD_meshcache_pc2.c
 	intern/MOD_meshcache_util.c
@@ -118,6 +116,9 @@ set(SRC
 
 if(WITH_ALEMBIC)
 	add_definitions(-DWITH_ALEMBIC)
+	list(APPEND INC
+		../alembic
+	)
 endif()
 
 if(WITH_MOD_BOOLEAN)

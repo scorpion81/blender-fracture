@@ -24,7 +24,7 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file blender/depsgraph/intern/eval/deg_eval.cc
+/** \file blender/depsgraph/intern/eval/deg_eval.h
  *  \ingroup depsgraph
  *
  * Evaluation engine entrypoints for Depsgraph Engine.
@@ -47,6 +47,6 @@ struct Depsgraph;
  */
 void deg_evaluate_on_refresh(EvaluationContext *eval_ctx,
                              Depsgraph *graph,
-                             const int layers);
+                             const unsigned int layers);
 
 }  // namespace DEG

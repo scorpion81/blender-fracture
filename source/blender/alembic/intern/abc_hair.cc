@@ -30,45 +30,32 @@
 extern "C" {
 #include "MEM_guardedalloc.h"
 
-#include "DNA_curve_types.h"
 #include "DNA_modifier_types.h"
 
 #include "BLI_listbase.h"
 #include "BLI_math_geom.h"
 
-#include "BKE_curve.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_object.h"
 #include "BKE_particle.h"
-
-#include "ED_curve.h"
 }
 
-using Alembic::Abc::IInt32ArrayProperty;
-using Alembic::Abc::Int32ArraySamplePtr;
 using Alembic::Abc::P3fArraySamplePtr;
-
-using Alembic::AbcGeom::ICurves;
-using Alembic::AbcGeom::ICurvesSchema;
-using Alembic::AbcGeom::ISampleSelector;
-using Alembic::AbcGeom::kWrapExisting;
 
 using Alembic::AbcGeom::OCurves;
 using Alembic::AbcGeom::OCurvesSchema;
 using Alembic::AbcGeom::ON3fGeomParam;
 using Alembic::AbcGeom::OV2fGeomParam;
 
-static const float nscale = 1.0f / 32767.0f;
-
 /* ************************************************************************** */
 
 AbcHairWriter::AbcHairWriter(Scene *scene,
                              Object *ob,
                              AbcTransformWriter *parent,
-                             uint32_t sampling_time,
+                             uint32_t time_sampling,
                              ExportSettings &settings,
                              ParticleSystem *psys)
-    : AbcObjectWriter(scene, ob, sampling_time, settings, parent)
+    : AbcObjectWriter(scene, ob, time_sampling, settings, parent)
 {
 	m_psys = psys;
 
@@ -155,6 +142,8 @@ void AbcHairWriter::write_hair_sample(DerivedMesh *dm,
 
 	ParticleCacheKey **cache = m_psys->pathcache;
 	ParticleCacheKey *path;
+	float normal[3];
+	Imath::V3f tmp_nor;
 
 	for (int p = 0; p < m_psys->totpart; ++p, ++pa) {
 		/* underlying info for faces-only emission */
@@ -168,15 +157,15 @@ void AbcHairWriter::write_hair_sample(DerivedMesh *dm,
 				MTFace *tface = mtface + num;
 
 				if (mface) {
-					float r_uv[2], tmpnor[3], mapfw[4], vec[3];
+					float r_uv[2], mapfw[4], vec[3];
 
 					psys_interpolate_uvs(tface, face->v4, pa->fuv, r_uv);
 					uv_values.push_back(Imath::V2f(r_uv[0], r_uv[1]));
 
-					psys_interpolate_face(mverts, face, tface, NULL, mapfw, vec, tmpnor, NULL, NULL, NULL, NULL);
+					psys_interpolate_face(mverts, face, tface, NULL, mapfw, vec, normal, NULL, NULL, NULL, NULL);
 
-					/* Convert Z-up to Y-up. */
-					norm_values.push_back(Imath::V3f(tmpnor[0], -tmpnor[2], tmpnor[1]));
+					copy_zup_yup(tmp_nor.getValue(), normal);
+					norm_values.push_back(tmp_nor);
 				}
 			}
 			else {
@@ -189,7 +178,7 @@ void AbcHairWriter::write_hair_sample(DerivedMesh *dm,
 
 			/* iterate over all faces to find a corresponding underlying UV */
 			for (int n = 0; n < dm->getNumTessFaces(dm); ++n) {
-				MFace *face  = (MFace*)dm->getTessFaceData(dm, n, CD_MFACE);
+				MFace *face  = static_cast<MFace *>(dm->getTessFaceData(dm, n, CD_MFACE));
 				MTFace *tface = mtface + n;
 				unsigned int vtx[4];
 				vtx[0] = face->v1;
@@ -205,9 +194,12 @@ void AbcHairWriter::write_hair_sample(DerivedMesh *dm,
 
 					if (vtx[o] == num) {
 						uv_values.push_back(Imath::V2f(tface->uv[o][0], tface->uv[o][1]));
+
 						MVert *mv = mverts + vtx[o];
-						norm_values.push_back(Imath::V3f(mv->no[0] * nscale,
-						                      mv->no[1] * nscale, mv->no[2] * nscale));
+
+						normal_short_to_float_v3(normal, mv->no);
+						copy_zup_yup(tmp_nor.getValue(), normal);
+						norm_values.push_back(tmp_nor);
 						found = true;
 						break;
 					}
@@ -294,77 +286,5 @@ void AbcHairWriter::write_hair_child_sample(DerivedMesh *dm,
 
 			++path;
 		}
-	}
-}
-
-/* ************************************************************************** */
-
-AbcHairReader::AbcHairReader(const Alembic::Abc::IObject &object, ImportSettings &settings)
-    : AbcObjectReader(object, settings)
-{
-	ICurves abc_curves(object, kWrapExisting);
-	m_curves_schema = abc_curves.getSchema();
-}
-
-bool AbcHairReader::valid() const
-{
-	return m_curves_schema.valid();
-}
-
-void AbcHairReader::readObjectData(Main *bmain, Scene *scene, float time)
-{
-	Curve *cu = BKE_curve_add(bmain, m_data_name.c_str(), OB_CURVE);
-	cu->flag |= CU_DEFORM_FILL | CU_PATH | CU_3D;
-
-	const ISampleSelector sample_sel(time);
-
-	const ICurvesSchema::Sample smp = m_curves_schema.getValue(sample_sel);
-	const Int32ArraySamplePtr hvertices = smp.getCurvesNumVertices();
-	const P3fArraySamplePtr positions = smp.getPositions();
-
-	m_object = BKE_object_add(bmain, scene, OB_CURVE, m_object_name.c_str());
-	m_object->data = cu;
-
-	size_t idx = 0;
-	for (size_t i = 0; i < hvertices->size(); ++i) {
-		const int steps = (*hvertices)[i];
-
-		Nurb *nu = (Nurb *)MEM_callocN(sizeof(Nurb), "abc_getnurb");
-		nu->bp = (BPoint *)MEM_callocN(sizeof(BPoint) * steps, "abc_getnurb");
-		nu->type = CU_NURBS;
-		nu->resolu = cu->resolu;
-		nu->resolv = cu->resolv;
-		nu->pntsu = steps;
-		nu->pntsv = 1;
-		nu->orderu = steps;
-		nu->flagu = CU_NURB_ENDPOINT; /* endpoint */
-
-		BPoint *bp = nu->bp;
-
-		for (int j = 0; j < steps; ++j, ++bp) {
-			Imath::V3f pos = (*positions)[idx++];
-
-			/* Convert Y-up to Z-up. */
-			bp->vec[0] = pos.x;
-			bp->vec[1] = -pos.z;
-			bp->vec[2] = pos.y;
-			bp->vec[3] = 1.0;
-
-			bp->radius = bp->weight = 1.0;
-		}
-
-		nu->knotsu = NULL; /* nurbs_knot_calc_u allocates */
-		BKE_nurb_knot_calc_u(nu);
-
-		nu->flag |= CU_SMOOTH;
-
-		BLI_addtail(&cu->nurb, nu);
-	}
-
-	cu->actnu = hvertices->size() - 1;
-	cu->actvert = CU_ACT_NONE;
-
-	if (m_settings->is_sequence || !m_curves_schema.isConstant()) {
-		addDefaultModifier(bmain);
 	}
 }

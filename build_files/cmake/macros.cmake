@@ -196,8 +196,33 @@ function(blender_source_group
 endfunction()
 
 
+# Support per-target CMake flags
+# Read from: CMAKE_C_FLAGS_**** (made upper case) when set.
+#
+# 'name' should alway match the target name,
+# use this macro before add_library or add_executable.
+#
+# Optionally takes an arg passed to set(), eg PARENT_SCOPE.
+macro(add_cc_flags_custom_test
+	name
+	)
+
+	string(TOUPPER ${name} _name_upper)
+	if(DEFINED CMAKE_C_FLAGS_${_name_upper})
+		message(STATUS "Using custom CFLAGS: CMAKE_C_FLAGS_${_name_upper} in \"${CMAKE_CURRENT_SOURCE_DIR}\"")
+		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${_name_upper}}" ${ARGV1})
+	endif()
+	if(DEFINED CMAKE_CXX_FLAGS_${_name_upper})
+		message(STATUS "Using custom CXXFLAGS: CMAKE_CXX_FLAGS_${_name_upper} in \"${CMAKE_CURRENT_SOURCE_DIR}\"")
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_name_upper}}" ${ARGV1})
+	endif()
+	unset(_name_upper)
+
+endmacro()
+
+
 # only MSVC uses SOURCE_GROUP
-function(blender_add_lib_nolist
+function(blender_add_lib__impl
 	name
 	sources
 	includes
@@ -225,6 +250,18 @@ function(blender_add_lib_nolist
 endfunction()
 
 
+function(blender_add_lib_nolist
+	name
+	sources
+	includes
+	includes_sys
+	)
+
+	add_cc_flags_custom_test(${name} PARENT_SCOPE)
+
+	blender_add_lib__impl(${name} "${sources}" "${includes}" "${includes_sys}")
+endfunction()
+
 function(blender_add_lib
 	name
 	sources
@@ -232,7 +269,9 @@ function(blender_add_lib
 	includes_sys
 	)
 
-	blender_add_lib_nolist(${name} "${sources}" "${includes}" "${includes_sys}")
+	add_cc_flags_custom_test(${name} PARENT_SCOPE)
+
+	blender_add_lib__impl(${name} "${sources}" "${includes}" "${includes_sys}")
 
 	set_property(GLOBAL APPEND PROPERTY BLENDER_LINK_LIBS ${name})
 endfunction()
@@ -400,6 +439,9 @@ function(setup_liblinks
 		endif()
 	endif()
 	target_link_libraries(${target} ${JPEG_LIBRARIES})
+	if(WITH_ALEMBIC)
+		target_link_libraries(${target} ${ALEMBIC_LIBRARIES} ${HDF5_LIBRARIES})
+	endif()
 	if(WITH_IMAGE_OPENEXR)
 		target_link_libraries(${target} ${OPENEXR_LIBRARIES})
 	endif()
@@ -560,11 +602,11 @@ function(SETUP_BLENDER_SORTED_LIBS)
 		bf_modifiers
 		bf_bmesh
 		bf_gpu
+		bf_blenloader
 		bf_blenkernel
 		bf_physics
 		bf_nodes
 		bf_rna
-		bf_blenloader
 		bf_imbuf
 		bf_blenlib
 		bf_depsgraph
@@ -576,7 +618,7 @@ function(SETUP_BLENDER_SORTED_LIBS)
 		bf_imbuf_openimageio
 		bf_imbuf_dds
 		bf_collada
-		bf_abc
+		bf_alembic
 		bf_intern_elbeem
 		bf_intern_memutil
 		bf_intern_guardedalloc
@@ -694,10 +736,18 @@ function(SETUP_BLENDER_SORTED_LIBS)
 		list_insert_after(BLENDER_SORTED_LIBS "ge_logic_ngnetwork" "extern_bullet")
 	endif()
 
+	if(WITH_GAMEENGINE_DECKLINK)
+		list(APPEND BLENDER_SORTED_LIBS bf_intern_decklink)
+	endif()
+
+	if(WIN32)
+		list(APPEND BLENDER_SORTED_LIBS bf_intern_gpudirect)
+	endif()
+	
 	if(WITH_VORO)
 		list(APPEND BLENDER_SORTED_LIBS extern_voro)
 	endif()
-		
+
 	if(WITH_OPENSUBDIV)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_opensubdiv)
 	endif()
@@ -1513,3 +1563,21 @@ function(print_all_vars)
 		message("${_var}=${${_var}}")
 	endforeach()
 endfunction()
+
+macro(openmp_delayload
+	projectname
+	)
+		if(MSVC)
+			if(WITH_OPENMP)
+				if(MSVC_VERSION EQUAL 1800)
+					set(OPENMP_DLL_NAME "vcomp120")
+				else()
+					set(OPENMP_DLL_NAME "vcomp140")
+				endif()
+				SET_TARGET_PROPERTIES(${projectname} PROPERTIES LINK_FLAGS_RELEASE "/DELAYLOAD:${OPENMP_DLL_NAME}.dll delayimp.lib")
+				SET_TARGET_PROPERTIES(${projectname} PROPERTIES LINK_FLAGS_DEBUG "/DELAYLOAD:${OPENMP_DLL_NAME}d.dll delayimp.lib")
+				SET_TARGET_PROPERTIES(${projectname} PROPERTIES LINK_FLAGS_RELWITHDEBINFO "/DELAYLOAD:${OPENMP_DLL_NAME}.dll delayimp.lib")
+				SET_TARGET_PROPERTIES(${projectname} PROPERTIES LINK_FLAGS_MINSIZEREL "/DELAYLOAD:${OPENMP_DLL_NAME}.dll delayimp.lib")
+			endif(WITH_OPENMP)
+		endif(MSVC)
+endmacro()

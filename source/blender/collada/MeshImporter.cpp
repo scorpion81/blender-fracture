@@ -172,8 +172,7 @@ void UVDataWrapper::getUV(int uv_index, float *uv)
 	}
 }
 
-VCOLDataWrapper::VCOLDataWrapper(COLLADAFW::MeshVertexData& vdata) : mVData(&vdata){
-}
+VCOLDataWrapper::VCOLDataWrapper(COLLADAFW::MeshVertexData& vdata) : mVData(&vdata) {}
 
 void VCOLDataWrapper::get_vcol(int v_index, MLoopCol *mloopcol)
 {
@@ -211,15 +210,27 @@ void VCOLDataWrapper::get_vcol(int v_index, MLoopCol *mloopcol)
 MeshImporter::MeshImporter(UnitConverter *unitconv, ArmatureImporter *arm, Scene *sce) : unitconverter(unitconv), scene(sce), armature_importer(arm) {
 }
 
-void MeshImporter::set_poly_indices(MPoly *mpoly, MLoop *mloop, int loop_index, unsigned int *indices, int loop_count)
+bool MeshImporter::set_poly_indices(MPoly *mpoly, MLoop *mloop, int loop_index, unsigned int *indices, int loop_count)
 {
 	mpoly->loopstart = loop_index;
 	mpoly->totloop   = loop_count;
-
+	bool broken_loop = false;
 	for (int index=0; index < loop_count; index++) {
+
+		/* Test if loop defines a hole */
+		if (!broken_loop) {
+			for (int i = 0; i < index; i++) {
+				if (indices[i] == indices[index]) {
+					// duplicate index -> not good
+					broken_loop = true;
+				}
+			}
+		}
+
 		mloop->v = indices[index];
 		mloop++;
 	}
+	return broken_loop;
 }
 
 void MeshImporter::set_vcol(MLoopCol *mlc, VCOLDataWrapper &vob, int loop_index, COLLADAFW::IndexList &index_list, int count)
@@ -259,37 +270,40 @@ bool MeshImporter::is_nice_mesh(COLLADAFW::Mesh *mesh)  // checks if mesh has su
 	COLLADAFW::MeshPrimitiveArray& prim_arr = mesh->getMeshPrimitives();
 
 	const std::string &name = bc_get_dae_name(mesh);
-	int hole_count = 0;
 
 	for (unsigned i = 0; i < prim_arr.getCount(); i++) {
-		
+
 		COLLADAFW::MeshPrimitive *mp = prim_arr[i];
 		COLLADAFW::MeshPrimitive::PrimitiveType type = mp->getPrimitiveType();
 
 		const char *type_str = bc_primTypeToStr(type);
-		
+
 		// OpenCollada passes POLYGONS type for <polylist>
 		if (type == COLLADAFW::MeshPrimitive::POLYLIST || type == COLLADAFW::MeshPrimitive::POLYGONS) {
 
 			COLLADAFW::Polygons *mpvc = (COLLADAFW::Polygons *)mp;
 			COLLADAFW::Polygons::VertexCountArray& vca = mpvc->getGroupedVerticesVertexCountArray();
-			
+
+			int hole_count = 0;
+			int nonface_count = 0;
+
 			for (unsigned int j = 0; j < vca.getCount(); j++) {
 				int count = vca[j];
 				if (abs(count) < 3) {
-					fprintf(stderr, "ERROR: Primitive %s in %s has at least one face with vertex count < 3\n",
-					        type_str, name.c_str());
-					return false;
+					nonface_count++;
 				}
-				if (count < 0)
-				{
+
+				if (count < 0) {
 					hole_count ++;
 				}
 			}
 
-			if (hole_count > 0)
-			{
+			if (hole_count > 0) {
 				fprintf(stderr, "WARNING: Primitive %s in %s: %d holes not imported (unsupported)\n", type_str, name.c_str(), hole_count);
+			}
+
+			if (nonface_count > 0) {
+				fprintf(stderr, "WARNING: Primitive %s in %s: %d faces with vertex count < 3 (rejected)\n", type_str, name.c_str(), nonface_count);
 			}
 		}
 
@@ -698,6 +712,7 @@ void MeshImporter::read_polys(COLLADAFW::Mesh *collada_mesh, Mesh *me)
 			COLLADAFW::IndexListArray& index_list_array_uvcoord = mp->getUVCoordIndicesArray();
 			COLLADAFW::IndexListArray& index_list_array_vcolor  = mp->getColorIndicesArray();
 
+			int invalid_loop_holes = 0;
 			for (unsigned int j = 0; j < prim_totpoly; j++) {
 
 				// Vertices in polygon:
@@ -705,8 +720,12 @@ void MeshImporter::read_polys(COLLADAFW::Mesh *collada_mesh, Mesh *me)
 				if (vcount < 0) {
 					continue; // TODO: add support for holes
 				}
-				set_poly_indices(mpoly, mloop, loop_index, position_indices, vcount);
 
+				bool broken_loop = set_poly_indices(mpoly, mloop, loop_index, position_indices, vcount);
+				if (broken_loop)
+				{
+					invalid_loop_holes += 1;
+				}
 
 				for (unsigned int uvset_index = 0; uvset_index < index_list_array_uvcoord.getCount(); uvset_index++) {
 					// get mtface by face index and uv set index
@@ -753,6 +772,11 @@ void MeshImporter::read_polys(COLLADAFW::Mesh *collada_mesh, Mesh *me)
 					normal_indices += vcount;
 
 				position_indices += vcount;
+			}
+
+			if (invalid_loop_holes > 0)
+			{
+				fprintf(stderr, "Collada import: Mesh [%s] : contains %d unsupported loops (holes).\n", me->id.name, invalid_loop_holes);
 			}
 		}
 

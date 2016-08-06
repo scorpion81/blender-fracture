@@ -48,6 +48,7 @@
 #include "DNA_world_types.h"
 #include "DNA_object_types.h"
 #include "DNA_vfont_types.h"
+#include "DNA_gpencil_types.h"
 
 #include "BLI_math.h"
 #include "BLI_listbase.h"
@@ -292,17 +293,17 @@ static int make_proxy_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 	Object *ob = ED_object_active_context(C);
 
 	/* sanity checks */
-	if (!scene || scene->id.lib || !ob)
+	if (!scene || ID_IS_LINKED_DATABLOCK(scene) || !ob)
 		return OPERATOR_CANCELLED;
 
 	/* Get object to work on - use a menu if we need to... */
-	if (ob->dup_group && ob->dup_group->id.lib) {
+	if (ob->dup_group && ID_IS_LINKED_DATABLOCK(ob->dup_group)) {
 		/* gives menu with list of objects in group */
 		/* proxy_group_objects_menu(C, op, ob, ob->dup_group); */
 		WM_enum_search_invoke(C, op, event);
 		return OPERATOR_CANCELLED;
 	}
-	else if (ob->id.lib) {
+	else if (ID_IS_LINKED_DATABLOCK(ob)) {
 		uiPopupMenu *pup = UI_popup_menu_begin(C, IFACE_("OK?"), ICON_QUESTION);
 		uiLayout *layout = UI_popup_menu_layout(pup);
 
@@ -438,7 +439,7 @@ typedef enum eObClearParentTypes {
 
 EnumPropertyItem prop_clear_parent_types[] = {
 	{CLEAR_PARENT_ALL, "CLEAR", 0, "Clear Parent",
-	 "Completely clear the parenting relationship, including involved modifiers is any"},
+	 "Completely clear the parenting relationship, including involved modifiers if any"},
 	{CLEAR_PARENT_KEEP_TRANSFORM, "CLEAR_KEEP_TRANSFORM", 0, "Clear and Keep Transformation",
 	 "As 'Clear Parent', but keep the current visual transformations of the object"},
 	{CLEAR_PARENT_INVERSE, "CLEAR_INVERSE", 0, "Clear Parent Inverse",
@@ -1468,7 +1469,7 @@ static int make_links_scene_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	if (scene_to->id.lib) {
+	if (ID_IS_LINKED_DATABLOCK(scene_to)) {
 		BKE_report(op->reports, RPT_ERROR, "Cannot link objects into a linked scene");
 		return OPERATOR_CANCELLED;
 	}
@@ -1570,7 +1571,7 @@ static int make_links_data_exec(bContext *C, wmOperator *op)
 						ob_dst->data = obdata_id;
 
 						/* if amount of material indices changed: */
-						test_object_materials(bmain, ob_dst->data);
+						test_object_materials(ob_dst, ob_dst->data);
 
 						DAG_id_tag_update(&ob_dst->id, OB_RECALC_DATA);
 						break;
@@ -1585,7 +1586,7 @@ static int make_links_data_exec(bContext *C, wmOperator *op)
 					case MAKE_LINKS_ANIMDATA:
 						BKE_animdata_copy_id((ID *)ob_dst, (ID *)ob_src, false);
 						if (ob_dst->data && ob_src->data) {
-							if (obdata_id->lib) {
+							if (ID_IS_LINKED_DATABLOCK(obdata_id)) {
 								is_lib = true;
 								break;
 							}
@@ -1627,7 +1628,7 @@ static int make_links_data_exec(bContext *C, wmOperator *op)
 						Curve *cu_src = ob_src->data;
 						Curve *cu_dst = ob_dst->data;
 
-						if (obdata_id->lib) {
+						if (ID_IS_LINKED_DATABLOCK(obdata_id)) {
 							is_lib = true;
 							break;
 						}
@@ -1755,9 +1756,9 @@ static void single_object_users(Main *bmain, Scene *scene, View3D *v3d, const in
 		ob = base->object;
 
 		if ((base->flag & flag) == flag) {
-			if (ob->id.lib == NULL && ID_REFCOUNT_USERS(ob) > 1) {
+			if (!ID_IS_LINKED_DATABLOCK(ob) && ob->id.us > 1) {
 				/* base gets copy of object */
-				obn = BKE_object_copy(ob);
+				obn = BKE_object_copy(bmain, ob);
 				base->object = obn;
 
 				if (copy_groups) {
@@ -1768,6 +1769,14 @@ static void single_object_users(Main *bmain, Scene *scene, View3D *v3d, const in
 				else {
 					/* copy already clears */
 				}
+				/* remap gpencil parenting */
+				bGPdata *gpd = scene->gpd;
+				for (bGPDlayer *gpl = gpd->layers.first; gpl; gpl = gpl->next) {
+					if (gpl->parent == ob) {
+						gpl->parent = obn;
+					}
+				}
+
 				base->flag = obn->flag;
 
 				id_us_min(&ob->id);
@@ -1790,7 +1799,7 @@ static void single_object_users(Main *bmain, Scene *scene, View3D *v3d, const in
 			}
 
 			if (all_duplicated) {
-				groupn = BKE_group_copy(group);
+				groupn = BKE_group_copy(bmain, group);
 
 				for (go = groupn->gobject.first; go; go = go->next)
 					go->ob = (Object *)go->ob->id.newid;
@@ -1827,21 +1836,21 @@ void ED_object_single_user(Main *bmain, Scene *scene, Object *ob)
 	single_object_users(bmain, scene, NULL, OB_DONE, copy_groups);
 }
 
-static void new_id_matar(Material **matar, const int totcol)
+static void new_id_matar(Main *bmain, Material **matar, const int totcol)
 {
 	ID *id;
 	int a;
 
 	for (a = 0; a < totcol; a++) {
 		id = (ID *)matar[a];
-		if (id && id->lib == NULL) {
+		if (id && !ID_IS_LINKED_DATABLOCK(id)) {
 			if (id->newid) {
 				matar[a] = (Material *)id->newid;
 				id_us_plus(id->newid);
 				id_us_min(id);
 			}
 			else if (id->us > 1) {
-				matar[a] = BKE_material_copy(matar[a]);
+				matar[a] = BKE_material_copy(bmain, matar[a]);
 				id_us_min(id);
 				id->newid = (ID *)matar[a];
 			}
@@ -1863,15 +1872,15 @@ static void single_obdata_users(Main *bmain, Scene *scene, const int flag)
 
 	for (base = FIRSTBASE; base; base = base->next) {
 		ob = base->object;
-		if (ob->id.lib == NULL && (base->flag & flag) == flag) {
+		if (!ID_IS_LINKED_DATABLOCK(ob) && (base->flag & flag) == flag) {
 			id = ob->data;
 
-			if (id && id->us > 1 && id->lib == NULL) {
+			if (id && id->us > 1 && !ID_IS_LINKED_DATABLOCK(id)) {
 				DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 
 				switch (ob->type) {
 					case OB_LAMP:
-						ob->data = la = BKE_lamp_copy(ob->data);
+						ob->data = la = BKE_lamp_copy(bmain, ob->data);
 						for (a = 0; a < MAX_MTEX; a++) {
 							if (la->mtex[a]) {
 								ID_NEW(la->mtex[a]->object);
@@ -1879,37 +1888,37 @@ static void single_obdata_users(Main *bmain, Scene *scene, const int flag)
 						}
 						break;
 					case OB_CAMERA:
-						ob->data = BKE_camera_copy(ob->data);
+						ob->data = BKE_camera_copy(bmain, ob->data);
 						break;
 					case OB_MESH:
-						ob->data = me = BKE_mesh_copy(ob->data);
+						ob->data = me = BKE_mesh_copy(bmain, ob->data);
 						if (me->key)
 							BKE_animdata_copy_id_action((ID *)me->key);
 						break;
 					case OB_MBALL:
-						ob->data = BKE_mball_copy(ob->data);
+						ob->data = BKE_mball_copy(bmain, ob->data);
 						break;
 					case OB_CURVE:
 					case OB_SURF:
 					case OB_FONT:
-						ob->data = cu = BKE_curve_copy(ob->data);
+						ob->data = cu = BKE_curve_copy(bmain, ob->data);
 						ID_NEW(cu->bevobj);
 						ID_NEW(cu->taperobj);
 						if (cu->key)
 							BKE_animdata_copy_id_action((ID *)cu->key);
 						break;
 					case OB_LATTICE:
-						ob->data = lat = BKE_lattice_copy(ob->data);
+						ob->data = lat = BKE_lattice_copy(bmain, ob->data);
 						if (lat->key)
 							BKE_animdata_copy_id_action((ID *)lat->key);
 						break;
 					case OB_ARMATURE:
 						DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
-						ob->data = BKE_armature_copy(ob->data);
+						ob->data = BKE_armature_copy(bmain, ob->data);
 						BKE_pose_rebuild(ob, ob->data);
 						break;
 					case OB_SPEAKER:
-						ob->data = BKE_speaker_copy(ob->data);
+						ob->data = BKE_speaker_copy(bmain, ob->data);
 						break;
 					default:
 						if (G.debug & G_DEBUG)
@@ -1944,14 +1953,14 @@ static void single_object_action_users(Scene *scene, const int flag)
 
 	for (base = FIRSTBASE; base; base = base->next) {
 		ob = base->object;
-		if (ob->id.lib == NULL && (flag == 0 || (base->flag & SELECT)) ) {
+		if (!ID_IS_LINKED_DATABLOCK(ob) && (flag == 0 || (base->flag & SELECT)) ) {
 			DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
 			BKE_animdata_copy_id_action(&ob->id);
 		}
 	}
 }
 
-static void single_mat_users(Scene *scene, const int flag, const bool do_textures)
+static void single_mat_users(Main *bmain, Scene *scene, const int flag, const bool do_textures)
 {
 	Object *ob;
 	Base *base;
@@ -1961,14 +1970,14 @@ static void single_mat_users(Scene *scene, const int flag, const bool do_texture
 
 	for (base = FIRSTBASE; base; base = base->next) {
 		ob = base->object;
-		if (ob->id.lib == NULL && (flag == 0 || (base->flag & SELECT)) ) {
+		if (!ID_IS_LINKED_DATABLOCK(ob) && (flag == 0 || (base->flag & SELECT)) ) {
 			for (a = 1; a <= ob->totcol; a++) {
 				ma = give_current_material(ob, a);
 				if (ma) {
 					/* do not test for LIB_TAG_NEW: this functions guaranteed delivers single_users! */
 
 					if (ma->id.us > 1) {
-						man = BKE_material_copy(ma);
+						man = BKE_material_copy(bmain, ma);
 						BKE_animdata_copy_id_action(&man->id);
 
 						man->id.us = 0;
@@ -1979,7 +1988,7 @@ static void single_mat_users(Scene *scene, const int flag, const bool do_texture
 								if (ma->mtex[b] && (tex = ma->mtex[b]->tex)) {
 									if (tex->id.us > 1) {
 										id_us_min(&tex->id);
-										tex = BKE_texture_copy(tex);
+										tex = BKE_texture_copy(bmain, tex);
 										BKE_animdata_copy_id_action(&tex->id);
 										man->mtex[b]->tex = tex;
 									}
@@ -1993,7 +2002,7 @@ static void single_mat_users(Scene *scene, const int flag, const bool do_texture
 	}
 }
 
-static void do_single_tex_user(Tex **from)
+static void do_single_tex_user(Main *bmain, Tex **from)
 {
 	Tex *tex, *texn;
 
@@ -2006,7 +2015,7 @@ static void do_single_tex_user(Tex **from)
 		id_us_min(&tex->id);
 	}
 	else if (tex->id.us > 1) {
-		texn = BKE_texture_copy(tex);
+		texn = BKE_texture_copy(bmain, tex);
 		BKE_animdata_copy_id_action(&texn->id);
 		tex->id.newid = (ID *)texn;
 		id_us_min(&tex->id);
@@ -2026,7 +2035,7 @@ static void single_tex_users_expand(Main *bmain)
 		if (ma->id.tag & LIB_TAG_NEW) {
 			for (b = 0; b < MAX_MTEX; b++) {
 				if (ma->mtex[b] && ma->mtex[b]->tex) {
-					do_single_tex_user(&(ma->mtex[b]->tex));
+					do_single_tex_user(bmain, &(ma->mtex[b]->tex));
 				}
 			}
 		}
@@ -2036,7 +2045,7 @@ static void single_tex_users_expand(Main *bmain)
 		if (la->id.tag & LIB_TAG_NEW) {
 			for (b = 0; b < MAX_MTEX; b++) {
 				if (la->mtex[b] && la->mtex[b]->tex) {
-					do_single_tex_user(&(la->mtex[b]->tex));
+					do_single_tex_user(bmain, &(la->mtex[b]->tex));
 				}
 			}
 		}
@@ -2046,7 +2055,7 @@ static void single_tex_users_expand(Main *bmain)
 		if (wo->id.tag & LIB_TAG_NEW) {
 			for (b = 0; b < MAX_MTEX; b++) {
 				if (wo->mtex[b] && wo->mtex[b]->tex) {
-					do_single_tex_user(&(wo->mtex[b]->tex));
+					do_single_tex_user(bmain, &(wo->mtex[b]->tex));
 				}
 			}
 		}
@@ -2065,19 +2074,19 @@ static void single_mat_users_expand(Main *bmain)
 
 	for (ob = bmain->object.first; ob; ob = ob->id.next)
 		if (ob->id.tag & LIB_TAG_NEW)
-			new_id_matar(ob->mat, ob->totcol);
+			new_id_matar(bmain, ob->mat, ob->totcol);
 
 	for (me = bmain->mesh.first; me; me = me->id.next)
 		if (me->id.tag & LIB_TAG_NEW)
-			new_id_matar(me->mat, me->totcol);
+			new_id_matar(bmain, me->mat, me->totcol);
 
 	for (cu = bmain->curve.first; cu; cu = cu->id.next)
 		if (cu->id.tag & LIB_TAG_NEW)
-			new_id_matar(cu->mat, cu->totcol);
+			new_id_matar(bmain, cu->mat, cu->totcol);
 
 	for (mb = bmain->mball.first; mb; mb = mb->id.next)
 		if (mb->id.tag & LIB_TAG_NEW)
-			new_id_matar(mb->mat, mb->totcol);
+			new_id_matar(bmain, mb->mat, mb->totcol);
 
 	/* material imats  */
 	for (ma = bmain->mat.first; ma; ma = ma->id.next)
@@ -2110,11 +2119,11 @@ static void make_local_makelocalmaterial(Material *ma)
 	AnimData *adt;
 	int b;
 
-	id_make_local(&ma->id, false);
+	id_make_local(G.main, &ma->id, false, false);
 
 	for (b = 0; b < MAX_MTEX; b++)
 		if (ma->mtex[b] && ma->mtex[b]->tex)
-			id_make_local(&ma->mtex[b]->tex->id, false);
+			id_make_local(G.main, &ma->mtex[b]->tex->id, false, false);
 
 	adt = BKE_animdata_from_id(&ma->id);
 	if (adt) BKE_animdata_make_local(adt);
@@ -2190,7 +2199,7 @@ static bool make_local_all__instance_indirect_unused(Main *bmain, Scene *scene)
 	bool changed = false;
 
 	for (ob = bmain->object.first; ob; ob = ob->id.next) {
-		if (ob->id.lib && (ob->id.us == 0)) {
+		if (ID_IS_LINKED_DATABLOCK(ob) && (ob->id.us == 0)) {
 			Base *base;
 
 			id_us_plus(&ob->id);
@@ -2243,7 +2252,7 @@ static int make_local_exec(bContext *C, wmOperator *op)
 		}
 
 		if (ob->id.lib)
-			id_make_local(&ob->id, false);
+			id_make_local(bmain, &ob->id, false, false);
 	}
 	CTX_DATA_END;
 
@@ -2265,7 +2274,7 @@ static int make_local_exec(bContext *C, wmOperator *op)
 		id = ob->data;
 
 		if (id && (ELEM(mode, MAKE_LOCAL_SELECT_OBDATA, MAKE_LOCAL_SELECT_OBDATA_MATERIAL))) {
-			id_make_local(id, false);
+			id_make_local(bmain, id, false, false);
 			adt = BKE_animdata_from_id(id);
 			if (adt) BKE_animdata_make_local(adt);
 
@@ -2281,7 +2290,7 @@ static int make_local_exec(bContext *C, wmOperator *op)
 		}
 
 		for (psys = ob->particlesystem.first; psys; psys = psys->next)
-			id_make_local(&psys->part->id, false);
+			id_make_local(bmain, &psys->part->id, false, false);
 
 		adt = BKE_animdata_from_id(&ob->id);
 		if (adt) BKE_animdata_make_local(adt);
@@ -2300,7 +2309,7 @@ static int make_local_exec(bContext *C, wmOperator *op)
 
 				for (b = 0; b < MAX_MTEX; b++)
 					if (la->mtex[b] && la->mtex[b]->tex)
-						id_make_local(&la->mtex[b]->tex->id, false);
+						id_make_local(bmain, &la->mtex[b]->tex->id, false, false);
 			}
 			else {
 				for (a = 0; a < ob->totcol; a++) {
@@ -2382,7 +2391,7 @@ static int make_single_user_exec(bContext *C, wmOperator *op)
 	}
 
 	if (RNA_boolean_get(op->ptr, "material")) {
-		single_mat_users(scene, flag, RNA_boolean_get(op->ptr, "texture"));
+		single_mat_users(bmain, scene, flag, RNA_boolean_get(op->ptr, "texture"));
 	}
 
 #if 0 /* can't do this separate from materials */

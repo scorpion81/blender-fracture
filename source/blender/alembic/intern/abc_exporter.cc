@@ -24,14 +24,19 @@
 
 #include <cmath>
 
-#include <Alembic/AbcCoreHDF5/All.h>
+#ifdef WITH_ALEMBIC_HDF5
+#  include <Alembic/AbcCoreHDF5/All.h>
+#endif
+
 #include <Alembic/AbcCoreOgawa/All.h>
 
 #include "abc_camera.h"
+#include "abc_curves.h"
 #include "abc_hair.h"
 #include "abc_mesh.h"
 #include "abc_nurbs.h"
 #include "abc_points.h"
+#include "abc_transform.h"
 #include "abc_util.h"
 
 extern "C" {
@@ -46,7 +51,7 @@ extern "C" {
 
 #ifdef WIN32
 /* needed for MSCV because of snprintf from BLI_string */
-#include "BLI_winstuff.h"
+#	include "BLI_winstuff.h"
 #endif
 
 #include "BKE_anim.h"
@@ -61,24 +66,100 @@ extern "C" {
 using Alembic::Abc::TimeSamplingPtr;
 using Alembic::Abc::OBox3dProperty;
 
+/* ************************************************************************** */
+
+ExportSettings::ExportSettings()
+    : scene(NULL)
+    , selected_only(false)
+    , visible_layers_only(false)
+    , renderable_only(false)
+    , frame_start(1)
+    , frame_end(1)
+    , frame_step_xform(1)
+    , frame_step_shape(1)
+    , shutter_open(0.0)
+    , shutter_close(1.0)
+    , global_scale(1.0f)
+    , flatten_hierarchy(false)
+    , export_normals(false)
+    , export_uvs(false)
+    , export_vcols(false)
+    , export_face_sets(false)
+    , export_vweigths(false)
+    , apply_subdiv(false)
+    , use_subdiv_schema(false)
+    , export_child_hairs(true)
+    , export_ogawa(true)
+    , pack_uv(false)
+    , do_convert_axis(false)
+{}
+
+static bool object_is_smoke_sim(Object *ob)
+{
+	ModifierData *md = modifiers_findByType(ob, eModifierType_Smoke);
+
+	if (md) {
+		SmokeModifierData *smd = reinterpret_cast<SmokeModifierData *>(md);
+		return (smd->type == MOD_SMOKE_TYPE_DOMAIN);
+	}
+
+	return false;
+}
+
+static bool object_is_shape(Object *ob)
+{
+	switch (ob->type) {
+		case OB_MESH:
+			if (object_is_smoke_sim(ob)) {
+				return false;
+			}
+
+			return true;
+		case OB_CURVE:
+		case OB_SURF:
+		case OB_CAMERA:
+			return true;
+		default:
+			return false;
+	}
+}
+
+static bool export_object(const ExportSettings * const settings, Object *ob)
+{
+	if (settings->selected_only && !parent_selected(ob)) {
+		return false;
+	}
+
+	if (settings->visible_layers_only && !(settings->scene->lay & ob->lay)) {
+		return false;
+	}
+
+	if (settings->renderable_only && (ob->restrictflag & OB_RESTRICT_RENDER)) {
+		return false;
+	}
+
+	return true;
+}
+
+/* ************************************************************************** */
+
 AbcExporter::AbcExporter(Scene *scene, const char *filename, ExportSettings &settings)
     : m_settings(settings)
     , m_filename(filename)
+    , m_trans_sampling_index(0)
+    , m_shape_sampling_index(0)
     , m_scene(scene)
-    , m_saved_frame(getCurrentFrame())
 {}
 
 AbcExporter::~AbcExporter()
 {
-	for (std::map<std::string, AbcTransformWriter*>::iterator it = m_xforms.begin(), e = m_xforms.end(); it != e; ++it)
+	std::map<std::string, AbcTransformWriter*>::iterator it, e;
+	for (it = m_xforms.begin(), e = m_xforms.end(); it != e; ++it) {
 		delete it->second;
+	}
 
 	for (int i = 0, e = m_shapes.size(); i != e; ++i) {
 		delete m_shapes[i];
-	}
-
-	if (getCurrentFrame() != m_saved_frame) {
-		setCurrentFrame(m_saved_frame);
 	}
 }
 
@@ -113,7 +194,7 @@ Alembic::Abc::TimeSamplingPtr AbcExporter::createTimeSampling(double step)
 	TimeSamplingPtr time_sampling;
 	std::vector<double> samples;
 
-	if (m_settings.startframe == m_settings.endframe) {
+	if (m_settings.frame_start == m_settings.frame_end) {
 		time_sampling.reset(new Alembic::Abc::TimeSampling());
 		return time_sampling;
 	}
@@ -134,22 +215,21 @@ void AbcExporter::getFrameSet(double step, std::set<double> &frames)
 
 	getShutterSamples(step, false, shutter_samples);
 
-	for (int frame = m_settings.startframe; frame <= m_settings.endframe; ++frame) {
+	for (int frame = m_settings.frame_start; frame <= m_settings.frame_end; ++frame) {
 		for (int j = 0, e = shutter_samples.size(); j < e; ++j) {
 			frames.insert(frame + shutter_samples[j]);
 		}
 	}
 }
 
-void AbcExporter::operator()(float &progress)
+void AbcExporter::operator()(Main *bmain, float &progress, bool &was_canceled)
 {
-	/* Create archive here */
 	std::string scene_name;
 
-	if (G.main->name[0] != '\0') {
-		char sceneFileName[FILE_MAX];
-		BLI_strncpy(sceneFileName, G.main->name, FILE_MAX);
-		scene_name = sceneFileName;
+	if (bmain->name[0] != '\0') {
+		char scene_file_name[FILE_MAX];
+		BLI_strncpy(scene_file_name, bmain->name, FILE_MAX);
+		scene_name = scene_file_name;
 	}
 	else {
 		scene_name = "untitled";
@@ -166,30 +246,42 @@ void AbcExporter::operator()(float &progress)
 
 	Alembic::Abc::Argument arg(md);
 
+#ifdef WITH_ALEMBIC_HDF5
 	if (!m_settings.export_ogawa) {
-		m_archive = Alembic::Abc::CreateArchiveWithInfo(Alembic::AbcCoreHDF5::WriteArchive(), m_filename, "Blender",
-		                                               scene_name, Alembic::Abc::ErrorHandler::kThrowPolicy, arg);
+		m_archive = Alembic::Abc::CreateArchiveWithInfo(Alembic::AbcCoreHDF5::WriteArchive(),
+		                                                m_filename,
+		                                                "Blender",
+		                                                scene_name,
+		                                                Alembic::Abc::ErrorHandler::kThrowPolicy,
+		                                                arg);
 	}
-	else {
-		m_archive = Alembic::Abc::CreateArchiveWithInfo(Alembic::AbcCoreOgawa::WriteArchive(), m_filename, "Blender",
-		                                               scene_name, Alembic::Abc::ErrorHandler::kThrowPolicy, arg);
+	else
+#endif
+	{
+		m_archive = Alembic::Abc::CreateArchiveWithInfo(Alembic::AbcCoreOgawa::WriteArchive(),
+		                                                m_filename,
+		                                                "Blender",
+		                                                scene_name,
+		                                                Alembic::Abc::ErrorHandler::kThrowPolicy,
+		                                                arg);
 	}
 
-	/* Create time samplings for transforms and shapes */
-	TimeSamplingPtr trans_time = createTimeSampling(m_settings.xform_frame_step);
+	/* Create time samplings for transforms and shapes. */
+
+	TimeSamplingPtr trans_time = createTimeSampling(m_settings.frame_step_xform);
 
 	m_trans_sampling_index = m_archive.addTimeSampling(*trans_time);
 
 	TimeSamplingPtr shape_time;
 
-	if ((m_settings.shape_frame_step == m_settings.xform_frame_step) ||
-	    (m_settings.startframe == m_settings.endframe))
+	if ((m_settings.frame_step_shape == m_settings.frame_step_xform) ||
+	    (m_settings.frame_start == m_settings.frame_end))
 	{
 		shape_time = trans_time;
 		m_shape_sampling_index = m_trans_sampling_index;
 	}
 	else {
-		shape_time = createTimeSampling(m_settings.shape_frame_step);
+		shape_time = createTimeSampling(m_settings.frame_step_shape);
 		m_shape_sampling_index = m_archive.addTimeSampling(*shape_time);
 	}
 
@@ -199,23 +291,25 @@ void AbcExporter::operator()(float &progress)
 		createTransformWritersFlat();
 	}
 	else {
-		createTransformWritersHierarchy();
+		createTransformWritersHierarchy(bmain->eval_ctx);
 	}
 
-	createShapeWriters();
+	createShapeWriters(bmain->eval_ctx);
 
-	/* make a list of frames to export */
+	/* Make a list of frames to export. */
+
 	std::set<double> xform_frames;
-	getFrameSet(m_settings.xform_frame_step, xform_frames);
+	getFrameSet(m_settings.frame_step_xform, xform_frames);
 
 	std::set<double> shape_frames;
-	getFrameSet(m_settings.shape_frame_step, shape_frames);
+	getFrameSet(m_settings.frame_step_shape, shape_frames);
 
-	/* merge all frames needed */
+	/* Merge all frames needed. */
+
 	std::set<double> frames(xform_frames);
 	frames.insert(shape_frames.begin(), shape_frames.end());
 
-	/* export all frames */
+	/* Export all frames. */
 
 	std::set<double>::const_iterator begin = frames.begin();
 	std::set<double>::const_iterator end = frames.end();
@@ -226,8 +320,13 @@ void AbcExporter::operator()(float &progress)
 	for (; begin != end; ++begin) {
 		progress = (++i / size);
 
+		if (G.is_break) {
+			was_canceled = true;
+			break;
+		}
+
 		double f = *begin;
-		setCurrentFrame(f);
+		setCurrentFrame(bmain, f);
 
 		if (shape_frames.count(f) != 0) {
 			for (int i = 0, e = m_shapes.size(); i != e; ++i) {
@@ -256,24 +355,24 @@ void AbcExporter::operator()(float &progress)
 	}
 }
 
-void AbcExporter::createTransformWritersHierarchy()
+void AbcExporter::createTransformWritersHierarchy(EvaluationContext *eval_ctx)
 {
 	Base *base = static_cast<Base *>(m_scene->base.first);
 
 	while (base) {
 		Object *ob = base->object;
 
-		if (m_settings.exportObject(ob)) {
+		if (export_object(&m_settings, ob)) {
 			switch(ob->type) {
 				case OB_LAMP:
 				case OB_LATTICE:
 				case OB_MBALL:
 				case OB_SPEAKER:
-					/* we do not export transforms for objects of these classes */
+					/* We do not export transforms for objects of these classes. */
 					break;
 
 				default:
-					exploreTransform(ob, ob->parent, NULL);
+					exploreTransform(eval_ctx, ob, ob->parent, NULL);
 			}
 		}
 
@@ -288,7 +387,7 @@ void AbcExporter::createTransformWritersFlat()
 	while (base) {
 		Object *ob = base->object;
 
-		if (m_settings.exportObject(ob) && objectIsShape(ob)) {
+		if (export_object(&m_settings, ob) && object_is_shape(ob)) {
 			std::string name = get_id_name(ob);
 			m_xforms[name] = new AbcTransformWriter(ob, m_archive.getTop(), 0, m_trans_sampling_index, m_settings);
 		}
@@ -297,11 +396,11 @@ void AbcExporter::createTransformWritersFlat()
 	}
 }
 
-void AbcExporter::exploreTransform(Object *ob, Object *parent, Object *dupliObParent)
+void AbcExporter::exploreTransform(EvaluationContext *eval_ctx, Object *ob, Object *parent, Object *dupliObParent)
 {
 	createTransformWriter(ob, parent, dupliObParent);
 
-	ListBase *lb = object_duplilist(G.main->eval_ctx, m_scene, ob);
+	ListBase *lb = object_duplilist(eval_ctx, m_scene, ob);
 
 	if (lb) {
 		DupliObject *link = static_cast<DupliObject *>(lb->first);
@@ -309,15 +408,12 @@ void AbcExporter::exploreTransform(Object *ob, Object *parent, Object *dupliObPa
 		Object *dupli_parent = NULL;
 		
 		while (link) {
-			dupli_ob = link->ob;
+			if (link->type == OB_DUPLIGROUP) {
+				dupli_ob = link->ob;
+				dupli_parent = (dupli_ob->parent) ? dupli_ob->parent : ob;
 
-			if (dupli_ob->parent)
-				dupli_parent = dupli_ob->parent;
-			else
-				dupli_parent = ob;
-
-			if (link->type == OB_DUPLIGROUP)
-				exploreTransform(dupli_ob, dupli_parent, ob);
+				exploreTransform(eval_ctx, dupli_ob, dupli_parent, ob);
+			}
 
 			link = link->next;
 		}
@@ -363,36 +459,33 @@ void AbcExporter::createTransformWriter(Object *ob, Object *parent, Object *dupl
 	}
 }
 
-void AbcExporter::createShapeWriters()
+void AbcExporter::createShapeWriters(EvaluationContext *eval_ctx)
 {
 	Base *base = static_cast<Base *>(m_scene->base.first);
 
 	while (base) {
 		Object *ob = base->object;
-		exploreObject(ob, NULL);
+		exploreObject(eval_ctx, ob, NULL);
 
 		base = base->next;
 	}
 }
 
-void AbcExporter::exploreObject(Object *ob, Object *dupliObParent)
+void AbcExporter::exploreObject(EvaluationContext *eval_ctx, Object *ob, Object *dupliObParent)
 {
-	ListBase *lb = object_duplilist(G.main->eval_ctx, m_scene, ob);
+	ListBase *lb = object_duplilist(eval_ctx, m_scene, ob);
 	
 	createShapeWriter(ob, dupliObParent);
 	
 	if (lb) {
-		DupliObject *link = static_cast<DupliObject *>(lb->first);
-		Object *dupliob = NULL;
+		DupliObject *dupliob = static_cast<DupliObject *>(lb->first);
 
-		while (link) {
-			dupliob = link->ob;
-
-			if (link->type == OB_DUPLIGROUP) {
-				exploreObject(dupliob, ob);
+		while (dupliob) {
+			if (dupliob->type == OB_DUPLIGROUP) {
+				exploreObject(eval_ctx, dupliob->ob, ob);
 			}
 
-			link = link->next;
+			dupliob = dupliob->next;
 		}
 	}
 
@@ -401,61 +494,39 @@ void AbcExporter::exploreObject(Object *ob, Object *dupliObParent)
 
 void AbcExporter::createShapeWriter(Object *ob, Object *dupliObParent)
 {
-	if (!objectIsShape(ob)) {
+	if (!object_is_shape(ob)) {
 		return;
 	}
 
-	if (!m_settings.exportObject(ob)) {
+	if (!export_object(&m_settings, ob)) {
 		return;
 	}
 
-	std::string name = get_object_dag_path_name(ob, dupliObParent);
+	std::string name;
+
+	if (m_settings.flatten_hierarchy) {
+		name = get_id_name(ob);
+	}
+	else {
+		name = get_object_dag_path_name(ob, dupliObParent);
+	}
 	
 	AbcTransformWriter *xform = getXForm(name);
 
 	if (!xform) {
-		std::cerr << __func__ << ": xform " << name << "is NULL\n";
+		std::cerr << __func__ << ": xform " << name << " is NULL\n";
 		return;
-	}
-
-	int enable_hair = true;
-	int enable_hair_child = true;
-	int enable_geo = true;
-
-	ID *id = reinterpret_cast<ID *>(ob);
-	IDProperty *xport_props = IDP_GetProperties(id, 0);
-
-	/* Check for special export object flags */
-	if (xport_props) {
-		IDProperty *enable_prop = IDP_GetPropertyFromGroup(xport_props, "abc_hair");
-		if (enable_prop) {
-			enable_hair = IDP_Int(enable_prop);
-		}
-
-		enable_prop = IDP_GetPropertyFromGroup(xport_props, "abc_geo");
-		if (enable_prop) {
-			if (IDP_Int(enable_prop) == 2) {
-				enable_geo = false;
-			}
-			else {
-				enable_geo = IDP_Int(enable_prop);
-			}
-		}
-
-		enable_prop = IDP_GetPropertyFromGroup(xport_props, "abc_hair_child");
-		if (enable_prop) {
-			enable_hair_child = IDP_Int(enable_prop);
-		}
 	}
 
 	ParticleSystem *psys = static_cast<ParticleSystem *>(ob->particlesystem.first);
 
 	for (; psys; psys = psys->next) {
-		if (!psys_check_enabled(ob, psys))
+		if (!psys_check_enabled(ob, psys, G.is_rendering) || !psys->part) {
 			continue;
+		}
 
-		if ((psys->part->type == PART_HAIR) && enable_hair && psys->part) {
-			m_settings.export_child_hairs = enable_hair_child;
+		if (psys->part->type == PART_HAIR) {
+			m_settings.export_child_hairs = true;
 			m_shapes.push_back(new AbcHairWriter(m_scene, ob, xform, m_shape_sampling_index, m_settings, psys));
 		}
 		else if (psys->part->type == PART_EMITTER) {
@@ -466,30 +537,35 @@ void AbcExporter::createShapeWriter(Object *ob, Object *dupliObParent)
 	switch(ob->type) {
 		case OB_MESH:
 		{
-			if (enable_geo) {
-				Mesh *me = static_cast<Mesh *>(ob->data);
+			Mesh *me = static_cast<Mesh *>(ob->data);
 
-				if (!me || me->totvert == 0) {
-					return;
-				}
-
-				m_shapes.push_back(new AbcMeshWriter(m_scene, ob, xform, m_shape_sampling_index, m_settings));
+			if (!me || me->totvert == 0) {
+				return;
 			}
 
+			m_shapes.push_back(new AbcMeshWriter(m_scene, ob, xform, m_shape_sampling_index, m_settings));
 			break;
 		}
 		case OB_SURF:
 		{
-			if (enable_geo) {
-				Curve *cu = static_cast<Curve *>(ob->data);
+			Curve *cu = static_cast<Curve *>(ob->data);
 
-				if (!cu) {
-					return;
-				}
-
-				m_shapes.push_back(new AbcNurbsWriter(m_scene, ob, xform, m_shape_sampling_index, m_settings));
+			if (!cu) {
+				return;
 			}
 
+			m_shapes.push_back(new AbcNurbsWriter(m_scene, ob, xform, m_shape_sampling_index, m_settings));
+			break;
+		}
+		case OB_CURVE:
+		{
+			Curve *cu = static_cast<Curve *>(ob->data);
+
+			if (!cu) {
+				return;
+			}
+
+			m_shapes.push_back(new AbcCurveWriter(m_scene, ob, xform, m_shape_sampling_index, m_settings));
 			break;
 		}
 		case OB_CAMERA:
@@ -516,44 +592,9 @@ AbcTransformWriter *AbcExporter::getXForm(const std::string &name)
 	return it->second;
 }
 
-double AbcExporter::getCurrentFrame() const
-{
-	return m_scene->r.cfra + m_scene->r.subframe;
-}
-
-void AbcExporter::setCurrentFrame(double t)
+void AbcExporter::setCurrentFrame(Main *bmain, double t)
 {
 	m_scene->r.cfra = std::floor(t);
 	m_scene->r.subframe = t - m_scene->r.cfra;
-	BKE_scene_update_for_newframe(G.main->eval_ctx, G.main, m_scene, (1<<20)-1);
-}
-
-bool AbcExporter::objectIsShape(Object *ob)
-{
-	switch(ob->type) {
-		case OB_MESH:
-			if (objectIsSmokeSim(ob)) {
-				return false;
-			}
-
-			return true;
-			break;
-		case OB_SURF:
-		case OB_CAMERA:
-			return true;
-		default:
-			return false;
-	}
-}
-
-bool AbcExporter::objectIsSmokeSim(Object *ob)
-{
-	ModifierData *md = modifiers_findByType(ob, eModifierType_Smoke);
-
-	if (md) {
-		SmokeModifierData *smd = reinterpret_cast<SmokeModifierData *>(md);
-		return (smd->type == MOD_SMOKE_TYPE_DOMAIN);
-	}
-
-	return false;
+	BKE_scene_update_for_newframe(bmain->eval_ctx, bmain, m_scene, m_scene->lay);
 }

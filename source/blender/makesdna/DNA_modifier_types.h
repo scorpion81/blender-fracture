@@ -643,8 +643,9 @@ typedef struct BooleanModifierData {
 
 	struct Object *object;
 	char operation;
-	char bm_flag, pad[2];
-	float threshold;
+	char solver;
+	char pad[2];
+	float double_threshold;
 } BooleanModifierData;
 
 typedef enum {
@@ -653,13 +654,10 @@ typedef enum {
 	eBooleanModifierOp_Difference = 2,
 } BooleanModifierOp;
 
-/* temp bm_flag (debugging only) */
-enum {
-	eBooleanModifierBMeshFlag_Enabled                   = (1 << 0),
-	eBooleanModifierBMeshFlag_BMesh_Separate            = (1 << 1),
-	eBooleanModifierBMeshFlag_BMesh_NoDissolve          = (1 << 2),
-	eBooleanModifierBMeshFlag_BMesh_NoConnectRegions    = (1 << 3),
-};
+typedef enum {
+	eBooleanModifierSolver_Carve    = 0,
+	eBooleanModifierSolver_BMesh = 1,
+} BooleanSolver;
 
 typedef struct MDefInfluence {
 	int vertex;
@@ -1822,7 +1820,9 @@ typedef struct NormalEditModifierData {
 	short mix_mode;
 	char pad[2];
 	float mix_factor;
+	float mix_limit;
 	float offset[3];
+	float pad_f1;
 } NormalEditModifierData;
 
 /* NormalEditModifierData.mode */
@@ -1848,10 +1848,22 @@ enum {
 typedef struct MeshSeqCacheModifierData {
 	ModifierData modifier;
 
-	char filepath[1024];
-	char abc_object_path[1024];
-	char is_sequence;
+	struct CacheFile *cache_file;
+	char object_path[1024];  /* 1024 = FILE_MAX */
+
+	char read_flag;
 	char pad[7];
 } MeshSeqCacheModifierData;
+
+/* MeshSeqCacheModifierData.read_flag */
+enum {
+	MOD_MESHSEQ_READ_VERT  = (1 << 0),
+	MOD_MESHSEQ_READ_POLY  = (1 << 1),
+	MOD_MESHSEQ_READ_UV    = (1 << 2),
+	MOD_MESHSEQ_READ_COLOR = (1 << 3),
+};
+
+#define MOD_MESHSEQ_READ_ALL \
+	(MOD_MESHSEQ_READ_VERT | MOD_MESHSEQ_READ_POLY | MOD_MESHSEQ_READ_UV | MOD_MESHSEQ_READ_COLOR)
 
 #endif  /* __DNA_MODIFIER_TYPES_H__ */

@@ -22,9 +22,11 @@
  *
  */
 
-#pragma once
+#ifndef __ABC_POINTS_H__
+#define __ABC_POINTS_H__
 
 #include "abc_object.h"
+#include "abc_customdata.h"
 
 class ParticleSystem;
 
@@ -38,10 +40,10 @@ class AbcPointsWriter : public AbcObjectWriter {
 public:
 	AbcPointsWriter(Scene *scene,
 	                Object *ob,
-                    AbcTransformWriter *parent,
-                    uint32_t sampling_time,
-                    ExportSettings &settings,
-                    ParticleSystem *psys);
+	                AbcTransformWriter *parent,
+	                uint32_t time_sampling,
+	                ExportSettings &settings,
+	                ParticleSystem *psys);
 
 	void do_write();
 };
@@ -57,5 +59,12 @@ public:
 
 	bool valid() const;
 
-	void readObjectData(Main *bmain, Scene *scene, float time);
+	void readObjectData(Main *bmain, float time);
 };
+
+void read_points_sample(const Alembic::AbcGeom::IPointsSchema &schema,
+                        const Alembic::AbcGeom::ISampleSelector &selector,
+                        CDStreamConfig &config,
+                        float time);
+
+#endif  /* __ABC_POINTS_H__ */

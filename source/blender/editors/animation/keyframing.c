@@ -930,11 +930,18 @@ bool insert_keyframe_direct(ReportList *reports, PointerRNA ptr, PropertyRNA *pr
 	
 	/* update F-Curve flags to ensure proper behaviour for property type */
 	update_autoflags_fcurve_direct(fcu, prop);
-	
+
 	/* adjust frame on which to add keyframe */
 	if ((flag & INSERTKEY_DRIVER) && (fcu->driver)) {
-		/* for making it easier to add corrective drivers... */
-		cfra = evaluate_driver(fcu->driver, cfra);
+		PathResolvedRNA anim_rna;
+
+		if (RNA_path_resolved_create(&ptr, prop, fcu->array_index, &anim_rna)) {
+			/* for making it easier to add corrective drivers... */
+			cfra = evaluate_driver(&anim_rna, fcu->driver, cfra);
+		}
+		else {
+			cfra = 0.0f;
+		}
 	}
 	
 	/* obtain value to give keyframe */
@@ -1068,6 +1075,9 @@ short insert_keyframe(ReportList *reports, ID *id, bAction *act, const char grou
 				 */
 				if (ELEM(RNA_property_subtype(prop), PROP_TRANSLATION, PROP_XYZ, PROP_EULER, PROP_COLOR, PROP_COORDS)) {
 					fcu->color_mode = FCURVE_COLOR_AUTO_RGB;
+				}
+				else if (RNA_property_subtype(prop), PROP_QUATERNION) {
+					fcu->color_mode = FCURVE_COLOR_AUTO_YRGB;
 				}
 			}
 			
@@ -2035,7 +2045,7 @@ bool autokeyframe_cfra_can_key(Scene *scene, ID *id)
 	else {
 		/* Normal Mode (or treat as being normal mode):
 		 *
-		 * Just in case the flags are't set properly (i.e. only on/off is set, without a mode)
+		 * Just in case the flags aren't set properly (i.e. only on/off is set, without a mode)
 		 * let's set the "normal" flag too, so that it will all be sane everywhere...
 		 */
 		scene->toolsettings->autokey_mode = AUTOKEY_MODE_NORMAL;

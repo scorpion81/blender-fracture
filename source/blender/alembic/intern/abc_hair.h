@@ -20,7 +20,8 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#pragma once
+#ifndef __ABC_HAIR_H__
+#define __ABC_HAIR_H__
 
 #include "abc_object.h"
 
@@ -31,7 +32,7 @@ struct ParticleSystem;
 /* ************************************************************************** */
 
 class AbcHairWriter : public AbcObjectWriter {
-    ParticleSystem *m_psys;
+	ParticleSystem *m_psys;
 
 	Alembic::AbcGeom::OCurvesSchema m_schema;
 	Alembic::AbcGeom::OCurvesSchema::Sample m_sample;
@@ -39,38 +40,27 @@ class AbcHairWriter : public AbcObjectWriter {
 public:
 	AbcHairWriter(Scene *scene,
 	              Object *ob,
-                  AbcTransformWriter *parent,
-                  uint32_t sampling_time,
-                  ExportSettings &settings,
-                  ParticleSystem *psys);
+	              AbcTransformWriter *parent,
+	              uint32_t time_sampling,
+	              ExportSettings &settings,
+	              ParticleSystem *psys);
 
 private:
 	virtual void do_write();
 
 	void write_hair_sample(DerivedMesh *dm,
-                           ParticleSettings *part,
-                           std::vector<Imath::V3f> &verts,
-                           std::vector<Imath::V3f> &norm_values,
-                           std::vector<Imath::V2f> &uv_values,
-                           std::vector<int32_t> &hvertices);
+	                       ParticleSettings *part,
+	                       std::vector<Imath::V3f> &verts,
+	                       std::vector<Imath::V3f> &norm_values,
+	                       std::vector<Imath::V2f> &uv_values,
+	                       std::vector<int32_t> &hvertices);
 
 	void write_hair_child_sample(DerivedMesh *dm,
 	                             ParticleSettings *part,
-                                 std::vector<Imath::V3f> &verts,
-                                 std::vector<Imath::V3f> &norm_values,
-                                 std::vector<Imath::V2f> &uv_values,
-                                 std::vector<int32_t> &hvertices);
+	                             std::vector<Imath::V3f> &verts,
+	                             std::vector<Imath::V3f> &norm_values,
+	                             std::vector<Imath::V2f> &uv_values,
+	                             std::vector<int32_t> &hvertices);
 };
 
-/* ************************************************************************** */
-
-class AbcHairReader : public AbcObjectReader {
-	Alembic::AbcGeom::ICurvesSchema m_curves_schema;
-
-public:
-	AbcHairReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
-
-	bool valid() const;
-
-	void readObjectData(Main *bmain, Scene *scene, float time);
-};
+#endif  /* __ABC_HAIR_H__ */

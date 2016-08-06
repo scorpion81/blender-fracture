@@ -24,10 +24,9 @@
 
 #include "abc_points.h"
 
-#include <Alembic/Abc/All.h>
-
 #include "abc_mesh.h"
 #include "abc_transform.h"
+#include "abc_util.h"
 
 extern "C" {
 #include "DNA_mesh_types.h"
@@ -44,7 +43,10 @@ extern "C" {
 using Alembic::AbcGeom::kVertexScope;
 using Alembic::AbcGeom::kWrapExisting;
 using Alembic::AbcGeom::P3fArraySamplePtr;
+using Alembic::AbcGeom::N3fArraySamplePtr;
 
+using Alembic::AbcGeom::ICompoundProperty;
+using Alembic::AbcGeom::IN3fArrayProperty;
 using Alembic::AbcGeom::IPoints;
 using Alembic::AbcGeom::IPointsSchema;
 using Alembic::AbcGeom::ISampleSelector;
@@ -57,10 +59,10 @@ using Alembic::AbcGeom::OPointsSchema;
 AbcPointsWriter::AbcPointsWriter(Scene *scene,
                                  Object *ob,
 	                             AbcTransformWriter *parent,
-	                             uint32_t sampling_time,
+	                             uint32_t time_sampling,
 	                             ExportSettings &settings,
 	                             ParticleSystem *psys)
-    : AbcObjectWriter(scene, ob, sampling_time, settings, parent)
+    : AbcObjectWriter(scene, ob, time_sampling, settings, parent)
 {
 	m_psys = psys;
 
@@ -139,6 +141,7 @@ AbcPointsReader::AbcPointsReader(const Alembic::Abc::IObject &object, ImportSett
 {
 	IPoints ipoints(m_iobject, kWrapExisting);
 	m_schema = ipoints.getSchema();
+	get_min_max_time(m_schema, m_min_time, m_max_time);
 }
 
 bool AbcPointsReader::valid() const
@@ -146,7 +149,7 @@ bool AbcPointsReader::valid() const
 	return m_schema.valid();
 }
 
-void AbcPointsReader::readObjectData(Main *bmain, Scene *scene, float time)
+void AbcPointsReader::readObjectData(Main *bmain, float time)
 {
 	Mesh *mesh = BKE_mesh_add(bmain, m_data_name.c_str());
 
@@ -154,16 +157,42 @@ void AbcPointsReader::readObjectData(Main *bmain, Scene *scene, float time)
 	m_sample = m_schema.getValue(sample_sel);
 
 	const P3fArraySamplePtr &positions = m_sample.getPositions();
-
 	utils::mesh_add_verts(mesh, positions->size());
-	read_mverts(mesh->mvert, positions);
 
-	BKE_mesh_validate(mesh, false, false);
+	CDStreamConfig config = create_config(mesh);
+	read_points_sample(m_schema, sample_sel, config, time);
 
-	m_object = BKE_object_add(bmain, scene, OB_MESH, m_object_name.c_str());
+	if (m_settings->validate_meshes) {
+		BKE_mesh_validate(mesh, false, false);
+	}
+
+	m_object = BKE_object_add_only_object(bmain, OB_MESH, m_object_name.c_str());
 	m_object->data = mesh;
 
-	if (m_settings->is_sequence || !m_schema.isConstant()) {
-		addDefaultModifier(bmain);
+	if (has_animations(m_schema, m_settings)) {
+		addCacheModifier();
 	}
+}
+
+void read_points_sample(const IPointsSchema &schema,
+                        const ISampleSelector &selector,
+                        CDStreamConfig &config,
+                        float time)
+{
+	Alembic::AbcGeom::IPointsSchema::Sample sample = schema.getValue(selector);
+
+	const P3fArraySamplePtr &positions = sample.getPositions();
+
+	ICompoundProperty prop = schema.getArbGeomParams();
+	N3fArraySamplePtr vnormals;
+
+	if (has_property(prop, "N")) {
+		const IN3fArrayProperty &normals_prop = IN3fArrayProperty(prop, "N", time);
+
+		if (normals_prop) {
+			vnormals = normals_prop.getValue(selector);
+		}
+	}
+
+	read_mverts(config.mvert, positions, vnormals);
 }

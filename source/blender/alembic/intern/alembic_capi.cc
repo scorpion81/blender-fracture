@@ -22,28 +22,39 @@
 
 #include "../ABC_alembic.h"
 
-#include <Alembic/AbcCoreHDF5/All.h>
+#ifdef WITH_ALEMBIC_HDF5
+#  include <Alembic/AbcCoreHDF5/All.h>
+#endif
+
 #include <Alembic/AbcCoreOgawa/All.h>
 #include <Alembic/AbcMaterial/IMaterial.h>
 
-#include "abc_exporter.h"
 #include "abc_camera.h"
+#include "abc_curves.h"
 #include "abc_hair.h"
 #include "abc_mesh.h"
 #include "abc_nurbs.h"
 #include "abc_points.h"
+#include "abc_transform.h"
 #include "abc_util.h"
 
 extern "C" {
 #include "MEM_guardedalloc.h"
 
+#include "DNA_cachefile_types.h"
+#include "DNA_curve_types.h"
+#include "DNA_modifier_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
+#include "BKE_cachefile.h"
 #include "BKE_cdderivedmesh.h"
 #include "BKE_context.h"
+#include "BKE_curve.h"
 #include "BKE_depsgraph.h"
 #include "BKE_global.h"
+#include "BKE_library.h"
+#include "BKE_main.h"
 #include "BKE_scene.h"
 
 /* SpaceType struct has a member called 'new' which obviously conflicts with C++
@@ -52,117 +63,215 @@ extern "C" {
 #include "BKE_screen.h"
 #undef new
 
+#include "BLI_fileops.h"
+#include "BLI_ghash.h"
+#include "BLI_listbase.h"
 #include "BLI_math.h"
+#include "BLI_path_util.h"
 #include "BLI_string.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
 }
 
+using Alembic::Abc::Int32ArraySamplePtr;
+using Alembic::Abc::ObjectHeader;
+
 using Alembic::AbcGeom::ErrorHandler;
 using Alembic::AbcGeom::Exception;
 using Alembic::AbcGeom::MetaData;
 using Alembic::AbcGeom::P3fArraySamplePtr;
-using Alembic::AbcGeom::N3fArraySamplePtr;
-using Alembic::AbcGeom::IN3fGeomParam;
-using Alembic::AbcGeom::IV2fGeomParam;
 using Alembic::AbcGeom::kWrapExisting;
 
 using Alembic::AbcGeom::IArchive;
 using Alembic::AbcGeom::ICamera;
 using Alembic::AbcGeom::ICurves;
+using Alembic::AbcGeom::ICurvesSchema;
 using Alembic::AbcGeom::IFaceSet;
 using Alembic::AbcGeom::ILight;
 using Alembic::AbcGeom::INuPatch;
 using Alembic::AbcGeom::IObject;
 using Alembic::AbcGeom::IPoints;
+using Alembic::AbcGeom::IPointsSchema;
 using Alembic::AbcGeom::IPolyMesh;
 using Alembic::AbcGeom::IPolyMeshSchema;
 using Alembic::AbcGeom::ISampleSelector;
 using Alembic::AbcGeom::ISubD;
+using Alembic::AbcGeom::IV2fGeomParam;
 using Alembic::AbcGeom::IXform;
 using Alembic::AbcGeom::IXformSchema;
+using Alembic::AbcGeom::N3fArraySamplePtr;
 using Alembic::AbcGeom::XformSample;
-using Alembic::AbcGeom::IBoolGeomParam;
+using Alembic::AbcGeom::ICompoundProperty;
+using Alembic::AbcGeom::IN3fArrayProperty;
+using Alembic::AbcGeom::IN3fGeomParam;
+using Alembic::AbcGeom::V3fArraySamplePtr;
 
 using Alembic::AbcMaterial::IMaterial;
+
+struct AbcArchiveHandle {
+	int unused;
+};
+
+ABC_INLINE IArchive *archive_from_handle(AbcArchiveHandle *handle)
+{
+	return reinterpret_cast<IArchive *>(handle);
+}
+
+ABC_INLINE AbcArchiveHandle *handle_from_archive(IArchive *archive)
+{
+	return reinterpret_cast<AbcArchiveHandle *>(archive);
+}
+
+static IArchive *open_archive(const std::string &filename)
+{
+	Alembic::AbcCoreAbstract::ReadArraySampleCachePtr cache_ptr;
+	IArchive *archive;
+
+	try {
+		archive = new IArchive(Alembic::AbcCoreOgawa::ReadArchive(),
+		                       filename.c_str(), ErrorHandler::kThrowPolicy,
+		                       cache_ptr);
+	}
+	catch (const Exception &e) {
+		std::cerr << e.what() << '\n';
+
+#ifdef WITH_ALEMBIC_HDF5
+		try {
+			archive = new IArchive(Alembic::AbcCoreHDF5::ReadArchive(),
+			                       filename.c_str(), ErrorHandler::kThrowPolicy,
+			                       cache_ptr);
+		}
+		catch (const Exception &) {
+			std::cerr << e.what() << '\n';
+			return NULL;
+		}
+#else
+		return NULL;
+#endif
+	}
+
+	return archive;
+}
+
+//#define USE_NURBS
+
+/* NOTE: this function is similar to visit_objects below, need to keep them in
+ * sync. */
+static void gather_objects_paths(const IObject &object, ListBase *object_paths)
+{
+	if (!object.valid()) {
+		return;
+	}
+
+	for (int i = 0; i < object.getNumChildren(); ++i) {
+		IObject child = object.getChild(i);
+
+		if (!child.valid()) {
+			continue;
+		}
+
+		bool get_path = false;
+
+		const MetaData &md = child.getMetaData();
+
+		if (IXform::matches(md)) {
+			/* Check whether or not this object is a Maya locator, which is
+			 * similar to empties used as parent object in Blender. */
+			if (has_property(child.getProperties(), "locator")) {
+				get_path = true;
+			}
+			else {
+				/* Avoid creating an empty object if the child of this transform
+				 * is not a transform (that is an empty). */
+				if (child.getNumChildren() == 1) {
+					if (IXform::matches(child.getChild(0).getMetaData())) {
+						get_path = true;
+					}
+#if 0
+					else {
+						std::cerr << "Skipping " << child.getFullName() << '\n';
+					}
+#endif
+				}
+				else {
+					get_path = true;
+				}
+			}
+		}
+		else if (IPolyMesh::matches(md)) {
+			get_path = true;
+		}
+		else if (ISubD::matches(md)) {
+			get_path = true;
+		}
+		else if (INuPatch::matches(md)) {
+#ifdef USE_NURBS
+			get_path = true;
+#endif
+		}
+		else if (ICamera::matches(md)) {
+			get_path = true;
+		}
+		else if (IPoints::matches(md)) {
+			get_path = true;
+		}
+		else if (IMaterial::matches(md)) {
+			/* Pass for now. */
+		}
+		else if (ILight::matches(md)) {
+			/* Pass for now. */
+		}
+		else if (IFaceSet::matches(md)) {
+			/* Pass, those are handled in the mesh reader. */
+		}
+		else if (ICurves::matches(md)) {
+			get_path = true;
+		}
+		else {
+			assert(false);
+		}
+
+		if (get_path) {
+			AlembicObjectPath *abc_path = static_cast<AlembicObjectPath *>(
+			                                  MEM_callocN(sizeof(AlembicObjectPath), "AlembicObjectPath"));
+
+			BLI_strncpy(abc_path->path, child.getFullName().c_str(), PATH_MAX);
+
+			BLI_addtail(object_paths, abc_path);
+		}
+
+		gather_objects_paths(child, object_paths);
+	}
+}
+
+AbcArchiveHandle *ABC_create_handle(const char *filename, ListBase *object_paths)
+{
+	IArchive *archive = open_archive(filename);
+
+	if (!archive) {
+		return NULL;
+	}
+
+	if (object_paths) {
+		gather_objects_paths(archive->getTop(), object_paths);
+	}
+
+	return handle_from_archive(archive);
+}
+
+void ABC_free_handle(AbcArchiveHandle *handle)
+{
+	delete archive_from_handle(handle);
+}
 
 int ABC_get_version()
 {
 	return ALEMBIC_LIBRARY_VERSION;
 }
 
-static IArchive open_archive(const std::string &filename)
-{
-	Alembic::AbcCoreAbstract::ReadArraySampleCachePtr cache_ptr;
-	IArchive archive;
-
-	try {
-		archive = IArchive(Alembic::AbcCoreHDF5::ReadArchive(),
-		                   filename.c_str(), ErrorHandler::kThrowPolicy,
-		                   cache_ptr);
-	}
-	catch (const Exception &) {
-		try {
-			archive = IArchive(Alembic::AbcCoreOgawa::ReadArchive(),
-			                   filename.c_str(), ErrorHandler::kThrowPolicy,
-			                   cache_ptr);
-		}
-		catch (const Exception &e) {
-			std::cerr << e.what() << '\n';
-			return IArchive();
-		}
-	}
-
-	return archive;
-}
-
-static size_t update_points(std::pair<IPolyMeshSchema, IObject> schema,
-                            const ISampleSelector &sample_sel,
-                            MVert *verts, size_t vtx_start, int max_verts = -1,
-                            float (*vcos)[3] = 0)
-{
-	if (!schema.first.valid()) {
-		return vtx_start;
-	}
-
-	IPolyMeshSchema::Sample smp = schema.first.getValue(sample_sel);
-	P3fArraySamplePtr positions = smp.getPositions();
-
-	const size_t vertex_count = positions->size();
-
-	/* don't overflow the buffer! */
-	if (max_verts > 0) {
-		if ((vtx_start + vertex_count) > max_verts)
-			return vtx_start;
-	}
-
-	if (verts) {
-		int j = vtx_start;
-		for (int i = 0; i < vertex_count; ++i, ++j) {
-			Imath::V3f pos_in = (*positions)[i];
-
-			verts[j].co[0] = pos_in[0];
-			verts[j].co[1] = pos_in[1];
-			verts[j].co[2] = pos_in[2];
-		}
-	}
-	else if (vcos) {
-		int j = vtx_start;
-		for (int i = 0; i < vertex_count; ++i, ++j) {
-			Imath::V3f pos_in = (*positions)[i];
-
-			vcos[j][0] = pos_in[0];
-			vcos[j][1] = pos_in[1];
-			vcos[j][2] = pos_in[2];
-		}
-	}
-
-	return vtx_start + vertex_count;
-}
-
 static void find_iobject(const IObject &object, IObject &ret,
-                        const std::string &path)
+                         const std::string &path)
 {
 	if (!object.valid()) {
 		return;
@@ -182,63 +291,9 @@ static void find_iobject(const IObject &object, IObject &ret,
 	ret = tmp;
 }
 
-void ABC_get_vertex_cache(const char *filepath, float time, void *verts,
-                          int max_verts, const char *object_path, int is_mverts)
-{
-	IArchive archive = open_archive(filepath);
-
-	if (!archive || !archive.valid()) {
-		return;
-	}
-
-	IObject top = archive.getTop();
-
-	if (!top.valid()) {
-		return;
-	}
-
-	IObject iobject;
-	find_iobject(top, iobject, object_path);
-
-	if (!IPolyMesh::matches(iobject.getHeader())) {
-		return;
-	}
-
-	IPolyMesh mesh(iobject, kWrapExisting);
-	IPolyMeshSchema schema = mesh.getSchema();
-	ISampleSelector sample_sel(time);
-
-	if (is_mverts) {
-		update_points(std::pair<IPolyMeshSchema, IObject>(schema, iobject),
-		              sample_sel, (MVert *)verts, 0, max_verts, NULL);
-	}
-	else {
-		float (*vcos)[3] = static_cast<float (*)[3]>(verts);
-		update_points(std::pair<IPolyMeshSchema, IObject>(schema, iobject),
-		              sample_sel, NULL, 0, max_verts, vcos);
-	}
-}
-
-int ABC_check_subobject_valid(const char *filepath, const char *object_path)
-{
-	if ((filepath[0] == '\0') || (object_path[0] == '\0')) {
-		return 0;
-	}
-
-	IArchive archive = open_archive(filepath);
-
-	if (!archive.valid()) {
-		return 0;
-	}
-
-	IObject ob;
-	find_iobject(archive.getTop(), ob, object_path);
-
-	return (ob.valid());
-}
-
 struct ExportJobData {
 	Scene *scene;
+	Main *bmain;
 
 	char filename[1024];
 	ExportSettings settings;
@@ -246,6 +301,8 @@ struct ExportJobData {
 	short *stop;
 	short *do_update;
 	float *progress;
+
+	bool was_canceled;
 };
 
 static void export_startjob(void *customdata, short *stop, short *do_update, float *progress)
@@ -258,13 +315,27 @@ static void export_startjob(void *customdata, short *stop, short *do_update, flo
 
 	/* XXX annoying hack: needed to prevent data corruption when changing
 	 * scene frame in separate threads
-     */
-    G.is_rendering = true;
-    BKE_spacedata_draw_locks(true);
+	 */
+	G.is_rendering = true;
+	BKE_spacedata_draw_locks(true);
+
+	G.is_break = false;
 
 	try {
-		AbcExporter exporter(data->scene, data->filename, data->settings);
-		exporter(*data->progress);
+		Scene *scene = data->scene;
+		AbcExporter exporter(scene, data->filename, data->settings);
+
+		const int orig_frame = CFRA;
+
+		data->was_canceled = false;
+		exporter(data->bmain, *data->progress, data->was_canceled);
+
+		if (CFRA != orig_frame) {
+			CFRA = orig_frame;
+
+			BKE_scene_update_for_newframe(data->bmain->eval_ctx, data->bmain,
+			                              scene, scene->lay);
+		}
 	}
 	catch (const std::exception &e) {
 		std::cerr << "Abc Export error: " << e.what() << '\n';
@@ -274,57 +345,52 @@ static void export_startjob(void *customdata, short *stop, short *do_update, flo
 	}
 }
 
-static void export_endjob(void */*customdata*/)
+static void export_endjob(void *customdata)
 {
-    G.is_rendering = false;
-    BKE_spacedata_draw_locks(false);
+	ExportJobData *data = static_cast<ExportJobData *>(customdata);
+
+	if (data->was_canceled && BLI_exists(data->filename)) {
+		BLI_delete(data->filename, false, false);
+	}
+
+	G.is_rendering = false;
+	BKE_spacedata_draw_locks(false);
 }
 
-int ABC_export(Scene *scene, bContext *C, const char *filepath,
-               double start, double end,
-               double xformstep, double geomstep,
-               double shutter_open, double shutter_close,
-               int selected_only,
-               int uvs, int normals,
-               int vcolors,
-               int force_meshes,
-               int flatten_hierarchy,
-               int custom_props_as_geodata,
-               int vislayers, int renderable,
-               int facesets, int matindices,
-               int use_subdiv_schema, int compression, bool packuv, float scale)
+void ABC_export(
+        Scene *scene,
+        bContext *C,
+        const char *filepath,
+        const struct AlembicExportParams *params)
 {
 	ExportJobData *job = static_cast<ExportJobData *>(MEM_mallocN(sizeof(ExportJobData), "ExportJobData"));
 	job->scene = scene;
+	job->bmain = CTX_data_main(C);
 	BLI_strncpy(job->filename, filepath, 1024);
 
 	job->settings.scene = job->scene;
-	job->settings.startframe = start;
-	job->settings.endframe = end;
-	job->settings.xform_frame_step = xformstep;
-	job->settings.shape_frame_step = geomstep;
-	job->settings.shutter_open = shutter_open;
-	job->settings.shutter_close = shutter_close;
-	job->settings.selected_only = selected_only;
-	job->settings.export_uvs = uvs;
-	job->settings.export_normals = normals;
-	job->settings.export_vcols = vcolors;
-	job->settings.export_subsurfs_as_meshes = force_meshes;
-	job->settings.flatten_hierarchy = flatten_hierarchy;
-	job->settings.export_props_as_geo_params = custom_props_as_geodata;
-	job->settings.visible_layers_only = vislayers;
-	job->settings.renderable_only = renderable;
-	job->settings.use_subdiv_schema = use_subdiv_schema;
-	job->settings.export_ogawa = (compression == ABC_ARCHIVE_OGAWA);
-	job->settings.pack_uv = packuv;
-	job->settings.global_scale = scale;
+	job->settings.frame_start = params->frame_start;
+	job->settings.frame_end = params->frame_end;
+	job->settings.frame_step_xform = params->frame_step_xform;
+	job->settings.frame_step_shape = params->frame_step_shape;
+	job->settings.shutter_open = params->shutter_open;
+	job->settings.shutter_close = params->shutter_close;
+	job->settings.selected_only = params->selected_only;
+	job->settings.export_face_sets = params->face_sets;
+	job->settings.export_normals = params->normals;
+	job->settings.export_uvs = params->uvs;
+	job->settings.export_vcols = params->vcolors;
+	job->settings.apply_subdiv = params->apply_subdiv;
+	job->settings.flatten_hierarchy = params->flatten_hierarchy;
+	job->settings.visible_layers_only = params->visible_layers_only;
+	job->settings.renderable_only = params->renderable_only;
+	job->settings.use_subdiv_schema = params->use_subdiv_schema;
+	job->settings.export_ogawa = (params->compression_type == ABC_ARCHIVE_OGAWA);
+	job->settings.pack_uv = params->packuv;
+	job->settings.global_scale = params->global_scale;
 
-	// Deprecated
-	job->settings.export_face_sets = facesets;
-	job->settings.export_mat_indices = matindices;
-
-	if (job->settings.startframe > job->settings.endframe) {
-		std::swap(job->settings.startframe, job->settings.endframe);
+	if (job->settings.frame_start > job->settings.frame_end) {
+		std::swap(job->settings.frame_start, job->settings.frame_end);
 	}
 
 	wmJob *wm_job = WM_jobs_get(CTX_wm_manager(C),
@@ -340,14 +406,13 @@ int ABC_export(Scene *scene, bContext *C, const char *filepath,
 	WM_jobs_callbacks(wm_job, export_startjob, NULL, NULL, export_endjob);
 
 	WM_jobs_start(CTX_wm_manager(C), wm_job);
-
-	return BL_ABC_NO_ERR;
 }
 
 /* ********************** Import file ********************** */
 
 static void visit_object(const IObject &object,
                          std::vector<AbcObjectReader *> &readers,
+                         GHash *parent_map,
                          ImportSettings &settings)
 {
 	if (!object.valid()) {
@@ -368,7 +433,9 @@ static void visit_object(const IObject &object,
 		if (IXform::matches(md)) {
 			bool create_xform = false;
 
-			if (is_locator(child)) {
+			/* Check whether or not this object is a Maya locator, which is
+			 * similar to empties used as parent object in Blender. */
+			if (has_property(child.getProperties(), "locator")) {
 				create_xform = true;
 			}
 			else {
@@ -394,13 +461,21 @@ static void visit_object(const IObject &object,
 			}
 		}
 		else if (IPolyMesh::matches(md)) {
-			reader = new AbcMeshReader(child, settings, false);
+			reader = new AbcMeshReader(child, settings);
 		}
 		else if (ISubD::matches(md)) {
-			reader = new AbcMeshReader(child, settings, true);
+			reader = new AbcSubDReader(child, settings);
 		}
 		else if (INuPatch::matches(md)) {
+#ifdef USE_NURBS
+			/* TODO(kevin): importing cyclic NURBS from other software crashes
+			 * at the moment. This is due to the fact that NURBS in other
+			 * software have duplicated points which causes buffer overflows in
+			 * Blender. Need to figure out exactly how these points are
+			 * duplicated, in all cases (cyclic U, cyclic V, and cyclic UV).
+			 * Until this is fixed, disabling NURBS reading. */
 			reader = new AbcNurbsReader(child, settings);
+#endif
 		}
 		else if (ICamera::matches(md)) {
 			reader = new AbcCameraReader(child, settings);
@@ -418,7 +493,7 @@ static void visit_object(const IObject &object,
 			/* Pass, those are handled in the mesh reader. */
 		}
 		else if (ICurves::matches(md)) {
-			reader = new AbcHairReader(child, settings);
+			reader = new AbcCurveReader(child, settings);
 		}
 		else {
 			assert(false);
@@ -426,53 +501,28 @@ static void visit_object(const IObject &object,
 
 		if (reader) {
 			readers.push_back(reader);
+
+			AlembicObjectPath *abc_path = static_cast<AlembicObjectPath *>(
+			                                  MEM_callocN(sizeof(AlembicObjectPath), "AlembicObjectPath"));
+
+			BLI_strncpy(abc_path->path, child.getFullName().c_str(), PATH_MAX);
+
+			BLI_addtail(&settings.cache_file->object_paths, abc_path);
+
+			/* Cast to `void *` explicitly to avoid compiler errors because it
+			 * is a `const char *` which the compiler cast to `const void *`
+			 * instead of the expected `void *`. */
+			BLI_ghash_insert(parent_map, (void *)child.getFullName().c_str(), reader);
 		}
 
-		visit_object(child, readers, settings);
+		visit_object(child, readers, parent_map, settings);
 	}
 }
 
-static Object *find_object(Scene *scene, const std::string &name)
-{
-	Base *base;
-
-	for (base = static_cast<Base *>(scene->base.first); base; base = base->next) {
-		Object *ob = base->object;
-
-		if (ob->id.name + 2 == name) {
-			return ob;
-		}
-	}
-
-	return NULL;
-}
-
-static void create_hierarchy(Main *bmain, Scene *scene, AbcObjectReader *root)
-{
-	const IObject &iobjet = root->iobject();
-	const std::string &full_name = iobjet.getFullName();
-
-	std::vector<std::string> parts;
-	split(full_name, '/', parts);
-
-	Object *parent = NULL;
-
-	std::vector<std::string>::reverse_iterator iter;
-	for (iter = parts.rbegin() + 1; iter != parts.rend(); ++iter) {
-		parent = find_object(scene, *iter);
-
-		if (parent != NULL && root->object() != parent) {
-			Object *ob = root->object();
-			ob->parent = parent;
-
-			DAG_id_tag_update(&ob->id, OB_RECALC_OB);
-			DAG_relations_tag_update(bmain);
-			WM_main_add_notifier(NC_OBJECT | ND_PARENT, ob);
-
-			return;
-		}
-	}
-}
+enum {
+	ABC_NO_ERROR = 0,
+	ABC_ARCHIVE_FAIL,
+};
 
 struct ImportJobData {
 	Main *bmain;
@@ -481,72 +531,264 @@ struct ImportJobData {
 	char filename[1024];
 	ImportSettings settings;
 
+	GHash *parent_map;
+	std::vector<AbcObjectReader *> readers;
+
 	short *stop;
 	short *do_update;
 	float *progress;
+
+	char error_code;
+	bool was_cancelled;
 };
 
-static void import_startjob(void *cjv, short *stop, short *do_update, float *progress)
+ABC_INLINE bool is_mesh_and_strands(const IObject &object)
 {
-	ImportJobData *data = static_cast<ImportJobData *>(cjv);
+	if (object.getNumChildren() != 2) {
+		return false;
+	}
+
+	bool has_mesh = false;
+	bool has_curve = false;
+
+	for (int i = 0; i < object.getNumChildren(); ++i) {
+		const IObject &child = object.getChild(i);
+
+		if (!child.valid()) {
+			continue;
+		}
+
+		const MetaData &md = child.getMetaData();
+
+		if (IPolyMesh::matches(md)) {
+			has_mesh = true;
+		}
+		else if (ISubD::matches(md)) {
+			has_mesh = true;
+		}
+		else if (ICurves::matches(md)) {
+			has_curve = true;
+		}
+	}
+
+	return has_mesh && has_curve;
+}
+
+static void import_startjob(void *user_data, short *stop, short *do_update, float *progress)
+{
+	ImportJobData *data = static_cast<ImportJobData *>(user_data);
 
 	data->stop = stop;
 	data->do_update = do_update;
 	data->progress = progress;
 
-	IArchive archive = open_archive(data->filename);
+	IArchive *archive = open_archive(data->filename);
 
-	if (!archive.valid()) {
+	if (!archive || !archive->valid()) {
+		data->error_code = ABC_ARCHIVE_FAIL;
 		return;
 	}
+
+	CacheFile *cache_file = static_cast<CacheFile *>(BKE_cachefile_add(data->bmain, BLI_path_basename(data->filename)));
+
+	/* Decrement the ID ref-count because it is going to be incremented for each
+	 * modifier and constraint that it will be attached to, so since currently
+	 * it is not used by anyone, its use count will off by one. */
+	id_us_min(&cache_file->id);
+
+	cache_file->is_sequence = data->settings.is_sequence;
+	cache_file->scale = data->settings.scale;
+	cache_file->handle = handle_from_archive(archive);
+	BLI_strncpy(cache_file->filepath, data->filename, 1024);
+
+	data->settings.cache_file = cache_file;
 
 	*data->do_update = true;
 	*data->progress = 0.05f;
 
-	std::vector<AbcObjectReader *> readers;
-	visit_object(archive.getTop(), readers, data->settings);
+	data->parent_map = BLI_ghash_str_new("alembic parent ghash");
+
+	/* Parse Alembic Archive. */
+
+	visit_object(archive->getTop(), data->readers, data->parent_map, data->settings);
+
+	if (G.is_break) {
+		data->was_cancelled = true;
+		return;
+	}
 
 	*data->do_update = true;
 	*data->progress = 0.1f;
 
-	const float size = static_cast<float>(readers.size());
+	/* Create objects and set scene frame range. */
+
+	const float size = static_cast<float>(data->readers.size());
 	size_t i = 0;
 
-	std::vector<AbcObjectReader *>::iterator iter;
+	chrono_t min_time = std::numeric_limits<chrono_t>::max();
+	chrono_t max_time = std::numeric_limits<chrono_t>::min();
 
-	for (iter = readers.begin(); iter != readers.end(); ++iter) {
+	std::vector<AbcObjectReader *>::iterator iter;
+	for (iter = data->readers.begin(); iter != data->readers.end(); ++iter) {
 		AbcObjectReader *reader = *iter;
 
 		if (reader->valid()) {
-			reader->readObjectData(data->bmain, data->scene, 0.0f);
+			reader->readObjectData(data->bmain, 0.0f);
 			reader->readObjectMatrix(0.0f);
+
+			min_time = std::min(min_time, reader->minTime());
+			max_time = std::max(max_time, reader->maxTime());
 		}
 
 		*data->progress = 0.1f + 0.6f * (++i / size);
+		*data->do_update = true;
+
+		if (G.is_break) {
+			data->was_cancelled = true;
+			return;
+		}
 	}
+
+	if (data->settings.set_frame_range) {
+		Scene *scene = data->scene;
+
+		if (data->settings.is_sequence) {
+			SFRA = data->settings.offset;
+			EFRA = SFRA + (data->settings.sequence_len - 1);
+			CFRA = SFRA;
+		}
+		else if (min_time < max_time) {
+			SFRA = min_time * FPS;
+			EFRA = max_time * FPS;
+			CFRA = SFRA;
+		}
+	}
+
+	/* Setup parentship. */
 
 	i = 0;
-	for (iter = readers.begin(); iter != readers.end(); ++iter) {
-		create_hierarchy(data->bmain, data->scene, *iter);
+	for (iter = data->readers.begin(); iter != data->readers.end(); ++iter) {
+		const AbcObjectReader *reader = *iter;
+		const AbcObjectReader *parent_reader = NULL;
+		const IObject &iobject = reader->iobject();
+
+		IObject parent = iobject.getParent();
+
+		if (!IXform::matches(iobject.getHeader())) {
+			/* In the case of an non XForm node, the parent is the transform
+			 * matrix of the data itself, so we get the its grand parent.
+			 */
+
+			/* Special case with object only containing a mesh and some strands,
+			 * we want both objects to be parented to the same object. */
+			if (!is_mesh_and_strands(parent)) {
+				parent = parent.getParent();
+			}
+		}
+
+		parent_reader = reinterpret_cast<AbcObjectReader *>(
+		                    BLI_ghash_lookup(data->parent_map, parent.getFullName().c_str()));
+
+		if (parent_reader) {
+			Object *parent = parent_reader->object();
+
+			if (parent != NULL && reader->object() != parent) {
+				Object *ob = reader->object();
+				ob->parent = parent;
+			}
+		}
+
 		*data->progress = 0.7f + 0.3f * (++i / size);
+		*data->do_update = true;
+
+		if (G.is_break) {
+			data->was_cancelled = true;
+			return;
+		}
+	}
+}
+
+static void import_endjob(void *user_data)
+{
+	ImportJobData *data = static_cast<ImportJobData *>(user_data);
+
+	std::vector<AbcObjectReader *>::iterator iter;
+
+	/* Delete objects on cancelation. */
+	if (data->was_cancelled) {
+		for (iter = data->readers.begin(); iter != data->readers.end(); ++iter) {
+			Object *ob = (*iter)->object();
+
+			if (ob->data) {
+				BKE_libblock_free_us(data->bmain, ob->data);
+				ob->data = NULL;
+			}
+
+			BKE_libblock_free_us(data->bmain, ob);
+		}
+	}
+	else {
+		/* Add object to scene. */
+		BKE_scene_base_deselect_all(data->scene);
+
+		for (iter = data->readers.begin(); iter != data->readers.end(); ++iter) {
+			Object *ob = (*iter)->object();
+			ob->lay = data->scene->lay;
+
+			BKE_scene_base_add(data->scene, ob);
+
+			DAG_id_tag_update_ex(data->bmain, &ob->id, OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME);
+		}
+
+		DAG_relations_tag_update(data->bmain);
 	}
 
-	for (iter = readers.begin(); iter != readers.end(); ++iter) {
+	for (iter = data->readers.begin(); iter != data->readers.end(); ++iter) {
 		delete *iter;
+	}
+
+	if (data->parent_map) {
+		BLI_ghash_free(data->parent_map, NULL, NULL);
+	}
+
+	switch (data->error_code) {
+		default:
+		case ABC_NO_ERROR:
+			break;
+		case ABC_ARCHIVE_FAIL:
+			WM_report(RPT_ERROR, "Could not open Alembic archive for reading! See console for detail.");
+			break;
 	}
 
 	WM_main_add_notifier(NC_SCENE | ND_FRAME, data->scene);
 }
 
-void ABC_import(bContext *C, const char *filepath, float scale, bool is_sequence)
+static void import_freejob(void *user_data)
 {
-	ImportJobData *job = static_cast<ImportJobData *>(MEM_mallocN(sizeof(ImportJobData), "ImportJobData"));
+	ImportJobData *data = static_cast<ImportJobData *>(user_data);
+	delete data;
+}
+
+void ABC_import(bContext *C, const char *filepath, float scale, bool is_sequence, bool set_frame_range, int sequence_len, int offset, bool validate_meshes)
+{
+	/* Using new here since MEM_* funcs do not call ctor to properly initialize
+	 * data. */
+	ImportJobData *job = new ImportJobData();
 	job->bmain = CTX_data_main(C);
 	job->scene = CTX_data_scene(C);
 	BLI_strncpy(job->filename, filepath, 1024);
 
 	job->settings.scale = scale;
 	job->settings.is_sequence = is_sequence;
+	job->settings.set_frame_range = set_frame_range;
+	job->settings.sequence_len = sequence_len;
+	job->settings.offset = offset;
+	job->settings.validate_meshes = validate_meshes;
+	job->parent_map = NULL;
+	job->error_code = ABC_NO_ERROR;
+	job->was_cancelled = false;
+
+	G.is_break = false;
 
 	wmJob *wm_job = WM_jobs_get(CTX_wm_manager(C),
 	                            CTX_wm_window(C),
@@ -556,25 +798,25 @@ void ABC_import(bContext *C, const char *filepath, float scale, bool is_sequence
 	                            WM_JOB_TYPE_ALEMBIC);
 
 	/* setup job */
-	WM_jobs_customdata_set(wm_job, job, MEM_freeN);
-	WM_jobs_timer(wm_job, 0.1, NC_SCENE | ND_COMPO_RESULT, NC_SCENE | ND_COMPO_RESULT);
-	WM_jobs_callbacks(wm_job, import_startjob, NULL, NULL, NULL);
+	WM_jobs_customdata_set(wm_job, job, import_freejob);
+	WM_jobs_timer(wm_job, 0.1, NC_SCENE | ND_FRAME, NC_SCENE | ND_FRAME);
+	WM_jobs_callbacks(wm_job, import_startjob, NULL, NULL, import_endjob);
 
 	WM_jobs_start(CTX_wm_manager(C), wm_job);
 }
 
 /* ******************************* */
 
-void ABC_get_transform(Object *ob, const char *filepath, const char *object_path, float r_mat[4][4], float time)
+void ABC_get_transform(AbcArchiveHandle *handle, Object *ob, const char *object_path, float r_mat[4][4], float time, float scale)
 {
-	IArchive archive = open_archive(filepath);
+	IArchive *archive = archive_from_handle(handle);
 
-	if (!archive.valid()) {
+	if (!archive || !archive->valid()) {
 		return;
 	}
 
 	IObject tmp;
-	find_iobject(archive.getTop(), tmp, object_path);
+	find_iobject(archive->getTop(), tmp, object_path);
 
 	IXform ixform;
 
@@ -593,58 +835,75 @@ void ABC_get_transform(Object *ob, const char *filepath, const char *object_path
 
 	ISampleSelector sample_sel(time);
 
-	create_input_transform(sample_sel, ixform, ob, r_mat);
+	create_input_transform(sample_sel, ixform, ob, r_mat, scale);
 }
 
 /* ***************************************** */
 
-#ifdef PARALLEL_READ
-#include "BLI_task.h"
-
-struct MeshReadData {
-	MVert *mverts;
-	MPoly *mpolys;
-	MLoop *mloops;
-
-	Alembic::Abc::P3fArraySamplePtr positions;
-	Alembic::Abc::Int32ArraySamplePtr face_indices;
-	Alembic::Abc::Int32ArraySamplePtr face_counts;
-};
-
-static void read_verts_cb(void *userdata, const int x)
+static bool check_smooth_poly_flag(DerivedMesh *dm)
 {
-	MeshReadData *data = static_cast<MeshReadData *>(userdata);
+	MPoly *mpolys = dm->getPolyArray(dm);
 
-	MVert &mvert = data->mverts[x];
-	Imath::V3f pos_in = (*data->positions)[x];
+	for (int i = 0, e = dm->getNumPolys(dm); i < e; ++i) {
+		MPoly &poly = mpolys[i];
 
-	/* Convert Y-up to Z-up. */
-	mvert.co[0] = pos_in[0];
-	mvert.co[1] = -pos_in[2];
-	mvert.co[2] = pos_in[1];
-	mvert.bweight = 0;
+		if ((poly.flag & ME_SMOOTH) != 0) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
-static void read_faces_cb(void *userdata, const int x)
+static void set_smooth_poly_flag(DerivedMesh *dm)
 {
-	MeshReadData *data = static_cast<MeshReadData *>(userdata);
+	MPoly *mpolys = dm->getPolyArray(dm);
 
-	int face_size = (*data->face_counts)[x];
-	MPoly &poly = data->mpolys[x];
-
-	poly.loopstart = loopcount;
-	poly.totloop = face_size;
-
-	/* TODO: reverse */
-	int rev_loop = loopcount;
-	for (int f = face_size; f-- ;) {
-		MLoop &loop = data->mloops[rev_loop + f];
-		loop.v = (*data->face_indices)[loopcount++];
+	for (int i = 0, e = dm->getNumPolys(dm); i < e; ++i) {
+		MPoly &poly = mpolys[i];
+		poly.flag |= ME_SMOOTH;
 	}
 }
-#endif
 
-static DerivedMesh *read_mesh_sample(DerivedMesh *dm, const IObject &iobject, const float time)
+static void *add_customdata_cb(void *user_data, const char *name, int data_type)
+{
+	DerivedMesh *dm = static_cast<DerivedMesh *>(user_data);
+	CustomDataType cd_data_type = static_cast<CustomDataType>(data_type);
+	void *cd_ptr = NULL;
+
+	if (ELEM(cd_data_type, CD_MLOOPUV, CD_MLOOPCOL)) {
+		cd_ptr = CustomData_get_layer_named(dm->getLoopDataLayout(dm), cd_data_type, name);
+
+		if (cd_ptr == NULL) {
+			cd_ptr = CustomData_add_layer_named(dm->getLoopDataLayout(dm),
+			                                    cd_data_type,
+			                                    CD_DEFAULT,
+			                                    NULL,
+			                                    dm->getNumLoops(dm),
+			                                    name);
+		}
+	}
+
+	return cd_ptr;
+}
+
+ABC_INLINE CDStreamConfig get_config(DerivedMesh *dm)
+{
+	CDStreamConfig config;
+
+	config.user_data = dm;
+	config.mvert = dm->getVertArray(dm);
+	config.mloop = dm->getLoopArray(dm);
+	config.mpoly = dm->getPolyArray(dm);
+	config.totloop = dm->getNumLoops(dm);
+	config.totpoly = dm->getNumPolys(dm);
+	config.loopdata = dm->getLoopDataLayout(dm);
+	config.add_customdata_cb = add_customdata_cb;
+
+	return config;
+}
+
+static DerivedMesh *read_mesh_sample(DerivedMesh *dm, const IObject &iobject, const float time, int read_flag)
 {
 	IPolyMesh mesh(iobject, kWrapExisting);
 	IPolyMeshSchema schema = mesh.getSchema();
@@ -655,75 +914,90 @@ static DerivedMesh *read_mesh_sample(DerivedMesh *dm, const IObject &iobject, co
 	const Alembic::Abc::Int32ArraySamplePtr &face_indices = sample.getFaceIndices();
 	const Alembic::Abc::Int32ArraySamplePtr &face_counts = sample.getFaceCounts();
 
-	IV2fGeomParam::Sample::samp_ptr_type uvsamp_vals;
-	const IV2fGeomParam uv = schema.getUVsParam();
+	DerivedMesh *new_dm = NULL;
 
-	if (uv.valid()) {
-		IV2fGeomParam::Sample uvsamp = uv.getExpandedValue(sample_sel);
-		uvsamp_vals = uvsamp.getVals();
-	}
-
-	IN3fGeomParam::Sample::samp_ptr_type normal_vals;
-	const IN3fGeomParam normals = schema.getNormalsParam();
-
-	if (normals.valid()) {
-		IN3fGeomParam::Sample normsamp = normals.getExpandedValue(sample_sel);
-		normal_vals = normsamp.getVals();
-
-		//printf("Reading normal sample: %d %d\n", (int)normal_vals->size(), (int)time);
-	}
-
-	IBoolGeomParam::Sample::samp_ptr_type smooth_vals;
-
-	try {
-		const IBoolGeomParam smooth = IBoolGeomParam(schema.getArbGeomParams(), "smooth");
-
-		if (smooth.valid()) {
-			IBoolGeomParam::Sample smoothsamp = smooth.getExpandedValue(sample_sel);
-			smooth_vals = smoothsamp.getVals();
-
-			//printf("Reading smooth sample: %d %d\n", (int)smooth_vals->size(), (int)time);
-		}
-	}
-	catch (...)
-	{
-		printf("No Smooth Data found, skipping.\n");
-	}
+	/* Only read point data when streaming meshes, unless we need to create new ones. */
+	ImportSettings settings;
+	settings.read_flag |= read_flag;
 
 	if (dm->getNumVerts(dm) != positions->size()) {
-		dm = CDDM_new(positions->size(), 0, 0, face_indices->size(), face_counts->size());
+		new_dm = CDDM_from_template(dm,
+		                            positions->size(),
+		                            0,
+		                            0,
+		                            face_indices->size(),
+		                            face_counts->size());
+
+		settings.read_flag |= MOD_MESHSEQ_READ_ALL;
 	}
 
-	MVert *mverts = dm->getVertArray(dm);
-	MPoly *mpolys = dm->getPolyArray(dm);
-	MLoop *mloops = dm->getLoopArray(dm);
+	CDStreamConfig config = get_config(new_dm ? new_dm : dm);
 
-//TODO make parallelizable, dont forget UV and normals here
-#ifdef PARALLEL_READ
-	MeshReadData data;
-	data.mverts = mverts;
-	data.mpolys = mpolys;
-	data.mloops = mloops;
-	data.positions = positions;
-	data.face_indices = face_indices;
-	data.face_counts = face_counts;
+	bool has_loop_normals = false;
+	read_mesh_sample(&settings, schema, sample_sel, config, has_loop_normals);
 
-	BLI_task_parallel_range(0, num_verts, &data, read_verts_cb, num_verts > 10000);
-	BLI_task_parallel_range(0, num_polys, &data, read_faces_cb, num_verts > 10000);
-#else
-	read_mverts(mverts, positions, normal_vals);
-	read_mpolys(mpolys, mloops, NULL, face_indices, face_counts, uvsamp_vals, smooth_vals);
-#endif
+	if (new_dm) {
+		/* Check if we had ME_SMOOTH flag set to restore it. */
+		if (!has_loop_normals && check_smooth_poly_flag(dm)) {
+			set_smooth_poly_flag(new_dm);
+		}
 
-	CDDM_calc_edges(dm);
-	dm->dirty = static_cast<DMDirtyFlag>(static_cast<int>(dm->dirty) &~ static_cast<int>(DM_DIRTY_NORMALS));
+		CDDM_calc_normals(new_dm);
+		CDDM_calc_edges(new_dm);
+
+		return new_dm;
+	}
 
 	return dm;
 }
 
-using Alembic::Abc::ObjectHeader;
-using Alembic::AbcGeom::IPointsSchema;
-using Alembic::AbcGeom::ICurvesSchema;
+using Alembic::AbcGeom::ISubDSchema;
+
+static DerivedMesh *read_subd_sample(DerivedMesh *dm, const IObject &iobject, const float time, int read_flag)
+{
+	ISubD mesh(iobject, kWrapExisting);
+	ISubDSchema schema = mesh.getSchema();
+	ISampleSelector sample_sel(time);
+	const ISubDSchema::Sample sample = schema.getValue(sample_sel);
+
+	const P3fArraySamplePtr &positions = sample.getPositions();
+	const Alembic::Abc::Int32ArraySamplePtr &face_indices = sample.getFaceIndices();
+	const Alembic::Abc::Int32ArraySamplePtr &face_counts = sample.getFaceCounts();
+
+	DerivedMesh *new_dm = NULL;
+
+	ImportSettings settings;
+	settings.read_flag |= read_flag;
+
+	if (dm->getNumVerts(dm) != positions->size()) {
+		new_dm = CDDM_from_template(dm,
+		                            positions->size(),
+		                            0,
+		                            0,
+		                            face_indices->size(),
+		                            face_counts->size());
+
+		settings.read_flag |= MOD_MESHSEQ_READ_ALL;
+	}
+
+	/* Only read point data when streaming meshes, unless we need to create new ones. */
+	CDStreamConfig config = get_config(new_dm ? new_dm : dm);
+	read_subd_sample(&settings, schema, sample_sel, config);
+
+	if (new_dm) {
+		/* Check if we had ME_SMOOTH flag set to restore it. */
+		if (check_smooth_poly_flag(dm)) {
+			set_smooth_poly_flag(new_dm);
+		}
+
+		CDDM_calc_normals(new_dm);
+		CDDM_calc_edges(new_dm);
+
+		return new_dm;
+	}
+
+	return dm;
+}
 
 static DerivedMesh *read_points_sample(DerivedMesh *dm, const IObject &iobject, const float time)
 {
@@ -734,18 +1008,25 @@ static DerivedMesh *read_points_sample(DerivedMesh *dm, const IObject &iobject, 
 
 	const P3fArraySamplePtr &positions = sample.getPositions();
 
+	DerivedMesh *new_dm = NULL;
+
 	if (dm->getNumVerts(dm) != positions->size()) {
-		dm = CDDM_new(positions->size(), 0, 0, 0, 0);
+		new_dm = CDDM_new(positions->size(), 0, 0, 0, 0);
 	}
 
-	MVert *mverts = dm->getVertArray(dm);
+	CDStreamConfig config = get_config(new_dm ? new_dm : dm);
+	read_points_sample(schema, sample_sel, config, time);
 
-	read_mverts(mverts, positions);
-
-	return dm;
+	return new_dm ? new_dm : dm;
 }
 
-void read_curves_sample(float (*vertexCos)[3], int max_verts, const IObject &iobject, const float time)
+/* NOTE: Alembic only stores data about control points, but the DerivedMesh
+ * passed from the cache modifier contains the displist, which has more data
+ * than the control points, so to avoid corrupting the displist we modify the
+ * object directly and create a new DerivedMesh from that. Also we might need to
+ * create new or delete existing NURBS in the curve.
+ */
+static DerivedMesh *read_curves_sample(Object *ob, const IObject &iobject, const float time)
 {
 	ICurves points(iobject, kWrapExisting);
 	ICurvesSchema schema = points.getSchema();
@@ -753,64 +1034,103 @@ void read_curves_sample(float (*vertexCos)[3], int max_verts, const IObject &iob
 	const ICurvesSchema::Sample sample = schema.getValue(sample_sel);
 
 	const P3fArraySamplePtr &positions = sample.getPositions();
+	const Int32ArraySamplePtr num_vertices = sample.getCurvesNumVertices();
 
-	for (int i = 0; i < min_ff(max_verts, positions->size()); ++i) {
-		float *vert = vertexCos[i];
-		Imath::V3f pos_in = (*positions)[i];
+	int vertex_idx = 0;
+	int curve_idx = 0;
+	Curve *curve = static_cast<Curve *>(ob->data);
 
-		/* Convert Y-up to Z-up. */
-		vert[0] = pos_in[0];
-		vert[1] = -pos_in[2];
-		vert[2] = pos_in[1];
+	const int curve_count = BLI_listbase_count(&curve->nurb);
+
+	if (curve_count != num_vertices->size()) {
+		BKE_nurbList_free(&curve->nurb);
+		read_curve_sample(curve, schema, time);
 	}
+	else {
+		Nurb *nurbs = static_cast<Nurb *>(curve->nurb.first);
+		for (; nurbs; nurbs = nurbs->next, ++curve_idx) {
+			const int totpoint = (*num_vertices)[curve_idx];
+
+			if (nurbs->bp) {
+				BPoint *point = nurbs->bp;
+
+				for (int i = 0; i < totpoint; ++i, ++point, ++vertex_idx) {
+					const Imath::V3f &pos = (*positions)[vertex_idx];
+					copy_yup_zup(point->vec, pos.getValue());
+				}
+			}
+			else if (nurbs->bezt) {
+				BezTriple *bezier = nurbs->bezt;
+
+				for (int i = 0; i < totpoint; ++i, ++bezier, ++vertex_idx) {
+					const Imath::V3f &pos = (*positions)[vertex_idx];
+					copy_yup_zup(bezier->vec[1], pos.getValue());
+				}
+			}
+		}
+	}
+
+	return CDDM_from_curve(ob);
 }
 
-DerivedMesh *ABC_read_mesh(DerivedMesh *dm, const char *filepath, const char *object_path, const float time)
+DerivedMesh *ABC_read_mesh(AbcArchiveHandle *handle,
+                           Object *ob,
+                           DerivedMesh *dm,
+                           const char *object_path,
+                           const float time,
+                           const char **err_str,
+                           int read_flag)
 {
-	IArchive archive = open_archive(filepath);
+	IArchive *archive = archive_from_handle(handle);
 
-	if (!archive.valid()) {
+	if (!archive || !archive->valid()) {
+		*err_str = "Invalid archive!";
 		return NULL;
 	}
 
 	IObject iobject;
-	find_iobject(archive.getTop(), iobject, object_path);
+	find_iobject(archive->getTop(), iobject, object_path);
 
 	if (!iobject.valid()) {
+		*err_str = "Invalid object: verify object path";
 		return NULL;
 	}
 
-	const Alembic::Abc::ObjectHeader &header = iobject.getHeader();
+	const ObjectHeader &header = iobject.getHeader();
 
 	if (IPolyMesh::matches(header)) {
-		return read_mesh_sample(dm, iobject, time);
+		if (ob->type != OB_MESH) {
+			*err_str = "Object type mismatch: object path points to a mesh!";
+			return NULL;
+		}
+
+		return read_mesh_sample(dm, iobject, time, read_flag);
+	}
+	else if (ISubD::matches(header)) {
+		if (ob->type != OB_MESH) {
+			*err_str = "Object type mismatch: object path points to a subdivision mesh!";
+			return NULL;
+		}
+
+		return read_subd_sample(dm, iobject, time, read_flag);
 	}
 	else if (IPoints::matches(header)) {
+		if (ob->type != OB_MESH) {
+			*err_str = "Object type mismatch: object path points to a point cloud (requires a mesh object)!";
+			return NULL;
+		}
+
 		return read_points_sample(dm, iobject, time);
 	}
+	else if (ICurves::matches(header)) {
+		if (ob->type != OB_CURVE) {
+			*err_str = "Object type mismatch: object path points to a curve!";
+			return NULL;
+		}
 
+		return read_curves_sample(ob, iobject, time);
+	}
+
+	*err_str = "Unsupported object type: verify object path"; // or poke developer
 	return NULL;
-}
-
-void ABC_read_vertex_cache(const char *filepath, const char *object_path, const float time,
-                           float (*vertexCos)[3], int max_verts)
-{
-	IArchive archive = open_archive(filepath);
-
-	if (!archive.valid()) {
-		return;
-	}
-
-	IObject iobject;
-	find_iobject(archive.getTop(), iobject, object_path);
-
-	if (!iobject.valid()) {
-		return;
-	}
-
-	const Alembic::Abc::ObjectHeader &header = iobject.getHeader();
-
-	if (ICurves::matches(header)) {
-		return read_curves_sample(vertexCos, max_verts, iobject, time);
-	}
 }

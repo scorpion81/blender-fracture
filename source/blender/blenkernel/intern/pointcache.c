@@ -55,8 +55,6 @@
 
 #include "PIL_time.h"
 
-#include "WM_api.h"
-
 #include "BKE_appdir.h"
 #include "BKE_anim.h"
 #include "BKE_cloth.h"
@@ -390,9 +388,9 @@ static void ptcache_particle_interpolate(int index, void *psys_v, void **data, f
 		}
 	}
 
-	/* determine rotation from velocity */
+	/* default to no rotation */
 	if (data[BPHYS_DATA_LOCATION] && !data[BPHYS_DATA_ROTATION]) {
-		vec_to_quat(keys[2].rot, keys[2].vel, OB_NEGX, OB_POSZ);
+		unit_qt(keys[2].rot);
 	}
 
 	if (cfra > pa->time)
@@ -2624,7 +2622,7 @@ static int ptcache_read_openvdb_stream(PTCacheID *pid, int cfra)
 #ifdef WITH_OPENVDB
 	char filename[FILE_MAX * 2];
 
-	 /* save blend file before using disk pointcache */
+	/* save blend file before using disk pointcache */
 	if (!G.relbase_valid && (pid->cache->flag & PTCACHE_EXTERNAL) == 0)
 		return 0;
 

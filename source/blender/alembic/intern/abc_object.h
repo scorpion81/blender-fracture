@@ -20,12 +20,13 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#pragma once
+#ifndef __ABC_OBJECT_H__
+#define __ABC_OBJECT_H__
 
 #include <Alembic/Abc/All.h>
 #include <Alembic/AbcGeom/All.h>
 
-#include "abc_export_options.h"
+#include "abc_exporter.h"
 
 extern "C" {
 #include "DNA_ID.h"
@@ -34,57 +35,48 @@ extern "C" {
 class AbcTransformWriter;
 
 struct Main;
+struct Object;
 
 /* ************************************************************************** */
 
 class AbcObjectWriter {
 protected:
 	Object *m_object;
-    ExportSettings &m_settings;
+	ExportSettings &m_settings;
 
 	Scene *m_scene;
 	uint32_t m_time_sampling;
 
-    Imath::Box3d m_bounds;
-    std::vector<AbcObjectWriter *> m_children;
+	Imath::Box3d m_bounds;
+	std::vector<AbcObjectWriter *> m_children;
 
-    std::vector< std::pair<std::string, IDProperty *> > m_props;
+	std::vector< std::pair<std::string, IDProperty *> > m_props;
 
-    bool m_first_frame;
+	bool m_first_frame;
 	std::string m_name;
 
 public:
 	AbcObjectWriter(Scene *scene,
 	                Object *ob,
-	                uint32_t sampling_time,
+	                uint32_t time_sampling,
 	                ExportSettings &settings,
 	                AbcObjectWriter *parent = NULL);
 
-    virtual ~AbcObjectWriter();
+	virtual ~AbcObjectWriter();
 
 	void addChild(AbcObjectWriter *child);
 
-    virtual Imath::Box3d bounds();
+	virtual Imath::Box3d bounds();
 
-    void write();
+	void write();
 
 private:
-    virtual void do_write() = 0;
-
-	void getAllProperties(IDProperty *group, std::vector<std::pair<std::string, IDProperty*> > &allProps, const std::string &parent);
-
-	void writeArrayProperty(IDProperty *p, const Alembic::Abc::OCompoundProperty &abcProps);
-	void writeProperty(IDProperty *p, const std::string &name, const Alembic::Abc::OCompoundProperty &abcProps);
-	void writeGeomProperty(IDProperty *p, const std::string &name, const Alembic::Abc::OCompoundProperty &abcProps);
-
-protected:
-	bool hasProperties(ID *id);
-	void writeProperties(ID *id, const Alembic::Abc::OCompoundProperty &props, bool writeAsUserData = true);
-
-	bool getPropertyValue(ID *id, const std::string &name, double &val);
+	virtual void do_write() = 0;
 };
 
 /* ************************************************************************** */
+
+class CacheFile;
 
 struct ImportSettings {
 	bool do_convert_mat;
@@ -94,9 +86,51 @@ struct ImportSettings {
 	int from_forward;
 	float scale;
 	bool is_sequence;
+	bool set_frame_range;
+
+	/* Length and frame offset of file sequences. */
+	int sequence_len;
+	int offset;
+
+	/* From MeshSeqCacheModifierData.read_flag */
+	int read_flag;
+
+	bool validate_meshes;
+
+	CacheFile *cache_file;
+
+	ImportSettings()
+	    : do_convert_mat(false)
+	    , from_up(0)
+	    , from_forward(0)
+	    , scale(1.0f)
+	    , is_sequence(false)
+	    , set_frame_range(false)
+	    , sequence_len(1)
+	    , offset(0)
+	    , read_flag(0)
+	    , validate_meshes(false)
+	    , cache_file(NULL)
+	{}
 };
 
+template <typename Schema>
+static bool has_animations(Schema &schema, ImportSettings *settings)
+{
+	if (settings->is_sequence) {
+		return true;
+	}
+
+	if (!schema.isConstant()) {
+		return true;
+	}
+
+	return false;
+}
+
 /* ************************************************************************** */
+
+using Alembic::AbcCoreAbstract::chrono_t;
 
 class AbcObjectReader {
 protected:
@@ -107,6 +141,9 @@ protected:
 	Alembic::Abc::IObject m_iobject;
 
 	ImportSettings *m_settings;
+
+	chrono_t m_min_time;
+	chrono_t m_max_time;
 
 public:
 	explicit AbcObjectReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
@@ -119,9 +156,14 @@ public:
 
 	virtual bool valid() const = 0;
 
-	virtual void readObjectData(Main *bmain, Scene *scene, float time) = 0;
+	virtual void readObjectData(Main *bmain, float time) = 0;
 
 	void readObjectMatrix(const float time);
 
-	void addDefaultModifier(Main *bmain) const;
+	void addCacheModifier() const;
+
+	chrono_t minTime() const;
+	chrono_t maxTime() const;
 };
+
+#endif  /* __ABC_OBJECT_H__ */

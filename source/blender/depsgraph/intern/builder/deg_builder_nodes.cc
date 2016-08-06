@@ -24,7 +24,7 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file blender/depsgraph/intern/builder/deg_build_nodes.cc
+/** \file blender/depsgraph/intern/builder/deg_builder_nodes.cc
  *  \ingroup depsgraph
  *
  * Methods for constructing depsgraph's nodes
@@ -46,6 +46,7 @@ extern "C" {
 #include "DNA_action_types.h"
 #include "DNA_anim_types.h"
 #include "DNA_armature_types.h"
+#include "DNA_cachefile_types.h"
 #include "DNA_camera_types.h"
 #include "DNA_constraint_types.h"
 #include "DNA_curve_types.h"
@@ -339,6 +340,14 @@ void DepsgraphNodeBuilder::build_scene(Main *bmain, Scene *scene)
 	if (scene->gpd) {
 		build_gpencil(scene->gpd);
 	}
+
+	/* cache files */
+	for (CacheFile *cachefile = static_cast<CacheFile *>(bmain->cachefiles.first);
+	     cachefile;
+	     cachefile = static_cast<CacheFile *>(cachefile->id.next))
+	{
+		build_cachefile(cachefile);
+	}
 }
 
 void DepsgraphNodeBuilder::build_group(Scene *scene,
@@ -398,12 +407,12 @@ void DepsgraphNodeBuilder::build_object(Scene *scene, Base *base, Object *ob)
 {
 	if (ob->id.tag & LIB_TAG_DOIT) {
 		IDDepsNode *id_node = m_graph->find_id_node(&ob->id);
-		id_node->layers = base->lay;
+		id_node->layers |= base->lay;
 		return;
 	}
 
 	IDDepsNode *id_node = add_id_node(&ob->id);
-	id_node->layers = base->lay;
+	id_node->layers |= base->lay;
 	ob->customdata_mask = 0;
 
 	/* standard components */
@@ -442,7 +451,7 @@ void DepsgraphNodeBuilder::build_object(Scene *scene, Base *base, Object *ob)
 			}
 
 			case OB_ARMATURE: /* Pose */
-				if (ob->id.lib != NULL && ob->proxy_from != NULL) {
+				if (ID_IS_LINKED_DATABLOCK(ob) && ob->proxy_from != NULL) {
 					build_proxy_rig(ob);
 				}
 				else {
@@ -980,11 +989,6 @@ void DepsgraphNodeBuilder::build_obdata_geom(Scene *scene, Object *ob)
 
 	// TODO: "Done" operation
 
-	/* ShapeKeys */
-	Key *key = BKE_key_from_object(ob);
-	if (key)
-		build_shapekeys(key);
-
 	/* Modifiers */
 	if (ob->modifiers.first) {
 		ModifierData *md;
@@ -1018,6 +1022,12 @@ void DepsgraphNodeBuilder::build_obdata_geom(Scene *scene, Object *ob)
 
 	if (obdata->tag & LIB_TAG_DOIT) {
 		return;
+	}
+
+	/* ShapeKeys */
+	Key *key = BKE_key_from_object(ob);
+	if (key) {
+		build_shapekeys(key);
 	}
 
 	build_animdata(obdata);
@@ -1256,6 +1266,20 @@ void DepsgraphNodeBuilder::build_gpencil(bGPdata *gpd)
 	 * need to be hosted somewhere...
 	 */
 	build_animdata(gpd_id);
+}
+
+void DepsgraphNodeBuilder::build_cachefile(CacheFile *cache_file)
+{
+	ID *cache_file_id = &cache_file->id;
+
+	add_component_node(cache_file_id, DEPSNODE_TYPE_CACHE);
+
+	add_operation_node(cache_file_id, DEPSNODE_TYPE_CACHE,
+	                   DEPSOP_TYPE_EXEC, NULL,
+	                   DEG_OPCODE_PLACEHOLDER, "Cache File Update");
+
+	add_id_node(cache_file_id);
+	build_animdata(cache_file_id);
 }
 
 }  // namespace DEG

@@ -25,6 +25,7 @@
 #include "kernel_camera.h"
 
 #include "geom/geom.h"
+#include "bvh/bvh.h"
 
 #include "kernel_accumulate.h"
 #include "kernel_shader.h"
@@ -253,7 +254,7 @@ ccl_device void kernel_path_indirect(KernelGlobals *kg,
 		                      &isect,
 		                      ray);
 		float rbsdf = path_state_rng_1D_for_decision(kg, rng, state, PRNG_BSDF);
-		shader_eval_surface(kg, sd, state, rbsdf, state->flag, SHADER_CONTEXT_INDIRECT);
+		shader_eval_surface(kg, sd, rng, state, rbsdf, state->flag, SHADER_CONTEXT_INDIRECT);
 #ifdef __BRANCHED_PATH__
 		shader_merge_closures(sd);
 #endif
@@ -434,8 +435,12 @@ ccl_device_noinline void kernel_path_ao(KernelGlobals *kg,
 }
 
 #ifdef __SUBSURFACE__
-
-ccl_device bool kernel_path_subsurface_scatter(
+#  ifndef __KERNEL_CUDA__
+ccl_device
+#  else
+ccl_device_inline
+#  endif
+bool kernel_path_subsurface_scatter(
         KernelGlobals *kg,
         ShaderData *sd,
         ShaderData *emission_sd,
@@ -791,7 +796,7 @@ ccl_device_inline float4 kernel_path_integrate(KernelGlobals *kg,
 		/* setup shading */
 		shader_setup_from_ray(kg, &sd, &isect, &ray);
 		float rbsdf = path_state_rng_1D_for_decision(kg, rng, &state, PRNG_BSDF);
-		shader_eval_surface(kg, &sd, &state, rbsdf, state.flag, SHADER_CONTEXT_MAIN);
+		shader_eval_surface(kg, &sd, rng, &state, rbsdf, state.flag, SHADER_CONTEXT_MAIN);
 
 		/* holdout */
 #ifdef __HOLDOUT__

@@ -39,36 +39,44 @@ using Alembic::AbcGeom::OXform;
 
 /* ************************************************************************** */
 
+static bool has_parent_camera(Object *ob)
+{
+	if (!ob->parent) {
+		return false;
+	}
+
+	Object *parent = ob->parent;
+
+	if (parent->type == OB_CAMERA) {
+		return true;
+	}
+
+	return has_parent_camera(parent);
+}
+
+/* ************************************************************************** */
+
 AbcTransformWriter::AbcTransformWriter(Object *ob,
                                        const OObject &abc_parent,
                                        AbcTransformWriter *parent,
-                                       unsigned int sampling_time,
+                                       unsigned int time_sampling,
                                        ExportSettings &settings)
-    : AbcObjectWriter(NULL, ob, sampling_time, settings, parent)
+    : AbcObjectWriter(NULL, ob, time_sampling, settings, parent)
 {
 	m_is_animated = hasAnimation(m_object);
 	m_parent = NULL;
 
 	if (!m_is_animated) {
-		sampling_time = 0;
+		time_sampling = 0;
 	}
 
-    m_xform = OXform(abc_parent, get_id_name(m_object), sampling_time);
+	m_xform = OXform(abc_parent, get_id_name(m_object), time_sampling);
 	m_schema = m_xform.getSchema();
 }
 
 void AbcTransformWriter::do_write()
 {
 	if (m_first_frame) {
-		if (hasProperties(reinterpret_cast<ID *>(m_object))) {
-			if (m_settings.export_props_as_geo_params) {
-				writeProperties(reinterpret_cast<ID *>(m_object), m_schema.getArbGeomParams());
-			}
-			else {
-				writeProperties(reinterpret_cast<ID *>(m_object), m_schema.getUserProperties());
-			}
-		}
-
 		m_visibility = Alembic::AbcGeom::CreateVisibilityProperty(m_xform, m_xform.getSchema().getTimeSampling());
 	}
 
@@ -81,14 +89,23 @@ void AbcTransformWriter::do_write()
 	float mat[4][4];
 	create_transform_matrix(m_object, mat);
 
-	if (m_object->type == OB_CAMERA) {
+	/* Only apply rotation to root camera, parenting will propagate it. */
+	if (m_object->type == OB_CAMERA && !has_parent_camera(m_object)) {
 		float rot_mat[4][4];
 		unit_m4(rot_mat);
 		rotate_m4(rot_mat, 'X', -M_PI_2);
 		mul_m4_m4m4(mat, mat, rot_mat);
 	}
 
-    m_matrix = convert_matrix(mat);
+	if (!m_object->parent) {
+		/* Only apply scaling to root objects, parenting will propagate it. */
+		float scale_mat[4][4];
+		scale_m4_fl(scale_mat, m_settings.global_scale);
+		mul_m4_m4m4(mat, mat, scale_mat);
+		mul_v3_fl(mat[3], m_settings.global_scale);
+	}
+
+	m_matrix = convert_matrix(mat);
 
 	m_sample.setMatrix(m_matrix);
 	m_schema.set(m_sample);
@@ -108,7 +125,7 @@ Imath::Box3d AbcTransformWriter::bounds()
 
 bool AbcTransformWriter::hasAnimation(Object */*ob*/) const
 {
-	/* TODO: implement this */
+	/* TODO(kevin): implement this. */
 	return true;
 }
 
@@ -116,14 +133,20 @@ bool AbcTransformWriter::hasAnimation(Object */*ob*/) const
 
 AbcEmptyReader::AbcEmptyReader(const Alembic::Abc::IObject &object, ImportSettings &settings)
     : AbcObjectReader(object, settings)
-{}
+{
+	Alembic::AbcGeom::IXform xform(object, Alembic::AbcGeom::kWrapExisting);
+	m_schema = xform.getSchema();
+
+	get_min_max_time(m_schema, m_min_time, m_max_time);
+}
 
 bool AbcEmptyReader::valid() const
 {
-	return true; // TODO? m_schema.valid();
+	return m_schema.valid();
 }
 
-void AbcEmptyReader::readObjectData(Main *bmain, Scene *scene, float /*time*/)
+void AbcEmptyReader::readObjectData(Main *bmain, float /*time*/)
 {
-	m_object = BKE_object_add(bmain, scene, OB_EMPTY, m_object_name.c_str());
+	m_object = BKE_object_add_only_object(bmain, OB_EMPTY, m_object_name.c_str());
+	m_object->data = NULL;
 }

@@ -25,17 +25,17 @@
 ARGS=$( \
 getopt \
 -o s:i:t:h \
---long source:,install:,tmp:,info:,threads:,help,static,show-deps,no-sudo,no-confirm,with-all,with-opencollada,\
+--long source:,install:,tmp:,info:,threads:,help,show-deps,no-sudo,no-build,no-confirm,with-all,with-opencollada,\
 ver-ocio:,ver-oiio:,ver-llvm:,ver-osl:,ver-osd:,ver-openvdb:,\
 force-all,force-python,force-numpy,force-boost,\
 force-ocio,force-openexr,force-oiio,force-llvm,force-osl,force-osd,force-openvdb,\
-force-ffmpeg,force-opencollada,force-alembic,force-hdf5,\
+force-ffmpeg,force-opencollada,force-alembic,\
 build-all,build-python,build-numpy,build-boost,\
 build-ocio,build-openexr,build-oiio,build-llvm,build-osl,build-osd,build-openvdb,\
-build-ffmpeg,build-opencollada,build-alembic,build-hdf5,\
+build-ffmpeg,build-opencollada,build-alembic,\
 skip-python,skip-numpy,skip-boost,\
 skip-ocio,skip-openexr,skip-oiio,skip-llvm,skip-osl,skip-osd,skip-openvdb,\
-skip-ffmpeg,skip-opencollada,skip-alembic,skip-hdf5, \
+skip-ffmpeg,skip-opencollada,skip-alembic \
 -- "$@" \
 )
 
@@ -76,9 +76,6 @@ ARGUMENTS_INFO="\"COMMAND LINE ARGUMENTS:
     -h, --help
         Show this message and exit.
 
-	--static
-		Build static libs.
-
     --show-deps
         Show main dependencies of Blender (including officially supported versions) and exit.
 
@@ -99,6 +96,9 @@ ARGUMENTS_INFO="\"COMMAND LINE ARGUMENTS:
 
     --no-sudo
         Disable use of sudo (this script won't be able to do much though, will just print needed packages...).
+
+    --no-build
+        Do not build (compile) anything, dependencies not installable with the package manager will remain missing.
 
     --no-confirm
         Disable any interaction with user (suitable for automated run).
@@ -166,12 +166,9 @@ ARGUMENTS_INFO="\"COMMAND LINE ARGUMENTS:
 
     --build-openvdb
         Force the build of OpenVDB.
-	
-	--build-alembic
-        Force the build of Alembic.
 
-	--build-hdf5
-        Force the build of HDF5.
+    --build-alembic
+        Force the build of Alembic.
 
     --build-opencollada
         Force the build of OpenCOLLADA.
@@ -222,11 +219,8 @@ ARGUMENTS_INFO="\"COMMAND LINE ARGUMENTS:
     --force-openvdb
         Force the rebuild of OpenVDB.
 
-	--force-alembic
-        Force the build of Alembic.
-
-	--force-hdf5
-        Force the build of HDF5.
+    --force-alembic
+        Force the rebuild of Alembic.
 
     --force-opencollada
         Force the rebuild of OpenCOLLADA.
@@ -270,6 +264,9 @@ ARGUMENTS_INFO="\"COMMAND LINE ARGUMENTS:
     --skip-openvdb
         Unconditionally skip OpenVDB installation/building.
 
+    --skip-alembic
+        Unconditionally skip Alembic installation/building.
+
     --skip-opencollada
         Unconditionally skip OpenCOLLADA installation/building.
 
@@ -279,23 +276,11 @@ ARGUMENTS_INFO="\"COMMAND LINE ARGUMENTS:
 ##### Main Vars #####
 
 DO_SHOW_DEPS=false
-STATIC=false
 
 SUDO="sudo"
 
+NO_BUILD=false
 NO_CONFIRM=false
-
-ALEMBIC_VERSION="1.5.8"
-ALEMBIC_VERSION_MIN="1.5.8"
-ALEMBIC_FORCE_BUILD=false
-ALEMBIC_FORCE_REBUILD=false
-ALEMBIC_SKIP=false
-
-HDF5_VERSION="1.8.15-patch1"
-HDF5_VERSION_MIN="1.8.15-patch1"
-HDF5_FORCE_BUILD=false
-HDF5_FORCE_REBUILD=false
-HDF5_SKIP=false
 
 PYTHON_VERSION="3.5.1"
 PYTHON_VERSION_MIN="3.5"
@@ -345,7 +330,7 @@ LLVM_FORCE_REBUILD=false
 LLVM_SKIP=false
 
 # OSL needs to be compiled for now!
-OSL_VERSION="1.7.1"
+OSL_VERSION="1.7.3"
 OSL_VERSION_MIN=$OSL_VERSION
 OSL_FORCE_BUILD=false
 OSL_FORCE_REBUILD=false
@@ -366,6 +351,13 @@ OPENVDB_VERSION_MIN=$OPENVDB_VERSION
 OPENVDB_FORCE_BUILD=false
 OPENVDB_FORCE_REBUILD=false
 OPENVDB_SKIP=false
+
+# Alembic needs to be compiled for now
+ALEMBIC_VERSION="1.6.0"
+ALEMBIC_VERSION_MIN=$ALEMBIC_VERSION
+ALEMBIC_FORCE_BUILD=false
+ALEMBIC_FORCE_REBUILD=false
+ALEMBIC_SKIP=false
 
 # Version??
 OPENCOLLADA_VERSION="1.3"
@@ -481,9 +473,6 @@ while true; do
       PRINT ""
       exit 0
     ;;
-	--static)
-	  STATIC=true; shift; continue
-	;;
     --show-deps)
       # We have to defer...
       DO_SHOW_DEPS=true; shift; continue
@@ -493,6 +482,12 @@ while true; do
       WARNING "--no-sudo enabled, this script might not be able to do much..."
       PRINT ""
       SUDO=""; shift; continue
+    ;;
+    --no-build)
+      PRINT ""
+      WARNING "--no-build enabled, this script will not be able to install all dependencies..."
+      PRINT ""
+      NO_BUILD=true; shift; continue
     ;;
     --no-confirm)
       NO_CONFIRM=true; shift; continue
@@ -546,8 +541,7 @@ while true; do
       OPENVDB_FORCE_BUILD=true
       OPENCOLLADA_FORCE_BUILD=true
       FFMPEG_FORCE_BUILD=true
-	  HDF5_FORCE_BUILD=true
-	  ALEMBIC_FORCE_BUILD=true
+      ALEMBIC_FORCE_BUILD=true
       shift; continue
     ;;
     --build-python)
@@ -589,13 +583,10 @@ while true; do
     ;;
     --build-ffmpeg)
       FFMPEG_FORCE_BUILD=true; shift; continue
-	;;	
-	--build-alembic)
+    ;;
+    --build-alembic)
       ALEMBIC_FORCE_BUILD=true; shift; continue
-	;;
-	--build-hdf5)
-      HDF5_FORCE_BUILD=true; shift; continue
-	;;
+    ;;
     --force-all)
       PYTHON_FORCE_REBUILD=true
       NUMPY_FORCE_REBUILD=true
@@ -609,6 +600,7 @@ while true; do
       OPENVDB_FORCE_REBUILD=true
       OPENCOLLADA_FORCE_REBUILD=true
       FFMPEG_FORCE_REBUILD=true
+      ALEMBIC_FORCE_REBUILD=true
       shift; continue
     ;;
     --force-python)
@@ -648,12 +640,9 @@ while true; do
     ;;
     --force-ffmpeg)
       FFMPEG_FORCE_REBUILD=true; shift; continue
-	;;	
-	--force-alembic)
+    ;;
+    --force-alembic)
       ALEMBIC_FORCE_REBUILD=true; shift; continue
-	;;	
-	--force-hdf5)
-      HDF5_FORCE_REBUILD=true; shift; continue
     ;;
     --skip-python)
       PYTHON_SKIP=true; shift; continue
@@ -691,12 +680,9 @@ while true; do
     --skip-ffmpeg)
       FFMPEG_SKIP=true; shift; continue
     ;;
-	--skip-alembic)
+    --skip-alembic)
       ALEMBIC_SKIP=true; shift; continue
-	;;	
-	--skip-hdf5)
-      HDF5_SKIP=true; shift; continue
-	;;
+    ;;
     --)
       # no more arguments to parse
       break
@@ -719,14 +705,6 @@ fi
 
 
 # This has to be done here, because user might force some versions...
-ALEMBIC_USE_REPO=false
-ALEMBIC_SOURCE=( "https://github.com/alembic/alembic/archive/${ALEMBIC_VERSION}.tar.gz" )
-# ALEMBIC_SOURCE_REPO=( "https://github.com/alembic/alembic.git" )
-# ALEMBIC_SOURCE_REPO_UID="e6c90d4faa32c4550adeaaf3f556dad4b73a92bb"
-# ALEMBIC_SOURCE_REPO_BRANCH="master"
-
-HDF5_SOURCE=("https://www.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8.15-patch1/src/hdf5-$HDF5_VERSION.tar.gz")
-
 PYTHON_SOURCE=( "https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tgz" )
 NUMPY_SOURCE=( "http://sourceforge.net/projects/numpy/files/NumPy/$NUMPY_VERSION/numpy-$NUMPY_VERSION.tar.gz" )
 
@@ -776,6 +754,12 @@ OPENVDB_SOURCE=( "https://github.com/dreamworksanimation/openvdb/archive/v${OPEN
 #~ OPENVDB_SOURCE_REPO_UID="404659fffa659da075d1c9416e4fc939139a84ee"
 #~ OPENVDB_SOURCE_REPO_BRANCH="dev"
 
+ALEMBIC_USE_REPO=false
+ALEMBIC_SOURCE=( "https://github.com/alembic/alembic/archive/${ALEMBIC_VERSION}.tar.gz" )
+# ALEMBIC_SOURCE_REPO=( "https://github.com/alembic/alembic.git" )
+# ALEMBIC_SOURCE_REPO_UID="e6c90d4faa32c4550adeaaf3f556dad4b73a92bb"
+# ALEMBIC_SOURCE_REPO_BRANCH="master"
+
 OPENCOLLADA_SOURCE=( "https://github.com/KhronosGroup/OpenCOLLADA.git" )
 OPENCOLLADA_REPO_UID="3335ac164e68b2512a40914b14c74db260e6ff7d"
 OPENCOLLADA_REPO_BRANCH="master"
@@ -817,8 +801,7 @@ You may also want to build them yourself (optional ones are [between brackets]):
     * [OpenSubDiv $OSD_VERSION_MIN] (from $OSD_SOURCE_REPO, branch $OSD_SOURCE_REPO_BRANCH, commit $OSD_SOURCE_REPO_UID).
     * [OpenVDB $OPENVDB_VERSION_MIN] (from $OPENVDB_SOURCE), [Blosc $OPENVDB_BLOSC_VERSION] (from $OPENVDB_BLOSC_SOURCE).
     * [OpenCollada] (from $OPENCOLLADA_SOURCE, branch $OPENCOLLADA_REPO_BRANCH, commit $OPENCOLLADA_REPO_UID).
-	* [Alembic $ALEMBIC_VERSION] (from $ALEMBIC_SOURCE).
-	* [HDF5 $HDF5_VERSION] (from $HDF5_SOURCE).\""
+    * [Alembic $ALEMBIC_VERSION] (from $ALEMBIC_SOURCE).\""
 
 if [ "$DO_SHOW_DEPS" = true ]; then
   PRINT ""
@@ -1013,173 +996,6 @@ run_ldconfig() {
   PRINT ""
 }
 
-
-#### Build HDF5 ####
-_init_hdf5() {
-  _src=$SRC/hdf5-$HDF5_VERSION
-  _git=false
-  _inst=$INST/hdf5-$HDF5_VERSION
-  _inst_shortcut=$INST/hdf5	
-}
-
-clean_Hdf5() {
-  _init_hdf5
-  _clean	
-}
-
-compile_Hdf5() {
-  # To be changed each time we make edits that would modify the compiled result!
-  hdf5_magic=31
-  _init_hdf5
-
-  # Clean install if needed!
-  magic_compile_check hdf5-$HDF5_VERSION $hdf5_magic
-  if [ $? -eq 1 -o "$HDF5_FORCE_REBUILD" = true ]; then
-    clean_Hdf5
-  fi
-
-  if [ ! -d $_inst ]; then
-    INFO "Building HDF5-$HDF5_VERSION"
-
-	# Rebuild dependecies as well!
-	ALEMBIC_FORCE_REBUILD=true
-	ALEMBIC_FORCE_BUILD=true
-
-    prepare_opt
-
-    if [ ! -d $_src ]; then
-      mkdir -p $SRC
-      download HDF5_SOURCE[@] $_src.tgz
-
-      INFO "Unpacking HDF5-$HDF5_VERSION"
-      tar -C $SRC -xf $_src.tgz
-    fi
-
-    cd $_src
-    
-	if [ "$STATIC" = true ]; then
-		./configure --prefix=$_inst --enable-production --enable-threadsafe --enable-shared=no
-	else
-		./configure --prefix=$_inst --enable-production --enable-threadsafe --enable-static=no
-	fi
-
-    make -j$THREADS && make install
-    make clean
-
-    if [ -d $_inst ]; then
-      _create_inst_shortcut
-    else
-      ERROR "HDF5-$HDF5_VERSION failed to compile, exiting"
-      exit 1
-    fi
-    cd $CWD
-    INFO "Done compiling HDF5-$HDF5_VERSION!"
-
-  else
-    INFO "Own HDF5-$HDF5_VERSION is up to date, nothing to do!"
-	INFO "If you want to force rebuild of this lib, use the --force-hdf5 option."
-	
-  fi
-
-  magic_compile_set hdf5-$HDF5_VERSION $hdf5_magic
-
-}
-
-
-#### Build Alembic ####
-_init_alembic() {
-  _src=$SRC/alembic-$ALEMBIC_VERSION
-  _git=false
-  _inst=$INST/alembic-$ALEMBIC_VERSION
-  _inst_shortcut=$INST/alembic	
-}
-
-clean_Alembic() {
-  _init_alembic
-  _clean	
-}
-
-compile_Alembic() {
-  
-  #compile_Hdf5
-  # To be changed each time we make edits that would modify the compiled result!
-  alembic_magic=30
-  _init_alembic
-
-  # Clean install if needed!
-  magic_compile_check alembic-$ALEMBIC_VERSION $alembic_magic
-  if [ $? -eq 1 -o "$ALEMBIC_FORCE_REBUILD" = true ]; then
-    clean_Alembic
-  fi
-
-  if [ ! -d $_inst ]; then
-    INFO "Building Alembic-$ALEMBIC_VERSION"
-
-    prepare_opt
-
-    if [ ! -d $_src ]; then
-      mkdir -p $SRC
-      download ALEMBIC_SOURCE[@] $_src.tgz
-
-      INFO "Unpacking Alembic-$ALEMBIC_VERSION"
-      tar -C $SRC -xf $_src.tgz
-    fi
-
-    cd $_src
-    
-	# Always refresh the whole build!
-    if [ -d alembic_build ]; then
-      rm -rf alembic_build
-    fi
-    mkdir alembic_build
-    cd alembic_build
-
-    cmake_d="-D CMAKE_BUILD_TYPE=Release"
-    cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$INST"
-	
-	if [ "$STATIC" = true ]; then
-		cmake_d="$cmake_d -D BUILD_STATIC_LIBS=ON" 	
-	else
-		cmake_d="$cmake_d -D BUILD_SHARED_LIBS=ON"
-	fi
-
-	cmake_d="$cmake_d -D ILMBASE_ROOT=$INST/openexr"
-    cmake_d="$cmake_d -D USE_PRMAN=OFF"
-    cmake_d="$cmake_d -D USE_MAYA=OFF"
-    cmake_d="$cmake_d -D USE_ARNOLD=OFF"
-    cmake_d="$cmake_d -D USE_PYALEMBIC=OFF"
-    cmake_d="$cmake_d -D USE_PYILMBASE=OFF"
-    cmake_d="$cmake_d -D ALEMBIC_NO_TESTS=ON"
-    cmake_d="$cmake_d -D ALEMBIC_NO_BOOTSTRAP=ON"
-    cmake_d="$cmake_d -D ALEMBIC_NO_OPENGL=ON"
-	cmake_d="$cmake_d -D BOOST_ROOT=$INST/boost"
-	cmake_d="$cmake_d -D HDF5_ROOT=$INST/hdf5"
-
-    cmake $cmake_d ..
-
-    make -j$THREADS && make install
-
-    make clean
-
-    if [ -d $_inst ]; then
-      _create_inst_shortcut
-    else
-      ERROR "Alembic-$ALEMBIC_VERSION failed to compile, exiting"
-      exit 1
-    fi
-    cd $CWD
-    INFO "Done compiling Alembic-$ALEMBIC_VERSION!"
-
-  else
-    INFO "Own Alembic-$ALEMBIC_VERSION is up to date, nothing to do!"
-	INFO "If you want to force rebuild of this lib, use the --force-alembic option."
-  fi
-
-  magic_compile_set alembic-$ALEMBIC_VERSION $alembic_magic
-  
-  run_ldconfig "alembic"		
-}
-
 #### Build Python ####
 _init_python() {
   _src=$SRC/Python-$PYTHON_VERSION
@@ -1195,6 +1011,11 @@ clean_Python() {
 }
 
 compile_Python() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, Python will not be compiled!"
+    return
+  fi
+
   # To be changed each time we make edits that would modify the compiled result!
   py_magic=1
   _init_python
@@ -1260,6 +1081,11 @@ clean_Numpy() {
 }
 
 compile_Numpy() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, Numpy will not be compiled!"
+    return
+  fi
+
   # To be changed each time we make edits that would modify the compiled result!
   numpy_magic=0
   _init_numpy
@@ -1320,8 +1146,13 @@ clean_Boost() {
 }
 
 compile_Boost() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, Boost will not be compiled!"
+    return
+  fi
+
   # To be changed each time we make edits that would modify the compiled result!
-  boost_magic=10
+  boost_magic=11
 
   _init_boost
 
@@ -1341,8 +1172,6 @@ compile_Boost() {
     OSL_FORCE_REBUILD=true
     OPENVDB_FORCE_BUILD=true
     OPENVDB_FORCE_REBUILD=true
-	ALEMBIC_FORCE_REBUILD=true
-	ALEMBIC_FORCE_BUILD=true
 
     prepare_opt
 
@@ -1395,6 +1224,11 @@ clean_OCIO() {
 }
 
 compile_OCIO() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, OpenColorIO will not be compiled!"
+    return
+  fi
+
   # To be changed each time we make edits that would modify the compiled result!
   ocio_magic=1
   _init_ocio
@@ -1486,6 +1320,11 @@ clean_ILMBASE() {
 }
 
 compile_ILMBASE() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, ILMBase will not be compiled!"
+    return
+  fi
+
   # To be changed each time we make edits that would modify the compiled result!
   ilmbase_magic=10
   _init_ilmbase
@@ -1527,13 +1366,7 @@ compile_ILMBASE() {
     cmake_d="-D CMAKE_BUILD_TYPE=Release"
     cmake_d="$cmake_d -D CMAKE_PREFIX_PATH=$_inst"
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
-	
-	if [ "$STATIC" = true ]; then
-		cmake_d="$cmake_d -D BUILD_SHARED_LIBS=OFF" 	
-	else
-		cmake_d="$cmake_d -D BUILD_SHARED_LIBS=ON"
-	fi
- 
+    cmake_d="$cmake_d -D BUILD_SHARED_LIBS=ON"
     cmake_d="$cmake_d -D NAMESPACE_VERSIONING=OFF"  # VERY IMPORTANT!!!
 
     if file /bin/cp | grep -q '32-bit'; then
@@ -1579,6 +1412,11 @@ clean_OPENEXR() {
 }
 
 compile_OPENEXR() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, OpenEXR will not be compiled!"
+    return
+  fi
+
   # To be changed each time we make edits that would modify the compiled result!
   openexr_magic=14
 
@@ -1600,8 +1438,6 @@ compile_OPENEXR() {
     # Rebuild dependecies as well!
     OIIO_FORCE_BUILD=true
     OIIO_FORCE_REBUILD=true
-	ALEMBIC_FORCE_REBUILD=true
-	ALEMBIC_FORCE_BUILD=true
 
     prepare_opt
 
@@ -1615,14 +1451,8 @@ compile_OPENEXR() {
         download OPENEXR_SOURCE[@] $_src.tar.gz
         INFO "Unpacking OpenEXR-$OPENEXR_VERSION"
         tar -C $SRC --transform "s,(.*/?)openexr[^/]*(.*),\1OpenEXR-$OPENEXR_VERSION\2,x" -xf $_src.tar.gz
-
-		if [ "$STATIC" = true ]; then
-			# XXX Ugly patching hack!
-		  cd $_src
-    	  patch -p1 -i "$SCRIPT_DIR/install_deps_patches/openexr_static.patch"
-		  cd ..
-		fi
       fi
+
     fi
 
     cd $_src
@@ -1638,8 +1468,6 @@ compile_OPENEXR() {
       oiio_src_path=".."
     fi
 
-	
-
     # Always refresh the whole build!
     if [ -d build ]; then
       rm -rf build
@@ -1651,13 +1479,7 @@ compile_OPENEXR() {
     cmake_d="$cmake_d -D CMAKE_PREFIX_PATH=$_inst"
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
     cmake_d="$cmake_d -D ILMBASE_PACKAGE_PREFIX=$_ilmbase_inst"
-	
-	if [ "$STATIC" = true ]; then
-		cmake_d="$cmake_d -D BUILD_SHARED_LIBS=OFF" 	
-	else
-		cmake_d="$cmake_d -D BUILD_SHARED_LIBS=ON"
-	fi
-
+    cmake_d="$cmake_d -D BUILD_SHARED_LIBS=ON"
     cmake_d="$cmake_d -D NAMESPACE_VERSIONING=OFF"  # VERY IMPORTANT!!!
 
     if file /bin/cp | grep -q '32-bit'; then
@@ -1710,6 +1532,11 @@ clean_OIIO() {
 }
 
 compile_OIIO() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, OpenImageIO will not be compiled!"
+    return
+  fi
+
   # To be changed each time we make edits that would modify the compiled result!
   oiio_magic=16
   _init_oiio
@@ -1762,15 +1589,8 @@ compile_OIIO() {
     cmake_d="$cmake_d -D CMAKE_PREFIX_PATH=$_inst"
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
     cmake_d="$cmake_d -D STOP_ON_WARNING=OFF"
-
-	if [ "$STATIC" = true ]; then
-		cmake_d="$cmake_d -D BUILDSTATIC=ON"
-    	cmake_d="$cmake_d -D LINKSTATIC=ON" 	
-	else
-    	cmake_d="$cmake_d -D BUILDSTATIC=OFF"
-    	cmake_d="$cmake_d -D LINKSTATIC=OFF"
-	fi
-    
+    cmake_d="$cmake_d -D BUILDSTATIC=OFF"
+    cmake_d="$cmake_d -D LINKSTATIC=OFF"
     cmake_d="$cmake_d -D USE_SIMD=sse2"
 
     cmake_d="$cmake_d -D ILMBASE_VERSION=$ILMBASE_VERSION"
@@ -1848,6 +1668,11 @@ clean_LLVM() {
 }
 
 compile_LLVM() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, LLVM will not be compiled!"
+    return
+  fi
+
   # To be changed each time we make edits that would modify the compiled result!
   llvm_magic=3
   _init_llvm
@@ -1945,8 +1770,13 @@ clean_OSL() {
 }
 
 compile_OSL() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, OpenShadingLanguage will not be compiled!"
+    return
+  fi
+
   # To be changed each time we make edits that would modify the compiled result!
-  osl_magic=20
+  osl_magic=21
   _init_osl
 
   # Clean install if needed!
@@ -1999,13 +1829,7 @@ compile_OSL() {
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
     cmake_d="$cmake_d -D BUILD_TESTING=OFF"
     cmake_d="$cmake_d -D STOP_ON_WARNING=OFF"
-	
-	if [ "$STATIC" = true ]; then
-		cmake_d="$cmake_d -D BUILDSTATIC=ON"
-	else
-    	cmake_d="$cmake_d -D BUILDSTATIC=OFF"
-	fi
-
+    cmake_d="$cmake_d -D BUILDSTATIC=OFF"
     cmake_d="$cmake_d -D OSL_BUILD_PLUGINS=OFF"
     cmake_d="$cmake_d -D OSL_BUILD_TESTS=OFF"
     cmake_d="$cmake_d -D USE_SIMD=sse2"
@@ -2077,6 +1901,11 @@ clean_OSD() {
 }
 
 compile_OSD() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, OpenSubdiv will not be compiled!"
+    return
+  fi
+
   # To be changed each time we make edits that would modify the compiled result!
   osd_magic=1
   _init_osd
@@ -2169,6 +1998,11 @@ clean_BLOSC() {
 }
 
 compile_BLOSC() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, Blosc will not be compiled!"
+    return
+  fi
+
   # To be changed each time we make edits that would modify the compiled result!
   blosc_magic=0
   _init_blosc
@@ -2208,13 +2042,7 @@ compile_BLOSC() {
 
     cmake_d="-D CMAKE_BUILD_TYPE=Release"
     cmake_d="$cmake_d -D CMAKE_INSTALL_PREFIX=$_inst"
-
-	if [ "$STATIC" = true ]; then
-		cmake_d="$cmake_d -D BUILD_STATIC=ON" 	
-	else
-    	cmake_d="$cmake_d -D BUILD_STATIC=OFF"
-	fi
-
+    cmake_d="$cmake_d -D BUILD_STATIC=OFF"
     cmake_d="$cmake_d -D BUILD_TESTS=OFF"
     cmake_d="$cmake_d -D BUILD_BENCHMARKS=OFF"
     INFO "$cmake_d"
@@ -2257,6 +2085,11 @@ clean_OPENVDB() {
 }
 
 compile_OPENVDB() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, OpenVDB will not be compiled!"
+    return
+  fi
+
   compile_BLOSC
   PRINT ""
 
@@ -2298,7 +2131,6 @@ compile_OPENVDB() {
     cd openvdb
 
     make_d="DESTDIR=$_inst"
-	make_d="$make_d shared=no"
     make_d="$make_d HDSO=/usr"
 
     if [ -d $INST/boost ]; then
@@ -2340,6 +2172,102 @@ compile_OPENVDB() {
   run_ldconfig "openvdb"
 }
 
+#### Build Alembic ####
+_init_alembic() {
+  _src=$SRC/alembic-$ALEMBIC_VERSION
+  _git=false
+  _inst=$INST/alembic-$ALEMBIC_VERSION
+  _inst_shortcut=$INST/alembic
+}
+
+clean_ALEMBIC() {
+  _init_alembic
+  _clean
+}
+
+compile_ALEMBIC() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, Alembic will not be compiled!"
+    return
+  fi
+
+  compile_HDF5
+  PRINT ""
+
+  # To be changed each time we make edits that would modify the compiled result!
+  alembic_magic=2
+  _init_alembic
+
+  # Clean install if needed!
+  magic_compile_check alembic-$ALEMBIC_VERSION $alembic_magic
+  if [ $? -eq 1 -o "$ALEMBIC_FORCE_REBUILD" = true ]; then
+    clean_ALEMBIC
+  fi
+
+  if [ ! -d $_inst ]; then
+    INFO "Building Alembic-$ALEMBIC_VERSION"
+
+    prepare_opt
+
+    if [ ! -d $_src -o true ]; then
+      mkdir -p $SRC
+      download ALEMBIC_SOURCE[@] "$_src.tar.gz"
+
+      INFO "Unpacking Alembic-$ALEMBIC_VERSION"
+      tar -C $SRC -xf $_src.tar.gz
+    fi
+
+    cd $_src
+
+    cmake_d="-D CMAKE_INSTALL_PREFIX=$_inst"
+
+    if [ -d $INST/boost ]; then
+      cmake_d="$cmake_d -D BOOST_ROOT=$INST/boost"
+      cmake_d="$cmake_d -D USE_STATIC_BOOST=ON"
+    else
+      cmake_d="$cmake_d -D USE_STATIC_BOOST=OFF"
+    fi
+
+    if [ "$_with_built_openexr" = true ]; then
+      cmake_d="$cmake_d -D ILMBASE_ROOT=$INST/openexr"
+      cmake_d="$cmake_d -D USE_ARNOLD=OFF"
+      cmake_d="$cmake_d -D USE_BINARIES=OFF"
+      cmake_d="$cmake_d -D USE_EXAMPLES=OFF"
+      cmake_d="$cmake_d -D USE_HDF5=OFF"
+      cmake_d="$cmake_d -D USE_MAYA=OFF"
+      cmake_d="$cmake_d -D USE_PRMAN=OFF"
+      cmake_d="$cmake_d -D USE_PYALEMBIC=OFF"
+      cmake_d="$cmake_d -D USE_STATIC_HDF5=OFF"
+      cmake_d="$cmake_d -D ALEMBIC_ILMBASE_LINK_STATIC=OFF"
+      cmake_d="$cmake_d -D ALEMBIC_SHARED_LIBS=OFF"
+      cmake_d="$cmake_d -D ALEMBIC_LIB_USES_BOOST=ON"
+      cmake_d="$cmake_d -D ALEMBIC_LIB_USES_TR1=OFF"
+      INFO "ILMBASE_ROOT=$INST/openexr"
+    fi
+
+    cmake $cmake_d ./
+    make -j$THREADS install
+    make clean
+
+    if [ -d $_inst ]; then
+      _create_inst_shortcut
+    else
+      ERROR "Alembic-$ALEMBIC_VERSION failed to compile, exiting"
+      exit 1
+    fi
+
+    magic_compile_set alembic-$ALEMBIC_VERSION $alembic_magic
+
+    cd $CWD
+    INFO "Done compiling Alembic-$ALEMBIC_VERSION!"
+  else
+    INFO "Own Alembic-$ALEMBIC_VERSION is up to date, nothing to do!"
+    INFO "If you want to force rebuild of this lib, use the --force-alembic option."
+  fi
+
+  run_ldconfig "alembic"
+}
+
 #### Build OpenCOLLADA ####
 _init_opencollada() {
   _src=$SRC/OpenCOLLADA-$OPENCOLLADA_VERSION
@@ -2354,6 +2282,11 @@ clean_OpenCOLLADA() {
 }
 
 compile_OpenCOLLADA() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, OpenCOLLADA will not be compiled!"
+    return
+  fi
+
   # To be changed each time we make edits that would modify the compiled results!
   opencollada_magic=9
   _init_opencollada
@@ -2433,6 +2366,11 @@ clean_FFmpeg() {
 }
 
 compile_FFmpeg() {
+  if [ "$NO_BUILD" = true ]; then
+    WARNING "--no-build enabled, ffmpeg will not be compiled!"
+    return
+  fi
+
   # To be changed each time we make edits that would modify the compiled result!
   ffmpeg_magic=5
   _init_ffmpeg
@@ -2939,26 +2877,16 @@ install_DEB() {
   fi
 
   PRINT ""
-  if [ "$HDF5_SKIP" = true ]; then
-    WARNING "Skipping HDF5 installation, as requested..."
-  elif [ "$HDF5_FORCE_BUILD" = true ]; then
-    INFO "Forced HDF5 building, as requested..."
-    compile_Hdf5
-  else
-   	# TODO check for package...
-      compile_Hdf5
-  fi
-
-  PRINT ""
   if [ "$ALEMBIC_SKIP" = true ]; then
     WARNING "Skipping Alembic installation, as requested..."
   elif [ "$ALEMBIC_FORCE_BUILD" = true ]; then
     INFO "Forced Alembic building, as requested..."
-    compile_Alembic
+    compile_ALEMBIC
   else
-   	# TODO check for package...
-      compile_Alembic
+    # No package currently, only HDF5!
+    compile_ALEMBIC
   fi
+
 
   if [ "$WITH_OPENCOLLADA" = true ]; then
     _do_compile_collada=false
@@ -3496,43 +3424,15 @@ install_RPM() {
     compile_OPENVDB
   fi
 
-
-  PRINT ""
-  if [ "$OPENVDB_SKIP" = true ]; then
-    WARNING "Skipping OpenVDB installation, as requested..."
-  elif [ "$OPENVDB_FORCE_BUILD" = true ]; then
-    INFO "Forced OpenVDB building, as requested..."
-    compile_OPENVDB
-  else
-    check_package_version_ge_DEB libopenvdb-dev $OPENVDB_VERSION_MIN
-    if [ $? -eq 0 ]; then
-      install_packages_DEB libopenvdb-dev libblosc-dev
-      clean_OPENVDB
-    else
-      compile_OPENVDB
-    fi
-  fi
-
-  PRINT ""
-  if [ "$HDF5_SKIP" = true ]; then
-    WARNING "Skipping HDF5 installation, as requested..."
-  elif [ "$HDF5_FORCE_BUILD" = true ]; then
-    INFO "Forced HDF5 building, as requested..."
-    compile_Hdf5
-  else
-   	# TODO check for package...
-      compile_Hdf5
-  fi
-
   PRINT ""
   if [ "$ALEMBIC_SKIP" = true ]; then
     WARNING "Skipping Alembic installation, as requested..."
   elif [ "$ALEMBIC_FORCE_BUILD" = true ]; then
     INFO "Forced Alembic building, as requested..."
-    compile_Alembic
+    compile_ALEMBIC
   else
-   	# TODO check for package...
-      compile_Alembic
+    # No package currently!
+    compile_ALEMBIC
   fi
 
 
@@ -3946,25 +3846,13 @@ install_ARCH() {
   fi
 
   PRINT ""
-  if [ "$HDF5_SKIP" = true ]; then
-    WARNING "Skipping HDF5 installation, as requested..."
-  elif [ "$HDF5_FORCE_BUILD" = true ]; then
-    INFO "Forced HDF5 building, as requested..."
-    compile_Hdf5
-  else
-   	# TODO check for package...
-      compile_Hdf5
-  fi
-
-  PRINT ""
   if [ "$ALEMBIC_SKIP" = true ]; then
     WARNING "Skipping Alembic installation, as requested..."
   elif [ "$ALEMBIC_FORCE_BUILD" = true ]; then
     INFO "Forced Alembic building, as requested..."
-    compile_Alembic
+    compile_ALEMBIC
   else
-   	# TODO check for package...
-      compile_Alembic
+    compile_ALEMBIC
   fi
 
 
@@ -4274,7 +4162,7 @@ print_info() {
 
   _buildargs="-U *SNDFILE* -U *PYTHON* -U *BOOST* -U *Boost*"
   _buildargs="$_buildargs -U *OPENCOLORIO* -U *OPENEXR* -U *OPENIMAGEIO* -U *LLVM* -U *CYCLES*"
-  _buildargs="$_buildargs -U *OPENSUBDIV* -U *OPENVDB* -U *COLLADA* -U *FFMPEG* -U *ALEMBIC* -U *HDF5*"
+  _buildargs="$_buildargs -U *OPENSUBDIV* -U *OPENVDB* -U *COLLADA* -U *FFMPEG* -U *ALEMBIC*"
 
   _1="-D WITH_CODEC_SNDFILE=ON"
   PRINT "  $_1"
@@ -4381,11 +4269,14 @@ print_info() {
   fi
 
   if [ "$ALEMBIC_SKIP" = false ]; then
-      _1="-D WITH_ALEMBIC=ON"
-      _2="-D ALEMBIC_ROOT_DIR=$INST/alembic"
+    _1="-D WITH_ALEMBIC=ON"
+    PRINT "  $_1"
+    _buildargs="$_buildargs $_1"
+    if [ -d $INST/alembic ]; then
+      _1="-D ALEMBIC_ROOT_DIR=$INST/alembic"
       PRINT "  $_1"
-      PRINT "  $_2"
-      _buildargs="$_buildargs $_1 $_2"
+      _buildargs="$_buildargs $_1"
+    fi
   fi
 
   if [ "$NO_SYSTEM_GLEW" = true ]; then

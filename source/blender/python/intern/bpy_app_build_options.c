@@ -68,7 +68,7 @@ static PyStructSequence_Field app_builtopts_info_fields[] = {
 	{(char *)"opencolorio", NULL},
 	{(char *)"player", NULL},
 	{(char *)"openmp", NULL},
-    {(char *)"openvdb", NULL},
+	{(char *)"openvdb", NULL},
 	{(char *)"alembic", NULL},
 	{NULL}
 };

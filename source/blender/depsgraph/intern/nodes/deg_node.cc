@@ -24,7 +24,7 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file blender/depsgraph/intern/depsnode.cc
+/** \file blender/depsgraph/intern/nodes/deg_node.cc
  *  \ingroup depsgraph
  */
 
@@ -180,6 +180,11 @@ void IDDepsNode::init(const ID *id, const string &UNUSED(subdata))
 	this->id = (ID *)id;
 	this->layers = (1 << 20) - 1;
 	this->eval_flags = 0;
+
+	/* For object we initialize layers to layer from base. */
+	if (GS(id->name) == ID_OB) {
+		this->layers = 0;
+	}
 
 	components = BLI_ghash_new(id_deps_node_hash_key,
 	                           id_deps_node_hash_key_cmp,
