@@ -672,33 +672,14 @@ static void do_fill(float plane_no[3], bool clear_outer, bool clear_inner, BMOpe
 {
 	float normal_fill[3];
 	BMOperator bmop_fill;
-	BMOperator bmop_attr;
+	//BMOperator bmop_attr;
 
 	normalize_v3_v3(normal_fill, plane_no);
 	if (clear_outer == true && clear_inner == false) {
 		negate_v3(normal_fill);
 	}
-
-	/* Fill, XXX attempted different fill algorithms here, needs further thoughts because none really suited */
-#if 0
-	BMO_op_initf(bm_parent, &bmop_fill, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-	             "contextual_create geom=%S mat_nr=%i use_smooth=%b",
-	             &bmop, "geom_cut.out", 0, false);
-	BMO_op_exec(bm_parent, &bmop_fill);
-
-	BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-	             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
-	             &bmop_fill, "faces.out", false, true);
-	BMO_op_exec(bm_parent, &bmop_attr);
-
-	BMO_op_initf(bm_parent, &bmop_del, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-	             "delete geom=%S context=%i", &bmop_fill, "edges.out", DEL_EDGESFACES);
-	BMO_op_exec(bm_parent, &bmop_del);
-
-	BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_TAG, true);
-#endif
-
-	if (inner_mat_index == 0) { /* dont use inner material here*/
+/*
+	if (inner_mat_index == 0) { // dont use inner material here
 		BMO_op_initf(
 		    bm_parent, &bmop_fill, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 		    "triangle_fill edges=%S normal=%v use_dissolve=%b use_beauty=%b",
@@ -709,27 +690,31 @@ static void do_fill(float plane_no[3], bool clear_outer, bool clear_inner, BMOpe
 		             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
 		             &bmop_fill, "geom.out", false, true);
 		BMO_op_exec(bm_parent, &bmop_attr);
+		BMO_op_finish(bm_parent, &bmop_attr);
 
 		BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "geom.out", BM_FACE, BM_ELEM_TAG | BM_ELEM_SELECT, true);
 	}
-	else {
+	else { */
 		/* use edgenet fill with inner material */
 		BMO_op_initf(
 		    bm_parent, &bmop_fill, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 		    "edgenet_fill edges=%S mat_nr=%i use_smooth=%b sides=%i",
 		    &bmop, "geom_cut.out", inner_mat_index, false, 2);
 		BMO_op_exec(bm_parent, &bmop_fill);
+	//}
 
-		/* Copy Attributes */
-		BMO_op_initf(bm_parent, &bmop_attr, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-		             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
-		             &bmop_fill, "faces.out", true, false);
-		BMO_op_exec(bm_parent, &bmop_attr);
-
-		BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_TAG | BM_ELEM_SELECT, true);
+	/*gah, edgenetfill now overwrites the set materials internally, so attempt to re-set them */
+	BMO_slot_buffer_hflag_enable(bm_parent, bmop_fill.slots_out, "faces.out", BM_FACE, BM_ELEM_TAG, true);
+	{
+		BMFace* f;
+		BMIter iter;
+		BM_ITER_MESH(f, &iter, bm_parent, BM_FACES_OF_MESH) {
+			if (BM_elem_flag_test(f, BM_ELEM_TAG)) {
+				f->mat_nr = inner_mat_index;
+			}
+		}
 	}
 
-	BMO_op_finish(bm_parent, &bmop_attr);
 	BMO_op_finish(bm_parent, &bmop_fill);
 }
 
@@ -789,43 +774,15 @@ static void do_bisect(BMesh* bm_parent, BMesh* bm_child, float obmat[4][4], bool
 	}
 }
 
-static void walk_bmesh(BMesh *bm, BMVert *seed) {
-
-	BMWalker walker;
-	BMEdge *e;
-
-	/* Walk from the single vertex, selecting everything connected
-	 * to it */
-	BMW_init(&walker, bm, BMW_VERT_SHELL,
-	         BMW_MASK_NOP, BMW_MASK_NOP, BMW_MASK_NOP,
-	         BMW_FLAG_NOP,
-	         BMW_NIL_LAY);
-
-	e = BMW_begin(&walker, seed);
-	for (; e; e = BMW_step(&walker)) {
-		if (!BM_elem_flag_test(e->v1, BM_ELEM_TAG) &&
-		   (!BM_elem_flag_test(e->v2, BM_ELEM_TAG)))
-		{
-			break;
-		}
-
-		if (BM_elem_flag_test(e->v1, BM_ELEM_TAG)) {
-			BM_elem_flag_enable(e->v2, BM_ELEM_INTERNAL_TAG);
-		}
-
-		if (BM_elem_flag_test(e->v2, BM_ELEM_TAG)) {
-			BM_elem_flag_enable(e->v1, BM_ELEM_INTERNAL_TAG);
-		}
-	}
-	BMW_end(&walker);
-}
-
 static BMesh *do_preselection(BMesh* bm_orig, Shard *child, KDTree *preselect_tree)
 {
 	int i = 0, r = 0;
 	float max_dist = 0;
 	KDTreeNearest* n = NULL;
 	BMesh *bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
+	BMIter iter;
+	BMEdge *e;
+#define MY_TAG (1 << 6)
 
 	n = MEM_mallocN(sizeof(KDTreeNearest) * bm_orig->totvert, "n kdtreenearest");
 
@@ -849,40 +806,55 @@ static BMesh *do_preselection(BMesh* bm_orig, Shard *child, KDTree *preselect_tr
 		}
 	}
 
-	max_dist = sqrt(max_dist);
-
-	BM_mesh_elem_hflag_disable_all(bm_orig, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG | BM_ELEM_INTERNAL_TAG, false);
+	BM_mesh_elem_hflag_disable_all(bm_orig, BM_VERT | BM_EDGE | BM_FACE, MY_TAG, false);
 
 	//do a range search first in case we have many verts as in dense geometry
-	r = BLI_kdtree_range_search(preselect_tree, child->raw_centroid, &n, max_dist * 2.0f);
+	r = BLI_kdtree_range_search(preselect_tree, child->raw_centroid, &n, sqrt(max_dist) * 2.0f);
 
 	//if we have sparse geometry, just return all
-	if (r < 750) {
+	if (r < child->totvert) {
 
-		BM_mesh_free(bm_new);
-		return BM_mesh_copy(bm_orig);
+		//BM_mesh_free(bm_new);
+		//return BM_mesh_copy(bm_orig);
+		int j = 0, s = 0;
+		KDTreeNearest *n2 = MEM_callocN(sizeof(KDTreeNearest) * child->totvert, "n2 kdtreenearest");
+		s = BLI_kdtree_find_nearest_n(preselect_tree, child->raw_centroid, n2, child->totvert);
+		for (j = 0; j < s; j++)
+		{
+			BMVert* v;
+			int index = n2[j].index;
+			v = BM_vert_at_index(bm_orig, index);
+			BM_elem_flag_enable(v, MY_TAG);
+		}
+
 	}
 	else {
 		BMVert *v = NULL;
 		for (i = 0; i < r; i++) {
 			int index = n[i].index;
 			v = BM_vert_at_index(bm_orig, index);
-			BM_elem_flag_enable(v, BM_ELEM_TAG);
-			walk_bmesh(bm_orig, v);
+			BM_elem_flag_enable(v, MY_TAG);
 		}
 
-		BM_mesh_elem_hflag_enable_test(bm_orig, BM_VERT, BM_ELEM_TAG, true, false, BM_ELEM_INTERNAL_TAG);
 		MEM_freeN(n);
 		n = NULL;
 	}
 
+	BM_ITER_MESH(e, &iter, bm_orig, BM_EDGES_OF_MESH) {
+		//select stretchy edges verts too
+		if (BM_edge_calc_length_squared(e) > max_dist * 1.5f) {
+			BM_elem_flag_enable(e->v1, MY_TAG);
+			BM_elem_flag_enable(e->v2, MY_TAG);
+		}
+	}
+
 	/* Flush the selection to get edge/face selections matching
 	 * the vertex selection */
-	BKE_bm_mesh_hflag_flush_vert(bm_orig, BM_ELEM_TAG);
+	BKE_bm_mesh_hflag_flush_vert(bm_orig, MY_TAG);
 
 	BMO_op_callf(bm_orig, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-	             "duplicate geom=%hvef dest=%p", BM_ELEM_TAG, bm_new);
-
+	             "duplicate geom=%hvef dest=%p", MY_TAG, bm_new);
+#undef MY_TAG
 	BM_mesh_elem_index_ensure(bm_new, BM_VERT | BM_EDGE | BM_FACE);
 
 	return bm_new;
