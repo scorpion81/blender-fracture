@@ -2865,7 +2865,7 @@ static void do_restore_scene_link(Scene* scene, int count, Scene **bgscene, Base
 	MEM_freeN(*basarray_old);
 	*basarray_old = NULL;
 
-	BKE_scene_unlink(G.main, *bgscene, scene);
+//	BKE_scene_unlink(G.main, *bgscene, scene);
 	*bgscene = NULL;
 }
 
@@ -3232,7 +3232,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 
 	DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH, false);
 
-	ED_rigidbody_object_add(scene, ob_new, RBO_TYPE_ACTIVE, NULL);
+	ED_rigidbody_object_add(scene, ob_new, RBO_TYPE_ACTIVE, NULL, NULL);
 	ob_new->rigidbody_object->flag |= RBO_FLAG_KINEMATIC;
 	ob_new->rigidbody_object->mass = mi->rigidbody->mass;
 

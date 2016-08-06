@@ -211,13 +211,14 @@ void RIGIDBODY_OT_constraint_remove(wmOperatorType *ot)
 static int rigidbody_constraints_remove_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Scene *scene = CTX_data_scene(C);
+	Main *bmain = CTX_data_main(C);
 	bool change = false;
 
 	/* apply this to all selected objects... */
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects)
 	{
 		if (ob->rigidbody_constraint) {
-			ED_rigidbody_constraint_remove(scene, ob);
+			ED_rigidbody_constraint_remove(bmain, scene, ob);
 			change = true;
 		}
 	}
