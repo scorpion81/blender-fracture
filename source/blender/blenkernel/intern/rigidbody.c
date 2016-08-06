@@ -76,8 +76,8 @@
 #include "BKE_scene.h"
 #include "PIL_time.h"
 
-#include "WM_types.h"
-#include "WM_api.h"
+//#include "WM_types.h"
+//#include "WM_api.h"
 
 #ifdef WITH_BULLET
 

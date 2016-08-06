@@ -410,7 +410,7 @@ static BMesh* do_fractal(float radius, float mat[4][4], bool use_smooth_inner, s
 	int i;
 
 	/*create a grid plane */
-	bm = BM_mesh_create(&bm_mesh_allocsize_default);
+	bm = BM_mesh_create(&bm_mesh_allocsize_default, &((struct BMeshCreateParams){.use_toolflags = false,}));
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 	        "create_grid x_segments=%i y_segments=%i size=%f matrix=%m4",
 	        1, 1, radius*1.4, mat);
@@ -779,7 +779,7 @@ static BMesh *do_preselection(BMesh* bm_orig, Shard *child, KDTree *preselect_tr
 	int i = 0, r = 0;
 	float max_dist = 0;
 	KDTreeNearest* n = NULL;
-	BMesh *bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
+	BMesh *bm_new = BM_mesh_create(&bm_mesh_allocsize_default, &((struct BMeshCreateParams){.use_toolflags = false,}));
 	BMIter iter;
 	BMEdge *e;
 #define MY_TAG (1 << 6)

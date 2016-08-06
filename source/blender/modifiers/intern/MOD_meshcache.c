@@ -182,12 +182,6 @@ static void meshcache_do(
 			ok = MOD_meshcache_read_pc2_times(filepath, vertexCos, numVerts,
 			                                  mcmd->interp, time, fps, mcmd->time_mode, &err_str);
 			break;
-		case MOD_MESHCACHE_TYPE_ABC:
-			/* TODO(kevin): we pass the modifierdata since it is used as a key
-			 * to map abc archives to modifiers */
-			ok = MOD_meshcache_read_abc_times(filepath, mcmd->sub_object, vertexCos, numVerts,
-			                                  mcmd->interp, time, fps, mcmd->time_mode, &err_str);
-			break;
 		default:
 			ok = false;
 			break;

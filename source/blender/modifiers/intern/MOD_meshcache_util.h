@@ -55,20 +55,6 @@ bool MOD_meshcache_read_pc2_times(const char *filepath,
                                   const float time, const float fps, const char time_mode,
                                   const char **err_str);
 
-/* MOD_meshcache_abc.c */
-bool MOD_meshcache_read_abc_index(const char *filepath, const char *sub_object,
-                                  float (*vertexCos)[3], const int verts_tot,
-                                  const int index, const float factor,
-                                  const char **err_str);
-bool MOD_meshcache_read_abc_frame(const char *filepath, const char *sub_object,
-                                  float (*vertexCos)[3], const int verts_tot, const char interp,
-                                  const float frame,
-                                  const char **err_str);
-bool MOD_meshcache_read_abc_times(const char *filepath, const char *sub_object,
-                                  float (*vertexCos)[3], const int verts_tot, const char interp,
-                                  const float time, const float fps, const char time_mode,
-                                  const char **err_str);
-
 /* MOD_meshcache_util.c */
 void MOD_meshcache_calc_range(const float frame, const char interp,
                               const int frame_tot,

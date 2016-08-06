@@ -1412,7 +1412,7 @@ void BKE_fracture_shard_by_greasepencil(FractureModifierData *fmd, Object *obj, 
 		for (gpl = obj->gpd->layers.first; gpl; gpl = gpl->next) {
 			for (gpf = gpl->frames.first; gpf; gpf = gpf->next) {
 				for (gps = gpf->strokes.first; gps; gps = gps->next) {
-					BMesh *bm = BM_mesh_create(&bm_mesh_allocsize_default);
+					BMesh *bm = BM_mesh_create(&bm_mesh_allocsize_default, &((struct BMeshCreateParams){.use_toolflags = false,}));
 					DerivedMesh *dm = NULL;
 
 
@@ -2590,7 +2590,7 @@ short BKE_fracture_collect_materials(Object* o, Object* ob, short matstart, GHas
 	for (j = 0; j < (*totcolp); j++)
 	{
 		void *key;
-		int index = find_material_index(ob, (*matarar)[j]);
+		int index = BKE_object_material_slot_find_index(ob, (*matarar)[j]);
 		if (index == 0)
 		{
 			index = ob->totcol+1;

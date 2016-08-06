@@ -84,6 +84,7 @@
 #include "BKE_scene.h"
 #include "BKE_material.h"
 #include "BKE_library.h"
+#include "BKE_library_remap.h"
 #include "BKE_rigidbody.h"
 #include "BKE_group.h"
 
@@ -2866,6 +2867,9 @@ static void do_restore_scene_link(Scene* scene, int count, Scene **bgscene, Base
 	*basarray_old = NULL;
 
 //	BKE_scene_unlink(G.main, *bgscene, scene);
+	BKE_libblock_remap(G.main, *bgscene, scene, ID_REMAP_SKIP_INDIRECT_USAGE | ID_REMAP_SKIP_NEVER_NULL_USAGE);
+	BKE_libblock_free(G.main, *bgscene);
+
 	*bgscene = NULL;
 }
 
