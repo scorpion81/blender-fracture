@@ -56,6 +56,7 @@
 #include "BLI_rand.h"
 #include "BLI_string.h"
 #include "BLI_sort.h"
+#include "BLI_task.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_scene_types.h"
@@ -803,9 +804,10 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 
 
 /* parse the voro++ cell data */
+//static ThreadMutex prep_lock = BLI_MUTEX_INITIALIZER;
 static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm,
                         short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
-                        bool reset, int active_setting, int num_settings, char uv_layer[64])
+                        bool reset, int active_setting, int num_settings, char uv_layer[64], bool threaded)
 {
 	/*Parse voronoi raw data*/
 	int i = 0, j = 0, count = 0;
@@ -839,7 +841,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 			return;
 	}
 
-	if (mode == MOD_FRACTURE_PREFRACTURED && reset)
+	if (mode == MOD_FRACTURE_PREFRACTURED && reset && !threaded)
 	{
 		while (fm->shard_map.first)
 		{
@@ -1523,6 +1525,71 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 	}
 }
 
+typedef struct FractureData {
+	cell *voro_cells;
+	FracMesh *fmesh;
+	ShardID id;
+	int totpoints;
+	int algorithm;
+	Object *obj;
+	DerivedMesh *dm;
+	short inner_material_index;
+	float mat[4][4];
+	int num_cuts;
+	float fractal;
+	bool smooth;
+	int num_levels;
+	int mode;
+	bool reset;
+	int active_setting;
+	int num_settings;
+	char uv_layer[64];
+} FractureData;
+
+
+static void compute_fracture(TaskPool *UNUSED(pool), void *taskdata, int UNUSED(threadid))
+{
+    FractureData *fd = (FractureData*)taskdata;
+
+	/*Evaluate result*/
+	if (fd->totpoints > 0) {
+		parse_cells(fd->voro_cells, fd->totpoints, fd->id, fd->fmesh, fd->algorithm, fd->obj, fd->dm, fd->inner_material_index, fd->mat,
+	                fd->num_cuts, fd->fractal, fd->smooth, fd->num_levels,fd->mode, fd->reset, fd->active_setting, fd->num_settings, fd->uv_layer,
+		            true);
+	}
+}
+
+
+static FractureData segment_cells(cell *voro_cells, int startcell, int totcells, FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud,
+                    int algorithm, Object *obj, DerivedMesh *dm, short
+                    inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
+                    bool reset, int active_setting, int num_settings, char uv_layer[64])
+{
+	FractureData fd;
+	fd.fmesh = fmesh;
+	fd.id = id;
+	fd.totpoints = totcells;
+	fd.algorithm = algorithm;
+	fd.obj = obj;
+	fd.dm = dm;
+	fd.inner_material_index = inner_material_index;
+	copy_m4_m4(fd.mat, mat);
+	fd.num_cuts = num_cuts;
+	fd.fractal = fractal;
+	fd.smooth = smooth;
+	fd.num_levels = num_levels;
+	fd.mode = mode;
+	fd.reset = reset;
+	fd.active_setting = active_setting;
+	fd.num_settings = num_settings;
+	strncpy(fd.uv_layer, uv_layer, 64);
+
+	//cell start pointer, only take fd.totpoints cells out
+	fd.voro_cells = voro_cells + startcell;
+
+	return fd;
+}
+
 void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short
                                   inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
                                   bool reset, int active_setting, int num_settings, char uv_layer[64])
@@ -1533,11 +1600,15 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	
 	float min[3], max[3];
 	float theta = 0.1f; /* TODO, container enlargement, because boundbox exact container and boolean might create artifacts */
-	int p;
+	int p, i = 0, num = 0, totcell = 0, remainder_start = 0;
 	
 	container *voro_container;
 	particle_order *voro_particle_order;
 	cell *voro_cells;
+
+	TaskScheduler *scheduler = BLI_task_scheduler_get();
+	TaskPool *pool;
+	FractureData *fdata;
 
 #ifdef USE_DEBUG_TIMER
 	double time_start;
@@ -1581,8 +1652,6 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 		float *co = pointcloud->points[p].co;
 		container_put(voro_container, voro_particle_order, p, co[0], co[1], co[2]);
 	}
-	
-
 
 #ifdef USE_DEBUG_TIMER
 	time_start = PIL_check_seconds_timer();
@@ -1594,9 +1663,43 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	/*Compute directly...*/
 	container_compute_cells(voro_container, voro_cells);
 
-	/*Evaluate result*/
-	parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index, mat,
-	            num_cuts, fractal, smooth, num_levels, mode, reset, active_setting, num_settings, uv_layer);
+	if (mode != MOD_FRACTURE_DYNAMIC) {
+		/*segment cells, give each thread a chunk to work on */
+		pool = BLI_task_pool_create(scheduler, NULL);
+		num = BLI_task_scheduler_num_threads(scheduler);
+		fdata = MEM_callocN(sizeof(FractureData) * (num + 1), "threaded fracture data");
+		totcell = pointcloud->totpoints / num;
+		for (i = 0; i < num; i++) {
+			//give each task a segment of the shards...
+			int startcell = i * totcell;
+			FractureData fd = segment_cells(voro_cells, startcell, totcell, fmesh, id, pointcloud, algorithm, obj, dm, inner_material_index,
+											mat, num_cuts, fractal,smooth, num_levels, mode, reset, active_setting, num_settings, uv_layer);
+			fdata[i] = fd;
+		}
+
+		//remainder...
+		remainder_start = fdata[0].totpoints * num;
+		if (remainder_start < pointcloud->totpoints) {
+			int remainder = pointcloud->totpoints - remainder_start;
+			int startcell = remainder_start;
+			printf("REMAINDER %d %d\n", startcell, remainder);
+			fdata[num] = segment_cells(voro_cells, startcell, remainder, fmesh, id, pointcloud, algorithm, obj, dm, inner_material_index,
+													 mat, num_cuts, fractal,smooth, num_levels, mode, reset, active_setting, num_settings, uv_layer);
+		}
+
+		for (i = 0; i < num+1; i++) {
+			BLI_task_pool_push(pool, compute_fracture, &fdata[i], false, TASK_PRIORITY_HIGH);
+		}
+
+		BLI_task_pool_work_and_wait(pool);
+		BLI_task_pool_free(pool);
+		MEM_freeN(fdata);
+	}
+	else {
+		/*Evaluate result*/
+		parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index, mat,
+	           num_cuts, fractal, smooth, num_levels, mode, reset, active_setting, num_settings, uv_layer, false);
+	}
 
 	/*Free structs in C++ area of memory */
 	cells_free(voro_cells, pointcloud->totpoints);
