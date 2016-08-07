@@ -781,10 +781,8 @@ static BMesh *do_preselection(BMesh* bm_orig, Shard *child, KDTree *preselect_tr
 	KDTreeNearest* n = NULL;
 	BMesh *bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
 	BMIter iter;
-	BMEdge *e;
+	BMFace *f;
 #define MY_TAG (1 << 6)
-
-	n = MEM_mallocN(sizeof(KDTreeNearest) * bm_orig->totvert, "n kdtreenearest");
 
 	BM_mesh_elem_toolflags_ensure(bm_new);  /* needed for 'duplicate' bmo */
 
@@ -809,7 +807,13 @@ static BMesh *do_preselection(BMesh* bm_orig, Shard *child, KDTree *preselect_tr
 	BM_mesh_elem_hflag_disable_all(bm_orig, BM_VERT | BM_EDGE | BM_FACE, MY_TAG, false);
 
 	//do a range search first in case we have many verts as in dense geometry
-	r = BLI_kdtree_range_search(preselect_tree, child->raw_centroid, &n, sqrt(max_dist) * 2.0f);
+	r = BLI_kdtree_range_search(preselect_tree, child->raw_centroid, &n, sqrt(max_dist)*1.5f);
+
+	//skip empty cells
+	/*if (r == 0) {
+		BM_mesh_free(bm_new);
+		return NULL;
+	}*/
 
 	//if we have sparse geometry, just return all
 	if (r < child->totvert) {
@@ -826,7 +830,10 @@ static BMesh *do_preselection(BMesh* bm_orig, Shard *child, KDTree *preselect_tr
 			v = BM_vert_at_index(bm_orig, index);
 			BM_elem_flag_enable(v, MY_TAG);
 		}
-
+		if (n2) {
+			MEM_freeN(n2);
+			n2 = NULL;
+		}
 	}
 	else {
 		BMVert *v = NULL;
@@ -834,17 +841,21 @@ static BMesh *do_preselection(BMesh* bm_orig, Shard *child, KDTree *preselect_tr
 			int index = n[i].index;
 			v = BM_vert_at_index(bm_orig, index);
 			BM_elem_flag_enable(v, MY_TAG);
-		}
-
-		MEM_freeN(n);
-		n = NULL;
+		}	
 	}
 
-	BM_ITER_MESH(e, &iter, bm_orig, BM_EDGES_OF_MESH) {
-		//select stretchy edges verts too
-		if (BM_edge_calc_length_squared(e) > max_dist * 1.5f) {
-			BM_elem_flag_enable(e->v1, MY_TAG);
-			BM_elem_flag_enable(e->v2, MY_TAG);
+	BM_ITER_MESH(f, &iter, bm_orig, BM_FACES_OF_MESH) {
+		//select bigger squarish faces and long skinny ones
+		float area = BM_face_calc_area(f);
+		BMIter eiter;
+		BMEdge *e;
+		BM_ITER_ELEM(e, &eiter, f, BM_EDGES_OF_FACE) {
+			if ((area > 0.75f) || (BM_edge_calc_length_squared(e) > max_dist * 3.0f) ||
+				BM_elem_flag_test(e->v1, MY_TAG) || BM_elem_flag_test(e->v2, MY_TAG))
+			{
+				BM_elem_flag_enable(e->v1, MY_TAG);
+				BM_elem_flag_enable(e->v2, MY_TAG);
+			}
 		}
 	}
 
@@ -883,14 +894,17 @@ Shard *BKE_fracture_shard_bisect(BMesh *bm_orig, Shard *child, float obmat[4][4]
 		bm_parent = BM_mesh_copy(bm_orig);
 	}
 
-	BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
-
-	do_bisect(bm_parent, bm_child, obmat, use_fill, clear_inner, clear_outer, cutlimit, centroid, inner_mat_index);
-
-	output_s = do_output_shard(bm_parent, child, uv_layer);
+	if (bm_parent != NULL) {
+		BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
+		do_bisect(bm_parent, bm_child, obmat, use_fill, clear_inner, clear_outer, cutlimit, centroid, inner_mat_index);
+		output_s = do_output_shard(bm_parent, child, uv_layer);
+		BM_mesh_free(bm_parent);
+	}
+	else {
+		output_s = NULL;
+	}
 
 	BM_mesh_free(bm_child);
-	BM_mesh_free(bm_parent);
 
 	dm_child->needsFree = 1;
 	dm_child->release(dm_child);

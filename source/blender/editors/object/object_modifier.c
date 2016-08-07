@@ -2460,6 +2460,13 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 	if (scene->rigidbody_world != NULL)
 	{
 		start = (double)scene->rigidbody_world->pointcache->startframe;
+		//free a possible bake...
+		scene->rigidbody_world->pointcache->flag &= ~PTCACHE_BAKED;
+	}
+
+	if (!rmd || (rmd && rmd->refresh)) {
+		rmd->refresh = false;
+		return OPERATOR_CANCELLED;
 	}
 
 	BKE_scene_frame_set(scene, start);
@@ -2467,11 +2474,6 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 	WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
 	WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
 	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
-
-	if (!rmd || (rmd && rmd->refresh) /*|| (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe)*/) {
-		rmd->refresh = false;
-		return OPERATOR_CANCELLED;
-	}
 	
 	if (!rmd->execute_threaded) {
 #if 0
