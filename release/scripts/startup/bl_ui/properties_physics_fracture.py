@@ -148,7 +148,9 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             box.prop_search(md, "inner_vertex_group", ob, "vertex_groups", text = "")
 
         layout.context_pointer_set("modifier", md)
-        layout.operator("object.fracture_refresh", text="Execute Fracture", icon='MOD_EXPLODE').reset = True
+        row = layout.row()
+        row.operator("object.fracture_refresh", text="Execute Fracture", icon='MOD_EXPLODE').reset = True
+        row.prop(md, "execute_threaded", text="Threaded (WIP)")
 
 class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Constraint Settings"
@@ -232,8 +234,6 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
         row = layout.row()
         row.prop(md, "fix_normals")
         row.prop(md, "nor_range")
-        if not(md.refresh):
-           layout.prop(md, "execute_threaded")
 
         layout.context_pointer_set("modifier", md)
         layout.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
