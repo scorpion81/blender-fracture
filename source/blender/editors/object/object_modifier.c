@@ -2431,11 +2431,11 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 {
 	Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
-	float cfra = BKE_scene_frame_get(scene);
+	//float cfra = BKE_scene_frame_get(scene);
 	double start = 1.0;
 	FractureModifierData *rmd;
-	FractureJob *fj;
-	wmJob* wm_job;
+//	FractureJob *fj;
+//	wmJob* wm_job;
 	//RegionView3D *rv3d = CTX_wm_region_view3d(C);
 
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);

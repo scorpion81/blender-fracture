@@ -1533,7 +1533,10 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		{
 			cleanup_splinters(fmd, mat, s, dm);
 		}
-		fmd->reset_shards = false;
+
+		if (!fmd->auto_execute && fmd->execute_threaded) {
+			fmd->reset_shards = false;
+		}
 	}
 	MEM_freeN(points.points);
 }

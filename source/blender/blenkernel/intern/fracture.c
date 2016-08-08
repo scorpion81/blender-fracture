@@ -1394,7 +1394,9 @@ static void reset_shards(FractureModifierData *fmd)
 		}
 		fm->shard_count = 0;
 		/* do not reset again afterwards, in case we have multiple point sources */
-		fmd->reset_shards = false;
+		if (!fmd->execute_threaded) {
+			fmd->reset_shards = false;
+		}
 	}
 }
 
