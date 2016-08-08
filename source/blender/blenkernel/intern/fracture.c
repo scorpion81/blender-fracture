@@ -489,7 +489,8 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 			(*tempresults)[i] = s;
 			(*tempresults)[i + 1] = s2;
 
-			BLI_qsort_r(*tempresults, i + 1, sizeof(Shard *), shard_sortdist, &(cells[i]));
+			//BLI_qsort_r(*tempresults, i + 1, sizeof(Shard *), shard_sortdist, &(cells[i]));
+			BLI_qsort_r(*tempresults, i + 1, sizeof(Shard *), shard_sortsize, &(cells[i]));
 
 			while ((*tempresults)[j] == NULL && j < (i + 1)) {
 				/* ignore invalid shards */
@@ -654,8 +655,7 @@ static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards
 }
 
 static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int algorithm, Shard *p, float (*centroid)[3],
-                             DerivedMesh **dm_parent, BMesh** bm_parent, Shard ***tempshards, Shard ***tempresults,
-                             int active_setting, int num_settings)
+                             DerivedMesh **dm_parent, BMesh** bm_parent, Shard ***tempshards, Shard ***tempresults)
 {
 	int i;
 	Shard *s = NULL;
@@ -743,6 +743,7 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 		}
 	}
 
+	//BLI_lock_thread(LOCK_CUSTOM1);
 	//skipping /deletion pass
 	for (i = 0; i < expected_shards; i++)
 	{
@@ -754,9 +755,7 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 		if (fm->last_shards && i < fm->shard_count)
 			t = fm->last_shards[i];
 
-		if (skipmap[i] /*&& ((t &&
-		    t->setting_id == active_setting &&
-		    t->shard_id > num_settings) || !t*/)
+		if (skipmap[i])
 		{
 			printf("Skipping shard: %d\n", i);
 			(*tempshards)[i] = NULL;
@@ -781,8 +780,7 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 
 			if (!t)
 				continue;
-
-			if (t->setting_id == active_setting /*|| t->shard_id < num_settings*/)
+			if (true) //i < expected_shards)
 			{
 				printf("Deleting shard: %d %d %d\n", i, t->shard_id, t->setting_id);
 				BLI_remlink_safe(&fm->shard_map, t);
@@ -795,6 +793,7 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 			}
 		}
 	}
+	//BLI_unlock_thread(LOCK_CUSTOM1);
 
 	fm->last_expected_shards = expected_shards;
 
@@ -913,7 +912,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 	unit_m4(obmat);
 
-	do_prepare_cells(fm, cells, expected_shards, algorithm, p, &centroid, &dm_parent, &bm_parent, &tempshards, &tempresults, active_setting, num_settings);
+	do_prepare_cells(fm, cells, expected_shards, algorithm, p, &centroid, &dm_parent, &bm_parent, &tempshards, &tempresults);
 
 	if (fm->last_shard_tree)
 	{
@@ -1663,7 +1662,8 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	/*Compute directly...*/
 	container_compute_cells(voro_container, voro_cells);
 
-	if (mode != MOD_FRACTURE_DYNAMIC) {
+	/*Disable for fast bisect/fill, dynamic and mousebased for now -> errors and crashes */
+	if (mode != MOD_FRACTURE_DYNAMIC && reset == true && algorithm != MOD_FRACTURE_BISECT_FAST && algorithm != MOD_FRACTURE_BISECT_FAST_FILL) {
 		/*segment cells, give each thread a chunk to work on */
 		pool = BLI_task_pool_create(scheduler, NULL);
 		num = BLI_task_scheduler_num_threads(scheduler);
@@ -1684,7 +1684,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 			int startcell = remainder_start;
 			printf("REMAINDER %d %d\n", startcell, remainder);
 			fdata[num] = segment_cells(voro_cells, startcell, remainder, fmesh, id, pointcloud, algorithm, obj, dm, inner_material_index,
-													 mat, num_cuts, fractal,smooth, num_levels, mode, reset, active_setting, num_settings, uv_layer);
+									   mat, num_cuts, fractal,smooth, num_levels, mode, reset, active_setting, num_settings, uv_layer);
 		}
 
 		for (i = 0; i < num+1; i++) {
