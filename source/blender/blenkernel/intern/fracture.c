@@ -1591,7 +1591,7 @@ static FractureData segment_cells(cell *voro_cells, int startcell, int totcells,
 
 void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short
                                   inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
-                                  bool reset, int active_setting, int num_settings, char uv_layer[64])
+                                  bool reset, int active_setting, int num_settings, char uv_layer[64], bool threaded)
 {
 	int n_size = 8;
 	
@@ -1663,7 +1663,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	container_compute_cells(voro_container, voro_cells);
 
 	/*Disable for fast bisect/fill, dynamic and mousebased for now -> errors and crashes */
-	if (mode != MOD_FRACTURE_DYNAMIC && reset == true && algorithm != MOD_FRACTURE_BISECT_FAST && algorithm != MOD_FRACTURE_BISECT_FAST_FILL) {
+	if (mode != MOD_FRACTURE_DYNAMIC && reset == true && algorithm != MOD_FRACTURE_BISECT_FAST && algorithm != MOD_FRACTURE_BISECT_FAST_FILL && threaded == true) {
 		/*segment cells, give each thread a chunk to work on */
 		pool = BLI_task_pool_create(scheduler, NULL);
 		num = BLI_task_scheduler_num_threads(scheduler);

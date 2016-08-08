@@ -911,14 +911,14 @@ static int modifier_remove_exec(bContext *C, wmOperator *op)
 	int mode_orig = ob->mode;
 
 	//if we have a running fracture job, dont remove the modifier
-	if (md && md->type == eModifierType_Fracture)
+	/*if (md && md->type == eModifierType_Fracture)
 	{
 		FractureModifierData* fmd = (FractureModifierData*)md;
 		if (fmd->execute_threaded && fmd->frac_mesh && fmd->frac_mesh->running == 1)
 		{
 			return OPERATOR_CANCELLED;
 		}
-	}
+	}*/
 	
 	if (!md || !ED_object_modifier_remove(op->reports, bmain, ob, md))
 		return OPERATOR_CANCELLED;
@@ -2475,7 +2475,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 	WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
 	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
 	
-	if (!rmd->execute_threaded) {
+	/*if (!rmd->execute_threaded)*/ {
 #if 0
 		float vec[3] = {0.0f, 0.0f, 0.0f};
 		if (rv3d != NULL)
@@ -2492,6 +2492,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
 		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
 	}
+#if 0
 	else {
 		/* job stuff */
 		int factor, verts, shardprogress, halvingprogress, totalprogress;
@@ -2528,6 +2529,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 
 		WM_jobs_start(CTX_wm_manager(C), wm_job);
 	}
+#endif
 
 	return OPERATOR_FINISHED;
 }
@@ -3475,13 +3477,13 @@ static void convert_startjob(void *customdata, short *stop, short *do_update, fl
 
 static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 {
-	Object *obact = ED_object_active_context(C);
+	//Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
-	float cfra = BKE_scene_frame_get(scene);
+	//float cfra = BKE_scene_frame_get(scene);
 	Group *gr;
 	FractureModifierData *rmd;
-	FractureJob *fj;
-	wmJob* wm_job;
+	//FractureJob *fj;
+	//wmJob* wm_job;
 
 	bool convertable = true;
 
@@ -3528,6 +3530,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 
 				gr = BKE_group_add(G.main, "Converted");
 
+#if 0
 				if (rmd->execute_threaded)
 				{
 					PointerRNA *ptr;
@@ -3566,8 +3569,9 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 				}
 				else
 				{
+#endif
 					convert_modifier_to_keyframes(rmd, gr, selob, scene, start, end, threshold, clean_chan);
-				}
+//				}
 			}
 		}
 

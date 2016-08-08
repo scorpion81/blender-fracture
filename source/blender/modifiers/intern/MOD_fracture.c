@@ -1497,7 +1497,7 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		if (points.totpoints > 0) {
 			BKE_fracture_shard_by_points(fmd->frac_mesh, id, &points, fmd->frac_algorithm, obj, dm, mat_index, mat,
 			                             fmd->fractal_cuts, fmd->fractal_amount, fmd->use_smooth, fmd->fractal_iterations,
-			                             fmd->fracture_mode, fmd->reset_shards, fmd->active_setting, num_settings, fmd->uvlayer_name);
+			                             fmd->fracture_mode, fmd->reset_shards, fmd->active_setting, num_settings, fmd->uvlayer_name, fmd->execute_threaded);
 		}
 
 		/*TODO, limit this to settings shards !*/
@@ -3421,10 +3421,13 @@ static void do_post_island_creation(FractureModifierData *fmd, Object *ob, Deriv
 	fmd->refresh_constraints = true;
 	fmd->refresh_autohide = true;
 
+#if 0
 	if (fmd->execute_threaded) {
 		/* job done */
 		fmd->frac_mesh->running = 0;
 	}
+#endif
+
 }
 
 static void do_refresh_constraints(FractureModifierData *fmd, Object *ob)
@@ -3597,8 +3600,8 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		((fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) &&
 		(fmd->current_mi_entry && fmd->current_mi_entry->is_new)))
 	{
-		if ((fmd->refresh) || (fmd->refresh_constraints && !fmd->execute_threaded) ||
-			(fmd->refresh_constraints && fmd->execute_threaded && fmd->frac_mesh && fmd->frac_mesh->running == 0))
+		if ((fmd->refresh) || (fmd->refresh_constraints /*&& !fmd->execute_threaded*/)) // ||
+			//(fmd->refresh_constraints && fmd->execute_threaded && fmd->frac_mesh && fmd->frac_mesh->running == 0))
 		{
 			/* if we changed the fracture parameters */
 			freeData_internal(fmd, fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED, true);
@@ -3887,10 +3890,10 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 			}
 
 			/*only in prefracture case... and not even working there... :S*/
-			if (fmd->execute_threaded && fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+			/*if (fmd->execute_threaded && fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 			{
 				fmd->frac_mesh->running = 1;
-			}
+			}*/
 		}
 
 		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
@@ -4011,10 +4014,10 @@ static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, Deriv
 	/* TODO_4, for proper threading / job support make sure to use locks, spinlocks, and if possible remove those running / cancel flags */
 	/* make this local data in job struct maybe, fracturing could perhaps run parallel, but assembling the shards to a derivedmesh not, since
 	* addition order matters */
-	if (fmd->frac_mesh != NULL && fmd->frac_mesh->running == 1 && fmd->execute_threaded) {
+//	if (fmd->frac_mesh != NULL && fmd->frac_mesh->running == 1 && fmd->execute_threaded) {
 		/* skip modifier execution when fracture job is running */
-		return final_dm;
-	}
+//		return final_dm;
+//	}
 
 	if (fmd->refresh)
 	{
