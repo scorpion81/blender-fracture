@@ -36,6 +36,7 @@ extern "C" {
 
 #include "BLI_compiler_attrs.h"
 #include "BLI_math_inline.h"
+#include "BLI_sys_types.h"
 
 #ifdef BLI_MATH_GCC_WARN_PRAGMA
 #  pragma GCC diagnostic push

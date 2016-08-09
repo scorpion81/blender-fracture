@@ -191,17 +191,6 @@ static DerivedMesh *get_quick_derivedMesh(
 
 #ifdef USE_BMESH
 
-/* has no meaning for faces, do this so we can tell which face is which */
-#define BM_FACE_TAG BM_ELEM_DRAW
-
-/**
- * Compare selected/unselected.
- */
-static int bm_face_isect_pair(BMFace *f, void *UNUSED(user_data))
-{
-	return BM_elem_flag_test(f, BM_FACE_TAG) ? 1 : 0;
-}
-
 static DerivedMesh *applyModifier_bmesh(
         ModifierData *md, Object *ob,
         DerivedMesh *dm,
@@ -224,118 +213,7 @@ static DerivedMesh *applyModifier_bmesh(
 		result = get_quick_derivedMesh(ob, dm, bmd->object, dm_other, bmd->operation);
 
 		if (result == NULL) {
-			BMesh *bm;
-			const BMAllocTemplate allocsize = BMALLOC_TEMPLATE_FROM_DM(dm, dm_other);
-
-#ifdef DEBUG_TIME
-			TIMEIT_START(boolean_bmesh);
-#endif
-			bm = BM_mesh_create(
-			         &allocsize,
-			         &((struct BMeshCreateParams){.use_toolflags = false,}));
-
-			DM_to_bmesh_ex(dm_other, bm, true);
-			DM_to_bmesh_ex(dm, bm, true);
-
-			/* main bmesh intersection setup */
-			{
-				/* create tessface & intersect */
-				const int looptris_tot = poly_to_tri_count(bm->totface, bm->totloop);
-				int tottri;
-				BMLoop *(*looptris)[3];
-
-				looptris = MEM_mallocN(sizeof(*looptris) * looptris_tot, __func__);
-
-				BM_mesh_calc_tessellation(bm, looptris, &tottri);
-
-				/* postpone this until after tessellating
-				 * so we can use the original normals before the vertex are moved */
-				{
-					BMIter iter;
-					int i;
-					const int i_verts_end = dm_other->getNumVerts(dm_other);
-					const int i_faces_end = dm_other->getNumPolys(dm_other);
-
-					float imat[4][4];
-					float omat[4][4];
-
-					invert_m4_m4(imat, ob->obmat);
-					mul_m4_m4m4(omat, imat, bmd->object->obmat);
-
-
-					BMVert *eve;
-					i = 0;
-					BM_ITER_MESH (eve, &iter, bm, BM_VERTS_OF_MESH) {
-						mul_m4_v3(omat, eve->co);
-						if (++i == i_verts_end) {
-							break;
-						}
-					}
-
-					/* we need face normals because of 'BM_face_split_edgenet'
-					 * we could calculate on the fly too (before calling split). */
-					{
-						float nmat[4][4];
-						invert_m4_m4(nmat, omat);
-
-						const short ob_src_totcol = bmd->object->totcol;
-						short *material_remap = BLI_array_alloca(material_remap, ob_src_totcol ? ob_src_totcol : 1);
-
-						BKE_material_remap_object_calc(ob, bmd->object, material_remap);
-
-						BMFace *efa;
-						i = 0;
-						BM_ITER_MESH (efa, &iter, bm, BM_FACES_OF_MESH) {
-							mul_transposed_mat3_m4_v3(nmat, efa->no);
-							normalize_v3(efa->no);
-							BM_elem_flag_enable(efa, BM_FACE_TAG);  /* temp tag to test which side split faces are from */
-
-							/* remap material */
-							if (LIKELY(efa->mat_nr < ob_src_totcol)) {
-								efa->mat_nr = material_remap[efa->mat_nr];
-							}
-
-							if (++i == i_faces_end) {
-								break;
-							}
-						}
-					}
-				}
-
-				/* not needed, but normals for 'dm' will be invalid,
-				 * currently this is ok for 'BM_mesh_intersect' */
-				// BM_mesh_normals_update(bm);
-
-				/* change for testing */
-				bool use_separate = false;
-				bool use_dissolve = true;
-				bool use_island_connect = true;
-
-				BM_mesh_intersect(
-				        bm,
-				        looptris, tottri,
-				        bm_face_isect_pair, NULL,
-				        false,
-				        use_separate,
-				        use_dissolve,
-				        use_island_connect,
-				        bmd->operation,
-				        bmd->double_threshold);
-
-				MEM_freeN(looptris);
-			}
-
-			result = CDDM_from_bmesh(bm, true);
-
-			BM_mesh_free(bm);
-
-			result->dirty |= DM_DIRTY_NORMALS;
-
-#ifdef DEBUG_TIME
-			TIMEIT_END(boolean_bmesh);
-#endif
-
-			return result;
+			result = NewBooleanDerivedMeshBMesh(dm, ob, dm_other, bmd->object, bmd->operation, bmd->double_threshold);
 		}
 
 		/* if new mesh returned, return it; otherwise there was

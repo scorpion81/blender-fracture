@@ -552,7 +552,7 @@ static void do_set_inner_material(Shard **other, float mat[4][4], DerivedMesh* l
 
 Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *child, short inner_material_index,
                                   int num_cuts, float fractal, Shard** other, float mat[4][4], float radius,
-                                  bool use_smooth_inner, int num_levels, char uv_layer[64])
+                                  bool use_smooth_inner, int num_levels, char uv_layer[64], int solver, float thresh)
 {
 	DerivedMesh *left_dm = NULL, *right_dm, *output_dm, *other_dm;
 	BMesh* bm = NULL;
@@ -572,7 +572,14 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 	do_set_inner_material(other, mat, left_dm, inner_material_index, child);
 
 	right_dm = dm_parent;
-	output_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1); /*1 == intersection, 3 == difference*/
+
+	if (solver == eBooleanModifierSolver_Carve)
+	{
+		output_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1); /*1 == intersection, 3 == difference*/
+	}
+	else {
+		output_dm = NewBooleanDerivedMeshBMesh(right_dm, obj, left_dm, obj, 0, thresh); /*0 == intersection, 2 == difference*/
+	}
 
 	/*check for watertightness, but for fractal only*/
 	if (other != NULL && do_check_watertight(&output_dm, &bm, &left_dm, right_dm, other, mat))
@@ -585,7 +592,13 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 		if (bm != NULL)
 			BM_mesh_free(bm);
 
-		other_dm = NewBooleanDerivedMesh(left_dm, obj, right_dm, obj, 3);
+		if (solver == eBooleanModifierSolver_Carve)
+		{
+			other_dm = NewBooleanDerivedMesh(left_dm, obj, right_dm, obj, 3);
+		}
+		else {
+			other_dm = NewBooleanDerivedMeshBMesh(left_dm, obj, right_dm, obj, 2, thresh);
+		}
 
 		/*check for watertightness again, true means do return NULL here*/
 		if (!other_dm || do_check_watertight_other(&other_dm, &output_dm, other, right_dm, &left_dm, mat))
