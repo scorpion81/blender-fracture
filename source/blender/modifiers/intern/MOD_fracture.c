@@ -3721,6 +3721,18 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 			}
 		}
 	}
+
+	if (fmd->cutter_group) {
+		GroupObject *go;
+		for (go = fmd->cutter_group->gobject.first; go; go = go->next) {
+			if (go->ob)
+			{
+				DagNode *curNode = dag_get_node(forest, go->ob);
+				dag_add_relation(forest, curNode, obNode,
+				                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Fracture Modifier Cutter Group");
+			}
+		}
+	}
 }
 
 static void foreachObjectLink(
@@ -3751,6 +3763,16 @@ static void foreachObjectLink(
 		GroupObject *go;
 		for (go = fmd->autohide_filter_group->gobject.first; go; go = go->next) {
 			if (go->ob) {
+				walk(userData, ob, &go->ob, IDWALK_NOP);
+			}
+		}
+	}
+
+	if (fmd->cutter_group) {
+		GroupObject *go;
+		for (go = fmd->cutter_group->gobject.first; go; go = go->next) {
+			if (go->ob)
+			{
 				walk(userData, ob, &go->ob, IDWALK_NOP);
 			}
 		}

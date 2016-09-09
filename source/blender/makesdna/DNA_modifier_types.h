@@ -1537,6 +1537,12 @@ enum {
 	MOD_FRACTURE_EXTERNAL          = (1 << 2),
 };
 
+enum {
+	MOD_FRACTURE_KEEP_BOTH          = (1 << 0),
+	MOD_FRACTURE_KEEP_INTERSECT      = (1 << 1),
+	MOD_FRACTURE_KEEP_DIFFERENCE     = (1 << 2),
+};
+
 typedef struct ShardSequence {
 	struct ShardSequence *next, *prev;
 	struct FracMesh *frac_mesh;
@@ -1755,7 +1761,9 @@ typedef struct FractureModifierData {
 	int matstart;
 	int defstart;
 
-	char pad[4];
+	int keep_cutter_shards;
+
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

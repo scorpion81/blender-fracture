@@ -1275,16 +1275,20 @@ static void do_intersect(FractureModifierData *fmd, Object* ob, Shard *t, short 
 
 	//printf("Fractured: %d\n", k);
 
-	if (s != NULL) {
-		add_shard(fmd->frac_mesh, s, mat);
-		shards++;
-		s = NULL;
+	if (ELEM(fmd->keep_cutter_shards, MOD_FRACTURE_KEEP_BOTH, MOD_FRACTURE_KEEP_INTERSECT)) {
+		if (s != NULL) {
+			add_shard(fmd->frac_mesh, s, mat);
+			shards++;
+			s = NULL;
+		}
 	}
 
-	if (s2 != NULL) {
-		add_shard(fmd->frac_mesh, s2, mat);
-		shards++;
-		s2 = NULL;
+	if (ELEM(fmd->keep_cutter_shards, MOD_FRACTURE_KEEP_BOTH, MOD_FRACTURE_KEEP_DIFFERENCE)) {
+		if (s2 != NULL) {
+			add_shard(fmd->frac_mesh, s2, mat);
+			shards++;
+			s2 = NULL;
+		}
 	}
 
 	if ((is_zero && ob->derivedFinal == NULL) || !is_zero) {

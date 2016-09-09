@@ -5820,6 +5820,13 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	static EnumPropertyItem prop_keep_cutter_shards[] = {
+		{MOD_FRACTURE_KEEP_BOTH, "KEEP_BOTH", 0, "Both", "Keep both shards(intersect and difference)"},
+		{MOD_FRACTURE_KEEP_INTERSECT, "KEEP_INTERSECT", 0, "Intersect Only", "Keep intersected shards only"},
+		{MOD_FRACTURE_KEEP_DIFFERENCE, "KEEP_DIFFERENCE", 0, "Difference Only", "Keep difference shards only"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	srna = RNA_def_struct(brna, "FractureModifier", "Modifier");
 	RNA_def_struct_ui_text(srna, "Fracture Modifier", "Add a fracture container to this object");
 	RNA_def_struct_sdna(srna, "FractureModifierData");
@@ -6313,6 +6320,13 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_pointer_funcs(prop, NULL, "rna_FractureModifier_autohide_filter_group_set", NULL, NULL);
 	RNA_def_property_flag(prop, PROP_EDITABLE);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "keep_cutter_shards", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_keep_cutter_shards);
+	RNA_def_property_enum_default(prop, MOD_FRACTURE_KEEP_BOTH);
+	RNA_def_property_ui_text(prop, "Cutter mode", "Determines which shards to keep from cutting process");
+	//RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	/*Fracture Modifiers own python / RNA API */

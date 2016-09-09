@@ -137,6 +137,8 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             col.prop(md, "dm_group")
             if md.frac_algorithm == 'BOOLEAN':
                 col.prop(md, "cutter_group")
+                if (md.cutter_group):
+                   col.prop(md, "keep_cutter_shards")
             col.prop(md, "use_particle_birth_coordinates")
 
             box.prop(md, "percentage")
