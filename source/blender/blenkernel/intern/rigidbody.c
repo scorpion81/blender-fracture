@@ -3199,6 +3199,28 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int r
 	mi->rigidbody->flag &= ~(RBO_FLAG_NEEDS_VALIDATE | RBO_FLAG_NEEDS_RESHAPE);
 }
 
+static void activateCluster(MeshIsland *mi, int particle_index, RigidBodyWorld *rbw, Object *ob) {
+	RigidBodyShardCon *con;
+	int i = 0;
+	for (i = 0; i < mi->participating_constraint_count; i++)
+	{
+		con = mi->participating_constraints[i];
+		if (con->physics_constraint && con->mi1->particle_index == particle_index) {
+			if (con->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) {
+				activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
+				activateCluster(con->mi1, particle_index, rbw, ob);
+			}
+		}
+
+		if (con->physics_constraint && con->mi2->particle_index == particle_index) {
+			if (con->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) {
+				activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
+				activateCluster(con->mi2, particle_index, rbw, ob);
+			}
+		}
+	}
+}
+
 static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, MeshIsland *mi, RigidBodyWorld *rbw, int breaking_percentage)
 {
 	int broken_cons = 0, cons = 0, i = 0, cluster_cons = 0, broken_cluster_cons = 0;
@@ -3239,9 +3261,17 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 					if (fmd->use_breaking)
 					{
 						if (con->physics_constraint) {
+
 							RB_constraint_set_enabled(con->physics_constraint, false);
-							activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
-							activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
+							if (con->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) {
+								activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
+								activateCluster(con->mi1, mi->particle_index, rbw, ob);
+							}
+
+							if (con->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) {
+								activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
+								activateCluster(con->mi2, mi->particle_index, rbw, ob);
+							}
 						}
 					}
 				}
@@ -4454,9 +4484,11 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	}
 	else if (rbw->ltime == startframe)
 	{
-		bool did_it = restoreKinematic(rbw);
-		if (did_it)
-			rigidbody_update_simulation(scene, rbw, true);
+		/*bool did_it = */restoreKinematic(rbw);
+		//if (did_it)
+
+		//make 1st run like later runs... hack...
+		rigidbody_update_simulation(scene, rbw, true);
 	}
 
 	/* advance simulation, we can only step one frame forward */

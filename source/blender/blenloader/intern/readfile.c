@@ -5287,7 +5287,12 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 				sh = shards[i]; //skip "empty" shards
 				while (sh->shard_id < mi->id)
 				{
-					sh = sh->next;
+					if (sh->next) {
+						sh = sh->next;
+					}
+					else {
+						break;
+					}
 				}
 
 				if (sh)
