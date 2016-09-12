@@ -1853,7 +1853,7 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 	mi->thresh_weight = 0.0f;
 	mi->ground_weight = 0.0f;
 	mi->id = id;
-	snprintf(mi->name, 64, "%d", mi->id);
+	BLI_snprintf(mi->name, 64, "%d", mi->id);
 	mi->vertices = verts; /*those are temporary only !!! */
 	mi->vertco = MEM_mallocN(sizeof(float) * 3 * totvert, "mi->vertco");
 	memcpy(mi->vertco, vertco, 3 * totvert * sizeof(float));
@@ -2286,7 +2286,7 @@ static void do_constraint(FractureModifierData* fmd, MeshIsland *mi1, MeshIsland
 	rbsc->mi1 = mi1;
 	rbsc->mi2 = mi2;
 
-	snprintf(rbsc->name, 64, "%s-%s", rbsc->mi1->name, rbsc->mi2->name);
+	BLI_snprintf(rbsc->name, 64, "%s-%s", rbsc->mi1->name, rbsc->mi2->name);
 
 	if (thresh == 0 || fmd->use_breaking == false) {
 		rbsc->flag &= ~RBC_FLAG_USE_BREAKING;
@@ -3217,7 +3217,7 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 	copy_qt_qt(mi->rot, rot);
 	mi->id = s->shard_id;
-	snprintf(mi->name, 64, "%d", mi->id);
+	BLI_snprintf(mi->name, 64, "%d", mi->id);
 
 	if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 	{
