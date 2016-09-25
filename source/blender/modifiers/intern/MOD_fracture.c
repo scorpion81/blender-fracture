@@ -1167,6 +1167,64 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 		add_v3_v3v3(bmax, max, cent);
 		add_v3_v3v3(bmin, min, cent);
 
+		//first impact only, so shard has id 0
+		if (emd->fracture_mode == MOD_FRACTURE_DYNAMIC && emd->limit_impact && id == 0) {
+			//shrink pointcloud container around impact point, to a size
+			Shard *s = BKE_shard_by_id(emd->frac_mesh, 0, fracmesh);
+			if (s != NULL) {
+				float size[3], nmin[3], nmax[3], loc[3], imat[4][4], tmin[3], tmax[3], quat[4];
+				print_v3("Impact Loc\n", s->impact_loc);
+				print_v3("Impact Size\n", s->impact_size);
+
+				//invert_m4_m4(imat, ob->obmat);
+				//mul_v3_m4v3(loc, imat, s->impact_loc);
+				//mat4_to_quat(quat, imat);
+				//sub_v3_v3v3(loc, s->impact_loc, ob->loc);
+				//mul_qt_v3(quat, loc);
+				copy_v3_v3(loc, s->impact_loc);
+				mul_v3_v3fl(size, s->impact_size, 0.5f);
+				sub_v3_v3v3(nmin, loc, size);
+				add_v3_v3v3(nmax, loc, size);
+
+				copy_v3_v3(tmin, min);
+				copy_v3_v3(tmax, max);
+
+				/*mat4_to_quat(quat, ob->obmat);
+				mul_qt_v3(quat, tmin);
+				mul_qt_v3(quat, tmax);
+				add_v3_v3(tmin, ob->loc);
+				add_v3_v3(tmax, ob->loc);*/
+
+				//clamp
+				if (fabsf(tmin[0]) < fabsf(nmin[0])) {
+					nmin[0] = tmin[0];
+				}
+
+				if (fabsf(tmin[1]) < fabsf(nmin[1])) {
+					nmin[1] = tmin[1];
+				}
+
+				if (fabsf(tmin[2]) < fabsf(nmin[2])) {
+					nmin[2] = tmin[2];
+				}
+
+				if (fabsf(tmax[0]) < fabsf(nmax[0])) {
+					nmax[0] = tmax[0];
+				}
+
+				if (fabsf(tmax[1]) < fabsf(nmax[1])) {
+					nmax[1] = tmax[1];
+				}
+
+				if (fabsf(tmax[2]) < fabsf(nmax[2])) {
+					nmax[2] = tmax[2];
+				}
+
+				copy_v3_v3(max, nmax);
+				copy_v3_v3(min, nmin);
+			}
+		}
+
 		printf("min, max: (%f %f %f), (%f %f %f)\n", min[0], min[1], min[2], max[0], max[1], max[2]);
 
 		if (emd->frac_algorithm == MOD_FRACTURE_BISECT_FAST || emd->frac_algorithm == MOD_FRACTURE_BISECT_FAST_FILL ||
@@ -3098,6 +3156,8 @@ static MeshIsland* find_meshisland(ListBase* meshIslands, int id)
 	return NULL;
 }
 
+
+#if 0
 static bool contains(float loc[3], float size[3], float point[3])
 {
 	if ((fabsf(loc[0] - point[0]) < size[0]) &&
@@ -3140,6 +3200,7 @@ void set_rigidbody_type(FractureModifierData *fmd, Shard *s, MeshIsland *mi)
 		}
 	}
 }
+#endif
 
 static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s, DerivedMesh *orig_dm,
                                  int i, int thresh_defgrp_index, int ground_defgrp_index, int vertstart)
@@ -3287,10 +3348,10 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 			mi->rigidbody->flag = par->rigidbody->flag;
 		}
 
-		if (fmd->limit_impact)
+		/*if (fmd->limit_impact)
 		{
 			set_rigidbody_type(fmd, s, mi);
-		}
+		}*/
 	}
 }
 
@@ -4128,6 +4189,8 @@ static Shard* copy_shard(Shard *s)
 	t->raw_volume = s->raw_volume;
 	t->shard_id = s->shard_id;
 	t->parent_id = s->parent_id;
+	copy_v3_v3(t->impact_loc, s->impact_loc);
+	copy_v3_v3(t->impact_size, s->impact_size);
 
 	return t;
 }

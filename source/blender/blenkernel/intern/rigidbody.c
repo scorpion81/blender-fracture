@@ -2030,13 +2030,29 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	return check_colgroup_ghost(ob1, ob2);
 }
 
-static bool check_shard_size(FractureModifierData *fmd, int id, float impact_loc[3], Object* collider)
+static bool contains(float loc[3], Object* collider, float point[3], Object* ob, bool limit)
 {
-	FractureID *fid;
-	float size = 0.1f;
+	float size[3];
+	BKE_object_dimensions_get(collider, size);
+
+	if ((fabsf(loc[0] - point[0]) < size[0]) &&
+	    (fabsf(loc[1] - point[1]) < size[1]) &&
+	    (fabsf(loc[2] - point[2]) < size[2]))
+	{
+		if (limit && (collider == ob)) {
+			return false;
+		}
+
+		return true;
+	}
+
+	return false;
+}
+
+static Shard* findShard(FractureModifierData *fmd, int id)
+{
 	Shard *t = fmd->frac_mesh->shard_map.first;
 	Shard *s = NULL;
-	float dim[3];
 
 	while (t)
 	{
@@ -2048,6 +2064,17 @@ static bool check_shard_size(FractureModifierData *fmd, int id, float impact_loc
 		}
 		t = t->next;
 	}
+
+	return s;
+}
+
+static bool check_shard_size(FractureModifierData *fmd, int id)
+{
+	FractureID *fid;
+	float size = 0.1f;
+	Shard *s = NULL;
+
+	s = findShard(fmd, id);
 
 	if (s == NULL)
 	{
@@ -2071,15 +2098,6 @@ static bool check_shard_size(FractureModifierData *fmd, int id, float impact_loc
 		}
 	}
 
-	if (collider)
-	{
-		//simple calc, take just dimensions here.... will be refined later
-		BKE_object_dimensions_get(collider, dim);
-
-		copy_v3_v3(s->impact_loc, impact_loc);
-		copy_v3_v3(s->impact_size, dim);
-	}
-
 	printf("FRACTURE : %d\n", id);
 
 	return true;
@@ -2088,7 +2106,7 @@ static bool check_shard_size(FractureModifierData *fmd, int id, float impact_loc
 static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 {
 	int linear_index1, linear_index2;
-	Object* ob1, *ob2;
+	Object* ob1 = NULL, *ob2 = NULL;
 	int ob_index1, ob_index2;
 	FractureModifierData *fmd1, *fmd2;
 	float force;
@@ -2118,14 +2136,25 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 		ob1 = rbw->objects[ob_index1];
 		fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
 
-		if (fmd1 && fmd1->fracture_mode == MOD_FRACTURE_DYNAMIC) {
-			if (force > fmd1->dynamic_force) {
-				if (fmd1->current_shard_entry && fmd1->current_shard_entry->is_new)
+		if (fmd1 && fmd1->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		{
+			if (fmd1->current_shard_entry && fmd1->current_shard_entry->is_new)
+			{
+				int id = rbw->cache_index_map[linear_index1]->meshisland_index;
+				Shard *s = findShard(fmd1, id);
+
+				if (force > fmd1->dynamic_force || (s && ob2 && (fmd1->limit_impact &&
+				   contains(cp->contact_pos_world_onA, ob2, s->centroid, ob1, fmd1->limit_impact))))
 				{
+					if (s) {
+						float size[3];
+						BKE_object_dimensions_get(ob2, size);
+						copy_v3_v3(s->impact_loc, cp->contact_pos_world_onA);
+						copy_v3_v3(s->impact_size, size);
+					}
 					/*only fracture on new entries, this is necessary because after loading a file
 					 *the pointcache thinks it is empty and a fracture is attempted ! */
-					int id = rbw->cache_index_map[linear_index1]->meshisland_index;
-					if(check_shard_size(fmd1, id, cp->contact_pos_world_onA, ob2))
+					if (check_shard_size(fmd1, id))
 					{
 						FractureID* fid1 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid1");
 						fid1->shardID = rbw->cache_index_map[linear_index1]->meshisland_index;
@@ -2143,12 +2172,24 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 		//ob2 = rbw->objects[ob_index2];
 		fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
 
-		if (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC) {
-			if (force > fmd2->dynamic_force){
-				if (fmd2->current_shard_entry && fmd2->current_shard_entry->is_new)
+		if (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		{
+			if (fmd2->current_shard_entry && fmd2->current_shard_entry->is_new)
+			{
+				int id = rbw->cache_index_map[linear_index1]->meshisland_index;
+				Shard *s = findShard(fmd2, id);
+
+				if (force > fmd2->dynamic_force || (ob1 && s && (fmd2->limit_impact &&
+				   contains(cp->contact_pos_world_onB, ob1, s->centroid, ob2, fmd2->limit_impact))))
 				{
-					int id = rbw->cache_index_map[linear_index2]->meshisland_index;
-					if(check_shard_size(fmd2, id, cp->contact_pos_world_onB, ob1))
+					if (s) {
+						float size[3];
+						BKE_object_dimensions_get(ob1, size);
+						copy_v3_v3(s->impact_loc, cp->contact_pos_world_onB);
+						copy_v3_v3(s->impact_size, size);
+					}
+
+					if (check_shard_size(fmd2, id))
 					{
 						FractureID* fid2 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid2");
 						fid2->shardID = id;
