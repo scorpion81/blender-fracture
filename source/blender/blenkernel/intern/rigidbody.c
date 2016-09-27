@@ -76,9 +76,6 @@
 #include "BKE_scene.h"
 #include "PIL_time.h"
 
-#include "WM_types.h"
-#include "WM_api.h"
-
 #ifdef WITH_BULLET
 
 static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always);

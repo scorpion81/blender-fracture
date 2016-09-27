@@ -66,6 +66,7 @@
 #include "BKE_global.h"
 #include "BKE_key.h"
 #include "BKE_lattice.h"
+#include "BKE_library_remap.h"
 #include "BKE_main.h"
 #include "BKE_mesh.h"
 #include "BKE_mesh_mapping.h"
@@ -2565,9 +2566,6 @@ static int fracture_refresh_invoke(bContext *C, wmOperator *op, const wmEvent *U
 	Scene* scene = CTX_data_scene(C);
 	Object* ob = CTX_data_active_object(C);
 
-	if (WM_jobs_test(CTX_wm_manager(C), scene, WM_JOB_TYPE_OBJECT_FRACTURE))
-		return OPERATOR_CANCELLED;
-
 	if (edit_modifier_invoke_properties(C, op))
 	{
 		apply_scale(ob, scene);
@@ -2869,7 +2867,9 @@ static void do_restore_scene_link(Scene* scene, int count, Scene **bgscene, Base
 	MEM_freeN(*basarray_old);
 	*basarray_old = NULL;
 
-	BKE_scene_unlink(G.main, *bgscene, scene);
+	BKE_libblock_remap(G.main, *bgscene, scene, ID_REMAP_SKIP_INDIRECT_USAGE | ID_REMAP_SKIP_NEVER_NULL_USAGE);
+	BKE_libblock_free(G.main, *bgscene);
+
 	*bgscene = NULL;
 }
 
@@ -3198,7 +3198,7 @@ static bAnimContext* make_anim_context(Scene* scene, Object* ob)
 static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, Group* gr, Object* ob, Scene* scene,
                                   int start, int end, int count, Object* parent, bool is_baked,
                                   PTCacheID* pid, PointCache *cache, float obloc[3], float diff[3], int *j, Base **base,
-                                  float threshold, bool clean_chan)
+                                  float threshold, bool clean_chan, ReportList* reports)
 {
 	int i = 0;
 	Object* ob_new = NULL;
@@ -3236,7 +3236,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 
 	DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH, false);
 
-	ED_rigidbody_object_add(scene, ob_new, RBO_TYPE_ACTIVE, NULL);
+	ED_rigidbody_object_add(G.main, scene, ob_new, RBO_TYPE_ACTIVE, reports);
 	ob_new->rigidbody_object->flag |= RBO_FLAG_KINEMATIC;
 	ob_new->rigidbody_object->mass = mi->rigidbody->mass;
 
@@ -3272,7 +3272,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 				if (is_baked)
 				{
 					BKE_ptcache_id_time(pid, scene, (float)i, NULL, NULL, NULL);
-					if (BKE_ptcache_read(pid, (float)i))
+					if (BKE_ptcache_read(pid, (float)i, false))
 					{
 						BKE_ptcache_validate(cache, i);
 						copy_v3_v3(loc, mi->rigidbody->pos);
@@ -3314,17 +3314,17 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 				copy_v3_v3(ob_new->size, size);
 			}
 
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 0, i, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 1, i, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 2, i, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 0, i, flag, BEZT_KEYTYPE_KEYFRAME);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 1, i, flag, BEZT_KEYTYPE_KEYFRAME);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 2, i, flag, BEZT_KEYTYPE_KEYFRAME);
 
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 0, i, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 1, i, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 2, i, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 0, i, flag, BEZT_KEYTYPE_KEYFRAME);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 1, i, flag, BEZT_KEYTYPE_KEYFRAME);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 2, i, flag, BEZT_KEYTYPE_KEYFRAME);
 
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 0, i, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 1, i, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 2, i, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 0, i, flag, BEZT_KEYTYPE_KEYFRAME);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 1, i, flag, BEZT_KEYTYPE_KEYFRAME);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 2, i, flag, BEZT_KEYTYPE_KEYFRAME);
 		}
 
 		if (i == end)
@@ -3354,7 +3354,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 }
 
 static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, Object* ob, Scene* scene, int start, int end,
-                                          float threshold, bool clean_chan)
+                                          float threshold, bool clean_chan, ReportList *reports)
 {
 	bool is_baked = false;
 	PointCache* cache = NULL;
@@ -3397,7 +3397,7 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 	{
 		Object *obj = do_convert_meshIsland(fmd, mi, gr, ob, scene, start, end, count,
 		                                    parent, is_baked, &pid, cache, obloc, diff, &k, &basarray_old[i],
-		                                    threshold, clean_chan);
+		                                    threshold, clean_chan, reports);
 		if (!obj) {
 			return false;
 		}
@@ -3524,49 +3524,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 				}
 
 				gr = BKE_group_add(G.main, "Converted");
-
-#if 0
-				if (rmd->execute_threaded)
-				{
-					PointerRNA *ptr;
-					/* what a dirty hack.... disable poll function */
-					wmOperatorType *ot = WM_operatortype_find("ANIM_OT_keyframe_insert_menu", 0);
-					ot->poll = NULL;
-
-					ptr = MEM_dupallocN(op->ptr);
-					ptr->type = op->ptr->type;
-					ptr->id = op->ptr->id;
-					ptr->id.data = op->ptr->id.data;
-					ptr->data = op->ptr->data;
-
-					/* job stuff */
-					scene->r.cfra = cfra;
-
-					/* setup job */
-					wm_job = WM_jobs_get(CTX_wm_manager(C), CTX_wm_window(C), scene, "Convert to Keyframed Objects",
-										 WM_JOB_PROGRESS, WM_JOB_TYPE_OBJECT_FRACTURE);
-					fj = MEM_callocN(sizeof(FractureJob), "convert to Keyframes job");
-					fj->fmd = rmd;
-					fj->total_progress = count;
-					fj->gr = gr;
-					fj->ob = obact;
-					fj->scene = scene;
-					fj->start = start;
-					fj->end = end;
-
-					WM_jobs_customdata_set(wm_job, fj, convert_free);
-					WM_jobs_timer(wm_job, 0.1, NC_WM | ND_JOB, NC_OBJECT | ND_MODIFIER);
-					WM_jobs_callbacks(wm_job, convert_startjob, NULL, convert_update, NULL);
-
-					WM_jobs_start(CTX_wm_manager(C), wm_job);
-
-					return OPERATOR_FINISHED;
-				}
-				else
-				{
-#endif
-					convert_modifier_to_keyframes(rmd, gr, selob, scene, start, end, threshold, clean_chan);
-//				}
+				convert_modifier_to_keyframes(rmd, gr, selob, scene, start, end, threshold, clean_chan, op->reports);
 			}
 		}
 

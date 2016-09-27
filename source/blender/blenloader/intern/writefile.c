@@ -1695,10 +1695,10 @@ static void write_shard(WriteData* wd, Shard* s)
 	CustomDataLayer *llayers = NULL, llayers_buff[CD_TEMP_CHUNK_SIZE];
 	CustomDataLayer *players = NULL, players_buff[CD_TEMP_CHUNK_SIZE];
 
-	writestruct(wd, DATA, "Shard", 1, s);
-	writestruct(wd, DATA, "MVert", s->totvert, s->mvert);
-	writestruct(wd, DATA, "MPoly", s->totpoly, s->mpoly);
-	writestruct(wd, DATA, "MLoop", s->totloop, s->mloop);
+	writestruct(wd, DATA, Shard, 1, s);
+	writestruct(wd, DATA, MVert, s->totvert, s->mvert);
+	writestruct(wd, DATA, MPoly, s->totpoly, s->mpoly);
+	writestruct(wd, DATA, MLoop, s->totloop, s->mloop);
 
 	CustomData_file_write_prepare(&s->vertData, &vlayers, vlayers_buff, ARRAY_SIZE(vlayers_buff));
 	CustomData_file_write_prepare(&s->loopData, &llayers, llayers_buff, ARRAY_SIZE(llayers_buff));
@@ -1726,13 +1726,13 @@ static void write_shard(WriteData* wd, Shard* s)
 
 static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 {
-	writestruct(wd, DATA, "MeshIsland", 1, mi);
+	writestruct(wd, DATA, MeshIsland, 1, mi);
 	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertco);
 	writedata(wd, DATA, sizeof(short) * 3 * mi->vertex_count, mi->vertno);
 
-	writestruct(wd, DATA, "RigidBodyOb", 1, mi->rigidbody);
+	writestruct(wd, DATA, RigidBodyOb, 1, mi->rigidbody);
 	writedata(wd, DATA, sizeof(int) * mi->neighbor_count, mi->neighbor_ids);
-	writestruct(wd, DATA, "BoundBox", 1, mi->bb);
+	writestruct(wd, DATA, BoundBox, 1, mi->bb);
 	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->vertex_indices);
 
 	writedata(wd, DATA, sizeof(float) * 3 * mi->frame_count, mi->locs);
@@ -1891,7 +1891,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 				{
 					if (mode)
 					{
-						writestruct(wd, DATA, "FracMesh", 1, fm);
+						writestruct(wd, DATA, FracMesh, 1, fm);
 
 						for (s = fm->shard_map.first; s; s = s->next) {
 							write_shard(wd, s);
@@ -1907,7 +1907,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 
 						for (con = fmd->meshConstraints.first; con; con = con->next)
 						{
-							writestruct(wd, DATA, "RigidBodyShardCon", 1, con);
+							writestruct(wd, DATA, RigidBodyShardCon, 1, con);
 						}
 					}
 				}
@@ -1919,8 +1919,8 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 
 				for (ssq = fmd->shard_sequence.first; ssq; ssq = ssq->next)
 				{
-					writestruct(wd, DATA, "ShardSequence", 1, ssq);
-					writestruct(wd, DATA, "FracMesh", 1, ssq->frac_mesh);
+					writestruct(wd, DATA, ShardSequence, 1, ssq);
+					writestruct(wd, DATA, FracMesh, 1, ssq->frac_mesh);
 					for (s = ssq->frac_mesh->shard_map.first; s; s = s->next) {
 						write_shard(wd, s);
 					}
@@ -1928,7 +1928,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 
 				for (msq = fmd->meshIsland_sequence.first; msq; msq = msq->next)
 				{
-					writestruct(wd, DATA, "MeshIslandSequence", 1, msq);
+					writestruct(wd, DATA, MeshIslandSequence, 1, msq);
 					for (mi = msq->meshIslands.first; mi; mi = mi->next) {
 						write_meshIsland(wd, mi);
 					}
