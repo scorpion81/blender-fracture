@@ -1704,6 +1704,7 @@ typedef struct FractureModifierData {
 	int cutter_axis;
 	int cluster_constraint_type;
 	int fracture_mode;
+	int boolean_solver;
 
 	float breaking_angle;
 	float breaking_distance;
@@ -1727,6 +1728,7 @@ typedef struct FractureModifierData {
 	float minimum_impulse;
 	float directional_factor;
 	float mass_threshold_factor;
+	float boolean_double_threshold;
 
 	/* flags */
 	int refresh;

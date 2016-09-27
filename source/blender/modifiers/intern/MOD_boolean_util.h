@@ -43,4 +43,7 @@ struct DerivedMesh;
 struct DerivedMesh *NewBooleanDerivedMesh(struct DerivedMesh *dm, struct Object *ob,
                                           struct DerivedMesh *dm_select, struct Object *ob_select, int int_op_type);
 
+struct DerivedMesh *NewBooleanDerivedMeshBMesh(struct DerivedMesh *dm, struct Object *ob,
+                                               struct DerivedMesh *dm_other, struct Object *ob_other, int op_type, float double_threshold);
+
 #endif  /* MOD_BOOLEAN_UTILS */

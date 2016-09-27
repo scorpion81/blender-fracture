@@ -239,7 +239,8 @@ static bool check_non_manifold(DerivedMesh* dm)
 	BMEdge *e;
 
 	/*check for watertightness*/
-	bm = DM_to_bmesh(dm, true);
+	bm = BM_mesh_create(&bm_mesh_allocsize_default, &((struct BMeshCreateParams){.use_toolflags = true,}));
+	DM_to_bmesh_ex(dm, bm, true);
 
 	if (bm->totface < 4) {
 		BM_mesh_free(bm);
@@ -410,7 +411,7 @@ static BMesh* do_fractal(float radius, float mat[4][4], bool use_smooth_inner, s
 	int i;
 
 	/*create a grid plane */
-	bm = BM_mesh_create(&bm_mesh_allocsize_default,  &((struct BMeshCreateParams){.use_toolflags = false,}));
+	bm = BM_mesh_create(&bm_mesh_allocsize_default,  &((struct BMeshCreateParams){.use_toolflags = true,}));
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 	        "create_grid x_segments=%i y_segments=%i size=%f matrix=%m4",
 	        1, 1, radius*1.4, mat);
@@ -552,7 +553,7 @@ static void do_set_inner_material(Shard **other, float mat[4][4], DerivedMesh* l
 
 Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *child, short inner_material_index,
                                   int num_cuts, float fractal, Shard** other, float mat[4][4], float radius,
-                                  bool use_smooth_inner, int num_levels, char uv_layer[64])
+                                  bool use_smooth_inner, int num_levels, char uv_layer[64], int solver, float thresh)
 {
 	DerivedMesh *left_dm = NULL, *right_dm, *output_dm, *other_dm;
 	BMesh* bm = NULL;
@@ -572,7 +573,14 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 	do_set_inner_material(other, mat, left_dm, inner_material_index, child);
 
 	right_dm = dm_parent;
-	output_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1); /*1 == intersection, 3 == difference*/
+
+	if (solver == eBooleanModifierSolver_Carve)
+	{
+		output_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1); /*1 == intersection, 3 == difference*/
+	}
+	else {
+		output_dm = NewBooleanDerivedMeshBMesh(right_dm, obj, left_dm, obj, 0, thresh); /*0 == intersection, 2 == difference*/
+	}
 
 	/*check for watertightness, but for fractal only*/
 	if (other != NULL && do_check_watertight(&output_dm, &bm, &left_dm, right_dm, other, mat))
@@ -585,7 +593,13 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 		if (bm != NULL)
 			BM_mesh_free(bm);
 
-		other_dm = NewBooleanDerivedMesh(left_dm, obj, right_dm, obj, 3);
+		if (solver == eBooleanModifierSolver_Carve)
+		{
+			other_dm = NewBooleanDerivedMesh(left_dm, obj, right_dm, obj, 3);
+		}
+		else {
+			other_dm = NewBooleanDerivedMeshBMesh(left_dm, obj, right_dm, obj, 2, thresh);
+		}
 
 		/*check for watertightness again, true means do return NULL here*/
 		if (!other_dm || do_check_watertight_other(&other_dm, &output_dm, other, right_dm, &left_dm, mat))
@@ -779,7 +793,7 @@ static BMesh *do_preselection(BMesh* bm_orig, Shard *child, KDTree *preselect_tr
 	int i = 0, r = 0;
 	float max_dist = 0;
 	KDTreeNearest* n = NULL;
-	BMesh *bm_new = BM_mesh_create(&bm_mesh_allocsize_default, &((struct BMeshCreateParams){.use_toolflags = false,}));
+	BMesh *bm_new = BM_mesh_create(&bm_mesh_allocsize_default, &((struct BMeshCreateParams){.use_toolflags = true,}));
 	BMIter iter;
 	BMFace *f;
 #define MY_TAG (1 << 6)
@@ -884,7 +898,9 @@ Shard *BKE_fracture_shard_bisect(BMesh *bm_orig, Shard *child, float obmat[4][4]
 	BMesh *bm_child;
 
 	unwrap_shard_dm(dm_child, uv_layer);
-	bm_child = DM_to_bmesh(dm_child, true);
+
+	bm_child = BM_mesh_create(&bm_mesh_allocsize_default,  &((struct BMeshCreateParams){.use_toolflags = true,}));
+	DM_to_bmesh_ex(dm_child, bm_child, true);
 
 	//hmmm need to copy only preselection !!! or rebuild bm_parent from selected data only....
 	if (preselect_tree != NULL) {

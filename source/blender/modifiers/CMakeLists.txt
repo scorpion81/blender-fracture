@@ -124,7 +124,8 @@ endif()
 if(WITH_MOD_BOOLEAN)
 	add_definitions(-DWITH_MOD_BOOLEAN)
 	list(APPEND SRC
-		intern/MOD_boolean_util.c
+		intern/MOD_boolean_util_carve.c
+		intern/MOD_boolean_util_bmesh.c
 	)
 	list(APPEND INC
 		../../../extern/carve

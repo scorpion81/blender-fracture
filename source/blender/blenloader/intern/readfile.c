@@ -5236,6 +5236,13 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 		link_list(fd, &fmd->fracture_settings);
 	}
 
+	//load useful defaults here for older blends, newer settings (better do this in do_versioning)
+	if (fd->fileversion < 278) {
+		fmd->boolean_solver = eBooleanModifierSolver_Carve;
+		fmd->boolean_double_threshold = 1e-6f;
+		fmd->keep_cutter_shards = MOD_FRACTURE_KEEP_BOTH;
+	}
+
 	if (fm == NULL || fmd->dm_group) {
 		fmd->dm = NULL;
 		fmd->meshIslands.first = NULL;
