@@ -61,6 +61,8 @@ void    BKE_image_free_buffers(struct Image *image);
 /* call from library */
 void    BKE_image_free(struct Image *image);
 
+void    BKE_image_init(struct Image *image);
+
 typedef void (StampCallback)(void *data, const char *propname, char *propvalue, int len);
 
 void    BKE_render_result_stamp_info(struct Scene *scene, struct Object *camera, struct RenderResult *rr, bool allocate_only);
@@ -106,7 +108,7 @@ struct anim *openanim_noload(const char *name, int flags, int streamindex, char 
 
 void    BKE_image_de_interlace(struct Image *ima, int odd);
 
-void    BKE_image_make_local(struct Image *ima);
+void    BKE_image_make_local(struct Main *bmain, struct Image *ima, const bool lib_local);
 
 void    BKE_image_tag_time(struct Image *ima);
 

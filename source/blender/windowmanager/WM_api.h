@@ -64,7 +64,10 @@ struct wmDrag;
 struct ImBuf;
 struct ImageFormatData;
 struct ARegion;
+
+#ifdef WITH_INPUT_NDOF
 struct wmNDOFMotionData;
+#endif
 
 typedef struct wmJob wmJob;
 
@@ -113,6 +116,8 @@ bool		WM_file_read(struct bContext *C, const char *filepath, struct ReportList *
 void		WM_autosave_init(struct wmWindowManager *wm);
 void		WM_recover_last_session(struct bContext *C, struct ReportList *reports);
 void		WM_file_tag_modified(const struct bContext *C);
+
+void        WM_lib_reload(struct Library *lib, struct bContext *C, struct ReportList *reports);
 
 			/* mouse cursors */
 void		WM_cursor_set(struct wmWindow *win, int curs);
@@ -184,14 +189,15 @@ void		WM_event_add_mousemove(struct bContext *C);
 bool        WM_modal_tweak_exit(const struct wmEvent *event, int tweak_event);
 bool		WM_event_is_absolute(const struct wmEvent *event);
 
+#ifdef WITH_INPUT_NDOF
 			/* 3D mouse */
 void		WM_ndof_deadzone_set(float deadzone);
-
+#endif
 			/* notifiers */
 void		WM_event_add_notifier(const struct bContext *C, unsigned int type, void *reference);
 void		WM_main_add_notifier(unsigned int type, void *reference);
 void		WM_main_remove_notifier_reference(const void *reference);
-void		WM_main_remove_editor_id_reference(const struct ID *id);
+void		WM_main_remap_editor_id_reference(struct ID *old_id, struct ID *new_id);
 
 			/* reports */
 void        WM_report_banner_show(void);
@@ -220,6 +226,7 @@ void        WM_event_timer_sleep(struct wmWindowManager *wm, struct wmWindow *wi
 			/* invoke callback, uses enum property named "type" */
 void		WM_operator_view3d_unit_defaults(struct bContext *C, struct wmOperator *op);
 int			WM_operator_smooth_viewtx_get(const struct wmOperator *op);
+int			WM_menu_invoke_ex(struct bContext *C, struct wmOperator *op, int opcontext);
 int			WM_menu_invoke			(struct bContext *C, struct wmOperator *op, const struct wmEvent *event);
 int			WM_enum_search_invoke(struct bContext *C, struct wmOperator *op, const struct wmEvent *event);
 			/* invoke callback, confirm menu + exec */
@@ -384,9 +391,7 @@ void		WM_gestures_remove(struct bContext *C);
 			/* fileselecting support */
 void		WM_event_add_fileselect(struct bContext *C, struct wmOperator *op);
 void		WM_event_fileselect_event(struct wmWindowManager *wm, void *ophandle, int eventval);
-#ifndef NDEBUG
 void		WM_event_print(const struct wmEvent *event);
-#endif
 
 void		WM_operator_region_active_win_set(struct bContext *C);
 
@@ -410,14 +415,7 @@ void		wmOrtho				(float x1, float x2, float y1, float y2, float n, float f);
 void		wmOrtho2			(float x1, float x2, float y1, float y2);
 			/* use for conventions (avoid hard-coded offsets all over) */
 void		wmOrtho2_region_pixelspace(const struct ARegion *ar);
-void		wmOrtho2_region_ui(const struct ARegion *ar);
 void		wmOrtho2_pixelspace(const float x, const float y);
-
-			/* utilities */
-void		WM_framebuffer_index_set(int index);
-void		WM_framebuffer_index_get(int index, int *r_col);
-int			WM_framebuffer_to_index(unsigned int col);
-void		WM_framebuffer_to_index_array(unsigned int *col, const unsigned int size);
 
 			/* threaded Jobs Manager */
 enum {
@@ -447,7 +445,7 @@ enum {
 	WM_JOB_TYPE_SEQ_BUILD_PREVIEW,
 	WM_JOB_TYPE_POINTCACHE,
 	WM_JOB_TYPE_DPAINT_BAKE,
-	WM_JOB_TYPE_OBJECT_FRACTURE,
+	WM_JOB_TYPE_ALEMBIC,
 	/* add as needed, screencast, seq proxy build
 	 * if having hard coded values is a problem */
 };
@@ -504,11 +502,13 @@ bool write_crash_blend(void);
 			/* Lock the interface for any communication */
 void        WM_set_locked_interface(struct wmWindowManager *wm, bool lock);
 
+#ifdef WITH_INPUT_NDOF
 void        WM_event_ndof_pan_get(const struct wmNDOFMotionData *ndof, float r_pan[3], const bool use_zoom);
 void        WM_event_ndof_rotate_get(const struct wmNDOFMotionData *ndof, float r_rot[3]);
 
 float       WM_event_ndof_to_axis_angle(const struct wmNDOFMotionData *ndof, float axis[3]);
 void        WM_event_ndof_to_quat(const struct wmNDOFMotionData *ndof, float q[4]);
+#endif /* WITH_INPUT_NDOF */
 
 float       WM_event_tablet_data(const struct wmEvent *event, int *pen_flip, float tilt[2]);
 bool        WM_event_is_tablet(const struct wmEvent *event);

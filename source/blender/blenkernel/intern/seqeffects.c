@@ -123,28 +123,34 @@ static ImBuf *prepare_effect_imbufs(const SeqRenderData *context, ImBuf *ibuf1, 
 		out = IMB_allocImBuf(x, y, 32, IB_rect);
 	}
 	
-	if (ibuf1 && !ibuf1->rect_float && out->rect_float) {
-		BKE_sequencer_imbuf_to_sequencer_space(scene, ibuf1, true);
-	}
-	if (ibuf2 && !ibuf2->rect_float && out->rect_float) {
-		BKE_sequencer_imbuf_to_sequencer_space(scene, ibuf2, true);
-	}
-	if (ibuf3 && !ibuf3->rect_float && out->rect_float) {
-		BKE_sequencer_imbuf_to_sequencer_space(scene, ibuf3, true);
-	}
-	
-	if (ibuf1 && !ibuf1->rect && !out->rect_float) {
-		IMB_rect_from_float(ibuf1);
-	}
-	if (ibuf2 && !ibuf2->rect && !out->rect_float) {
-		IMB_rect_from_float(ibuf2);
-	}
-	if (ibuf3 && !ibuf3->rect && !out->rect_float) {
-		IMB_rect_from_float(ibuf3);
-	}
+	if (out->rect_float) {
+		if (ibuf1 && !ibuf1->rect_float) {
+			BKE_sequencer_imbuf_to_sequencer_space(scene, ibuf1, true);
+		}
 
-	if (out->rect_float)
+		if (ibuf2 && !ibuf2->rect_float) {
+			BKE_sequencer_imbuf_to_sequencer_space(scene, ibuf2, true);
+		}
+
+		if (ibuf3 && !ibuf3->rect_float) {
+			BKE_sequencer_imbuf_to_sequencer_space(scene, ibuf3, true);
+		}
+	
 		IMB_colormanagement_assign_float_colorspace(out, scene->sequencer_colorspace_settings.name);
+	}
+	else {
+		if (ibuf1 && !ibuf1->rect) {
+			IMB_rect_from_float(ibuf1);
+		}
+
+		if (ibuf2 && !ibuf2->rect) {
+			IMB_rect_from_float(ibuf2);
+		}
+
+		if (ibuf3 && !ibuf3->rect) {
+			IMB_rect_from_float(ibuf3);
+		}
+	}
 
 	/* If effect only affecting a single channel, forward input's metadata to the output. */
 	if (ibuf1 != NULL && ibuf1 == ibuf2 && ibuf2 == ibuf3) {
@@ -2363,7 +2369,9 @@ static ImBuf *do_adjustment(const SeqRenderData *context, Sequence *seq, float c
 
 	if (BKE_sequencer_input_have_to_preprocess(context, seq, cfra)) {
 		out = IMB_dupImBuf(i);
-		IMB_metadata_copy(out, i);
+		if (out) {
+			IMB_metadata_copy(out, i);
+		}
 		IMB_freeImBuf(i);
 	}
 	else {
@@ -3058,7 +3066,7 @@ static ImBuf *do_gaussian_blur_effect(const SeqRenderData *context,
 
 	ibuf1 = out;
 	init_data.ibuf = ibuf1;
-	out = prepare_effect_imbufs(context, ibuf1, NULL, NULL);;
+	out = prepare_effect_imbufs(context, ibuf1, NULL, NULL);
 	init_data.out = out;
 
 	IMB_processor_apply_threaded(out->y,
@@ -3082,6 +3090,10 @@ static void init_text_effect(Sequence *seq)
 
 	data = seq->effectdata = MEM_callocN(sizeof(TextVars), "textvars");
 	data->text_size = 30;
+
+	copy_v4_fl(data->color, 1.0f);
+	data->shadow_color[3] = 1.0f;
+
 	BLI_strncpy(data->text, "Text", sizeof(data->text));
 
 	data->loc[0] = 0.5f;
@@ -3097,7 +3109,9 @@ static int num_inputs_text(void)
 static int early_out_text(Sequence *seq, float UNUSED(facf0), float UNUSED(facf1))
 {
 	TextVars *data = seq->effectdata;
-	if (data->text[0] == 0 || data->text_size < 1) {
+	if (data->text[0] == 0 || data->text_size < 1 ||
+	    ((data->color[3] == 0.0f) && (data->shadow_color[3] == 0.0f || (data->flag & SEQ_TEXT_SHADOW) == 0)))
+	{
 		return EARLY_USE_INPUT_1;
 	}
 	return EARLY_NO_INPUT;
@@ -3186,11 +3200,11 @@ static ImBuf *do_text_effect(const SeqRenderData *context, Sequence *seq, float 
 		fontx = BLF_width_max(mono);
 		fonty = line_height;
 		BLF_position(mono, x + max_ii(fontx / 25, 1), y + max_ii(fonty / 25, 1), 0.0f);
-		BLF_buffer_col(mono, 0.0f, 0.0f, 0.0f, 1.0f);
+		BLF_buffer_col(mono, data->shadow_color);
 		BLF_draw_buffer(mono, data->text, BLF_DRAW_STR_DUMMY_MAX);
 	}
 	BLF_position(mono, x, y, 0.0f);
-	BLF_buffer_col(mono, 1.0f, 1.0f, 1.0f, 1.0f);
+	BLF_buffer_col(mono, data->color);
 	BLF_draw_buffer(mono, data->text, BLF_DRAW_STR_DUMMY_MAX);
 
 	BLF_buffer(mono, NULL, NULL, 0, 0, 0, NULL);

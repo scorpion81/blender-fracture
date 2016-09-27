@@ -72,6 +72,8 @@
 #include "BKE_icons.h"
 #include "BKE_image.h"
 #include "BKE_library.h"
+#include "BKE_library_query.h"
+#include "BKE_library_remap.h"
 #include "BKE_main.h"
 #include "BKE_packedFile.h"
 #include "BKE_report.h"
@@ -95,8 +97,6 @@
 #include "DNA_screen_types.h"
 #include "DNA_view3d_types.h"
 
-#include "WM_api.h"
-
 static SpinLock image_spin;
 
 /* prototypes */
@@ -109,8 +109,8 @@ static void image_add_view(Image *ima, const char *viewname, const char *filepat
 #define IMA_NO_INDEX    0x7FEFEFEF
 
 /* quick lookup: supports 1 million frames, thousand passes */
-#define IMA_MAKE_INDEX(frame, index)    ((frame) << 10) + index
-#define IMA_INDEX_FRAME(index)          (index >> 10)
+#define IMA_MAKE_INDEX(frame, index)    (((frame) << 10) + (index))
+#define IMA_INDEX_FRAME(index)           ((index) >> 10)
 /*
 #define IMA_INDEX_PASS(index)           (index & ~1023)
 */
@@ -324,19 +324,15 @@ void BKE_image_free_buffers(Image *ima)
 	ima->ok = IMA_OK;
 }
 
-/* called by library too, do not free ima itself */
+/** Free (or release) any data used by this image (does not free the image itself). */
 void BKE_image_free(Image *ima)
 {
 	int a;
 
+	/* Also frees animdata. */
 	BKE_image_free_buffers(ima);
 
 	image_free_packedfiles(ima);
-
-	BKE_icon_id_delete(&ima->id);
-	ima->id.icon_id = 0;
-
-	BKE_previewimg_free(&ima->preview);
 
 	for (a = 0; a < IMA_MAX_RENDER_SLOT; a++) {
 		if (ima->renders[a]) {
@@ -346,31 +342,48 @@ void BKE_image_free(Image *ima)
 	}
 
 	BKE_image_free_views(ima);
-	MEM_freeN(ima->stereo3d_format);
+	MEM_SAFE_FREE(ima->stereo3d_format);
+
+	BKE_icon_id_delete(&ima->id);
+	BKE_previewimg_free(&ima->preview);
 }
 
 /* only image block itself */
+static void image_init(Image *ima, short source, short type)
+{
+	BLI_assert(MEMCMP_STRUCT_OFS_IS_ZERO(ima, id));
+
+	ima->ok = IMA_OK;
+
+	ima->xrep = ima->yrep = 1;
+	ima->aspx = ima->aspy = 1.0;
+	ima->gen_x = 1024; ima->gen_y = 1024;
+	ima->gen_type = IMA_GENTYPE_GRID;
+
+	ima->source = source;
+	ima->type = type;
+
+	if (source == IMA_SRC_VIEWER)
+		ima->flag |= IMA_VIEW_AS_RENDER;
+
+	BKE_color_managed_colorspace_settings_init(&ima->colorspace_settings);
+	ima->stereo3d_format = MEM_callocN(sizeof(Stereo3dFormat), "Image Stereo Format");
+}
+
+void BKE_image_init(struct Image *image)
+{
+	if (image) {
+		image_init(image, IMA_SRC_GENERATED, IMA_TYPE_UV_TEST);
+	}
+}
+
 static Image *image_alloc(Main *bmain, const char *name, short source, short type)
 {
 	Image *ima;
 
 	ima = BKE_libblock_alloc(bmain, ID_IM, name);
 	if (ima) {
-		ima->ok = IMA_OK;
-
-		ima->xrep = ima->yrep = 1;
-		ima->aspx = ima->aspy = 1.0;
-		ima->gen_x = 1024; ima->gen_y = 1024;
-		ima->gen_type = 1;   /* no defines yet? */
-
-		ima->source = source;
-		ima->type = type;
-
-		if (source == IMA_SRC_VIEWER)
-			ima->flag |= IMA_VIEW_AS_RENDER;
-
-		BKE_color_managed_colorspace_settings_init(&ima->colorspace_settings);
-		ima->stereo3d_format = MEM_callocN(sizeof(Stereo3dFormat), "Image Stereo Format");
+		image_init(ima, source, type);
 	}
 
 	return ima;
@@ -423,6 +436,7 @@ static void copy_image_packedfiles(ListBase *lb_dst, const ListBase *lb_src)
 Image *BKE_image_copy(Main *bmain, Image *ima)
 {
 	Image *nima = image_alloc(bmain, ima->id.name + 2, ima->source, ima->type);
+	ima->id.newid = &nima->id;
 
 	BLI_strncpy(nima->name, ima->name, sizeof(ima->name));
 
@@ -443,178 +457,20 @@ Image *BKE_image_copy(Main *bmain, Image *ima)
 
 	copy_image_packedfiles(&nima->packedfiles, &ima->packedfiles);
 
-	nima->stereo3d_format = MEM_dupallocN(ima->stereo3d_format);
+	/* nima->stere3d_format is already allocated by image_alloc... */
+	*nima->stereo3d_format = *ima->stereo3d_format;
 	BLI_duplicatelist(&nima->views, &ima->views);
 
-	if (ima->id.lib) {
-		BKE_id_lib_local_paths(bmain, ima->id.lib, &nima->id);
-	}
+	BKE_previewimg_id_copy(&nima->id, &ima->id);
+
+	BKE_id_copy_ensure_local(bmain, &ima->id, &nima->id);
 
 	return nima;
 }
 
-static void extern_local_image(Image *UNUSED(ima))
+void BKE_image_make_local(Main *bmain, Image *ima, const bool lib_local)
 {
-	/* Nothing to do: images don't link to other IDs. This function exists to
-	 * match id_make_local pattern. */
-}
-
-void BKE_image_make_local(struct Image *ima)
-{
-	Main *bmain = G.main;
-	Tex *tex;
-	Brush *brush;
-	Mesh *me;
-	bool is_local = false, is_lib = false;
-
-	/* - only lib users: do nothing
-	 * - only local users: set flag
-	 * - mixed: make copy
-	 */
-
-	if (ima->id.lib == NULL) return;
-
-	/* Can't take short cut here: must check meshes at least because of bogus
-	 * texface ID refs. - z0r */
-#if 0
-	if (ima->id.us == 1) {
-		id_clear_lib_data(bmain, &ima->id);
-		extern_local_image(ima);
-		return;
-	}
-#endif
-
-	for (tex = bmain->tex.first; tex; tex = tex->id.next) {
-		if (tex->ima == ima) {
-			if (tex->id.lib) is_lib = true;
-			else is_local = true;
-		}
-	}
-	for (brush = bmain->brush.first; brush; brush = brush->id.next) {
-		if (brush->clone.image == ima) {
-			if (brush->id.lib) is_lib = true;
-			else is_local = true;
-		}
-	}
-	for (me = bmain->mesh.first; me; me = me->id.next) {
-		if (me->mtface) {
-			MTFace *tface;
-			int a, i;
-
-			for (i = 0; i < me->fdata.totlayer; i++) {
-				if (me->fdata.layers[i].type == CD_MTFACE) {
-					tface = (MTFace *)me->fdata.layers[i].data;
-
-					for (a = 0; a < me->totface; a++, tface++) {
-						if (tface->tpage == ima) {
-							if (me->id.lib) is_lib = true;
-							else is_local = true;
-						}
-					}
-				}
-			}
-		}
-
-		if (me->mtpoly) {
-			MTexPoly *mtpoly;
-			int a, i;
-
-			for (i = 0; i < me->pdata.totlayer; i++) {
-				if (me->pdata.layers[i].type == CD_MTEXPOLY) {
-					mtpoly = (MTexPoly *)me->pdata.layers[i].data;
-
-					for (a = 0; a < me->totpoly; a++, mtpoly++) {
-						if (mtpoly->tpage == ima) {
-							if (me->id.lib) is_lib = true;
-							else is_local = true;
-						}
-					}
-				}
-			}
-		}
-
-	}
-
-	if (is_local && is_lib == false) {
-		id_clear_lib_data(bmain, &ima->id);
-		extern_local_image(ima);
-	}
-	else if (is_local && is_lib) {
-		Image *ima_new = BKE_image_copy(bmain, ima);
-
-		ima_new->id.us = 0;
-
-		/* Remap paths of new ID using old library as base. */
-		BKE_id_lib_local_paths(bmain, ima->id.lib, &ima_new->id);
-
-		tex = bmain->tex.first;
-		while (tex) {
-			if (tex->id.lib == NULL) {
-				if (tex->ima == ima) {
-					tex->ima = ima_new;
-					id_us_plus(&ima_new->id);
-					id_us_min(&ima->id);
-				}
-			}
-			tex = tex->id.next;
-		}
-		brush = bmain->brush.first;
-		while (brush) {
-			if (brush->id.lib == NULL) {
-				if (brush->clone.image == ima) {
-					brush->clone.image = ima_new;
-					id_us_plus(&ima_new->id);
-					id_us_min(&ima->id);
-				}
-			}
-			brush = brush->id.next;
-		}
-		/* Transfer references in texfaces. Texfaces don't add to image ID
-		 * user count *unless* there are no other users. See
-		 * readfile.c:lib_link_mtface. */
-		me = bmain->mesh.first;
-		while (me) {
-			if (me->mtface) {
-				MTFace *tface;
-				int a, i;
-
-				for (i = 0; i < me->fdata.totlayer; i++) {
-					if (me->fdata.layers[i].type == CD_MTFACE) {
-						tface = (MTFace *)me->fdata.layers[i].data;
-
-						for (a = 0; a < me->totface; a++, tface++) {
-							if (tface->tpage == ima) {
-								tface->tpage = ima_new;
-								id_us_ensure_real((ID *)ima_new);
-								id_lib_extern((ID *)ima_new);
-							}
-						}
-					}
-				}
-			}
-
-			if (me->mtpoly) {
-				MTexPoly *mtpoly;
-				int a, i;
-
-				for (i = 0; i < me->pdata.totlayer; i++) {
-					if (me->pdata.layers[i].type == CD_MTEXPOLY) {
-						mtpoly = (MTexPoly *)me->pdata.layers[i].data;
-
-						for (a = 0; a < me->totpoly; a++, mtpoly++) {
-							if (mtpoly->tpage == ima) {
-								mtpoly->tpage = ima_new;
-								id_us_ensure_real((ID *)ima_new);
-								id_lib_extern((ID *)ima_new);
-							}
-						}
-					}
-				}
-			}
-
-			me = me->id.next;
-		}
-	}
+	BKE_id_make_local_generic(bmain, &ima->id, true, lib_local);
 }
 
 void BKE_image_merge(Image *dest, Image *source)
@@ -826,13 +682,6 @@ static ImBuf *add_ibuf_size(unsigned int width, unsigned int height, const char 
 		default:
 			BKE_image_buf_fill_color(rect, rect_float, width, height, color);
 			break;
-	}
-
-	if (rect_float) {
-		/* both byte and float buffers are filling in sRGB space, need to linearize float buffer after BKE_image_buf_fill* functions */
-
-		IMB_buffer_float_from_float(rect_float, rect_float, ibuf->channels, IB_PROFILE_LINEAR_RGB, IB_PROFILE_SRGB,
-		                            true, ibuf->x, ibuf->y, ibuf->x, ibuf->x);
 	}
 
 	return ibuf;
@@ -1208,43 +1057,55 @@ int BKE_image_imtype_to_ftype(const char imtype, ImbFormatOptions *r_options)
 {
 	memset(r_options, 0, sizeof(*r_options));
 
-	if (imtype == R_IMF_IMTYPE_TARGA)
+	if (imtype == R_IMF_IMTYPE_TARGA) {
 		return IMB_FTYPE_TGA;
+	}
 	else if (imtype == R_IMF_IMTYPE_RAWTGA) {
 		r_options->flag = RAWTGA;
 		return IMB_FTYPE_TGA;
 	}
-	else if (imtype == R_IMF_IMTYPE_IRIS)
+	else if (imtype == R_IMF_IMTYPE_IRIS) {
 		return IMB_FTYPE_IMAGIC;
+	}
 #ifdef WITH_HDR
-	else if (imtype == R_IMF_IMTYPE_RADHDR)
+	else if (imtype == R_IMF_IMTYPE_RADHDR) {
 		return IMB_FTYPE_RADHDR;
+	}
 #endif
 	else if (imtype == R_IMF_IMTYPE_PNG) {
 		r_options->quality = 15;
 		return IMB_FTYPE_PNG;
 	}
 #ifdef WITH_DDS
-	else if (imtype == R_IMF_IMTYPE_DDS)
+	else if (imtype == R_IMF_IMTYPE_DDS) {
 		return IMB_FTYPE_DDS;
+	}
 #endif
-	else if (imtype == R_IMF_IMTYPE_BMP)
+	else if (imtype == R_IMF_IMTYPE_BMP) {
 		return IMB_FTYPE_BMP;
+	}
 #ifdef WITH_TIFF
-	else if (imtype == R_IMF_IMTYPE_TIFF)
+	else if (imtype == R_IMF_IMTYPE_TIFF) {
 		return IMB_FTYPE_TIF;
+	}
 #endif
-	else if (imtype == R_IMF_IMTYPE_OPENEXR || imtype == R_IMF_IMTYPE_MULTILAYER)
+	else if (imtype == R_IMF_IMTYPE_OPENEXR || imtype == R_IMF_IMTYPE_MULTILAYER) {
 		return IMB_FTYPE_OPENEXR;
+	}
 #ifdef WITH_CINEON
-	else if (imtype == R_IMF_IMTYPE_CINEON)
+	else if (imtype == R_IMF_IMTYPE_CINEON) {
 		return IMB_FTYPE_CINEON;
-	else if (imtype == R_IMF_IMTYPE_DPX)
+	}
+	else if (imtype == R_IMF_IMTYPE_DPX) {
 		return IMB_FTYPE_DPX;
+	}
 #endif
 #ifdef WITH_OPENJPEG
-	else if (imtype == R_IMF_IMTYPE_JP2)
+	else if (imtype == R_IMF_IMTYPE_JP2) {
+		r_options->flag |= JP2_JP2;
+		r_options->quality = 90;
 		return IMB_FTYPE_JP2;
+	}
 #endif
 	else {
 		r_options->quality = 90;
@@ -1254,46 +1115,60 @@ int BKE_image_imtype_to_ftype(const char imtype, ImbFormatOptions *r_options)
 
 char BKE_image_ftype_to_imtype(const int ftype, const ImbFormatOptions *options)
 {
-	if (ftype == 0)
+	if (ftype == 0) {
 		return R_IMF_IMTYPE_TARGA;
-	else if (ftype == IMB_FTYPE_IMAGIC)
+	}
+	else if (ftype == IMB_FTYPE_IMAGIC) {
 		return R_IMF_IMTYPE_IRIS;
+	}
 #ifdef WITH_HDR
-	else if (ftype == IMB_FTYPE_RADHDR)
+	else if (ftype == IMB_FTYPE_RADHDR) {
 		return R_IMF_IMTYPE_RADHDR;
+	}
 #endif
-	else if (ftype == IMB_FTYPE_PNG)
+	else if (ftype == IMB_FTYPE_PNG) {
 		return R_IMF_IMTYPE_PNG;
+	}
 #ifdef WITH_DDS
-	else if (ftype == IMB_FTYPE_DDS)
+	else if (ftype == IMB_FTYPE_DDS) {
 		return R_IMF_IMTYPE_DDS;
+	}
 #endif
-	else if (ftype == IMB_FTYPE_BMP)
+	else if (ftype == IMB_FTYPE_BMP) {
 		return R_IMF_IMTYPE_BMP;
+	}
 #ifdef WITH_TIFF
-	else if (ftype == IMB_FTYPE_TIF)
+	else if (ftype == IMB_FTYPE_TIF) {
 		return R_IMF_IMTYPE_TIFF;
+	}
 #endif
-	else if (ftype == IMB_FTYPE_OPENEXR)
+	else if (ftype == IMB_FTYPE_OPENEXR) {
 		return R_IMF_IMTYPE_OPENEXR;
+	}
 #ifdef WITH_CINEON
-	else if (ftype == IMB_FTYPE_CINEON)
+	else if (ftype == IMB_FTYPE_CINEON) {
 		return R_IMF_IMTYPE_CINEON;
-	else if (ftype == IMB_FTYPE_DPX)
+	}
+	else if (ftype == IMB_FTYPE_DPX) {
 		return R_IMF_IMTYPE_DPX;
+	}
 #endif
 	else if (ftype == IMB_FTYPE_TGA) {
-		if (options && (options->flag & RAWTGA))
+		if (options && (options->flag & RAWTGA)) {
 			return R_IMF_IMTYPE_RAWTGA;
-		else
+		}
+		else {
 			return R_IMF_IMTYPE_TARGA;
+		}
 	}
 #ifdef WITH_OPENJPEG
-	else if (ftype == IMB_FTYPE_JP2)
+	else if (ftype == IMB_FTYPE_JP2) {
 		return R_IMF_IMTYPE_JP2;
+	}
 #endif
-	else
+	else {
 		return R_IMF_IMTYPE_JPEG90;
+	}
 }
 
 
@@ -1424,7 +1299,7 @@ char BKE_imtype_valid_depths(const char imtype)
 
 
 /* string is from command line --render-format arg, keep in sync with
- * creator.c help info */
+ * creator_args.c help info */
 char BKE_imtype_from_arg(const char *imtype_arg)
 {
 	if      (STREQ(imtype_arg, "TGA")) return R_IMF_IMTYPE_TARGA;
@@ -1741,6 +1616,7 @@ typedef struct StampData {
 	char scene[STAMP_NAME_SIZE];
 	char strip[STAMP_NAME_SIZE];
 	char rendertime[STAMP_NAME_SIZE];
+	char memory[STAMP_NAME_SIZE];
 } StampData;
 #undef STAMP_NAME_SIZE
 
@@ -1862,6 +1738,13 @@ static void stampdata(Scene *scene, Object *camera, StampData *stamp_data, int d
 		else {
 			stamp_data->rendertime[0] = '\0';
 		}
+
+		if (stats && (scene->r.stamp & R_STAMP_MEMORY)) {
+			BLI_snprintf(stamp_data->memory, sizeof(stamp_data->memory), do_prefix ? "Peak Memory %.2fM" : "%.2fM", stats->mem_peak);
+		}
+		else {
+			stamp_data->memory[0] = '\0';
+		}
 	}
 }
 
@@ -1936,6 +1819,12 @@ static void stampdata_from_template(StampData *stamp_data,
 	else {
 		stamp_data->rendertime[0] = '\0';
 	}
+	if (scene->r.stamp & R_STAMP_MEMORY) {
+		BLI_snprintf(stamp_data->memory, sizeof(stamp_data->memory), "Peak Memory %s", stamp_data_template->memory);
+	}
+	else {
+		stamp_data->memory[0] = '\0';
+	}
 }
 
 void BKE_image_stamp_buf(
@@ -1977,7 +1866,7 @@ void BKE_image_stamp_buf(
 	display = IMB_colormanagement_display_get_named(display_device);
 
 	if (stamp_data_template == NULL) {
-		stampdata(scene, camera, &stamp_data, 1);
+		stampdata(scene, camera, &stamp_data, (scene->r.stamp & R_STAMP_HIDE_LABELS) == 0);
 	}
 	else {
 		stampdata_from_template(&stamp_data, scene, stamp_data_template);
@@ -1992,7 +1881,7 @@ void BKE_image_stamp_buf(
 	BLF_wordwrap(mono, width - (BUFF_MARGIN_X * 2));
 
 	BLF_buffer(mono, rectf, rect, width, height, channels, display);
-	BLF_buffer_col(mono, UNPACK4(scene->r.fg_stamp));
+	BLF_buffer_col(mono, scene->r.fg_stamp);
 	pad = BLF_width_max(mono);
 
 	/* use 'h_fixed' rather than 'h', aligns better */
@@ -2049,6 +1938,21 @@ void BKE_image_stamp_buf(
 	}
 
 	/* Top left corner, below File, Date, Rendertime */
+	if (TEXT_SIZE_CHECK(stamp_data.memory, w, h)) {
+		y -= h;
+
+		/* and space for background. */
+		buf_rectfill_area(rect, rectf, width, height, scene->r.bg_stamp, display,
+		                  0, y - BUFF_MARGIN_Y, w + BUFF_MARGIN_X, y + h + BUFF_MARGIN_Y);
+
+		BLF_position(mono, x, y + y_ofs, 0.0);
+		BLF_draw_buffer(mono, stamp_data.memory, BLF_DRAW_STR_DUMMY_MAX);
+
+		/* the extra pixel for background. */
+		y -= BUFF_MARGIN_Y * 2;
+	}
+
+	/* Top left corner, below File, Date, Memory, Rendertime */
 	BLF_enable(mono, BLF_WORD_WRAP);
 	if (TEXT_SIZE_CHECK_WORD_WRAP(stamp_data.note, w, h)) {
 		y -= h;
@@ -2212,6 +2116,7 @@ void BKE_stamp_info_callback(void *data, struct StampData *stamp_data, StampCall
 	CALL(scene, "Scene");
 	CALL(strip, "Strip");
 	CALL(rendertime, "RenderTime");
+	CALL(memory, "Memory");
 
 #undef CALL
 }
@@ -4494,13 +4399,17 @@ void BKE_image_get_size(Image *image, ImageUser *iuser, int *width, int *height)
 	ImBuf *ibuf = NULL;
 	void *lock;
 
-	ibuf = BKE_image_acquire_ibuf(image, iuser, &lock);
+	if (image != NULL) {
+		ibuf = BKE_image_acquire_ibuf(image, iuser, &lock);
+	}
 
 	if (ibuf && ibuf->x > 0 && ibuf->y > 0) {
 		*width = ibuf->x;
 		*height = ibuf->y;
 	}
-	else if (image->type == IMA_TYPE_R_RESULT && iuser != NULL && iuser->scene != NULL) {
+	else if (image != NULL && image->type == IMA_TYPE_R_RESULT &&
+	         iuser != NULL && iuser->scene != NULL)
+	{
 		Scene *scene = iuser->scene;
 		*width = (scene->r.xsch * scene->r.size) / 100;
 		*height = (scene->r.ysch * scene->r.size) / 100;
@@ -4514,7 +4423,9 @@ void BKE_image_get_size(Image *image, ImageUser *iuser, int *width, int *height)
 		*height = IMG_SIZE_FALLBACK;
 	}
 
-	BKE_image_release_ibuf(image, ibuf, lock);
+	if (image != NULL) {
+		BKE_image_release_ibuf(image, ibuf, lock);
+	}
 }
 
 void BKE_image_get_size_fl(Image *image, ImageUser *iuser, float size[2])

@@ -278,7 +278,7 @@ static void rna_Object_active_shape_update(Main *bmain, Scene *scene, PointerRNA
 		switch (ob->type) {
 			case OB_MESH:
 				EDBM_mesh_load(ob);
-				EDBM_mesh_make(scene->toolsettings, ob);
+				EDBM_mesh_make(scene->toolsettings, ob, true);
 
 				DAG_id_tag_update(ob->data, 0);
 
@@ -312,7 +312,7 @@ static void rna_Object_select_update(Main *UNUSED(bmain), Scene *scene, PointerR
 {
 	if (scene) {
 		Object *ob = (Object *)ptr->id.data;
-		short mode = ob->flag & SELECT ? BA_SELECT : BA_DESELECT;
+		short mode = (ob->flag & SELECT) ? BA_SELECT : BA_DESELECT;
 		ED_base_object_select(BKE_scene_base_find(scene, ob), mode);
 	}
 }
@@ -320,7 +320,7 @@ static void rna_Object_select_update(Main *UNUSED(bmain), Scene *scene, PointerR
 static void rna_Base_select_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
 {
 	Base *base = (Base *)ptr->data;
-	short mode = base->flag & BA_SELECT ? BA_SELECT : BA_DESELECT;
+	short mode = (base->flag & BA_SELECT) ? BA_SELECT : BA_DESELECT;
 	ED_base_object_select(base, mode);
 }
 
@@ -409,7 +409,7 @@ static void rna_Object_data_set(PointerRNA *ptr, PointerRNA value)
 		id_us_plus(id);
 
 		ob->data = id;
-		test_object_materials(G.main, id);
+		test_object_materials(ob, id);
 
 		if (GS(id->name) == ID_CU)
 			BKE_curve_type_test(ob);
@@ -729,10 +729,10 @@ static int rna_Object_active_material_editable(PointerRNA *ptr)
 	bool is_editable;
 
 	if ((ob->matbits == NULL) || (ob->actcol == 0) || ob->matbits[ob->actcol - 1]) {
-		is_editable = (ob->id.lib == NULL);
+		is_editable = !ID_IS_LINKED_DATABLOCK(ob);
 	}
 	else {
-		is_editable = ob->data ? (((ID *)ob->data)->lib == NULL) : false;
+		is_editable = ob->data ? !ID_IS_LINKED_DATABLOCK(ob->data) : false;
 	}
 
 	return is_editable ? PROP_EDITABLE : 0;
@@ -1044,7 +1044,7 @@ static void rna_GameObjectSettings_physics_type_set(PointerRNA *ptr, int value)
 			ob->gameflag &= ~(OB_SENSOR | OB_OCCLUDER | OB_DYNAMIC | OB_RIGID_BODY | OB_SOFT_BODY | OB_ACTOR |
 			                  OB_ANISOTROPIC_FRICTION | OB_DO_FH | OB_ROT_FH | OB_COLLISION_RESPONSE | OB_NAVMESH);
 			/* When we switch to character physics and the collision bounds is set to triangle mesh
-			we have to change collision bounds because triangle mesh is not supported by Characters*/
+			 * we have to change collision bounds because triangle mesh is not supported by Characters */
 			if ((ob->gameflag & OB_BOUNDS) && ob->collision_boundtype == OB_BOUND_TRIANGLE_MESH) {
 				ob->boundtype = ob->collision_boundtype = OB_BOUND_BOX;
 			}
@@ -1145,7 +1145,7 @@ static void rna_GameObjectSettings_state_get(PointerRNA *ptr, int *values)
 {
 	Object *ob = (Object *)ptr->data;
 	int i;
-	int all_states = (ob->scaflag & OB_ALLSTATE ? 1 : 0);
+	int all_states = (ob->scaflag & OB_ALLSTATE) ? 1 : 0;
 
 	memset(values, 0, sizeof(int) * OB_MAX_STATES);
 	for (i = 0; i < OB_MAX_STATES; i++) {
@@ -2398,6 +2398,8 @@ static void rna_def_object(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "dimensions", PROP_FLOAT, PROP_XYZ_LENGTH);
 	RNA_def_property_array(prop, 3);
+	/* only for the transform-panel and conflicts with animating scale */
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_float_funcs(prop, "rna_Object_dimensions_get", "rna_Object_dimensions_set", NULL);
 	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 1, 3);
 	RNA_def_property_ui_text(prop, "Dimensions", "Absolute bounding box dimensions of the object");
@@ -2568,7 +2570,7 @@ static void rna_def_object(BlenderRNA *brna)
 	/* render */
 	prop = RNA_def_property(srna, "pass_index", PROP_INT, PROP_UNSIGNED);
 	RNA_def_property_int_sdna(prop, NULL, "index");
-	RNA_def_property_ui_text(prop, "Pass Index", "Index number for the IndexOB render pass");
+	RNA_def_property_ui_text(prop, "Pass Index", "Index number for the \"Object Index\" render pass");
 	RNA_def_property_update(prop, NC_OBJECT, "rna_Object_internal_update");
 	
 	prop = RNA_def_property(srna, "color", PROP_FLOAT, PROP_COLOR);

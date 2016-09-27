@@ -35,6 +35,7 @@
 #include "BLI_math.h"
 #include "BLI_array_utils.h"
 #include "BLI_bitmap.h"
+#include "BLI_stack.h"
 
 #include "IMB_imbuf.h"
 #include "IMB_imbuf_types.h"
@@ -75,6 +76,12 @@
 #include "ED_view3d.h"
 
 #include "paint_intern.h"  /* own include */
+
+/* small structure to defer applying weight-paint results */
+struct WPaintDefer {
+	int index;
+	float alpha, weight;
+};
 
 /* check if we can do partial updates and have them draw realtime
  * (without rebuilding the 'derivedFinal') */
@@ -240,7 +247,7 @@ static bool make_vertexcol(Object *ob)  /* single ob */
 {
 	Mesh *me;
 
-	if ((ob->id.lib) ||
+	if (ID_IS_LINKED_DATABLOCK(ob) ||
 	    ((me = BKE_mesh_from_object(ob)) == NULL) ||
 	    (me->totpoly == 0) ||
 	    (me->edit_btmesh))
@@ -250,9 +257,7 @@ static bool make_vertexcol(Object *ob)  /* single ob */
 
 	/* copies from shadedisplist to mcol */
 	if (!me->mloopcol && me->totloop) {
-		if (!me->mloopcol) {
-			CustomData_add_layer(&me->ldata, CD_MLOOPCOL, CD_DEFAULT, NULL, me->totloop);
-		}
+		CustomData_add_layer(&me->ldata, CD_MLOOPCOL, CD_DEFAULT, NULL, me->totloop);
 		BKE_mesh_update_customdata_pointers(me, true);
 	}
 
@@ -489,6 +494,51 @@ bool ED_vpaint_smooth(Object *ob)
 	do_shared_vertexcol(me, mlooptag);
 
 	MEM_freeN(mlooptag);
+
+	DAG_id_tag_update(&me->id, 0);
+
+	return true;
+}
+
+/**
+ * Apply callback to each vertex of the active vertex color layer.
+ */
+bool ED_vpaint_color_transform(
+        struct Object *ob,
+        VPaintTransform_Callback vpaint_tx_fn,
+        const void *user_data)
+{
+	Mesh *me;
+	const MPoly *mp;
+
+	if (((me = BKE_mesh_from_object(ob)) == NULL) ||
+	    (me->mloopcol == NULL && (make_vertexcol(ob) == false)))
+	{
+		return false;
+	}
+
+	const bool do_face_sel = (me->editflag & ME_EDIT_PAINT_FACE_SEL) != 0;
+	mp = me->mpoly;
+
+	for (int i = 0; i < me->totpoly; i++, mp++) {
+		MLoopCol *lcol = &me->mloopcol[mp->loopstart];
+
+		if (do_face_sel && !(mp->flag & ME_FACE_SEL)) {
+			continue;
+		}
+
+		for (int j = 0; j < mp->totloop; j++, lcol++) {
+			float col[3];
+			rgb_uchar_to_float(col, &lcol->r);
+
+			vpaint_tx_fn(col, user_data, col);
+
+			rgb_float_to_uchar(&lcol->r, col);
+		}
+	}
+
+	/* remove stale me->mcol, will be added later */
+	BKE_mesh_tessface_clear(me);
 
 	DAG_id_tag_update(&me->id, 0);
 
@@ -1316,7 +1366,7 @@ static bool do_weight_paint_normalize_all_locked(
 
 /**
  * \note same as function above except it does a second pass without active group
- * if nomalize fails with it.
+ * if normalize fails with it.
  */
 static void do_weight_paint_normalize_all_locked_try_active(
         MDeformVert *dvert, const int defbase_tot, const bool *vgroup_validmap,
@@ -1333,7 +1383,7 @@ static void do_weight_paint_normalize_all_locked_try_active(
 		 * - With 1.0 weight painted into active:
 		 *   nonzero locked weight; first pass zeroed out unlocked weight; scale 1 down to fit.
 		 * - With 0.0 weight painted into active:
-		 *   no unlocked groups; first pass did nothing; increaze 0 to fit.
+		 *   no unlocked groups; first pass did nothing; increase 0 to fit.
 		 */
 		do_weight_paint_normalize_all_locked(dvert, defbase_tot, vgroup_validmap, lock_flags);
 	}
@@ -1789,7 +1839,7 @@ static int paint_poll_test(bContext *C)
 	Object *ob = CTX_data_active_object(C);
 	if (ob == NULL || ob->type != OB_MESH)
 		return 0;
-	if (!ob->data || ((ID *)ob->data)->lib)
+	if (!ob->data || ID_IS_LINKED_DATABLOCK(ob->data))
 		return 0;
 	if (CTX_data_edit_object(C))
 		return 0;
@@ -1843,6 +1893,14 @@ struct WPaintData {
 	const bool *defbase_sel;      /* set of selected groups */
 	int defbase_tot_sel;          /* number of selected groups */
 	bool do_multipaint;           /* true if multipaint enabled and multiple groups selected */
+
+	/* variables for blur */
+	struct {
+		MeshElemMap *vmap;
+		int *vmap_mem;
+	} blur_data;
+
+	BLI_Stack *accumulate_stack;  /* for reuse (WPaintDefer) */
 
 	int defbase_tot;
 };
@@ -1935,6 +1993,7 @@ static bool wpaint_stroke_test_start(bContext *C, wmOperator *op, const float UN
 	struct WPaintVGroupIndex vgroup_index;
 	int defbase_tot, defbase_tot_sel;
 	bool *defbase_sel;
+	const Brush *brush = BKE_paint_brush(&wp->paint);
 
 	float mat[4][4], imat[4][4];
 
@@ -2039,6 +2098,18 @@ static bool wpaint_stroke_test_start(bContext *C, wmOperator *op, const float UN
 	wpd->indexar = get_indexarray(me);
 	copy_wpaint_prev(wp, me->dvert, me->totvert);
 
+	if (brush->vertexpaint_tool == PAINT_BLEND_BLUR) {
+		BKE_mesh_vert_edge_vert_map_create(
+		        &wpd->blur_data.vmap, &wpd->blur_data.vmap_mem,
+		        me->medge, me->totvert, me->totedge);
+	}
+
+	if ((brush->vertexpaint_tool == PAINT_BLEND_BLUR) &&
+	    (brush->flag & BRUSH_ACCUMULATE))
+	{
+		wpd->accumulate_stack = BLI_stack_new(sizeof(struct WPaintDefer), __func__);
+	}
+
 	/* imat for normals */
 	mul_m4_m4m4(mat, wpd->vc.rv3d->viewmat, ob->obmat);
 	invert_m4_m4(imat, mat);
@@ -2047,17 +2118,37 @@ static bool wpaint_stroke_test_start(bContext *C, wmOperator *op, const float UN
 	return true;
 }
 
-static float wpaint_blur_weight_single(MDeformVert *dv, WeightPaintInfo *wpi)
+static float wpaint_blur_weight_single(const MDeformVert *dv, const WeightPaintInfo *wpi)
 {
 	return defvert_find_weight(dv, wpi->active.index);
 }
 
-static float wpaint_blur_weight_multi(MDeformVert *dv, WeightPaintInfo *wpi)
+static float wpaint_blur_weight_multi(const MDeformVert *dv, const WeightPaintInfo *wpi)
 {
 	float weight = BKE_defvert_multipaint_collective_weight(
 	        dv, wpi->defbase_tot, wpi->defbase_sel, wpi->defbase_tot_sel, wpi->do_auto_normalize);
 	CLAMP(weight, 0.0f, 1.0f);
 	return weight;
+}
+
+static float wpaint_blur_weight_calc_from_connected(
+        const MDeformVert *dvert, WeightPaintInfo *wpi, struct WPaintData *wpd, const unsigned int vidx,
+        float (*blur_weight_func)(const MDeformVert *, const WeightPaintInfo *))
+{
+	const MeshElemMap *map = &wpd->blur_data.vmap[vidx];
+	float paintweight;
+	if (map->count != 0) {
+		paintweight = 0.0f;
+		for (int j = 0; j < map->count; j++) {
+			paintweight += blur_weight_func(&dvert[map->indices[j]], wpi);
+		}
+		paintweight /= map->count;
+	}
+	else {
+		paintweight = blur_weight_func(&dvert[vidx], wpi);
+	}
+
+	return paintweight;
 }
 
 static void wpaint_stroke_update_step(bContext *C, struct PaintStroke *stroke, PointerRNA *itemptr)
@@ -2073,10 +2164,9 @@ static void wpaint_stroke_update_step(bContext *C, struct PaintStroke *stroke, P
 	float mat[4][4];
 	float paintweight;
 	int *indexar;
-	float totw;
 	unsigned int index, totindex;
-	float alpha;
 	float mval[2];
+	const bool use_blur = (brush->vertexpaint_tool == PAINT_BLEND_BLUR);
 	bool use_vert_sel;
 	bool use_face_sel;
 	bool use_depth;
@@ -2099,7 +2189,7 @@ static void wpaint_stroke_update_step(bContext *C, struct PaintStroke *stroke, P
 		return;
 	}
 
-	float (*blur_weight_func)(MDeformVert *, WeightPaintInfo *) =
+	float (*blur_weight_func)(const MDeformVert *, const WeightPaintInfo *) =
 	        wpd->do_multipaint ? wpaint_blur_weight_multi : wpaint_blur_weight_single;
 
 	vc = &wpd->vc;
@@ -2174,24 +2264,7 @@ static void wpaint_stroke_update_step(bContext *C, struct PaintStroke *stroke, P
 
 	/* make sure each vertex gets treated only once */
 	/* and calculate filter weight */
-	totw = 0.0f;
-	if (brush->vertexpaint_tool == PAINT_BLEND_BLUR)
-		paintweight = 0.0f;
-	else
-		paintweight = BKE_brush_weight_get(scene, brush);
-
-#define WP_BLUR_ACCUM(v_idx_var)  \
-	{ \
-		const unsigned int vidx = v_idx_var; \
-		const float fac = calc_vp_strength_col_dl( \
-		        wp, vc, wpd->vertexcosnos[vidx].co, mval, brush_size_pressure, NULL); \
-		if (fac > 0.0f) { \
-			float weight = blur_weight_func(&me->dvert[vidx], &wpi); \
-			paintweight += weight * fac; \
-			totw += fac; \
-		} \
-	} (void)0
-
+	paintweight = BKE_brush_weight_get(scene, brush);
 
 	if (use_depth) {
 		for (index = 0; index < totindex; index++) {
@@ -2208,13 +2281,6 @@ static void wpaint_stroke_update_step(bContext *C, struct PaintStroke *stroke, P
 				else {
 					for (i = 0; i < mpoly->totloop; i++, ml++) {
 						me->dvert[ml->v].flag = 1;
-					}
-				}
-
-				if (brush->vertexpaint_tool == PAINT_BLEND_BLUR) {
-					ml = me->mloop + mpoly->loopstart;
-					for (i = 0; i < mpoly->totloop; i++, ml++) {
-						WP_BLUR_ACCUM(ml->v);
 					}
 				}
 			}
@@ -2235,29 +2301,37 @@ static void wpaint_stroke_update_step(bContext *C, struct PaintStroke *stroke, P
 				me->dvert[i].flag = SELECT;
 			}
 		}
-
-		if (brush->vertexpaint_tool == PAINT_BLEND_BLUR) {
-			for (i = 0; i < totvert; i++) {
-				WP_BLUR_ACCUM(i);
-			}
-		}
 	}
 
-#undef WP_BLUR_ACCUM
+	/* accumulate means we refer to the previous,
+	 * which is either the last update, or when we started painting */
+	BLI_Stack *accumulate_stack = wpd->accumulate_stack;
+	const bool use_accumulate = (accumulate_stack != NULL);
+	BLI_assert(accumulate_stack == NULL || BLI_stack_is_empty(accumulate_stack));
 
-
-	if (brush->vertexpaint_tool == PAINT_BLEND_BLUR) {
-		paintweight /= totw;
-	}
+	const MDeformVert *dvert_prev = use_accumulate ? me->dvert : wp->wpaint_prev;
 
 #define WP_PAINT(v_idx_var)  \
 	{ \
 		unsigned int vidx = v_idx_var; \
 		if (me->dvert[vidx].flag) { \
-			alpha = calc_vp_alpha_col_dl(wp, vc, wpd->wpimat, &wpd->vertexcosnos[vidx], \
-			                         mval, brush_size_pressure, brush_alpha_pressure, NULL); \
+			const float alpha = calc_vp_alpha_col_dl( \
+			        wp, vc, wpd->wpimat, &wpd->vertexcosnos[vidx], \
+			        mval, brush_size_pressure, brush_alpha_pressure, NULL); \
 			if (alpha) { \
-				do_weight_paint_vertex(wp, ob, &wpi, vidx, alpha, paintweight); \
+				if (use_blur) { \
+					paintweight = wpaint_blur_weight_calc_from_connected( \
+					        dvert_prev, &wpi, wpd, vidx, blur_weight_func); \
+				} \
+				if (use_accumulate) { \
+					struct WPaintDefer *dweight = BLI_stack_push_r(accumulate_stack); \
+					dweight->index = vidx; \
+					dweight->alpha = alpha; \
+					dweight->weight = paintweight; \
+				} \
+				else { \
+					do_weight_paint_vertex(wp, ob, &wpi, vidx, alpha, paintweight); \
+				} \
 			} \
 			me->dvert[vidx].flag = 0; \
 		} \
@@ -2287,6 +2361,15 @@ static void wpaint_stroke_update_step(bContext *C, struct PaintStroke *stroke, P
 	}
 #undef WP_PAINT
 
+	if (use_accumulate) {
+		unsigned int defer_count = BLI_stack_count(accumulate_stack);
+		while (defer_count--) {
+			struct WPaintDefer *dweight = BLI_stack_peek(accumulate_stack);
+			do_weight_paint_vertex(wp, ob, &wpi, dweight->index, dweight->alpha, dweight->weight);
+			BLI_stack_discard(accumulate_stack);
+		}
+	}
+
 
 	/* *** free wpi members */
 	/* *** done freeing wpi members */
@@ -2295,9 +2378,8 @@ static void wpaint_stroke_update_step(bContext *C, struct PaintStroke *stroke, P
 	swap_m4m4(vc->rv3d->persmat, mat);
 
 	/* calculate pivot for rotation around seletion if needed */
-	if (U.uiflag & USER_ORBIT_SELECTION) {
-		paint_last_stroke_update(scene, vc->ar, mval);
-	}
+	/* also needed for "View Selected" on last stroke */
+	paint_last_stroke_update(scene, vc->ar, mval);
 
 	DAG_id_tag_update(ob->data, 0);
 	ED_region_tag_redraw(vc->ar);
@@ -2323,6 +2405,17 @@ static void wpaint_stroke_done(const bContext *C, struct PaintStroke *stroke)
 			MEM_freeN((void *)wpd->active.lock);
 		if (wpd->mirror.lock)
 			MEM_freeN((void *)wpd->mirror.lock);
+
+		if (wpd->blur_data.vmap) {
+			MEM_freeN(wpd->blur_data.vmap);
+		}
+		if (wpd->blur_data.vmap_mem) {
+			MEM_freeN(wpd->blur_data.vmap_mem);
+		}
+
+		if (wpd->accumulate_stack) {
+			BLI_stack_free(wpd->accumulate_stack);
+		}
 
 		MEM_freeN(wpd);
 	}
@@ -2762,9 +2855,8 @@ static void vpaint_stroke_update_step(bContext *C, struct PaintStroke *stroke, P
 	}
 
 	/* calculate pivot for rotation around seletion if needed */
-	if (U.uiflag & USER_ORBIT_SELECTION) {
-		paint_last_stroke_update(scene, vc->ar, mval);
-	}
+	/* also needed for "View Selected" on last stroke */
+	paint_last_stroke_update(scene, vc->ar, mval);
 
 	ED_region_tag_redraw(vc->ar);
 
@@ -2785,7 +2877,8 @@ static void vpaint_stroke_done(const bContext *C, struct PaintStroke *stroke)
 	struct VPaintData *vpd = paint_stroke_mode_data(stroke);
 	ViewContext *vc = &vpd->vc;
 	Object *ob = vc->obact;
-	
+	Mesh *me = ob->data;
+
 	ED_vpaint_proj_handle_free(vpd->vp_handle);
 	MEM_freeN(vpd->indexar);
 	
@@ -2796,6 +2889,7 @@ static void vpaint_stroke_done(const bContext *C, struct PaintStroke *stroke)
 		MEM_freeN(vpd->mlooptag);
 
 	WM_event_add_notifier(C, NC_OBJECT | ND_DRAW, ob);
+	DAG_id_tag_update(&me->id, 0);
 
 	MEM_freeN(vpd);
 }
@@ -2928,7 +3022,7 @@ typedef struct DMGradient_userData {
 	const float *sco_end;       /* [2] */
 	float        sco_line_div;  /* store (1.0f / len_v2v2(sco_start, sco_end)) */
 	int def_nr;
-	short is_init;
+	bool is_init;
 	DMGradient_vertStore *vert_cache;
 	/* only for init */
 	BLI_bitmap *vert_visit;

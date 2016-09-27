@@ -45,6 +45,7 @@
 
 #include "BKE_context.h"
 #include "BKE_screen.h"
+#include "BKE_library.h"
 #include "BKE_movieclip.h"
 #include "BKE_tracking.h"
 
@@ -224,18 +225,6 @@ static void clip_scopes_check_gpencil_change(ScrArea *sa)
 	}
 }
 
-static void clip_stabilization_tag_refresh(ScrArea *sa)
-{
-	SpaceClip *sc = (SpaceClip *) sa->spacedata.first;
-	MovieClip *clip = ED_space_clip_get_clip(sc);
-
-	if (clip) {
-		MovieTrackingStabilization *stab = &clip->tracking.stabilization;
-
-		stab->ok = false;
-	}
-}
-
 /* ******************** default callbacks for clip space ***************** */
 
 static SpaceLink *clip_new(const bContext *C)
@@ -367,7 +356,6 @@ static void clip_listener(bScreen *UNUSED(sc), ScrArea *sa, wmNotifier *wmn)
 				case NA_REMOVED:
 				case NA_EDITED:
 				case NA_EVALUATED:
-					clip_stabilization_tag_refresh(sa);
 					/* fall-through */
 
 				case NA_SELECTED:
@@ -411,7 +399,6 @@ static void clip_listener(bScreen *UNUSED(sc), ScrArea *sa, wmNotifier *wmn)
 		case NC_SPACE:
 			if (wmn->data == ND_SPACE_CLIP) {
 				clip_scopes_tag_refresh(sa);
-				clip_stabilization_tag_refresh(sa);
 				ED_area_tag_redraw(sa);
 			}
 			break;
@@ -442,7 +429,9 @@ static void clip_operatortypes(void)
 	WM_operatortype_append(CLIP_OT_change_frame);
 	WM_operatortype_append(CLIP_OT_rebuild_proxy);
 	WM_operatortype_append(CLIP_OT_mode_set);
+#ifdef WITH_INPUT_NDOF
 	WM_operatortype_append(CLIP_OT_view_ndof);
+#endif
 	WM_operatortype_append(CLIP_OT_prefetch);
 	WM_operatortype_append(CLIP_OT_set_scene_frames);
 	WM_operatortype_append(CLIP_OT_cursor_set);
@@ -456,7 +445,7 @@ static void clip_operatortypes(void)
 	/* navigation */
 	WM_operatortype_append(CLIP_OT_frame_jump);
 
-	/* foorage */
+	/* set optical center to frame center */
 	WM_operatortype_append(CLIP_OT_set_center_principal);
 
 	/* selection */
@@ -504,7 +493,9 @@ static void clip_operatortypes(void)
 	WM_operatortype_append(CLIP_OT_stabilize_2d_add);
 	WM_operatortype_append(CLIP_OT_stabilize_2d_remove);
 	WM_operatortype_append(CLIP_OT_stabilize_2d_select);
-	WM_operatortype_append(CLIP_OT_stabilize_2d_set_rotation);
+	WM_operatortype_append(CLIP_OT_stabilize_2d_rotation_add);
+	WM_operatortype_append(CLIP_OT_stabilize_2d_rotation_remove);
+	WM_operatortype_append(CLIP_OT_stabilize_2d_rotation_select);
 
 	/* clean-up */
 	WM_operatortype_append(CLIP_OT_clear_track_path);
@@ -633,8 +624,10 @@ static void clip_keymap(struct wmKeyConfig *keyconf)
 
 	WM_keymap_add_item(keymap, "CLIP_OT_view_selected", PADPERIOD, KM_PRESS, 0, 0);
 
+#ifdef WITH_INPUT_NDOF
 	WM_keymap_add_item(keymap, "CLIP_OT_view_all", NDOF_BUTTON_FIT, KM_PRESS, 0, 0);
 	WM_keymap_add_item(keymap, "CLIP_OT_view_ndof", NDOF_MOTION, 0, 0, 0);
+#endif
 
 	/* jump to special frame */
 	kmi = WM_keymap_add_item(keymap, "CLIP_OT_frame_jump", LEFTARROWKEY, KM_PRESS, KM_CTRL | KM_SHIFT, 0);
@@ -790,7 +783,9 @@ static void clip_keymap(struct wmKeyConfig *keyconf)
 
 	/* view */
 	WM_keymap_add_item(keymap, "CLIP_OT_graph_view_all", HOMEKEY, KM_PRESS, 0, 0);
+#ifdef WITH_INPUT_NDOF
 	WM_keymap_add_item(keymap, "CLIP_OT_graph_view_all", NDOF_BUTTON_FIT, KM_PRESS, 0, 0);
+#endif
 	WM_keymap_add_item(keymap, "CLIP_OT_graph_center_current_frame", PADPERIOD, KM_PRESS, 0, 0);
 
 	kmi = WM_keymap_add_item(keymap, "WM_OT_context_toggle", LKEY, KM_PRESS, 0, 0);
@@ -817,11 +812,13 @@ static void clip_keymap(struct wmKeyConfig *keyconf)
 
 	keymap = WM_keymap_find(keyconf, "Clip Dopesheet Editor", SPACE_CLIP, 0);
 
-	kmi = WM_keymap_add_item(keymap, "CLIP_OT_dopesheet_select_channel", ACTIONMOUSE, KM_PRESS, 0, 0);
+	kmi = WM_keymap_add_item(keymap, "CLIP_OT_dopesheet_select_channel", LEFTMOUSE, KM_PRESS, 0, 0);
 	RNA_boolean_set(kmi->ptr, "extend", true);  /* toggle */
 
 	WM_keymap_add_item(keymap, "CLIP_OT_dopesheet_view_all", HOMEKEY, KM_PRESS, 0, 0);
+#ifdef WITH_INPUT_NDOF
 	WM_keymap_add_item(keymap, "CLIP_OT_dopesheet_view_all", NDOF_BUTTON_FIT, KM_PRESS, 0, 0);
+#endif
 }
 
 const char *clip_context_dir[] = {"edit_movieclip", "edit_mask", NULL};
@@ -1512,6 +1509,25 @@ static void clip_properties_region_listener(bScreen *UNUSED(sc), ScrArea *UNUSED
 
 /********************* registration ********************/
 
+static void clip_id_remap(ScrArea *UNUSED(sa), SpaceLink *slink, ID *old_id, ID *new_id)
+{
+	SpaceClip *sclip = (SpaceClip *)slink;
+
+	if (!ELEM(GS(old_id->name), ID_MC, ID_MSK)) {
+		return;
+	}
+
+	if ((ID *)sclip->clip == old_id) {
+		sclip->clip = (MovieClip *)new_id;
+		id_us_ensure_real(new_id);
+	}
+
+	if ((ID *)sclip->mask_info.mask == old_id) {
+		sclip->mask_info.mask = (Mask *)new_id;
+		id_us_ensure_real(new_id);
+	}
+}
+
 /* only called once, from space/spacetypes.c */
 void ED_spacetype_clip(void)
 {
@@ -1531,6 +1547,7 @@ void ED_spacetype_clip(void)
 	st->context = clip_context;
 	st->dropboxes = clip_dropboxes;
 	st->refresh = clip_refresh;
+	st->id_remap = clip_id_remap;
 
 	/* regions: main window */
 	art = MEM_callocN(sizeof(ARegionType), "spacetype clip region");

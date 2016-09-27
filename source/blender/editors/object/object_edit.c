@@ -316,6 +316,27 @@ void OBJECT_OT_hide_render_set(wmOperatorType *ot)
 
 /* ******************* toggle editmode operator  ***************** */
 
+static bool mesh_needs_keyindex(const Mesh *me)
+{
+	if (me->key) {
+		return false;  /* will be added */
+	}
+
+	for (const Object *ob = G.main->object.first; ob; ob = ob->id.next) {
+		if ((ob->parent) && (ob->parent->data == me) && ELEM(ob->partype, PARVERT1, PARVERT3)) {
+			return true;
+		}
+		if (ob->data == me) {
+			for (const ModifierData *md = ob->modifiers.first; md; md = md->next) {
+				if (md->type == eModifierType_Hook) {
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+
 /**
  * Load EditMode data back into the object,
  * optionally freeing the editmode data.
@@ -449,7 +470,7 @@ void ED_object_editmode_enter(bContext *C, int flag)
 	View3D *v3d = NULL;
 	bool ok = false;
 
-	if (scene->id.lib) return;
+	if (ID_IS_LINKED_DATABLOCK(scene)) return;
 
 	if (sa && sa->spacetype == SPACE_VIEW3D)
 		v3d = sa->spacedata.first;
@@ -494,15 +515,15 @@ void ED_object_editmode_enter(bContext *C, int flag)
 		ok = 1;
 		scene->obedit = ob;  /* context sees this */
 
-		EDBM_mesh_make(scene->toolsettings, ob);
+		const bool use_key_index = mesh_needs_keyindex(ob->data);
+
+		EDBM_mesh_make(scene->toolsettings, ob, use_key_index);
 
 		em = BKE_editmesh_from_object(ob);
 		if (LIKELY(em)) {
 			/* order doesn't matter */
 			EDBM_mesh_normals_update(em);
 			BKE_editmesh_tessface_calc(em);
-
-			BM_mesh_select_mode_flush(em->bm);
 		}
 
 		WM_event_add_notifier(C, NC_SCENE | ND_MODE | NS_EDITMODE_MESH, scene);
@@ -518,7 +539,7 @@ void ED_object_editmode_enter(bContext *C, int flag)
 		 * BKE_object_obdata_is_libdata that prevent the bugfix #6614, so
 		 * i add this little hack here.
 		 */
-		if (arm->id.lib) {
+		if (ID_IS_LINKED_DATABLOCK(arm)) {
 			error_libdata();
 			return;
 		}
@@ -600,7 +621,7 @@ static int editmode_toggle_poll(bContext *C)
 	Object *ob = CTX_data_active_object(C);
 
 	/* covers proxies too */
-	if (ELEM(NULL, ob, ob->data) || ((ID *)ob->data)->lib)
+	if (ELEM(NULL, ob, ob->data) || ID_IS_LINKED_DATABLOCK(ob->data))
 		return 0;
 
 	/* if hidden but in edit mode, we still display */
@@ -827,7 +848,7 @@ static void copy_attr(Main *bmain, Scene *scene, View3D *v3d, short event)
 	Nurb *nu;
 	bool do_depgraph_update = false;
 	
-	if (scene->id.lib) return;
+	if (ID_IS_LINKED_DATABLOCK(scene)) return;
 
 	if (!(ob = OBACT)) return;
 	
@@ -889,7 +910,7 @@ static void copy_attr(Main *bmain, Scene *scene, View3D *v3d, short event)
 
 					base->object->dup_group = ob->dup_group;
 					if (ob->dup_group)
-						id_lib_extern(&ob->dup_group->id);
+						id_us_plus(&ob->dup_group->id);
 				}
 				else if (event == 7) {    /* mass */
 					base->object->mass = ob->mass;
@@ -925,6 +946,7 @@ static void copy_attr(Main *bmain, Scene *scene, View3D *v3d, short event)
 						cu1 = base->object->data;
 
 						cu1->spacemode = cu->spacemode;
+						cu1->align_y = cu->align_y;
 						cu1->spacing = cu->spacing;
 						cu1->linedist = cu->linedist;
 						cu1->shear = cu->shear;
@@ -1414,7 +1436,7 @@ static int shade_smooth_exec(bContext *C, wmOperator *op)
 	{
 		data = ob->data;
 
-		if (data && data->lib) {
+		if (data && ID_IS_LINKED_DATABLOCK(data)) {
 			linked_data = true;
 			continue;
 		}
@@ -1497,7 +1519,7 @@ static void UNUSED_FUNCTION(image_aspect) (Scene *scene, View3D *v3d)
 	int a, b, done;
 	
 	if (scene->obedit) return;  // XXX get from context
-	if (scene->id.lib) return;
+	if (ID_IS_LINKED_DATABLOCK(scene)) return;
 	
 	for (base = FIRSTBASE; base; base = base->next) {
 		if (TESTBASELIB(v3d, base)) {

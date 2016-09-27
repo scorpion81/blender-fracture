@@ -84,6 +84,7 @@ extern ModifierTypeInfo modifierType_Wireframe;
 extern ModifierTypeInfo modifierType_DataTransfer;
 extern ModifierTypeInfo modifierType_NormalEdit;
 extern ModifierTypeInfo modifierType_CorrectiveSmooth;
+extern ModifierTypeInfo modifierType_MeshSequenceCache;
 extern ModifierTypeInfo modifierType_Fracture;
 
 /* MOD_util.c */

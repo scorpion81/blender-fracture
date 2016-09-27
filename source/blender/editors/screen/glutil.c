@@ -327,6 +327,13 @@ float glaGetOneFloat(int param)
 	return v;
 }
 
+int glaGetOneInt(int param)
+{
+	GLint v;
+	glGetIntegerv(param, &v);
+	return v;
+}
+
 void glaRasterPosSafe2f(float x, float y, float known_good_x, float known_good_y)
 {
 	GLubyte dummy = 0;
@@ -368,7 +375,11 @@ static int get_cached_work_texture(int *r_w, int *r_h)
 	return texid;
 }
 
-void glaDrawPixelsTexScaled(float x, float y, int img_w, int img_h, int format, int type, int zoomfilter, void *rect, float scaleX, float scaleY)
+void glaDrawPixelsTexScaled_clipping(float x, float y, int img_w, int img_h,
+                                     int format, int type, int zoomfilter, void *rect,
+                                     float scaleX, float scaleY,
+                                     float clip_min_x, float clip_min_y,
+                                     float clip_max_x, float clip_max_y)
 {
 	unsigned char *uc_rect = (unsigned char *) rect;
 	const float *f_rect = (float *)rect;
@@ -377,6 +388,7 @@ void glaDrawPixelsTexScaled(float x, float y, int img_w, int img_h, int format, 
 	int seamless, offset_x, offset_y, nsubparts_x, nsubparts_y;
 	int texid = get_cached_work_texture(&tex_w, &tex_h);
 	int components;
+	const bool use_clipping = ((clip_min_x < clip_max_x) && (clip_min_y < clip_max_y));
 
 	/* Specify the color outside this function, and tex will modulate it.
 	 * This is useful for changing alpha without using glPixelTransferf()
@@ -443,11 +455,23 @@ void glaDrawPixelsTexScaled(float x, float y, int img_w, int img_h, int format, 
 			int offset_top = (seamless && remainder_y > tex_h) ? 1 : 0;
 			float rast_x = x + subpart_x * offset_x * xzoom;
 			float rast_y = y + subpart_y * offset_y * yzoom;
-			
 			/* check if we already got these because we always get 2 more when doing seamless */
 			if (subpart_w <= seamless || subpart_h <= seamless)
 				continue;
-			
+
+			if (use_clipping) {
+				if (rast_x + (float)(subpart_w - offset_right) * xzoom * scaleX < clip_min_x ||
+				    rast_y + (float)(subpart_h - offset_top) * yzoom * scaleY < clip_min_y)
+				{
+					continue;
+				}
+				if (rast_x + (float)offset_left * xzoom > clip_max_x ||
+				    rast_y + (float)offset_bot * yzoom > clip_max_y)
+				{
+					continue;
+				}
+			}
+
 			if (type == GL_FLOAT) {
 				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, subpart_w, subpart_h, format, GL_FLOAT, &f_rect[((size_t)subpart_y) * offset_y * img_w * components + subpart_x * offset_x * components]);
 				
@@ -497,9 +521,26 @@ void glaDrawPixelsTexScaled(float x, float y, int img_w, int img_h, int format, 
 #endif
 }
 
+void glaDrawPixelsTexScaled(float x, float y, int img_w, int img_h,
+                            int format, int type, int zoomfilter, void *rect,
+                            float scaleX, float scaleY)
+{
+	glaDrawPixelsTexScaled_clipping(x, y, img_w, img_h, format, type, zoomfilter, rect,
+	                                scaleX, scaleY, 0.0f, 0.0f, 0.0f, 0.0f);
+}
+
 void glaDrawPixelsTex(float x, float y, int img_w, int img_h, int format, int type, int zoomfilter, void *rect)
 {
-	glaDrawPixelsTexScaled(x, y, img_w, img_h, format, type, zoomfilter, rect, 1.0f, 1.0f);
+	glaDrawPixelsTexScaled_clipping(x, y, img_w, img_h, format, type, zoomfilter, rect, 1.0f, 1.0f,
+	                                0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+void glaDrawPixelsTex_clipping(float x, float y, int img_w, int img_h,
+                               int format, int type, int zoomfilter, void *rect,
+                               float clip_min_x, float clip_min_y, float clip_max_x, float clip_max_y)
+{
+	glaDrawPixelsTexScaled_clipping(x, y, img_w, img_h, format, type, zoomfilter, rect, 1.0f, 1.0f,
+	                                clip_min_x, clip_min_y, clip_max_x, clip_max_y);
 }
 
 void glaDrawPixelsSafe(float x, float y, int img_w, int img_h, int row_w, int format, int type, void *rect)
@@ -545,6 +586,10 @@ void glaDrawPixelsSafe(float x, float y, int img_w, int img_h, int row_w, int fo
 	draw_h = min_ii(img_h - off_y, ceil((scissor[3] - rast_y) / yzoom));
 
 	if (draw_w > 0 && draw_h > 0) {
+
+		int bound_options;
+		GPU_BASIC_SHADER_DISABLE_AND_STORE(bound_options);
+
 		/* Don't use safe RasterPos (slower) if we can avoid it. */
 		if (rast_x >= 0 && rast_y >= 0) {
 			glRasterPos2f(rast_x, rast_y);
@@ -576,19 +621,31 @@ void glaDrawPixelsSafe(float x, float y, int img_w, int img_h, int row_w, int fo
 		}
 		
 		glPixelStorei(GL_UNPACK_ROW_LENGTH,  0);
+
+		GPU_BASIC_SHADER_ENABLE_AND_RESTORE(bound_options);
 	}
 }
 
 /* uses either DrawPixelsSafe or DrawPixelsTex, based on user defined maximum */
-void glaDrawPixelsAuto(float x, float y, int img_w, int img_h, int format, int type, int zoomfilter, void *rect)
+void glaDrawPixelsAuto_clipping(float x, float y, int img_w, int img_h,
+                                int format, int type, int zoomfilter, void *rect,
+                                float clip_min_x, float clip_min_y,
+                                float clip_max_x, float clip_max_y)
 {
 	if (U.image_draw_method != IMAGE_DRAW_METHOD_DRAWPIXELS) {
 		glColor4f(1.0, 1.0, 1.0, 1.0);
-		glaDrawPixelsTex(x, y, img_w, img_h, format, type, zoomfilter, rect);
+		glaDrawPixelsTex_clipping(x, y, img_w, img_h, format, type, zoomfilter, rect,
+		                          clip_min_x, clip_min_y, clip_max_x, clip_max_y);
 	}
 	else {
 		glaDrawPixelsSafe(x, y, img_w, img_h, img_w, format, type, rect);
 	}
+}
+
+void glaDrawPixelsAuto(float x, float y, int img_w, int img_h, int format, int type, int zoomfilter, void *rect)
+{
+	glaDrawPixelsAuto_clipping(x, y, img_w, img_h, format, type, zoomfilter, rect,
+	                           0.0f, 0.0f, 0.0f, 0.0f);
 }
 
 /* 2D Drawing Assistance */
@@ -795,8 +852,13 @@ void bglPolygonOffset(float viewdist, float dist)
 #endif
 		}
 		else {
-			/* should be clipping value or so... */
-			offs = 0.0005f * dist;
+			/* This adjustment effectively results in reducing the Z value by 0.25%.
+			 *
+			 * winmat[14] actually evaluates to `-2 * far * near / (far - near)`,
+			 * is very close to -0.2 with default clip range, and is used as the coefficient multiplied by `w / z`,
+			 * thus controlling the z dependent part of the depth value.
+			 */
+			offs = winmat[14] * -0.0025f * dist;
 		}
 		
 		winmat[14] -= offs;
@@ -817,9 +879,11 @@ void bglPolygonOffset(float viewdist, float dist)
 /* **** Color management helper functions for GLSL display/transform ***** */
 
 /* Draw given image buffer on a screen using GLSL for display transform */
-void glaDrawImBuf_glsl(ImBuf *ibuf, float x, float y, int zoomfilter,
-                       ColorManagedViewSettings *view_settings,
-                       ColorManagedDisplaySettings *display_settings)
+void glaDrawImBuf_glsl_clipping(ImBuf *ibuf, float x, float y, int zoomfilter,
+                                ColorManagedViewSettings *view_settings,
+                                ColorManagedDisplaySettings *display_settings,
+                                float clip_min_x, float clip_min_y,
+                                float clip_max_x, float clip_max_y)
 {
 	bool force_fallback = false;
 	bool need_fallback = true;
@@ -869,14 +933,16 @@ void glaDrawImBuf_glsl(ImBuf *ibuf, float x, float y, int zoomfilter,
 					BLI_assert(!"Incompatible number of channels for GLSL display");
 
 				if (format != 0) {
-					glaDrawPixelsTex(x, y, ibuf->x, ibuf->y, format, GL_FLOAT,
-					                 zoomfilter, ibuf->rect_float);
+					glaDrawPixelsTex_clipping(x, y, ibuf->x, ibuf->y, format, GL_FLOAT,
+					                          zoomfilter, ibuf->rect_float,
+					                          clip_min_x, clip_min_y, clip_max_x, clip_max_y);
 				}
 			}
 			else if (ibuf->rect) {
 				/* ibuf->rect is always RGBA */
-				glaDrawPixelsTex(x, y, ibuf->x, ibuf->y, GL_RGBA, GL_UNSIGNED_BYTE,
-				                 zoomfilter, ibuf->rect);
+				glaDrawPixelsTex_clipping(x, y, ibuf->x, ibuf->y, GL_RGBA, GL_UNSIGNED_BYTE,
+				                          zoomfilter, ibuf->rect,
+				                          clip_min_x, clip_min_y, clip_max_x, clip_max_y);
 			}
 
 			IMB_colormanagement_finish_glsl_draw();
@@ -892,21 +958,43 @@ void glaDrawImBuf_glsl(ImBuf *ibuf, float x, float y, int zoomfilter,
 
 		display_buffer = IMB_display_buffer_acquire(ibuf, view_settings, display_settings, &cache_handle);
 
-		if (display_buffer)
-			glaDrawPixelsAuto(x, y, ibuf->x, ibuf->y, GL_RGBA, GL_UNSIGNED_BYTE, zoomfilter, display_buffer);
+		if (display_buffer) {
+			glaDrawPixelsAuto_clipping(x, y, ibuf->x, ibuf->y, GL_RGBA, GL_UNSIGNED_BYTE,
+			                           zoomfilter, display_buffer,
+			                           clip_min_x, clip_min_y, clip_max_x, clip_max_y);
+		}
 
 		IMB_display_buffer_release(cache_handle);
 	}
 }
 
-void glaDrawImBuf_glsl_ctx(const bContext *C, ImBuf *ibuf, float x, float y, int zoomfilter)
+void glaDrawImBuf_glsl(ImBuf *ibuf, float x, float y, int zoomfilter,
+                       ColorManagedViewSettings *view_settings,
+                       ColorManagedDisplaySettings *display_settings)
+{
+	glaDrawImBuf_glsl_clipping(ibuf, x, y, zoomfilter, view_settings, display_settings,
+	                           0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+void glaDrawImBuf_glsl_ctx_clipping(const bContext *C,
+                                    ImBuf *ibuf,
+                                    float x, float y,
+                                    int zoomfilter,
+                                    float clip_min_x, float clip_min_y,
+                                    float clip_max_x, float clip_max_y)
 {
 	ColorManagedViewSettings *view_settings;
 	ColorManagedDisplaySettings *display_settings;
 
 	IMB_colormanagement_display_settings_from_ctx(C, &view_settings, &display_settings);
 
-	glaDrawImBuf_glsl(ibuf, x, y, zoomfilter, view_settings, display_settings);
+	glaDrawImBuf_glsl_clipping(ibuf, x, y, zoomfilter, view_settings, display_settings,
+	                           clip_min_x, clip_min_y, clip_max_x, clip_max_y);
+}
+
+void glaDrawImBuf_glsl_ctx(const bContext *C, ImBuf *ibuf, float x, float y, int zoomfilter)
+{
+	glaDrawImBuf_glsl_ctx_clipping(C, ibuf, x, y, zoomfilter, 0.0f, 0.0f, 0.0f, 0.0f);
 }
 
 void cpack(unsigned int x)

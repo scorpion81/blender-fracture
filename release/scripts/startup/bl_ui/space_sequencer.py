@@ -20,7 +20,11 @@
 import bpy
 from bpy.types import Header, Menu, Panel
 from rna_prop_ui import PropertyPanel
-from bl_ui.properties_grease_pencil_common import GreasePencilDataPanel, GreasePencilToolsPanel
+from bl_ui.properties_grease_pencil_common import (
+        GreasePencilDataPanel,
+        GreasePencilPaletteColorPanel,
+        GreasePencilToolsPanel,
+        )
 from bpy.app.translations import pgettext_iface as iface_
 
 
@@ -180,6 +184,7 @@ class SEQUENCER_MT_view(Menu):
             layout.operator_context = 'INVOKE_REGION_WIN'
             layout.operator("sequencer.view_all", text="View all Sequences")
             layout.operator("sequencer.view_selected")
+            layout.operator("sequencer.view_frame")
             layout.operator_context = 'INVOKE_DEFAULT'
         if is_preview:
             layout.operator_context = 'INVOKE_REGION_PREVIEW'
@@ -220,8 +225,8 @@ class SEQUENCER_MT_view(Menu):
             layout.separator()
 
         layout.operator("screen.area_dupli")
-        layout.operator("screen.screen_full_area", text="Toggle Maximize Area")
-        layout.operator("screen.screen_full_area").use_hide_panels = True
+        layout.operator("screen.screen_full_area")
+        layout.operator("screen.screen_full_area", text="Toggle Fullscreen Area").use_hide_panels = True
 
 
 class SEQUENCER_MT_select(Menu):
@@ -294,6 +299,24 @@ class SEQUENCER_MT_frame(Menu):
 
         layout.operator("anim.previewrange_clear")
         layout.operator("anim.previewrange_set")
+
+        layout.separator()
+
+        props = layout.operator("sequencer.strip_jump", text="Jump to Previous Strip")
+        props.next = False
+        props.center = False
+        props = layout.operator("sequencer.strip_jump", text="Jump to Next Strip")
+        props.next = True
+        props.center = False
+
+        layout.separator()
+
+        props = layout.operator("sequencer.strip_jump", text="Jump to Previous Strip (Center)")
+        props.next = False
+        props.center = True
+        props = layout.operator("sequencer.strip_jump", text="Jump to Next Strip (Center)")
+        props.next = True
+        props.center = True
 
 
 class SEQUENCER_MT_add(Menu):
@@ -649,7 +672,15 @@ class SEQUENCER_PT_effect(SequencerButtonsPanel, Panel):
             col = layout.column()
             col.prop(strip, "text")
             col.prop(strip, "font_size")
-            col.prop(strip, "use_shadow")
+
+            row = col.row()
+            row.prop(strip, "color")
+            row = col.row()
+            row.prop(strip, "use_shadow")
+            rowsub = row.row()
+            rowsub.active = strip.use_shadow
+            rowsub.prop(strip, "shadow_color", text="")
+
             col.prop(strip, "align_x")
             col.prop(strip, "align_y")
             col.prop(strip, "location")
@@ -945,7 +976,7 @@ class SEQUENCER_PT_filter(SequencerButtonsPanel, Panel):
 
 
 class SEQUENCER_PT_proxy(SequencerButtonsPanel, Panel):
-    bl_label = "Proxy / Timecode"
+    bl_label = "Proxy/Timecode"
 
     @classmethod
     def poll(cls, context):
@@ -1152,6 +1183,14 @@ class SEQUENCER_PT_modifiers(SequencerButtonsPanel, Panel):
 
 
 class SEQUENCER_PT_grease_pencil(GreasePencilDataPanel, SequencerButtonsPanel_Output, Panel):
+    bl_space_type = 'SEQUENCE_EDITOR'
+    bl_region_type = 'UI'
+
+    # NOTE: this is just a wrapper around the generic GP Panel
+    # But, it should only show up when there are images in the preview region
+
+
+class SEQUENCER_PT_grease_pencil_palettecolor(GreasePencilPaletteColorPanel, SequencerButtonsPanel_Output, Panel):
     bl_space_type = 'SEQUENCE_EDITOR'
     bl_region_type = 'UI'
 

@@ -52,15 +52,15 @@ __all__ = (
     )
 
 from _bpy import (
+        _utils_units as units,
+        blend_paths,
         escape_identifier,
         register_class,
-        unregister_class,
-        blend_paths,
         resource_path,
+        script_paths as _bpy_script_paths,
+        unregister_class,
+        user_resource as _user_resource,
         )
-from _bpy import script_paths as _bpy_script_paths
-from _bpy import user_resource as _user_resource
-from _bpy import _utils_units as units
 
 import bpy as _bpy
 import os as _os
@@ -305,15 +305,21 @@ def script_paths(subdir=None, user_pref=True, check_all=False):
     """
     scripts = list(_scripts)
 
-    if check_all:
-        # all possible paths
-        base_paths = tuple(_os.path.join(resource_path(res), "scripts")
-                           for res in ('LOCAL', 'USER', 'SYSTEM'))
-    else:
-        # only paths blender uses
-        base_paths = _bpy_script_paths()
+    # Only paths Blender uses.
+    #
+    # Needed this is needed even when 'check_all' is enabled,
+    # so the 'BLENDER_SYSTEM_SCRIPTS' environment variable will be used.
+    base_paths = _bpy_script_paths()
 
-    for path in base_paths + (script_path_user(), script_path_pref()):
+    if check_all:
+        # All possible paths, no duplicates, keep order.
+        base_paths = (
+            *(path for path in (_os.path.join(resource_path(res), "scripts")
+              for res in ('LOCAL', 'USER', 'SYSTEM')) if path not in base_paths),
+            *base_paths,
+            )
+
+    for path in (*base_paths, script_path_user(), script_path_pref()):
         if path:
             path = _os.path.normpath(path)
             if path not in scripts and _os.path.isdir(path):
@@ -635,11 +641,10 @@ def unregister_module(module, verbose=False):
 
 # we start with the built-in default mapping
 def _blender_default_map():
-    import sys
     import rna_manual_reference as ref_mod
     ret = (ref_mod.url_manual_prefix, ref_mod.url_manual_mapping)
     # avoid storing in memory
-    del sys.modules["rna_manual_reference"]
+    del _sys.modules["rna_manual_reference"]
     return ret
 
 # hooks for doc lookups

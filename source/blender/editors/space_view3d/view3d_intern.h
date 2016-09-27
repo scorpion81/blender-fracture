@@ -46,7 +46,6 @@ struct bContext;
 struct bMotionPath;
 struct bPoseChannel;
 struct Mesh;
-struct wmNDOFMotionData;
 struct wmOperatorType;
 struct wmWindowManager;
 struct wmKeyConfig;
@@ -76,10 +75,12 @@ void VIEW3D_OT_dolly(struct wmOperatorType *ot);
 void VIEW3D_OT_zoom_camera_1_to_1(struct wmOperatorType *ot);
 void VIEW3D_OT_move(struct wmOperatorType *ot);
 void VIEW3D_OT_rotate(struct wmOperatorType *ot);
+#ifdef WITH_INPUT_NDOF
 void VIEW3D_OT_ndof_orbit(struct wmOperatorType *ot);
 void VIEW3D_OT_ndof_orbit_zoom(struct wmOperatorType *ot);
 void VIEW3D_OT_ndof_pan(struct wmOperatorType *ot);
 void VIEW3D_OT_ndof_all(struct wmOperatorType *ot);
+#endif /* WITH_INPUT_NDOF */
 void VIEW3D_OT_view_all(struct wmOperatorType *ot);
 void VIEW3D_OT_viewnumpad(struct wmOperatorType *ot);
 void VIEW3D_OT_view_selected(struct wmOperatorType *ot);
@@ -103,6 +104,7 @@ void VIEW3D_OT_enable_manipulator(struct wmOperatorType *ot);
 void VIEW3D_OT_render_border(struct wmOperatorType *ot);
 void VIEW3D_OT_clear_render_border(struct wmOperatorType *ot);
 void VIEW3D_OT_zoom_border(struct wmOperatorType *ot);
+void VIEW3D_OT_toggle_render(struct wmOperatorType *ot);
 
 void view3d_boxview_copy(ScrArea *sa, ARegion *ar);
 
@@ -110,11 +112,15 @@ void view3d_orbit_apply_dyn_ofs(
         float r_ofs[3], const float ofs_old[3], const float viewquat_old[4],
         const float viewquat_new[4], const float dyn_ofs[3]);
 
+#ifdef WITH_INPUT_NDOF
+struct wmNDOFMotionData;
+
 void view3d_ndof_fly(
         const struct wmNDOFMotionData *ndof,
         struct View3D *v3d, struct RegionView3D *rv3d,
         const bool use_precision, const short protectflag,
         bool *r_has_translate, bool *r_has_rotate);
+#endif /* WITH_INPUT_NDOF */
 
 /* view3d_fly.c */
 void view3d_keymap(struct wmKeyConfig *keyconf);
@@ -157,6 +163,8 @@ enum {
 	V3D_CACHE_TEXT_GLOBALSPACE  = (1 << 3),
 	V3D_CACHE_TEXT_LOCALCLIP    = (1 << 4)
 };
+
+int view3d_effective_drawtype(const struct View3D *v3d);
 
 /* drawarmature.c */
 bool draw_armature(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
@@ -229,6 +237,10 @@ void ED_view3d_smooth_view(
         struct View3D *v3d, struct ARegion *ar, const int smooth_viewtx,
         const V3D_SmoothParams *sview);
 
+void ED_view3d_smooth_view_force_finish(
+        struct bContext *C,
+        struct View3D *v3d, struct ARegion *ar);
+
 void view3d_winmatrix_set(ARegion *ar, const View3D *v3d, const rctf *rect);
 void view3d_viewmatrix_set(Scene *scene, const View3D *v3d, RegionView3D *rv3d);
 
@@ -267,6 +279,7 @@ bool ED_view3d_minmax_verts(struct Object *obedit, float min[3], float max[3]);
 
 void VIEW3D_OT_snap_selected_to_grid(struct wmOperatorType *ot);
 void VIEW3D_OT_snap_selected_to_cursor(struct wmOperatorType *ot);
+void VIEW3D_OT_snap_selected_to_active(struct wmOperatorType *ot);
 void VIEW3D_OT_snap_cursor_to_grid(struct wmOperatorType *ot);
 void VIEW3D_OT_snap_cursor_to_center(struct wmOperatorType *ot);
 void VIEW3D_OT_snap_cursor_to_selected(struct wmOperatorType *ot);

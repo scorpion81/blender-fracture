@@ -579,11 +579,7 @@ void wm_jobs_timer(const bContext *C, wmWindowManager *wm, wmTimer *wt)
 
 					if (wm_job->flag & WM_JOB_PROGRESS)
 						WM_event_add_notifier(C, NC_WM | ND_JOB, NULL);
-
-					if (wm_job->job_type != WM_JOB_TYPE_OBJECT_FRACTURE) {
-						/* why on earth is this set to false here ? need the timer update... or not ?*/
-						wm_job->do_update = false;
-					}
+					wm_job->do_update = false;
 				}
 				
 				if (wm_job->ready) {

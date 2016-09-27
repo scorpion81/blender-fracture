@@ -370,12 +370,10 @@ static void blf_font_draw_buffer_ex(
 								fbuf[3] = 1.0f;
 							}
 							else {
-								float alphatest;
 								fbuf[0] = (b_col_float[0] * a) + (fbuf[0] * (1.0f - a));
 								fbuf[1] = (b_col_float[1] * a) + (fbuf[1] * (1.0f - a));
 								fbuf[2] = (b_col_float[2] * a) + (fbuf[2] * (1.0f - a));
-								fbuf[3] = (alphatest = (fbuf[3] + a)) < 1.0f ?
-								          alphatest : 1.0f;
+								fbuf[3] = MIN2(fbuf[3] + a, 1.0f); /* clamp to 1.0 */
 							}
 						}
 					}
@@ -407,12 +405,10 @@ static void blf_font_draw_buffer_ex(
 								cbuf[3] = 255;
 							}
 							else {
-								int alphatest;
 								cbuf[0] = (unsigned char)((b_col_char[0] * a) + (cbuf[0] * (1.0f - a)));
 								cbuf[1] = (unsigned char)((b_col_char[1] * a) + (cbuf[1] * (1.0f - a)));
 								cbuf[2] = (unsigned char)((b_col_char[2] * a) + (cbuf[2] * (1.0f - a)));
-								cbuf[3] = (unsigned char)((alphatest = ((int)cbuf[3] + (int)(a * 255)) < 255) ?
-								          alphatest : 255);
+								cbuf[3] = (unsigned char)MIN2((int)cbuf[3] + (int)(a * 255), 255); /* clamp to 255 */
 							}
 						}
 					}
@@ -455,7 +451,10 @@ size_t blf_font_width_to_strlen(FontBLF *font, const char *str, size_t len, floa
 
 	blf_font_ensure_ascii_table(font);
 
-	while ((i_prev = i), (width_new = pen_x), ((i < len) && str[i])) {
+	while ((void)(i_prev = i),
+	       (void)(width_new = pen_x),
+	       ((i < len) && str[i]))
+	{
 		BLF_UTF8_NEXT_FAST(font, g, str, i, c, glyph_ascii_table);
 
 		if (UNLIKELY(c == BLI_UTF8_ERR))

@@ -1359,14 +1359,14 @@ static short do_materials(FractureModifierData *fmd, Object* obj)
 
 	if (fmd->inner_material) {
 		/* assign inner material as secondary mat to ob if not there already */
-		mat_index = find_material_index(obj, fmd->inner_material);
+		mat_index = BKE_object_material_slot_find_index(obj, fmd->inner_material);
 		if (mat_index == 0) {
-			object_add_material_slot(obj);
+			BKE_object_material_slot_add(obj);
 			assign_material(obj, fmd->inner_material, obj->totcol, BKE_MAT_ASSIGN_OBDATA);
 		}
 
 		/* get index again */
-		mat_index = find_material_index(obj, fmd->inner_material);
+		mat_index = BKE_object_material_slot_find_index(obj, fmd->inner_material);
 	}
 	else
 	{
@@ -1382,14 +1382,14 @@ static short do_materials(FractureModifierData *fmd, Object* obj)
 			Material* mat_inner;
 			char *matname = BLI_strdupcat(name, "_Outer");
 			Material* mat_outer = find_material(matname);
-			object_add_material_slot(obj);
+			BKE_object_material_slot_add(obj);
 			assign_material(obj, mat_outer, obj->totcol, BKE_MAT_ASSIGN_OBDATA);
 
 			MEM_freeN(matname);
 			matname = NULL;
 			matname = BLI_strdupcat(name, "_Inner");
 			mat_inner = find_material(matname);
-			object_add_material_slot(obj);
+			BKE_object_material_slot_add(obj);
 			assign_material(obj, mat_inner, obj->totcol, BKE_MAT_ASSIGN_OBDATA);
 
 			MEM_freeN(matname);
@@ -1401,7 +1401,7 @@ static short do_materials(FractureModifierData *fmd, Object* obj)
 		{
 			char* matname = BLI_strdupcat(name, "_Inner");
 			Material* mat_inner = find_material(matname);
-			object_add_material_slot(obj);
+			BKE_object_material_slot_add(obj);
 			assign_material(obj, mat_inner, obj->totcol, BKE_MAT_ASSIGN_OBDATA);
 			MEM_freeN(matname);
 			matname = NULL;
@@ -1977,7 +1977,7 @@ static float mesh_separate_tagged(FractureModifierData *fmd, Object *ob, BMVert 
 	if (fmd->frac_mesh && fmd->frac_mesh->cancel == 1)
 		return 0.0f;
 
-	bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
+	bm_new = BM_mesh_create(&bm_mesh_allocsize_default, &((struct BMeshCreateParams){.use_toolflags = false,}));
 	BM_mesh_elem_toolflags_ensure(bm_new);  /* needed for 'duplicate' bmo */
 
 	CustomData_copy(&bm_old->vdata, &bm_new->vdata, CD_MASK_BMESH, CD_CALLOC, 0);
@@ -2248,7 +2248,7 @@ static void halve(FractureModifierData *rmd, Object *ob, int minsize, BMesh **bm
 		return;
 	}
 
-	bm_new = BM_mesh_create(&bm_mesh_allocsize_default);
+	bm_new = BM_mesh_create(&bm_mesh_allocsize_default, &((struct BMeshCreateParams){.use_toolflags = false,}));
 
 	BM_mesh_elem_hflag_disable_all(bm_old, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_SELECT | BM_ELEM_TAG, false);
 
@@ -2846,7 +2846,7 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm, Object *
 	int totpoly = dm->getNumPolys(dm);
 	KDTree *tree = BLI_kdtree_new(totpoly);
 	int i = 0;
-	int inner_index = find_material_index(ob, fmd->inner_material) - 1;
+	int inner_index = BKE_object_material_slot_find_index(ob, fmd->inner_material) - 1;
 
 	//printf("Make Face Pairs\n");
 	int faces = 0, pairs = 0;
@@ -2909,7 +2909,7 @@ static void find_other_face(FractureModifierData *fmd, int i, BMesh* bm, Object*
 	float f_centr[3], f_centr_other[3];
 	BMFace *f1, *f2;
 	int other = GET_INT_FROM_POINTER(BLI_ghash_lookup(fmd->face_pairs, SET_INT_IN_POINTER(i)));
-	int inner_index = find_material_index(ob, fmd->inner_material) - 1;
+	int inner_index = BKE_object_material_slot_find_index(ob, fmd->inner_material) - 1;
 
 	if (other == i)
 	{

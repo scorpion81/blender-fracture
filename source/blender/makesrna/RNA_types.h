@@ -64,6 +64,16 @@ typedef struct PropertyPointerRNA {
 	struct PropertyRNA *prop;
 } PropertyPointerRNA;
 
+/**
+ * Stored result of a RNA path lookup (as used by anim-system)
+ */
+typedef struct PathResolvedRNA {
+	struct PointerRNA ptr;
+	struct PropertyRNA *prop;
+	/* -1 for non-array access */
+	int prop_index;
+} PathResolvedRNA;
+
 /* Property */
 
 typedef enum PropertyType {
@@ -285,6 +295,11 @@ typedef struct CollectionPointerLink {
 	PointerRNA ptr;
 } CollectionPointerLink;
 
+/* Copy of ListBase for RNA... */
+typedef struct CollectionListBase {
+	struct CollectionPointerLink *first, *last;
+} CollectionListBase;
+
 typedef enum RawPropertyType {
 	PROP_RAW_UNSET = -1,
 	PROP_RAW_INT, // XXX - abused for types that are not set, eg. MFace.verts, needs fixing.
@@ -301,11 +316,25 @@ typedef struct RawArray {
 	int stride;
 } RawArray;
 
+/**
+ * This struct is are typically defined in arrays which define an *enum* for RNA,
+ * which is used by the RNA API both for user-interface and the Python API.
+ */
 typedef struct EnumPropertyItem {
+	/** The internal value of the enum, not exposed to users. */
 	int value;
+	/**
+	 * Note that identifiers must be unique within the array,
+	 * by convention they're upper case with underscores for separators.
+	 * - An empty string is used to define menu separators.
+	 * - NULL denotes the end of the array of items.
+	 */
 	const char *identifier;
+	/** Optional icon, typically 'ICON_NONE' */
 	int icon;
+	/** Name displayed in the interface. */
 	const char *name;
+	/** Longer description used in the interface. */
 	const char *description;
 } EnumPropertyItem;
 

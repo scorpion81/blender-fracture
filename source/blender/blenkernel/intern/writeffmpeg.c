@@ -1393,7 +1393,7 @@ int BKE_ffmpeg_property_add_string(RenderData *rd, const char *type, const char 
 	
 	avcodec_get_context_defaults3(&c, NULL);
 
-	strncpy(name_, str, sizeof(name_));
+	BLI_strncpy(name_, str, sizeof(name_));
 
 	name = name_;
 	while (*name == ' ') name++;
@@ -1667,9 +1667,6 @@ bool BKE_ffmpeg_alpha_channel_is_supported(RenderData *rd)
 	int codec = rd->ffcodecdata.codec;
 
 	if (codec == AV_CODEC_ID_QTRLE)
-		return true;
-
-	if (codec == AV_CODEC_ID_PNG)
 		return true;
 
 	if (codec == AV_CODEC_ID_PNG)

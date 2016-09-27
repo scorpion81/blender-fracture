@@ -292,6 +292,18 @@ ccl_device_inline void object_motion_info(KernelGlobals *kg, int object, int *nu
 		*numverts = __float_as_int(f.w);
 }
 
+/* Offset to an objects patch map */
+
+ccl_device_inline uint object_patch_map_offset(KernelGlobals *kg, int object)
+{
+	if(object == OBJECT_NONE)
+		return 0;
+
+	int offset = object*OBJECT_SIZE + 11;
+	float4 f = kernel_tex_fetch(__objects, offset);
+	return __float_as_uint(f.x);
+}
+
 /* Pass ID for shader */
 
 ccl_device int shader_pass_id(KernelGlobals *kg, const ShaderData *sd)
@@ -538,7 +550,7 @@ ccl_device_inline void bvh_instance_motion_pop_factor(KernelGlobals *kg,
                                                       float *t_fac,
                                                       Transform *itfm)
 {
-	*t_fac /= len(transform_direction(itfm, ray->D));
+	*t_fac = 1.0f / len(transform_direction(itfm, ray->D));
 	*P = ray->P;
 	*dir = bvh_clamp_direction(ray->D);
 	*idir = bvh_inverse_direction(*dir);
@@ -552,6 +564,15 @@ ccl_device_inline void bvh_instance_motion_pop_factor(KernelGlobals *kg,
  */
 
 #ifdef __KERNEL_OPENCL__
+ccl_device_inline void object_position_transform_addrspace(KernelGlobals *kg,
+                                                         const ShaderData *sd,
+                                                         ccl_addr_space float3 *P)
+{
+	float3 private_P = *P;
+	object_position_transform(kg, sd, &private_P);
+	*P = private_P;
+}
+
 ccl_device_inline void object_dir_transform_addrspace(KernelGlobals *kg,
                                                       const ShaderData *sd,
                                                       ccl_addr_space float3 *D)
@@ -572,9 +593,11 @@ ccl_device_inline void object_normal_transform_addrspace(KernelGlobals *kg,
 #endif
 
 #ifndef __KERNEL_OPENCL__
+#  define object_position_transform_auto object_position_transform
 #  define object_dir_transform_auto object_dir_transform
 #  define object_normal_transform_auto object_normal_transform
 #else
+#  define object_position_transform_auto object_position_transform_addrspace
 #  define object_dir_transform_auto object_dir_transform_addrspace
 #  define object_normal_transform_auto object_normal_transform_addrspace
 #endif

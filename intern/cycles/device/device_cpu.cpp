@@ -155,7 +155,9 @@ public:
 	               InterpolationType interpolation,
 	               ExtensionType extension)
 	{
-		VLOG(1) << "Texture allocate: " << name << ", " << mem.memory_size() << " bytes.";
+		VLOG(1) << "Texture allocate: " << name << ", "
+		        << string_human_readable_number(mem.memory_size()) << " bytes. ("
+		        << string_human_readable_size(mem.memory_size()) << ")";
 		kernel_tex_copy(&kernel_globals,
 		                name,
 		                mem.data_pointer,
@@ -213,12 +215,7 @@ public:
 				return;
 		}
 
-		KernelGlobals kg = kernel_globals;
-
-#ifdef WITH_OSL
-		OSLShader::thread_init(&kg, &kernel_globals, &osl_globals);
-#endif
-
+		KernelGlobals kg = thread_kernel_globals_init();
 		RenderTile tile;
 
 		void(*path_trace_kernel)(KernelGlobals*, float*, unsigned int*, int, int, int, int, int);
@@ -289,9 +286,7 @@ public:
 			}
 		}
 
-#ifdef WITH_OSL
-		OSLShader::thread_free(&kg);
-#endif
+		thread_kernel_globals_free(&kg);
 	}
 
 	void thread_film_convert(DeviceTask& task)
@@ -480,6 +475,40 @@ public:
 	void task_cancel()
 	{
 		task_pool.cancel();
+	}
+
+protected:
+	inline KernelGlobals thread_kernel_globals_init()
+	{
+		KernelGlobals kg = kernel_globals;
+		kg.transparent_shadow_intersections = NULL;
+		const int decoupled_count = sizeof(kg.decoupled_volume_steps) /
+		                            sizeof(*kg.decoupled_volume_steps);
+		for(int i = 0; i < decoupled_count; ++i) {
+			kg.decoupled_volume_steps[i] = NULL;
+		}
+		kg.decoupled_volume_steps_index = 0;
+#ifdef WITH_OSL
+		OSLShader::thread_init(&kg, &kernel_globals, &osl_globals);
+#endif
+		return kg;
+	}
+
+	inline void thread_kernel_globals_free(KernelGlobals *kg)
+	{
+		if(kg->transparent_shadow_intersections != NULL) {
+			free(kg->transparent_shadow_intersections);
+		}
+		const int decoupled_count = sizeof(kg->decoupled_volume_steps) /
+		                            sizeof(*kg->decoupled_volume_steps);
+		for(int i = 0; i < decoupled_count; ++i) {
+			if(kg->decoupled_volume_steps[i] != NULL) {
+				free(kg->decoupled_volume_steps[i]);
+			}
+		}
+#ifdef WITH_OSL
+		OSLShader::thread_free(kg);
+#endif
 	}
 };
 

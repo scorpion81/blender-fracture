@@ -48,6 +48,10 @@ int _bli_array_findindex(const void *arr, unsigned int arr_len, size_t arr_strid
 #define BLI_array_findindex(arr, arr_len, p) \
 	_bli_array_findindex(arr, arr_len, sizeof(*(arr)), p)
 
+int _bli_array_rfindindex(const void *arr, unsigned int arr_len, size_t arr_stride, const void *p);
+#define BLI_array_rfindindex(arr, arr_len, p) \
+	_bli_array_rfindindex(arr, arr_len, sizeof(*(arr)), p)
+
 void _bli_array_binary_and(
         void *arr, const void *arr_a, const void *arr_b,
         unsigned int arr_len, size_t arr_stride);
@@ -63,5 +67,17 @@ void _bli_array_binary_or(
 	(CHECK_TYPE_PAIR_INLINE(*(arr), *(arr_a)), \
 	 CHECK_TYPE_PAIR_INLINE(*(arr), *(arr_b)), \
 	 _bli_array_binary_or(arr, arr_a, arr_b, arr_len, sizeof(*(arr))))
+
+bool _bli_array_iter_span(
+        const void *arr,
+        unsigned int arr_len, size_t arr_stride,
+        bool use_wrap, bool use_delimit_bounds,
+        bool (*test_fn)(const void *arr_item, void *user_data), void *user_data,
+        unsigned int span_step[2], unsigned int *r_span_len);
+#define BLI_array_iter_span(arr, arr_len, use_wrap, use_delimit_bounds, test_fn, user_data, \
+	        span_step, r_span_len) \
+	_bli_array_iter_span( \
+	        arr, arr_len, sizeof(*(arr)), use_wrap, use_delimit_bounds, test_fn, user_data, \
+	        span_step, r_span_len)
 
 #endif  /* __BLI_ARRAY_UTILS_H__ */

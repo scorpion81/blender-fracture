@@ -141,9 +141,9 @@ static void dm_calc_normal(DerivedMesh *dm, float (*face_nors)[3], float (*r_ver
 					 * using the angle between the 2 faces as a weighting */
 #if 0
 					add_v3_v3v3(edge_normal, face_nors[edge_ref->f1], face_nors[edge_ref->f2]);
-					normalize_v3(edge_normal);
-
-					mul_v3_fl(edge_normal, angle_normalized_v3v3(face_nors[edge_ref->f1], face_nors[edge_ref->f2]));
+					normalize_v3_length(
+					        edge_normal,
+					        angle_normalized_v3v3(face_nors[edge_ref->f1], face_nors[edge_ref->f2]));
 #else
 					mid_v3_v3v3_angle_weighted(edge_normal, face_nors[edge_ref->f1], face_nors[edge_ref->f2]);
 #endif
@@ -455,15 +455,28 @@ static DerivedMesh *applyModifier(
 
 		mp = mpoly + numFaces;
 		for (i = 0; i < dm->numPolyData; i++, mp++) {
+			const int loop_end = mp->totloop - 1;
 			MLoop *ml2;
 			unsigned int e;
 			int j;
 
+			/* reverses the loop direction (MLoop.v as well as custom-data)
+			 * MLoop.e also needs to be corrected too, done in a separate loop below. */
 			ml2 = mloop + mp->loopstart + dm->numLoopData;
+#if 0
 			for (j = 0; j < mp->totloop; j++) {
 				CustomData_copy_data(&dm->loopData, &result->loopData, mp->loopstart + j,
-				                     mp->loopstart + (mp->totloop - j - 1) + dm->numLoopData, 1);
+				                     mp->loopstart + (loop_end - j) + dm->numLoopData, 1);
 			}
+#else
+			/* slightly more involved, keep the first vertex the same for the copy,
+			 * ensures the diagonals in the new face match the original. */
+			j = 0;
+			for (int j_prev = loop_end; j < mp->totloop; j_prev = j++) {
+				CustomData_copy_data(&dm->loopData, &result->loopData, mp->loopstart + j,
+				                     mp->loopstart + (loop_end - j_prev) + dm->numLoopData, 1);
+			}
+#endif
 
 			if (mat_ofs) {
 				mp->mat_nr += mat_ofs;
@@ -471,10 +484,10 @@ static DerivedMesh *applyModifier(
 			}
 
 			e = ml2[0].e;
-			for (j = 0; j < mp->totloop - 1; j++) {
+			for (j = 0; j < loop_end; j++) {
 				ml2[j].e = ml2[j + 1].e;
 			}
-			ml2[mp->totloop - 1].e = e;
+			ml2[loop_end].e = e;
 
 			mp->loopstart += dm->numLoopData;
 

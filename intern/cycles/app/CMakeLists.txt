@@ -1,13 +1,14 @@
 
 set(INC
 	.
+	../bvh
 	../device
+	../graph
 	../kernel
 	../kernel/svm
-	../bvh
-	../util
 	../render
 	../subd
+	../util
 )
 set(INC_SYS
 )
@@ -20,6 +21,7 @@ set(LIBRARIES
 	cycles_render
 	cycles_bvh
 	cycles_subd
+	cycles_graph
 	cycles_util
 	${BLENDER_GL_LIBRARIES}
 	${CYCLES_APP_GLEW_LIBRARY}
@@ -85,6 +87,9 @@ macro(cycles_target_link_libraries target)
 	target_link_libraries(${target} ${LIBRARIES})
 	if(WITH_CYCLES_OSL)
 		target_link_libraries(${target} ${OSL_LIBRARIES} ${LLVM_LIBRARIES})
+	endif()
+	if(WITH_CYCLES_OPENSUBDIV)
+		target_link_libraries(${target} ${OPENSUBDIV_LIBRARIES})
 	endif()
 	target_link_libraries(
 		${target}

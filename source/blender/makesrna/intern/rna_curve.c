@@ -952,23 +952,37 @@ static void rna_def_nurbs(BlenderRNA *UNUSED(brna), StructRNA *srna)
 static void rna_def_font(BlenderRNA *UNUSED(brna), StructRNA *srna)
 {
 	PropertyRNA *prop;
-	
+
 	static EnumPropertyItem prop_align_items[] = {
-		{CU_LEFT, "LEFT", 0, "Left", "Align text to the left"},
-		{CU_MIDDLE, "CENTER", 0, "Center", "Center text"},
-		{CU_RIGHT, "RIGHT", 0, "Right", "Align text to the right"},
-		{CU_JUSTIFY, "JUSTIFY", 0, "Justify", "Align to the left and the right"},
-		{CU_FLUSH, "FLUSH", 0, "Flush", "Align to the left and the right, with equal character spacing"},
+		{CU_ALIGN_X_LEFT, "LEFT", 0, "Left", "Align text to the left"},
+		{CU_ALIGN_X_MIDDLE, "CENTER", 0, "Center", "Center text"},
+		{CU_ALIGN_X_RIGHT, "RIGHT", 0, "Right", "Align text to the right"},
+		{CU_ALIGN_X_JUSTIFY, "JUSTIFY", 0, "Justify", "Align to the left and the right"},
+		{CU_ALIGN_X_FLUSH, "FLUSH", 0, "Flush", "Align to the left and the right, with equal character spacing"},
 		{0, NULL, 0, NULL, NULL}
 	};
-		
+
+	static EnumPropertyItem prop_align_y_items[] = {
+		{CU_ALIGN_Y_TOP_BASELINE, "TOP_BASELINE", 0, "Top Base-Line", "Align to top but use the base-line of the text"},
+		{CU_ALIGN_Y_TOP, "TOP", 0, "Top", "Align text to the top"},
+		{CU_ALIGN_Y_CENTER, "CENTER", 0, "Center", "Align text to the middle"},
+		{CU_ALIGN_Y_BOTTOM, "BOTTOM", 0, "Bottom", "Align text to the bottom"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	/* Enums */
-	prop = RNA_def_property(srna, "align", PROP_ENUM, PROP_NONE);
+	prop = RNA_def_property(srna, "align_x", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "spacemode");
 	RNA_def_property_enum_items(prop, prop_align_items);
-	RNA_def_property_ui_text(prop, "Text Align", "Text align from the object center");
+	RNA_def_property_ui_text(prop, "Text Horizontal Align", "Text horizontal align from the object center");
 	RNA_def_property_update(prop, 0, "rna_Curve_update_data");
-	
+
+	prop = RNA_def_property(srna, "align_y", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "align_y");
+	RNA_def_property_enum_items(prop, prop_align_y_items);
+	RNA_def_property_ui_text(prop, "Text Vertical Align", "Text vertical align from the object center");
+	RNA_def_property_update(prop, 0, "rna_Curve_update_data");
+
 	/* number values */
 	prop = RNA_def_property(srna, "size", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "fsize");
@@ -1009,13 +1023,15 @@ static void rna_def_font(BlenderRNA *UNUSED(brna), StructRNA *srna)
 	
 	prop = RNA_def_property(srna, "offset_x", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "xof");
-	RNA_def_property_range(prop, -50.0f, 50.0f);
+	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
+	RNA_def_property_ui_range(prop, -50.0f, 50.0f, 10, 3);
 	RNA_def_property_ui_text(prop, "X Offset", "Horizontal offset from the object origin");
 	RNA_def_property_update(prop, 0, "rna_Curve_update_data");
 	
 	prop = RNA_def_property(srna, "offset_y", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "yof");
-	RNA_def_property_range(prop, -50.0f, 50.0f);
+	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
+	RNA_def_property_ui_range(prop, -50.0f, 50.0f, 10, 3);
 	RNA_def_property_ui_text(prop, "Y Offset", "Vertical offset from the object origin");
 	RNA_def_property_update(prop, 0, "rna_Curve_update_data");
 	
@@ -1046,8 +1062,8 @@ static void rna_def_font(BlenderRNA *UNUSED(brna), StructRNA *srna)
 	RNA_def_property_string_maxlength(prop, MAX_ID_NAME - 2);
 	RNA_def_property_ui_text(prop, "Object Font",
 	                         "Use Objects as font characters (give font objects a common name "
-	                         "followed by the character they represent, eg. 'family_a', 'family_b', etc, "
-	                         "set this setting to 'family_', and turn on Vertex Duplication)");
+	                         "followed by the character they represent, eg. 'family-a', 'family-b', etc, "
+	                         "set this setting to 'family-', and turn on Vertex Duplication)");
 	RNA_def_property_update(prop, 0, "rna_Curve_update_data");
 	
 	prop = RNA_def_property(srna, "body", PROP_STRING, PROP_NONE);
@@ -1117,25 +1133,29 @@ static void rna_def_textbox(BlenderRNA *brna)
 	/* number values */
 	prop = RNA_def_property(srna, "x", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "x");
-	RNA_def_property_range(prop, -50.0f, 50.0f);
+	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
+	RNA_def_property_ui_range(prop, -50.0f, 50.0f, 10, 3);
 	RNA_def_property_ui_text(prop, "Textbox X Offset", "");
 	RNA_def_property_update(prop, 0, "rna_Curve_update_data");
 	
 	prop = RNA_def_property(srna, "y", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "y");
-	RNA_def_property_range(prop, -50.0f, 50.0f);
+	RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
+	RNA_def_property_ui_range(prop, -50.0f, 50.0f, 10, 3);
 	RNA_def_property_ui_text(prop, "Textbox Y Offset", "");
 	RNA_def_property_update(prop, 0, "rna_Curve_update_data");
 
 	prop = RNA_def_property(srna, "width", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "w");
-	RNA_def_property_range(prop, 0.0f, 50.0f);
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_range(prop, 0.0f, 50.0f, 10, 3);
 	RNA_def_property_ui_text(prop, "Textbox Width", "");
 	RNA_def_property_update(prop, 0, "rna_Curve_update_data");
 
 	prop = RNA_def_property(srna, "height", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "h");
-	RNA_def_property_range(prop, 0.0f, 50.0f);
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_range(prop, 0.0f, 50.0f, 10, 3);
 	RNA_def_property_ui_text(prop, "Textbox Height", "");
 	RNA_def_property_update(prop, 0, "rna_Curve_update_data");
 	
@@ -1253,7 +1273,7 @@ static void rna_def_curve_spline_bezpoints(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_property_srna(cprop, "SplineBezierPoints");
 	srna = RNA_def_struct(brna, "SplineBezierPoints", NULL);
 	RNA_def_struct_sdna(srna, "Nurb");
-	RNA_def_struct_ui_text(srna, "Spline Bezier Points", "Collection of spline bezirt points");
+	RNA_def_struct_ui_text(srna, "Spline Bezier Points", "Collection of spline Bezier points");
 
 	func = RNA_def_function(srna, "add", "rna_Curve_spline_bezpoints_add");
 	RNA_def_function_ui_description(func, "Add a number of points to this spline");

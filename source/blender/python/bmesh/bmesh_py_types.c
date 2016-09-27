@@ -223,7 +223,11 @@ static PyObject *bpy_bmfaceseq_get(BPy_BMesh *self, void *UNUSED(closure))
 }
 
 PyDoc_STRVAR(bpy_bmloopseq_doc,
-"This meshes face sequence (read-only).\n\n:type: :class:`BMLoopSeq`"
+"This meshes loops (read-only).\n\n:type: :class:`BMLoopSeq`\n"
+"\n"
+".. note::\n"
+"\n"
+"   Loops must be accessed via faces, this is only exposed for layer access.\n"
 );
 static PyObject *bpy_bmloopseq_get(BPy_BMesh *self, void *UNUSED(closure))
 {
@@ -912,7 +916,7 @@ static PyObject *bpy_bmesh_to_mesh(BPy_BMesh *self, PyObject *args)
 	/* python won't ensure matching uv/mtex */
 	BM_mesh_cd_validate(bm);
 
-	BM_mesh_bm_to_me(bm, me, false);
+	BM_mesh_bm_to_me(bm, me, (&(struct BMeshToMeshParams){0}));
 
 	/* we could have the user do this but if they forget blender can easy crash
 	 * since the references arrays for the objects derived meshes are now invalid */
@@ -1071,7 +1075,10 @@ static PyObject *bpy_bmesh_from_mesh(BPy_BMesh *self, PyObject *args, PyObject *
 
 	bm = self->bm;
 
-	BM_mesh_bm_from_me(bm, me, use_fnorm, use_shape_key, shape_key_index + 1);
+	BM_mesh_bm_from_me(
+	        bm, me, (&(struct BMeshFromMeshParams){
+	            .calc_face_normal = use_fnorm, .use_shapekey = use_shape_key, .active_shapekey = shape_key_index + 1,
+	        }));
 
 	Py_RETURN_NONE;
 }
@@ -1793,6 +1800,82 @@ static PyObject *bpy_bmface_calc_perimeter(BPy_BMFace *self)
 {
 	BPY_BM_CHECK_OBJ(self);
 	return PyFloat_FromDouble(BM_face_calc_perimeter(self->f));
+}
+
+
+PyDoc_STRVAR(bpy_bmface_calc_tangent_edge_doc,
+".. method:: calc_tangent_edge()\n"
+"\n"
+"   Return face tangent based on longest edge.\n"
+"\n"
+"   :return: a normalized vector.\n"
+"   :rtype: :class:`mathutils.Vector`\n"
+);
+static PyObject *bpy_bmface_calc_tangent_edge(BPy_BMFace *self)
+{
+	float tangent[3];
+
+	BPY_BM_CHECK_OBJ(self);
+	BM_face_calc_tangent_edge(self->f, tangent);
+	return Vector_CreatePyObject(tangent, 3, NULL);
+}
+
+
+PyDoc_STRVAR(bpy_bmface_calc_tangent_edge_pair_doc,
+".. method:: calc_tangent_edge_pair()\n"
+"\n"
+"   Return face tangent based on the two longest disconnected edges.\n"
+"\n"
+"   - Tris: Use the edge pair with the most similar lengths.\n"
+"   - Quads: Use the longest edge pair.\n"
+"   - NGons: Use the two longest disconnected edges.\n"
+"\n"
+"   :return: a normalized vector.\n"
+"   :rtype: :class:`mathutils.Vector`\n"
+);
+static PyObject *bpy_bmface_calc_tangent_edge_pair(BPy_BMFace *self)
+{
+	float tangent[3];
+
+	BPY_BM_CHECK_OBJ(self);
+	BM_face_calc_tangent_edge_pair(self->f, tangent);
+	return Vector_CreatePyObject(tangent, 3, NULL);
+}
+
+
+PyDoc_STRVAR(bpy_bmface_calc_tangent_edge_diagonal_doc,
+".. method:: calc_tangent_edge_diagonal()\n"
+"\n"
+"   Return face tangent based on the edge farthest from any vertex.\n"
+"\n"
+"   :return: a normalized vector.\n"
+"   :rtype: :class:`mathutils.Vector`\n"
+);
+static PyObject *bpy_bmface_calc_tangent_edge_diagonal(BPy_BMFace *self)
+{
+	float tangent[3];
+
+	BPY_BM_CHECK_OBJ(self);
+	BM_face_calc_tangent_edge_diagonal(self->f, tangent);
+	return Vector_CreatePyObject(tangent, 3, NULL);
+}
+
+
+PyDoc_STRVAR(bpy_bmface_calc_tangent_vert_diagonal_doc,
+".. method:: calc_tangent_vert_diagonal()\n"
+"\n"
+"   Return face tangent based on the two most distent vertices.\n"
+"\n"
+"   :return: a normalized vector.\n"
+"   :rtype: :class:`mathutils.Vector`\n"
+);
+static PyObject *bpy_bmface_calc_tangent_vert_diagonal(BPy_BMFace *self)
+{
+	float tangent[3];
+
+	BPY_BM_CHECK_OBJ(self);
+	BM_face_calc_tangent_vert_diagonal(self->f, tangent);
+	return Vector_CreatePyObject(tangent, 3, NULL);
 }
 
 
@@ -2695,6 +2778,10 @@ static struct PyMethodDef bpy_bmface_methods[] = {
 
 	{"calc_area",          (PyCFunction)bpy_bmface_calc_area,          METH_NOARGS, bpy_bmface_calc_area_doc},
 	{"calc_perimeter",     (PyCFunction)bpy_bmface_calc_perimeter,     METH_NOARGS, bpy_bmface_calc_perimeter_doc},
+	{"calc_tangent_edge", (PyCFunction)bpy_bmface_calc_tangent_edge,   METH_NOARGS, bpy_bmface_calc_tangent_edge_doc},
+	{"calc_tangent_edge_pair", (PyCFunction)bpy_bmface_calc_tangent_edge_pair,   METH_NOARGS, bpy_bmface_calc_tangent_edge_pair_doc},
+	{"calc_tangent_edge_diagonal", (PyCFunction)bpy_bmface_calc_tangent_edge_diagonal,   METH_NOARGS, bpy_bmface_calc_tangent_edge_diagonal_doc},
+	{"calc_tangent_vert_diagonal", (PyCFunction)bpy_bmface_calc_tangent_vert_diagonal,   METH_NOARGS, bpy_bmface_calc_tangent_vert_diagonal_doc},
 	{"calc_center_median", (PyCFunction)bpy_bmface_calc_center_mean,   METH_NOARGS, bpy_bmface_calc_center_mean_doc},
 	{"calc_center_median_weighted", (PyCFunction)bpy_bmface_calc_center_mean_weighted, METH_NOARGS, bpy_bmface_calc_center_mean_weighted_doc},
 	{"calc_center_bounds", (PyCFunction)bpy_bmface_calc_center_bounds, METH_NOARGS, bpy_bmface_calc_center_bounds_doc},

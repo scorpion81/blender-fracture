@@ -69,6 +69,8 @@
 #include "ED_screen.h"
 #include "ED_fileselect.h"
 
+#include "UI_interface.h"
+
 #include "PIL_time.h"
 
 #include "GPU_draw.h"
@@ -457,7 +459,7 @@ static void wm_window_ghostwindow_add(wmWindowManager *wm, const char *title, wm
 		/* displays with larger native pixels, like Macbook. Used to scale dpi with */
 		/* needed here, because it's used before it reads userdef */
 		U.pixelsize = wm_window_pixelsize(win);
-		BKE_userdef_state();
+		BKE_blender_userdef_refresh();
 		
 		wm_window_swap_buffers(win);
 		
@@ -678,10 +680,10 @@ wmWindow *WM_window_open_temp(bContext *C, const rcti *rect_init, int type)
 	CTX_wm_area_set(C, sa);
 	
 	if (type == WM_WINDOW_RENDER) {
-		ED_area_newspace(C, sa, SPACE_IMAGE);
+		ED_area_newspace(C, sa, SPACE_IMAGE, false);
 	}
 	else {
-		ED_area_newspace(C, sa, SPACE_USERPREF);
+		ED_area_newspace(C, sa, SPACE_USERPREF, false);
 	}
 	
 	ED_screen_set(C, win->screen);
@@ -834,7 +836,7 @@ void wm_window_make_drawable(wmWindowManager *wm, wmWindow *win)
 		
 		/* this can change per window */
 		U.pixelsize = wm_window_pixelsize(win);
-		BKE_userdef_state();
+		BKE_blender_userdef_refresh();
 	}
 }
 
@@ -1194,14 +1196,30 @@ static int ghost_event_proc(GHOST_EventHandle evt, GHOST_TUserDataPtr C_void_ptr
 				break;
 			}
 			case GHOST_kEventNativeResolutionChange:
-				// printf("change, pixel size %f\n", GHOST_GetNativePixelSize(win->ghostwin));
-				
+			{
+				// only update if the actual pixel size changes
+				float prev_pixelsize = U.pixelsize;
 				U.pixelsize = wm_window_pixelsize(win);
-				BKE_userdef_state();
-				WM_event_add_notifier(C, NC_SCREEN | NA_EDITED, NULL);
-				WM_event_add_notifier(C, NC_WINDOW | NA_EDITED, NULL);
+
+				if (U.pixelsize != prev_pixelsize) {
+					BKE_blender_userdef_refresh();
+
+					// close all popups since they are positioned with the pixel
+					// size baked in and it's difficult to correct them
+					wmWindow *oldWindow = CTX_wm_window(C);
+					CTX_wm_window_set(C, win);
+					UI_popup_handlers_remove_all(C, &win->modalhandlers);
+					CTX_wm_window_set(C, oldWindow);
+
+					wm_window_make_drawable(wm, win);
+					wm_draw_window_clear(win);
+
+					WM_event_add_notifier(C, NC_SCREEN | NA_EDITED, NULL);
+					WM_event_add_notifier(C, NC_WINDOW | NA_EDITED, NULL);
+				}
 
 				break;
+			}
 			case GHOST_kEventTrackpad:
 			{
 				GHOST_TEventTrackpadData *pd = data;

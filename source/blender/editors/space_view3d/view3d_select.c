@@ -94,6 +94,8 @@
 
 #include "UI_interface.h"
 
+#include "GPU_draw.h"
+
 #include "view3d_intern.h"  /* own include */
 
 float ED_view3d_select_dist_px(void)
@@ -418,11 +420,12 @@ static void do_lasso_select_objects(ViewContext *vc, const int mcords[][2], cons
 
 	for (base = vc->scene->base.first; base; base = base->next) {
 		if (BASE_SELECTABLE(vc->v3d, base)) { /* use this to avoid un-needed lasso lookups */
-			ED_view3d_project_base(vc->ar, base);
-			if (BLI_lasso_is_point_inside(mcords, moves, base->sx, base->sy, IS_CLIPPED)) {
-				
-				ED_base_object_select(base, select ? BA_SELECT : BA_DESELECT);
-				base->object->flag = base->flag;
+			if (ED_view3d_project_base(vc->ar, base) == V3D_PROJ_RET_OK) {
+				if (BLI_lasso_is_point_inside(mcords, moves, base->sx, base->sy, IS_CLIPPED)) {
+
+					ED_base_object_select(base, select ? BA_SELECT : BA_DESELECT);
+					base->object->flag = base->flag;
+				}
 			}
 			if (vc->obact == base->object && (base->object->mode & OB_MODE_POSE)) {
 				do_lasso_select_pose(vc, base->object, mcords, moves, select);
@@ -1096,20 +1099,22 @@ static Base *object_mouse_select_menu(bContext *C, ViewContext *vc, unsigned int
 
 		/* two selection methods, the CTRL select uses max dist of 15 */
 		if (buffer) {
-			int a;
-			for (a = 0; a < hits; a++) {
+			for (int a = 0; a < hits; a++) {
 				/* index was converted */
-				if (base->selcol == buffer[(4 * a) + 3])
+				if (base->selcol == (buffer[(4 * a) + 3] & ~0xFFFF0000)) {
 					ok = true;
+					break;
+				}
 			}
 		}
 		else {
-			int temp, dist = 15;
-			ED_view3d_project_base(vc->ar, base);
-			
-			temp = abs(base->sx - mval[0]) + abs(base->sy - mval[1]);
-			if (temp < dist)
-				ok = true;
+			const int dist = 15 * U.pixelsize;
+			if (ED_view3d_project_base(vc->ar, base) == V3D_PROJ_RET_OK) {
+				const int delta_px[2] = {base->sx - mval[0], base->sy - mval[1]};
+				if (len_manhattan_v2_int(delta_px) < dist) {
+					ok = true;
+				}
+			}
 		}
 
 		if (ok) {
@@ -1468,7 +1473,7 @@ static bool ed_object_select_pick(
 			const bool has_bones = selectbuffer_has_bones(buffer, hits);
 
 			/* note; shift+alt goes to group-flush-selecting */
-			if (has_bones == 0 && enumerate) {
+			if (enumerate) {
 				basact = object_mouse_select_menu(C, &vc, buffer, hits, mval, toggle);
 			}
 			else {
@@ -1687,7 +1692,7 @@ static int do_paintvert_box_select(ViewContext *vc, rcti *rect, bool select, boo
 		if (ENDIAN_ORDER == B_ENDIAN) {
 			IMB_convert_rgba_to_abgr(ibuf);
 		}
-		WM_framebuffer_to_index_array(ibuf->rect, size[0] * size[1]);
+		GPU_select_to_index_array(ibuf->rect, size[0] * size[1]);
 
 		a = size[0] * size[1];
 		while (a--) {
@@ -1949,6 +1954,9 @@ static int do_armature_box_select(ViewContext *vc, rcti *rect, bool select, bool
 		int index = buffer[(4 * a) + 3];
 		if (index != -1) {
 			ebone = BLI_findlink(arm->edbo, index & ~(BONESEL_ANY));
+			if ((index & 0xFFFF0000) == 0) {
+				continue;
+			}
 			if ((select == false) || ((ebone->flag & BONE_UNSELECTABLE) == 0)) {
 				if (index & BONESEL_TIP) {
 					ebone->flag |= BONE_DONE;

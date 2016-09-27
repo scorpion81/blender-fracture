@@ -76,6 +76,21 @@ static void rna_Smoke_resetCache(Main *UNUSED(bmain), Scene *UNUSED(scene), Poin
 	DAG_id_tag_update(ptr->id.data, OB_RECALC_DATA);
 }
 
+static void rna_Smoke_cachetype_set(struct PointerRNA *ptr, int value)
+{
+	SmokeDomainSettings *settings = (SmokeDomainSettings *)ptr->data;
+	Object *ob = (Object *)ptr->id.data;
+
+	if (value != settings->cache_file_format) {
+		/* Clear old caches. */
+		PTCacheID id;
+		BKE_ptcache_id_from_smoke(&id, ob, settings->smd);
+		BKE_ptcache_id_clear(&id, PTCACHE_CLEAR_ALL, 0);
+
+		settings->cache_file_format = value;
+	}
+}
+
 static void rna_Smoke_reset(Main *bmain, Scene *scene, PointerRNA *ptr)
 {
 	SmokeDomainSettings *settings = (SmokeDomainSettings *)ptr->data;
@@ -191,6 +206,29 @@ static int rna_SmokeModifier_velocity_grid_get_length(PointerRNA *ptr, int lengt
 	return length[0];
 }
 
+static int rna_SmokeModifier_heat_grid_get_length(
+        PointerRNA *ptr,
+        int length[RNA_MAX_ARRAY_DIMENSION])
+{
+#ifdef WITH_SMOKE
+	SmokeDomainSettings *sds = (SmokeDomainSettings *)ptr->data;
+	float *heat = NULL;
+	int size = 0;
+
+	/* Heat data is always low-resolution. */
+	if (sds->fluid) {
+		size = sds->res[0] * sds->res[1] * sds->res[2];
+		heat = smoke_get_heat(sds->fluid);
+	}
+
+	length[0] = (heat) ? size : 0;
+#else
+	(void)ptr;
+	length[0] = 0;
+#endif
+	return length[0];
+}
+
 static void rna_SmokeModifier_density_grid_get(PointerRNA *ptr, float *values)
 {
 #ifdef WITH_SMOKE
@@ -286,6 +324,34 @@ static void rna_SmokeModifier_flame_grid_get(PointerRNA *ptr, float *values)
 		memcpy(values, flame, size * sizeof(float));
 	else
 		memset(values, 0, size * sizeof(float));
+
+	BLI_rw_mutex_unlock(sds->fluid_mutex);
+#else
+	UNUSED_VARS(ptr, values);
+#endif
+}
+
+static void rna_SmokeModifier_heat_grid_get(PointerRNA *ptr, float *values)
+{
+#ifdef WITH_SMOKE
+	SmokeDomainSettings *sds = (SmokeDomainSettings *)ptr->data;
+	int length[RNA_MAX_ARRAY_DIMENSION];
+	int size = rna_SmokeModifier_heat_grid_get_length(ptr, length);
+	float *heat;
+
+	BLI_rw_mutex_lock(sds->fluid_mutex, THREAD_LOCK_READ);
+
+	heat = smoke_get_heat(sds->fluid);
+
+	if (heat != NULL) {
+		/* scale heat values from -2.0-2.0 to -1.0-1.0. */
+		for (int i = 0; i < size; i++) {
+			values[i] = heat[i] * 0.5f;
+		}
+	}
+	else {
+		memset(values, 0, size * sizeof(float));
+	}
 
 	BLI_rw_mutex_unlock(sds->fluid_mutex);
 #else
@@ -563,6 +629,14 @@ static void rna_def_smoke_domain_settings(BlenderRNA *brna)
 	RNA_def_property_float_funcs(prop, "rna_SmokeModifier_color_grid_get", NULL, NULL);
 	RNA_def_property_ui_text(prop, "Color Grid", "Smoke color grid");
 
+	prop = RNA_def_property(srna, "heat_grid", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_array(prop, 32);
+	RNA_def_property_flag(prop, PROP_DYNAMIC);
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_dynamic_array_funcs(prop, "rna_SmokeModifier_heat_grid_get_length");
+	RNA_def_property_float_funcs(prop, "rna_SmokeModifier_heat_grid_get", NULL, NULL);
+	RNA_def_property_ui_text(prop, "Heat Grid", "Smoke heat grid");
+
 	prop = RNA_def_property(srna, "cell_size", PROP_FLOAT, PROP_XYZ); /* can change each frame when using adaptive domain */
 	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 	RNA_def_property_ui_text(prop, "cell_size", "Cell Size");
@@ -642,6 +716,7 @@ static void rna_def_smoke_domain_settings(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "cache_file_format", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "cache_file_format");
 	RNA_def_property_enum_items(prop, cache_file_type_items);
+	RNA_def_property_enum_funcs(prop, NULL, "rna_Smoke_cachetype_set", NULL);
 	RNA_def_property_ui_text(prop, "File Format", "Select the file format to be used for caching");
 	RNA_def_property_update(prop, NC_OBJECT | ND_MODIFIER, "rna_Smoke_resetCache");
 }

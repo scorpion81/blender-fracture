@@ -38,7 +38,10 @@
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
 
+#include "DNA_gpencil_types.h"
+
 #include "BKE_context.h"
+#include "BKE_library.h"
 #include "BKE_screen.h"
 
 #include "ED_space_api.h"
@@ -183,7 +186,9 @@ static void logic_keymap(struct wmKeyConfig *keyconf)
 	WM_keymap_add_menu(keymap, "LOGIC_MT_logicbricks_add", AKEY, KM_PRESS, KM_SHIFT, 0);
 	
 	WM_keymap_add_item(keymap, "LOGIC_OT_view_all", HOMEKEY, KM_PRESS, 0, 0);
+#ifdef WITH_INPUT_NDOF
 	WM_keymap_add_item(keymap, "LOGIC_OT_view_all", NDOF_BUTTON_FIT, KM_PRESS, 0, 0);
+#endif
 }
 
 static void logic_refresh(const bContext *UNUSED(C), ScrArea *UNUSED(sa))
@@ -300,6 +305,21 @@ static void logic_header_region_draw(const bContext *C, ARegion *ar)
 
 /**************************** spacetype *****************************/
 
+static void logic_id_remap(ScrArea *UNUSED(sa), SpaceLink *slink, ID *old_id, ID *new_id)
+{
+	SpaceLogic *slog = (SpaceLogic *)slink;
+
+	if (!ELEM(GS(old_id->name), ID_GD)) {
+		return;
+	}
+
+	if ((ID *)slog->gpd == old_id) {
+		slog->gpd = (bGPdata *)new_id;
+		id_us_min(old_id);
+		id_us_plus(new_id);
+	}
+}
+
 /* only called once, from space/spacetypes.c */
 void ED_spacetype_logic(void)
 {
@@ -317,7 +337,8 @@ void ED_spacetype_logic(void)
 	st->keymap = logic_keymap;
 	st->refresh = logic_refresh;
 	st->context = logic_context;
-	
+	st->id_remap = logic_id_remap;
+
 	/* regions: main window */
 	art = MEM_callocN(sizeof(ARegionType), "spacetype logic region");
 	art->regionid = RGN_TYPE_WINDOW;

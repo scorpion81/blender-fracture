@@ -531,11 +531,17 @@ BlenderRNA *RNA_create(void)
 	BlenderRNA *brna;
 
 	brna = MEM_callocN(sizeof(BlenderRNA), "BlenderRNA");
+	const char *error_message = NULL;
 
-	DefRNA.sdna = DNA_sdna_from_data(DNAstr,  DNAlen, false);
 	BLI_listbase_clear(&DefRNA.structs);
 	DefRNA.error = 0;
 	DefRNA.preprocess = 1;
+
+	DefRNA.sdna = DNA_sdna_from_data(DNAstr, DNAlen, false, false, &error_message);
+	if (DefRNA.sdna == NULL) {
+		fprintf(stderr, "Error decoding SDNA: %s\n", error_message);
+		DefRNA.error = 1;
+	}
 
 	return brna;
 }
@@ -3314,7 +3320,7 @@ void RNA_def_property_duplicate_pointers(StructOrFunctionRNA *cont_, PropertyRNA
 			EnumPropertyRNA *eprop = (EnumPropertyRNA *)prop;
 
 			if (eprop->item) {
-				earray = MEM_callocN(sizeof(EnumPropertyItem) * (eprop->totitem + 1), "RNA_def_property_store"),
+				earray = MEM_callocN(sizeof(EnumPropertyItem) * (eprop->totitem + 1), "RNA_def_property_store");
 				memcpy(earray, eprop->item, sizeof(EnumPropertyItem) * (eprop->totitem + 1));
 				eprop->item = earray;
 

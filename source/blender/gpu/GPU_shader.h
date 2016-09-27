@@ -69,6 +69,8 @@ void GPU_shader_free(GPUShader *shader);
 void GPU_shader_bind(GPUShader *shader);
 void GPU_shader_unbind(void);
 
+void *GPU_shader_get_interface(GPUShader *shader);
+void GPU_shader_set_interface(GPUShader *shader, void *interface);
 int GPU_shader_get_uniform(GPUShader *shader, const char *name);
 void GPU_shader_uniform_vector(GPUShader *shader, int location, int length,
 	int arraysize, const float *value);
@@ -102,6 +104,7 @@ typedef struct GPUVertexAttribs {
 	struct {
 		int type;
 		int glindex;
+		int glinfoindoex;
 		int gltexco;
 		int attribid;
 		char name[64];	/* MAX_CUSTOMDATA_LAYER_NAME */

@@ -334,10 +334,9 @@ void ntreeInitDefault(struct bNodeTree *ntree);
 struct bNodeTree *ntreeAddTree(struct Main *bmain, const char *name, const char *idname);
 
 /* copy/free funcs, need to manage ID users */
-void              ntreeFreeTree_ex(struct bNodeTree *ntree, const bool do_id_user);
 void              ntreeFreeTree(struct bNodeTree *ntree);
 struct bNodeTree *ntreeCopyTree_ex(struct bNodeTree *ntree, struct Main *bmain, const bool do_id_user);
-struct bNodeTree *ntreeCopyTree(struct bNodeTree *ntree);
+struct bNodeTree *ntreeCopyTree(struct Main *bmain, struct bNodeTree *ntree);
 void              ntreeSwitchID_ex(struct bNodeTree *ntree, struct ID *sce_from, struct ID *sce_to, const bool do_id_user);
 void              ntreeSwitchID(struct bNodeTree *ntree, struct ID *sce_from, struct ID *sce_to);
 /* node->id user count */
@@ -347,7 +346,8 @@ void              ntreeUserDecrefID(struct bNodeTree *ntree);
 
 struct bNodeTree *ntreeFromID(struct ID *id);
 
-void              ntreeMakeLocal(struct bNodeTree *ntree, bool id_in_mainlist);
+void              ntreeMakeLocal(struct Main *bmain, struct bNodeTree *ntree, bool id_in_mainlist, const bool lib_local);
+struct bNode     *ntreeFindType(const struct bNodeTree *ntree, int type);
 bool              ntreeHasType(const struct bNodeTree *ntree, int type);
 bool              ntreeHasTree(const struct bNodeTree *ntree, const struct bNodeTree *lookup);
 void              ntreeUpdateTree(struct Main *main, struct bNodeTree *ntree);
@@ -642,12 +642,12 @@ void BKE_node_tree_unlink_id(ID *id, struct bNodeTree *ntree);
  * Examples:
  *
  * \code{.c}
- * FOREACH_NODETREE(bmain, nodetree) {
+ * FOREACH_NODETREE(bmain, nodetree, id) {
  *     if (id == nodetree)
  *         printf("This is a linkable node tree");
  * } FOREACH_NODETREE_END
  *
- * FOREACH_NODETREE(bmain, nodetree) {
+ * FOREACH_NODETREE(bmain, nodetree, id) {
  *     if (nodetree->idname == "ShaderNodeTree")
  *         printf("This is a shader node tree);
  *     if (GS(id) == ID_MA)

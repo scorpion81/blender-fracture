@@ -92,7 +92,7 @@ static int text_edit_poll(bContext *C)
 	if (!text)
 		return 0;
 
-	if (text->id.lib) {
+	if (ID_IS_LINKED_DATABLOCK(text)) {
 		// BKE_report(op->reports, RPT_ERROR, "Cannot edit external libdata");
 		return 0;
 	}
@@ -108,7 +108,7 @@ int text_space_edit_poll(bContext *C)
 	if (!st || !text)
 		return 0;
 
-	if (text->id.lib) {
+	if (ID_IS_LINKED_DATABLOCK(text)) {
 		// BKE_report(op->reports, RPT_ERROR, "Cannot edit external libdata");
 		return 0;
 	}
@@ -128,7 +128,7 @@ static int text_region_edit_poll(bContext *C)
 	if (!ar || ar->regiontype != RGN_TYPE_WINDOW)
 		return 0;
 
-	if (text->id.lib) {
+	if (ID_IS_LINKED_DATABLOCK(text)) {
 		// BKE_report(op->reports, RPT_ERROR, "Cannot edit external libdata");
 		return 0;
 	}
@@ -384,8 +384,7 @@ static int text_unlink_exec(bContext *C, wmOperator *UNUSED(op))
 		}
 	}
 
-	BKE_text_unlink(bmain, text);
-	BKE_libblock_free(bmain, text);
+	BKE_libblock_delete(bmain, text);
 
 	text_drawcache_tag_update(st, 1);
 	WM_event_add_notifier(C, NC_TEXT | NA_REMOVED, NULL);
@@ -1951,6 +1950,19 @@ static int text_delete_exec(bContext *C, wmOperator *op)
 		txt_backspace_word(text);
 	}
 	else if (type == DEL_PREV_CHAR) {
+
+		if (text->flags & TXT_TABSTOSPACES) {
+			if (!txt_has_sel(text) && !txt_cursor_is_line_start(text)) {
+				int tabsize = 0;
+				tabsize = txt_calc_tab_left(text->curl, text->curc);
+				if (tabsize) {
+					text->sell = text->curl;
+					text->selc = text->curc - tabsize;
+					txt_order_cursors(text, false);
+				}
+			}
+		}
+
 		txt_backspace_char(text);
 	}
 	else if (type == DEL_NEXT_WORD) {
@@ -1960,6 +1972,19 @@ static int text_delete_exec(bContext *C, wmOperator *op)
 		txt_delete_word(text);
 	}
 	else if (type == DEL_NEXT_CHAR) {
+
+		if (text->flags & TXT_TABSTOSPACES) {
+			if (!txt_has_sel(text) && !txt_cursor_is_line_end(text)) {
+				int tabsize = 0;
+				tabsize = txt_calc_tab_right(text->curl, text->curc);
+				if (tabsize) {
+					text->sell = text->curl;
+					text->selc = text->curc + tabsize;
+					txt_order_cursors(text, true);
+				}
+			}
+		}
+
 		txt_delete_char(text);
 	}
 

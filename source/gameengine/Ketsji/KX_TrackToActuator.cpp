@@ -207,7 +207,7 @@ static MT_Matrix3x3 vectomat(MT_Vector3 vec, short axis, short upflag, short thr
 	vec = vec.safe_normalized_vec(z);
 
 	/* if 2D doesn't move the up vector */
-	if (!threedimup){
+	if (!threedimup) {
 		vec.setValue(MT_Scalar(vec[0]), MT_Scalar(vec[1]), MT_Scalar(0.0f));
 		vec = (vec - z.dot(vec)*z).safe_normalized_vec(z);
 	}
@@ -411,7 +411,7 @@ int KX_TrackToActuator::pyattr_set_object(void *self, const struct KX_PYATTRIBUT
 	KX_TrackToActuator* actuator = static_cast<KX_TrackToActuator*>(self);
 	KX_GameObject *gameobj;
 		
-	if (!ConvertPythonToGameObject(value, &gameobj, true, "actuator.object = value: KX_TrackToActuator"))
+	if (!ConvertPythonToGameObject(actuator->GetLogicManager(), value, &gameobj, true, "actuator.object = value: KX_TrackToActuator"))
 		return PY_SET_ATTR_FAIL; // ConvertPythonToGameObject sets the error
 		
 	if (actuator->m_object != NULL)

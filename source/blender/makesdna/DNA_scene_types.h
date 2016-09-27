@@ -62,6 +62,7 @@ struct AnimData;
 struct Editing;
 struct SceneStats;
 struct bGPdata;
+struct bGPDbrush;
 struct MovieClip;
 struct ColorSpace;
 
@@ -795,8 +796,14 @@ typedef struct RecastData {
 	int vertsperpoly;
 	float detailsampledist;
 	float detailsamplemaxerror;
-	short pad1, pad2;
+	char partitioning;
+	char pad1;
+	short pad2;
 } RecastData;
+
+#define RC_PARTITION_WATERSHED 0
+#define RC_PARTITION_MONOTONE 1
+#define RC_PARTITION_LAYERS 2
 
 typedef struct GameData {
 
@@ -896,6 +903,7 @@ typedef struct GameData {
 #define GAME_GLSL_NO_COLOR_MANAGEMENT		(1 << 15)
 #define GAME_SHOW_OBSTACLE_SIMULATION		(1 << 16)
 #define GAME_NO_MATERIAL_CACHING			(1 << 17)
+#define GAME_GLSL_NO_ENV_LIGHTING			(1 << 18)
 /* Note: GameData.flag is now an int (max 32 flags). A short could only take 16 flags */
 
 /* GameData.playerflag */
@@ -1110,11 +1118,11 @@ typedef enum eGP_EditBrush_Types {
 	GP_EDITBRUSH_TYPE_SUBDIVIDE = 7,
 	GP_EDITBRUSH_TYPE_SIMPLIFY  = 8,
 	GP_EDITBRUSH_TYPE_CLONE     = 9,
-	
+	GP_EDITBRUSH_TYPE_STRENGTH  = 10,
+
 	/* !!! Update GP_EditBrush_Data brush[###]; below !!! */
 	TOT_GP_EDITBRUSH_TYPES
 } eGP_EditBrush_Types;
-
 
 /* Settings for a GPencil Stroke Sculpting Brush */
 typedef struct GP_EditBrush_Data {
@@ -1141,17 +1149,26 @@ typedef enum eGP_EditBrush_Flag {
 
 /* GPencil Stroke Sculpting Settings */
 typedef struct GP_BrushEdit_Settings {
-	GP_EditBrush_Data brush[10];  /* TOT_GP_EDITBRUSH_TYPES */
+	GP_EditBrush_Data brush[11];  /* TOT_GP_EDITBRUSH_TYPES */
 	void *paintcursor;            /* runtime */
 	
 	int brushtype;                /* eGP_EditBrush_Types */
 	int flag;                     /* eGP_BrushEdit_SettingsFlag */
+	char pad[4];
+	float alpha;                  /* alpha factor for selection color */
 } GP_BrushEdit_Settings;
 
 /* GP_BrushEdit_Settings.flag */
 typedef enum eGP_BrushEdit_SettingsFlag {
 	/* only affect selected points */
-	GP_BRUSHEDIT_FLAG_SELECT_MASK = (1 << 0)
+	GP_BRUSHEDIT_FLAG_SELECT_MASK = (1 << 0),
+	/* apply brush to position */
+	GP_BRUSHEDIT_FLAG_APPLY_POSITION = (1 << 1),
+	/* apply brush to strength */
+	GP_BRUSHEDIT_FLAG_APPLY_STRENGTH = (1 << 2),
+	/* apply brush to thickness */
+	GP_BRUSHEDIT_FLAG_APPLY_THICKNESS = (1 << 3)
+
 } eGP_BrushEdit_SettingsFlag;
 
 /* *************************************************************** */
@@ -1260,6 +1277,49 @@ typedef enum {
 	UNIFIED_PAINT_BRUSH_ALPHA_PRESSURE  = (1 << 4)
 } UnifiedPaintSettingsFlags;
 
+
+typedef struct CurvePaintSettings {
+	char curve_type;
+	char flag;
+	char depth_mode;
+	char surface_plane;
+	char fit_method;
+	char pad;
+	short error_threshold;
+	float radius_min, radius_max;
+	float radius_taper_start, radius_taper_end;
+	float surface_offset;
+	float corner_angle;
+} CurvePaintSettings;
+
+/* CurvePaintSettings.flag */
+enum {
+	CURVE_PAINT_FLAG_CORNERS_DETECT             = (1 << 0),
+	CURVE_PAINT_FLAG_PRESSURE_RADIUS            = (1 << 1),
+	CURVE_PAINT_FLAG_DEPTH_STROKE_ENDPOINTS     = (1 << 2),
+	CURVE_PAINT_FLAG_DEPTH_STROKE_OFFSET_ABS    = (1 << 3),
+};
+
+/* CurvePaintSettings.fit_method */
+enum {
+	CURVE_PAINT_FIT_METHOD_REFIT            = 0,
+	CURVE_PAINT_FIT_METHOD_SPLIT            = 1,
+};
+
+/* CurvePaintSettings.depth_mode */
+enum {
+	CURVE_PAINT_PROJECT_CURSOR              = 0,
+	CURVE_PAINT_PROJECT_SURFACE             = 1,
+};
+
+/* CurvePaintSettings.surface_plane */
+enum {
+	CURVE_PAINT_SURFACE_PLANE_NORMAL_VIEW           = 0,
+	CURVE_PAINT_SURFACE_PLANE_NORMAL_SURFACE        = 1,
+	CURVE_PAINT_SURFACE_PLANE_VIEW                  = 2,
+};
+
+
 /* *************************************************************** */
 /* Stats */
 
@@ -1328,6 +1388,9 @@ typedef struct ToolSettings {
 	/* Grease Pencil Sculpt */
 	struct GP_BrushEdit_Settings gp_sculpt;
 
+	/* Grease Pencil Drawing Brushes (bGPDbrush) */
+	ListBase gp_brushes; 
+
 	/* Image Paint (8 byttse aligned please!) */
 	struct ImagePaintSettings imapaint;
 
@@ -1342,10 +1405,10 @@ typedef struct ToolSettings {
 
 	/* Auto-Keying Mode */
 	short autokey_mode, autokey_flag;	/* defines in DNA_userdef_types.h */
+	char keyframe_type;                 /* keyframe type (see DNA_curve_types.h) */
 
 	/* Multires */
 	char multires_subdiv_type;
-	char pad3[1];
 
 	/* Skeleton generation */
 	short skgen_resolution;
@@ -1410,6 +1473,8 @@ typedef struct ToolSettings {
 
 	/* Unified Paint Settings */
 	struct UnifiedPaintSettings unified_paint_settings;
+
+	struct CurvePaintSettings curve_paint_settings;
 
 	struct MeshStatVis statvis;
 } ToolSettings;
@@ -1596,6 +1661,7 @@ typedef struct Scene {
 #define R_SIMPLIFY			0x1000000
 #define R_EDGE_FRS			0x2000000 /* R_EDGE reserved for Freestyle */
 #define R_PERSISTENT_DATA	0x4000000 /* keep data around for re-render */
+#define R_USE_WS_SHADING	0x8000000 /* use world space interpretation of lighting data */
 
 /* seq_flag */
 #define R_SEQ_GL_PREV 1
@@ -1671,9 +1737,12 @@ typedef struct Scene {
 #define R_STAMP_RENDERTIME	0x0400
 #define R_STAMP_CAMERALENS	0x0800
 #define R_STAMP_STRIPMETA	0x1000
+#define R_STAMP_MEMORY		0x2000
+#define R_STAMP_HIDE_LABELS	0x4000
 #define R_STAMP_ALL (R_STAMP_TIME|R_STAMP_FRAME|R_STAMP_DATE|R_STAMP_CAMERA|R_STAMP_SCENE| \
                      R_STAMP_NOTE|R_STAMP_MARKER|R_STAMP_FILENAME|R_STAMP_SEQSTRIP|        \
-                     R_STAMP_RENDERTIME|R_STAMP_CAMERALENS)
+                     R_STAMP_RENDERTIME|R_STAMP_CAMERALENS|R_STAMP_MEMORY|                 \
+                     R_STAMP_HIDE_LABELS)
 
 /* alphamode */
 #define R_ADDSKY		0
@@ -1739,16 +1808,17 @@ extern const char *RE_engine_id_CYCLES;
 
 /* **************** SCENE ********************* */
 
+/* note that much higher maxframes give imprecise sub-frames, see: T46859 */
 /* for general use */
-#define MAXFRAME	300000
-#define MAXFRAMEF	300000.0f
+#define MAXFRAME	500000
+#define MAXFRAMEF	500000.0f
 
 #define MINFRAME	0
 #define MINFRAMEF	0.0f
 
 /* (minimum frame number for current-frame) */
-#define MINAFRAME	-300000
-#define MINAFRAMEF	-300000.0f
+#define MINAFRAME	-500000
+#define MINAFRAMEF	-500000.0f
 
 /* depricate this! */
 #define TESTBASE(v3d, base)  (                                                \
@@ -2020,6 +2090,8 @@ typedef enum eGPencil_Flags {
 	GP_TOOL_FLAG_PAINTSESSIONS_ON       = (1 << 0),
 	/* When creating new frames, the last frame gets used as the basis for the new one */
 	GP_TOOL_FLAG_RETAIN_LAST            = (1 << 1),
+	/* Add the strokes below all strokes in the layer */
+	GP_TOOL_FLAG_PAINT_ONBACK = (1 << 2)
 } eGPencil_Flags;
 
 /* toolsettings->gpencil_src */

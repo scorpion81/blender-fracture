@@ -1679,7 +1679,7 @@ void UI_panel_category_draw_all(ARegion *ar, const char *category_id_active)
 	BLF_size(fontid, fstyle_points, U.dpi);
 
 	BLF_enable(fontid, BLF_SHADOW);
-	BLF_shadow(fontid, 3, 1.0f, 1.0f, 1.0f, 0.25f);
+	BLF_shadow(fontid, 3, (const float[4]){1.0f, 1.0f, 1.0f, 0.25f});
 	BLF_shadow_offset(fontid, -1, -1);
 
 	BLI_assert(UI_panel_category_is_visible(ar));
@@ -1763,12 +1763,10 @@ void UI_panel_category_draw_all(ARegion *ar, const char *category_id_active)
 			ui_panel_category_draw_tab(GL_LINE_STRIP, rct->xmin - px, rct->ymin - px, rct->xmax - px, rct->ymax + px,
 			                           tab_curve_radius, roundboxtype, true, true, NULL);
 			/* tab highlight (3d look) */
-			glShadeModel(GL_SMOOTH);
 			glColor3ubv(is_active ? theme_col_tab_highlight : theme_col_tab_highlight_inactive);
 			ui_panel_category_draw_tab(GL_LINE_STRIP, rct->xmin, rct->ymin, rct->xmax, rct->ymax,
 			                           tab_curve_radius, roundboxtype, true, false,
 			                           is_active ? theme_col_back : theme_col_tab_inactive);
-			glShadeModel(GL_FLAT);
 		}
 
 		/* tab blackline */

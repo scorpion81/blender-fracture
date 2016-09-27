@@ -37,6 +37,7 @@
 #include "BLT_translation.h"
 
 #include "BKE_DerivedMesh.h"
+#include "BKE_mesh.h"
 
 #include "bmesh.h"
 #include "intern/bmesh_private.h"
@@ -80,7 +81,9 @@ BMVert *BM_vert_create(
 	v->head.api_flag = 0;
 
 	/* allocate flags */
-	v->oflags = bm->vtoolflagpool ? BLI_mempool_calloc(bm->vtoolflagpool) : NULL;
+	if (bm->use_toolflags) {
+		((BMVert_OFlag *)v)->oflags = bm->vtoolflagpool ? BLI_mempool_calloc(bm->vtoolflagpool) : NULL;
+	}
 
 	/* 'v->no' is handled by BM_elem_attrs_copy */
 	if (co) {
@@ -173,7 +176,9 @@ BMEdge *BM_edge_create(
 	e->head.api_flag = 0;
 
 	/* allocate flags */
-	e->oflags = bm->etoolflagpool ? BLI_mempool_calloc(bm->etoolflagpool) : NULL;
+	if (bm->use_toolflags) {
+		((BMEdge_OFlag *)e)->oflags = bm->etoolflagpool ? BLI_mempool_calloc(bm->etoolflagpool) : NULL;
+	}
 
 	e->v1 = v1;
 	e->v2 = v2;
@@ -385,7 +390,9 @@ BLI_INLINE BMFace *bm_face_create__internal(BMesh *bm)
 	f->head.api_flag = 0;
 
 	/* allocate flags */
-	f->oflags = bm->ftoolflagpool ? BLI_mempool_calloc(bm->ftoolflagpool) : NULL;
+	if (bm->use_toolflags) {
+		((BMFace_OFlag *)f)->oflags = bm->ftoolflagpool ? BLI_mempool_calloc(bm->ftoolflagpool) : NULL;
+	}
 
 #ifdef USE_BMESH_HOLES
 	BLI_listbase_clear(&f->loops);
@@ -757,7 +764,7 @@ static void bm_kill_only_vert(BMesh *bm, BMVert *v)
 		CustomData_bmesh_free_block(&bm->vdata, &v->head.data);
 
 	if (bm->vtoolflagpool) {
-		BLI_mempool_free(bm->vtoolflagpool, v->oflags);
+		BLI_mempool_free(bm->vtoolflagpool, ((BMVert_OFlag *)v)->oflags);
 	}
 	BLI_mempool_free(bm->vpool, v);
 }
@@ -778,7 +785,7 @@ static void bm_kill_only_edge(BMesh *bm, BMEdge *e)
 		CustomData_bmesh_free_block(&bm->edata, &e->head.data);
 
 	if (bm->etoolflagpool) {
-		BLI_mempool_free(bm->etoolflagpool, e->oflags);
+		BLI_mempool_free(bm->etoolflagpool, ((BMEdge_OFlag *)e)->oflags);
 	}
 	BLI_mempool_free(bm->epool, e);
 }
@@ -802,7 +809,7 @@ static void bm_kill_only_face(BMesh *bm, BMFace *f)
 		CustomData_bmesh_free_block(&bm->pdata, &f->head.data);
 
 	if (bm->ftoolflagpool) {
-		BLI_mempool_free(bm->ftoolflagpool, f->oflags);
+		BLI_mempool_free(bm->ftoolflagpool, ((BMFace_OFlag *)f)->oflags);
 	}
 	BLI_mempool_free(bm->fpool, f);
 }
@@ -1082,42 +1089,8 @@ static bool bm_loop_reverse_loop(
 		l_iter = oldnext;
 		
 		if (cd_loop_mdisp_offset != -1) {
-			float (*co)[3];
-			int x, y, sides;
-			MDisps *md;
-			
-			md = BM_ELEM_CD_GET_VOID_P(l_iter, cd_loop_mdisp_offset);
-			if (!md->totdisp || !md->disps)
-				continue;
-
-			sides = (int)sqrt(md->totdisp);
-			co = md->disps;
-			
-			for (x = 0; x < sides; x++) {
-				float *co_a, *co_b;
-
-				for (y = 0; y < x; y++) {
-					co_a = co[y * sides + x];
-					co_b = co[x * sides + y];
-
-					swap_v3_v3(co_a, co_b);
-					SWAP(float, co_a[0], co_a[1]);
-					SWAP(float, co_b[0], co_b[1]);
-
-					if (use_loop_mdisp_flip) {
-						co_a[2] *= -1.0f;
-						co_b[2] *= -1.0f;
-					}
-				}
-
-				co_a = co[x * sides + x];
-
-				SWAP(float, co_a[0], co_a[1]);
-
-				if (use_loop_mdisp_flip) {
-					co_a[2] *= -1.0f;
-				}
-			}
+			MDisps *md = BM_ELEM_CD_GET_VOID_P(l_iter, cd_loop_mdisp_offset);
+			BKE_mesh_mdisp_flip(md, use_loop_mdisp_flip);
 		}
 	}
 
@@ -1279,7 +1252,6 @@ BMFace *BM_faces_join(BMesh *bm, BMFace **faces, int totface, const bool do_del)
 	BLI_array_staticdeclare(deledges, BM_DEFAULT_NGON_STACK_SIZE);
 	BLI_array_staticdeclare(delverts, BM_DEFAULT_NGON_STACK_SIZE);
 	BMVert *v1 = NULL, *v2 = NULL;
-	const char *err = NULL;
 	int i, tote = 0;
 	const int cd_loop_mdisp_offset = CustomData_get_offset(&bm->ldata, CD_MDISPS);
 
@@ -1300,7 +1272,7 @@ BMFace *BM_faces_join(BMesh *bm, BMFace **faces, int totface, const bool do_del)
 			int rlen = bm_loop_systag_count_radial(l_iter, _FLAG_JF);
 
 			if (rlen > 2) {
-				err = N_("Input faces do not form a contiguous manifold region");
+				/* Input faces do not form a contiguous manifold region */
 				goto error;
 			}
 			else if (rlen == 1) {
@@ -1321,7 +1293,7 @@ BMFace *BM_faces_join(BMesh *bm, BMFace **faces, int totface, const bool do_del)
 				if (!d1 && !d2 && !BM_ELEM_API_FLAG_TEST(l_iter->e, _FLAG_JF)) {
 					/* don't remove an edge it makes up the side of another face
 					 * else this will remove the face as well - campbell */
-					if (!BM_edge_face_count_is_over(l_iter->e, 3)) {
+					if (!BM_edge_face_count_is_over(l_iter->e, 2)) {
 						if (do_del) {
 							BLI_array_append(deledges, l_iter->e);
 						}
@@ -1361,9 +1333,8 @@ BMFace *BM_faces_join(BMesh *bm, BMFace **faces, int totface, const bool do_del)
 
 	/* create region face */
 	f_new = tote ? BM_face_create_ngon(bm, v1, v2, edges, tote, faces[0], BM_CREATE_NOP) : NULL;
-	if (UNLIKELY(!f_new || BMO_error_occurred(bm))) {
-		if (!BMO_error_occurred(bm))
-			err = N_("Invalid boundary region to join faces");
+	if (UNLIKELY(f_new == NULL)) {
+		/* Invalid boundary region to join faces */
 		goto error;
 	}
 
@@ -1459,9 +1430,6 @@ error:
 	BLI_array_free(deledges);
 	BLI_array_free(delverts);
 
-	if (err) {
-		BMO_error_raise(bm, bm->currentop, BMERR_DISSOLVEFACES_FAILED, err);
-	}
 	return NULL;
 }
 
@@ -2234,7 +2202,7 @@ BMFace *bmesh_jfke(BMesh *bm, BMFace *f1, BMFace *f2, BMEdge *e)
 	
 	/* deallocate edge and its two loops as well as f2 */
 	if (bm->etoolflagpool) {
-		BLI_mempool_free(bm->etoolflagpool, l_f1->e->oflags);
+		BLI_mempool_free(bm->etoolflagpool, ((BMEdge_OFlag *)l_f1->e)->oflags);
 	}
 	BLI_mempool_free(bm->epool, l_f1->e);
 	bm->totedge--;
@@ -2243,7 +2211,7 @@ BMFace *bmesh_jfke(BMesh *bm, BMFace *f1, BMFace *f2, BMEdge *e)
 	BLI_mempool_free(bm->lpool, l_f2);
 	bm->totloop--;
 	if (bm->ftoolflagpool) {
-		BLI_mempool_free(bm->ftoolflagpool, f2->oflags);
+		BLI_mempool_free(bm->ftoolflagpool, ((BMFace_OFlag *)f2)->oflags);
 	}
 	BLI_mempool_free(bm->fpool, f2);
 	bm->totface--;
@@ -2512,7 +2480,8 @@ static void bmesh_vert_separate__cleanup(BMesh *bm, LinkNode *edges_separate)
 					n_prev->next = n_step->next;
 					n_step = n_prev;
 				}
-			} while ((n_prev = n_step),
+			} while ((void)
+			         (n_prev = n_step),
 			         (n_step = n_step->next));
 
 		} while ((n_orig = n_orig->next) && n_orig->next);

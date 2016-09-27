@@ -139,6 +139,7 @@ typedef struct ShadeInput {
 	float refcol[4], displace[3];
 	float strandco, tang[3], nmapnorm[3], nmaptang[4], stress, winspeed[4];
 	float duplilo[3], dupliuv[3];
+	float tangents[8][4]; /* 8 = MAX_MTFACE */
 
 	ShadeInputUV uv[8];   /* 8 = MAX_MTFACE */
 	ShadeInputCol col[8]; /* 8 = MAX_MCOL */
@@ -171,6 +172,7 @@ typedef struct ShadeInput {
 	/* from initialize, part or renderlayer */
 	bool do_preview;		/* for nodes, in previewrender */
 	bool do_manage;			/* color management flag */
+	bool use_world_space_shading;
 	short thread, sample;	/* sample: ShadeSample array index */
 	short nodes;			/* indicate node shading, temp hack to prevent recursion */
 	
@@ -198,7 +200,15 @@ struct ImagePool;
 struct Object;
 
 /* this one uses nodes */
-int	multitex_ext(struct Tex *tex, float texvec[3], float dxt[3], float dyt[3], int osatex, struct TexResult *texres, struct ImagePool *pool, bool scene_color_manage, const bool skip_load_image);
+int multitex_ext(struct Tex *tex,
+                 float texvec[3],
+                 float dxt[3], float dyt[3],
+                 int osatex,
+                 struct TexResult *texres,
+                 const short thread,
+                 struct ImagePool *pool,
+                 bool scene_color_manage,
+                 const bool skip_load_image);
 /* nodes disabled */
 int multitex_ext_safe(struct Tex *tex, float texvec[3], struct TexResult *texres, struct ImagePool *pool, bool scene_color_manage, const bool skip_load_image);
 /* only for internal node usage */

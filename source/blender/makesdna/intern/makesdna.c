@@ -129,6 +129,7 @@ static const char *includefiles[] = {
 	"DNA_rigidbody_types.h",
 	"DNA_freestyle_types.h",
 	"DNA_linestyle_types.h",
+	"DNA_cachefile_types.h",
 	"DNA_fracture_types.h",
 	/* see comment above before editing! */
 
@@ -721,6 +722,28 @@ static int arraysize(const char *str)
 	return mul;
 }
 
+static bool check_field_alignment(int firststruct, int structtype, int type, int len,
+                                  const char *name, const char *detail)
+{
+	bool result = true;
+	if (type < firststruct && typelens_native[type] > 4 && (len % 8)) {
+		fprintf(stderr, "Align 8 error (%s) in struct: %s %s (add %d padding bytes)\n",
+		        detail, types[structtype], name, len % 8);
+		result = false;
+	}
+	if (typelens_native[type] > 3 && (len % 4) ) {
+		fprintf(stderr, "Align 4 error (%s) in struct: %s %s (add %d padding bytes)\n",
+		        detail, types[structtype], name, len % 4);
+		result = false;
+	}
+	if (typelens_native[type] == 2 && (len % 2) ) {
+		fprintf(stderr, "Align 2 error (%s) in struct: %s %s (add %d padding bytes)\n",
+		        detail, types[structtype], name, len % 2);
+		result = false;
+	}
+	return result;
+}
+
 static int calculate_structlens(int firststruct)
 {
 	int unknown = nr_structs, lastunknown;
@@ -816,20 +839,11 @@ static int calculate_structlens(int firststruct)
 							}
 						}
 						
-						/* 2-4-8 aligned/ */
-						if (type < firststruct && typelens_native[type] > 4 && (len_native % 8)) {
-							fprintf(stderr, "Align 8 error in struct: %s %s (add %d padding bytes)\n",
-							        types[structtype], cp, len_native % 8);
+						/* Check 2-4-8 aligned. */
+						if (!check_field_alignment(firststruct, structtype, type, len_32, cp, "32 bit")) {
 							dna_error = 1;
 						}
-						if (typelens_native[type] > 3 && (len_native % 4) ) {
-							fprintf(stderr, "Align 4 error in struct: %s %s (add %d padding bytes)\n",
-							        types[structtype], cp, len_native % 4);
-							dna_error = 1;
-						}
-						else if (typelens_native[type] == 2 && (len_native % 2) ) {
-							fprintf(stderr, "Align 2 error in struct: %s %s (add %d padding bytes)\n",
-							        types[structtype], cp, len_native % 2);
+						if (!check_field_alignment(firststruct, structtype, type, len_64, cp, "64 bit")) {
 							dna_error = 1;
 						}
 
@@ -956,7 +970,7 @@ void printStructLengths(void)
 }
 
 
-static int make_structDNA(const char *baseDirectory, FILE *file)
+static int make_structDNA(const char *baseDirectory, FILE *file, FILE *file_offsets)
 {
 	int len, i;
 	const short *sp;
@@ -1147,6 +1161,19 @@ static int make_structDNA(const char *baseDirectory, FILE *file)
 		/*	end end padding test */
 	}
 	
+	/* write a simple enum with all structs offsets,
+	 * should only be accessed via SDNA_TYPE_FROM_STRUCT macro */
+	{
+		fprintf(file_offsets, "#define SDNA_TYPE_FROM_STRUCT(id) _SDNA_TYPE_##id\n");
+		fprintf(file_offsets, "enum {\n");
+		for (i = 0; i < nr_structs; i++) {
+			const short *structpoin = structs[i];
+			const int    structtype = structpoin[0];
+			fprintf(file_offsets, "\t_SDNA_TYPE_%s = %d,\n", types[structtype], i);
+		}
+		fprintf(file_offsets, "\tSDNA_TYPE_MAX = %d,\n", nr_structs);
+		fprintf(file_offsets, "};\n");
+	}
 	
 	MEM_freeN(namedata);
 	MEM_freeN(typedata);
@@ -1178,42 +1205,52 @@ static void make_bad_file(const char *file, int line)
 
 int main(int argc, char **argv)
 {
-	FILE *file;
 	int return_status = 0;
 
-	if (argc != 2 && argc != 3) {
-		printf("Usage: %s outfile.c [base directory]\n", argv[0]);
+	if (argc != 3 && argc != 4) {
+		printf("Usage: %s dna.c dna_struct_offsets.h [base directory]\n", argv[0]);
 		return_status = 1;
 	}
 	else {
-		file = fopen(argv[1], "w");
-		if (!file) {
+		FILE *file_dna         = fopen(argv[1], "w");
+		FILE *file_dna_offsets = fopen(argv[2], "w");
+		if (!file_dna) {
 			printf("Unable to open file: %s\n", argv[1]);
+			return_status = 1;
+		}
+		else if (!file_dna_offsets) {
+			printf("Unable to open file: %s\n", argv[2]);
 			return_status = 1;
 		}
 		else {
 			const char *baseDirectory;
 
-			if (argc == 3) {
-				baseDirectory = argv[2];
+			if (argc == 4) {
+				baseDirectory = argv[3];
 			}
 			else {
 				baseDirectory = BASE_HEADER;
 			}
 
-			fprintf(file, "const unsigned char DNAstr[] = {\n");
-			if (make_structDNA(baseDirectory, file)) {
+			fprintf(file_dna, "const unsigned char DNAstr[] = {\n");
+			if (make_structDNA(baseDirectory, file_dna, file_dna_offsets)) {
 				/* error */
-				fclose(file);
+				fclose(file_dna);
+				file_dna = NULL;
 				make_bad_file(argv[1], __LINE__);
 				return_status = 1;
 			}
 			else {
-				fprintf(file, "};\n");
-				fprintf(file, "const int DNAlen = sizeof(DNAstr);\n");
-	
-				fclose(file);
+				fprintf(file_dna, "};\n");
+				fprintf(file_dna, "const int DNAlen = sizeof(DNAstr);\n");
 			}
+		}
+
+		if (file_dna) {
+			fclose(file_dna);
+		}
+		if (file_dna_offsets) {
+			fclose(file_dna_offsets);
 		}
 	}
 
@@ -1305,5 +1342,6 @@ int main(int argc, char **argv)
 #include "DNA_rigidbody_types.h"
 #include "DNA_freestyle_types.h"
 #include "DNA_linestyle_types.h"
+#include "DNA_cachefile_types.h"
 #include "DNA_fracture_types.h"
 /* end of list */

@@ -58,10 +58,12 @@ if(WIN32 AND NOT UNIX)
 			blenderplayer ${EXETYPE}
 			bad_level_call_stubs/stubs.c
 			${CMAKE_SOURCE_DIR}/release/windows/icons/winblender.rc)
-
+	WINDOWS_SIGN_TARGET(blenderplayer)
 	install(TARGETS blenderplayer
 			COMPONENT Blenderplayer
 			DESTINATION ".")
+
+add_cc_flags_custom_test(blenderplayer)
 
 elseif(APPLE)
 	add_executable(blenderplayer ${EXETYPE} bad_level_call_stubs/stubs.c)
@@ -111,7 +113,6 @@ endif()
 		ge_player_common 
 		bf_intern_string 
 		bf_intern_ghost
-		bf_intern_ghostndof3dconnexion
 		bf_rna
 		bf_blenkernel
 		bf_depsgraph
@@ -220,12 +221,24 @@ endif()
 		list(APPEND BLENDER_SORTED_LIBS extern_voro)
 	endif()
 
+	if(WITH_GAMEENGINE_DECKLINK)
+		list(APPEND BLENDER_SORTED_LIBS bf_intern_decklink)
+	endif()
+
+	if(WIN32)
+		list(APPEND BLENDER_SORTED_LIBS bf_intern_gpudirect)
+	endif()
+
 	if(WITH_OPENSUBDIV)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_opensubdiv)
 	endif()
 
 	if(WITH_OPENVDB)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_openvdb)
+	endif()
+
+	if(WITH_ALEMBIC)
+		list(APPEND BLENDER_SORTED_LIBS bf_alembic)
 	endif()
 
 	foreach(SORTLIB ${BLENDER_SORTED_LIBS})

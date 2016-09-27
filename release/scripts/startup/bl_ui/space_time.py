@@ -87,6 +87,8 @@ class TIME_HT_header(Header):
                 subsub = row.row(align=True)
                 subsub.prop(toolsettings, "use_record_with_nla", toggle=True)
 
+        layout.prop(toolsettings, "keyframe_type", text="", icon_only=True)
+
         row = layout.row(align=True)
         row.prop_search(scene.keying_sets_all, "active", scene, "keying_sets_all", text="")
         row.operator("anim.keyframe_insert", text="", icon='KEY_HLT')
@@ -128,7 +130,6 @@ class TIME_MT_view(Menu):
 
         layout.prop(st, "show_seconds")
         layout.prop(st, "show_locked_time")
-        layout.operator("time.view_all")
 
         layout.separator()
 
@@ -141,13 +142,18 @@ class TIME_MT_view(Menu):
 
         layout.separator()
 
+        layout.operator("time.view_all")
+        layout.operator("time.view_frame")
+
+        layout.separator()
+
         layout.operator("marker.camera_bind")
 
         layout.separator()
 
         layout.operator("screen.area_dupli")
-        layout.operator("screen.screen_full_area", text="Toggle Maximize Area")
-        layout.operator("screen.screen_full_area").use_hide_panels = True
+        layout.operator("screen.screen_full_area")
+        layout.operator("screen.screen_full_area", text="Toggle Fullscreen Area").use_hide_panels = True
 
 
 class TIME_MT_cache(Menu):

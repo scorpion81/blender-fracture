@@ -63,7 +63,10 @@ void IMAGE_OT_view_zoom(struct wmOperatorType *ot);
 void IMAGE_OT_view_zoom_in(struct wmOperatorType *ot);
 void IMAGE_OT_view_zoom_out(struct wmOperatorType *ot);
 void IMAGE_OT_view_zoom_ratio(struct wmOperatorType *ot);
+void IMAGE_OT_view_zoom_border(struct wmOperatorType *ot);
+#ifdef WITH_INPUT_NDOF
 void IMAGE_OT_view_ndof(struct wmOperatorType *ot);
+#endif
 
 void IMAGE_OT_new(struct wmOperatorType *ot);
 void IMAGE_OT_open(struct wmOperatorType *ot);

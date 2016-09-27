@@ -701,7 +701,6 @@ int count_set_pose_transflags(int *out_mode, short around, Object *ob)
 	bPoseChannel *pchan;
 	Bone *bone;
 	int mode = *out_mode;
-	int hastranslation = 0;
 	int total = 0;
 
 	for (pchan = ob->pose->chanbase.first; pchan; pchan = pchan->next) {
@@ -729,7 +728,7 @@ int count_set_pose_transflags(int *out_mode, short around, Object *ob)
 		}
 	}
 	/* now count, and check if we have autoIK or have to switch from translate to rotate */
-	hastranslation = 0;
+	bool has_translation = false, has_rotation = false;
 
 	for (pchan = ob->pose->chanbase.first; pchan; pchan = pchan->next) {
 		bone = pchan->bone;
@@ -740,20 +739,29 @@ int count_set_pose_transflags(int *out_mode, short around, Object *ob)
 				if (has_targetless_ik(pchan) == NULL) {
 					if (pchan->parent && (pchan->bone->flag & BONE_CONNECTED)) {
 						if (pchan->bone->flag & BONE_HINGE_CHILD_TRANSFORM)
-							hastranslation = 1;
+							has_translation = true;
 					}
-					else if ((pchan->protectflag & OB_LOCK_LOC) != OB_LOCK_LOC)
-						hastranslation = 1;
+					else {
+						if ((pchan->protectflag & OB_LOCK_LOC) != OB_LOCK_LOC)
+							has_translation = true;
+					}
+					if ((pchan->protectflag & OB_LOCK_ROT) != OB_LOCK_ROT)
+						has_rotation = true;
 				}
 				else
-					hastranslation = 1;
+					has_translation = true;
 			}
 		}
 	}
 
 	/* if there are no translatable bones, do rotation */
-	if (mode == TFM_TRANSLATION && !hastranslation) {
-		*out_mode = TFM_ROTATION;
+	if (mode == TFM_TRANSLATION && !has_translation) {
+		if (has_rotation) {
+			*out_mode = TFM_ROTATION;
+		}
+		else {
+			*out_mode = TFM_RESIZE;
+		}
 	}
 
 	return total;
@@ -820,6 +828,7 @@ static void pose_grab_with_ik_clear(Object *ob)
 	bKinematicConstraint *data;
 	bPoseChannel *pchan;
 	bConstraint *con, *next;
+	bool need_dependency_update = false;
 
 	for (pchan = ob->pose->chanbase.first; pchan; pchan = pchan->next) {
 		/* clear all temporary lock flags */
@@ -834,6 +843,7 @@ static void pose_grab_with_ik_clear(Object *ob)
 				data = con->data;
 				if (data->flag & CONSTRAINT_IK_TEMP) {
 					/* iTaSC needs clear for removed constraints */
+					need_dependency_update = true;
 					BIK_clear_data(ob->pose);
 
 					BLI_remlink(&pchan->constraints, con);
@@ -849,10 +859,10 @@ static void pose_grab_with_ik_clear(Object *ob)
 	}
 
 #ifdef WITH_LEGACY_DEPSGRAPH
-	if (!DEG_depsgraph_use_legacy())
+	if (!DEG_depsgraph_use_legacy() && need_dependency_update)
 #endif
 	{
-		/* TODO(sergey): Consuder doing partial update only. */
+		/* TODO(sergey): Consider doing partial update only. */
 		DAG_relations_tag_update(G.main);
 	}
 }
@@ -2674,6 +2684,20 @@ void flushTransSeq(TransInfo *t)
 				BKE_sequence_calc(t->scene, seq);
 			}
 		}
+
+		/* update effects inside meta's */
+		for (a = 0, seq_prev = NULL, td = t->data, td2d = t->data2d;
+		     a < t->total;
+		     a++, td++, td2d++, seq_prev = seq)
+		{
+			tdsq = (TransDataSeq *)td->extra;
+			seq = tdsq->seq;
+			if ((seq != seq_prev) && (seq->depth != 0)) {
+				if (seq->seq1 || seq->seq2 || seq->seq3) {
+					BKE_sequence_calc(t->scene, seq);
+				}
+			}
+		}
 	}
 
 	/* need to do the overlap check in a new loop otherwise adjacent strips
@@ -3268,7 +3292,7 @@ static void posttrans_gpd_clean(bGPdata *gpd)
 			for (gpf = gpl->frames.first; gpf; gpf = gpfn) {
 				gpfn = gpf->next;
 				if (gpfn && gpf->framenum == gpfn->framenum) {
-					gpencil_layer_delframe(gpl, gpf);
+					BKE_gpencil_layer_delframe(gpl, gpf);
 				}
 			}
 		}
@@ -4918,44 +4942,47 @@ static void freeSeqData(TransInfo *t, TransCustomData *custom_data)
 			{
 				int overlap = 0;
 
-				seq_prev = NULL;
-				for (a = 0; a < t->total; a++, td++) {
+				for (a = 0, seq_prev = NULL; a < t->total; a++, td++, seq_prev = seq) {
 					seq = ((TransDataSeq *)td->extra)->seq;
 					if ((seq != seq_prev) && (seq->depth == 0) && (seq->flag & SEQ_OVERLAP)) {
 						overlap = 1;
 						break;
 					}
-					seq_prev = seq;
 				}
 
 				if (overlap) {
-					bool has_effect = false;
+					bool has_effect_root = false, has_effect_any = false;
 					for (seq = seqbasep->first; seq; seq = seq->next)
 						seq->tmp = NULL;
 
 					td = t->data;
-					seq_prev = NULL;
-					for (a = 0; a < t->total; a++, td++) {
+					for (a = 0, seq_prev = NULL; a < t->total; a++, td++, seq_prev = seq) {
 						seq = ((TransDataSeq *)td->extra)->seq;
 						if ((seq != seq_prev)) {
 							/* check effects strips, we cant change their time */
 							if ((seq->type & SEQ_TYPE_EFFECT) && seq->seq1) {
-								has_effect = true;
+								has_effect_any = true;
+								if (seq->depth == 0) {
+									has_effect_root = true;
+								}
 							}
 							else {
-								/* Tag seq with a non zero value, used by BKE_sequence_base_shuffle_time to identify the ones to shuffle */
-								seq->tmp = (void *)1;
+								/* Tag seq with a non zero value,
+								 * used by BKE_sequence_base_shuffle_time to identify the ones to shuffle */
+								if (seq->depth == 0) {
+									seq->tmp = (void *)1;
+								}
 							}
 						}
+
 					}
 
 					if (t->flag & T_ALT_TRANSFORM) {
 						int minframe = MAXFRAME;
 						td = t->data;
-						seq_prev = NULL;
-						for (a = 0; a < t->total; a++, td++) {
+						for (a = 0, seq_prev = NULL; a < t->total; a++, td++, seq_prev = seq) {
 							seq = ((TransDataSeq *)td->extra)->seq;
-							if ((seq != seq_prev)) {
+							if ((seq != seq_prev) && (seq->depth == 0)) {
 								minframe = min_ii(minframe, seq->startdisp);
 							}
 						}
@@ -4987,11 +5014,10 @@ static void freeSeqData(TransInfo *t, TransCustomData *custom_data)
 						BKE_sequence_base_shuffle_time(seqbasep, t->scene);
 					}
 
-					if (has_effect) {
+					if (has_effect_any) {
 						/* update effects strips based on strips just moved in time */
 						td = t->data;
-						seq_prev = NULL;
-						for (a = 0; a < t->total; a++, td++) {
+						for (a = 0, seq_prev = NULL; a < t->total; a++, td++, seq_prev = seq) {
 							seq = ((TransDataSeq *)td->extra)->seq;
 							if ((seq != seq_prev)) {
 								if ((seq->type & SEQ_TYPE_EFFECT) && seq->seq1) {
@@ -4999,13 +5025,14 @@ static void freeSeqData(TransInfo *t, TransCustomData *custom_data)
 								}
 							}
 						}
+					}
 
+					if (has_effect_root) {
 						/* now if any effects _still_ overlap, we need to move them up */
 						td = t->data;
-						seq_prev = NULL;
-						for (a = 0; a < t->total; a++, td++) {
+						for (a = 0, seq_prev = NULL; a < t->total; a++, td++, seq_prev = seq) {
 							seq = ((TransDataSeq *)td->extra)->seq;
-							if ((seq != seq_prev)) {
+							if ((seq != seq_prev) && (seq->depth == 0)) {
 								if ((seq->type & SEQ_TYPE_EFFECT) && seq->seq1) {
 									if (BKE_sequence_test_overlap(seqbasep, seq)) {
 										BKE_sequence_base_shuffle(seqbasep, seq, t->scene);
@@ -5123,7 +5150,7 @@ static void createTransSeqData(bContext *C, TransInfo *t)
 		return;
 	}
 
-	t->custom.type.data = ts = MEM_mallocN(sizeof(TransSeq), "transseq");
+	t->custom.type.data = ts = MEM_callocN(sizeof(TransSeq), "transseq");
 	t->custom.type.use_free = true;
 	td = t->data = MEM_callocN(t->total * sizeof(TransData), "TransSeq TransData");
 	td2d = t->data2d = MEM_callocN(t->total * sizeof(TransData2D), "TransSeq TransData2D");
@@ -5254,13 +5281,9 @@ static void ObjectToTransData(TransInfo *t, TransData *td, Object *ob)
 		skip_invert = true;
 
 	if (skip_invert == false && constinv == false) {
-		if (constinv == false)
-			ob->transflag |= OB_NO_CONSTRAINTS;  /* BKE_object_where_is_calc_time checks this */
-		
+		ob->transflag |= OB_NO_CONSTRAINTS;  /* BKE_object_where_is_calc_time checks this */
 		BKE_object_where_is_calc(t->scene, ob);
-		
-		if (constinv == false)
-			ob->transflag &= ~OB_NO_CONSTRAINTS;
+		ob->transflag &= ~OB_NO_CONSTRAINTS;
 	}
 	else
 		BKE_object_where_is_calc(t->scene, ob);
@@ -5521,6 +5544,7 @@ void autokeyframe_ob_cb_func(bContext *C, Scene *scene, View3D *v3d, Object *ob,
 	// TODO: this should probably be done per channel instead...
 	if (autokeyframe_cfra_can_key(scene, id)) {
 		ReportList *reports = CTX_wm_reports(C);
+		ToolSettings *ts = scene->toolsettings;
 		KeyingSet *active_ks = ANIM_scene_get_active_keyingset(scene);
 		ListBase dsources = {NULL, NULL};
 		float cfra = (float)CFRA; // xxx this will do for now
@@ -5547,7 +5571,8 @@ void autokeyframe_ob_cb_func(bContext *C, Scene *scene, View3D *v3d, Object *ob,
 					fcu->flag &= ~FCURVE_SELECTED;
 					insert_keyframe(reports, id, adt->action,
 					                (fcu->grp ? fcu->grp->name : NULL),
-					                fcu->rna_path, fcu->array_index, cfra, flag);
+					                fcu->rna_path, fcu->array_index, cfra, 
+					                ts->keyframe_type, flag);
 				}
 			}
 		}
@@ -5639,6 +5664,7 @@ void autokeyframe_pose_cb_func(bContext *C, Scene *scene, View3D *v3d, Object *o
 	// TODO: this should probably be done per channel instead...
 	if (autokeyframe_cfra_can_key(scene, id)) {
 		ReportList *reports = CTX_wm_reports(C);
+		ToolSettings *ts = scene->toolsettings;
 		KeyingSet *active_ks = ANIM_scene_get_active_keyingset(scene);
 		float cfra = (float)CFRA;
 		short flag = 0;
@@ -5679,9 +5705,13 @@ void autokeyframe_pose_cb_func(bContext *C, Scene *scene, View3D *v3d, Object *o
 								/* only if bone name matches too... 
 								 * NOTE: this will do constraints too, but those are ok to do here too?
 								 */
-								if (pchanName && STREQ(pchanName, pchan->name)) 
-									insert_keyframe(reports, id, act, ((fcu->grp) ? (fcu->grp->name) : (NULL)), fcu->rna_path, fcu->array_index, cfra, flag);
-									
+								if (pchanName && STREQ(pchanName, pchan->name)) {
+									insert_keyframe(reports, id, act, 
+									                ((fcu->grp) ? (fcu->grp->name) : (NULL)),
+									                fcu->rna_path, fcu->array_index, cfra,
+									                ts->keyframe_type, flag);
+								}
+								
 								if (pchanName) MEM_freeN(pchanName);
 							}
 						}
@@ -5865,6 +5895,7 @@ static void special_aftertrans_update__mesh(bContext *UNUSED(C), TransInfo *t)
 		BMEditMesh *em = BKE_editmesh_from_object(t->obedit);
 		BMesh *bm = em->bm;
 		char hflag;
+		bool has_face_sel = (bm->totfacesel != 0);
 
 		if (t->flag & T_MIRROR) {
 			TransData *td;
@@ -5888,8 +5919,10 @@ static void special_aftertrans_update__mesh(bContext *UNUSED(C), TransInfo *t)
 
 		EDBM_automerge(t->scene, t->obedit, true, hflag);
 
-		if ((em->selectmode & SCE_SELECT_VERTEX) == 0) {
-			EDBM_select_flush(em);
+		/* Special case, this is needed or faces won't re-select.
+		 * Flush selected edges to faces. */
+		if (has_face_sel && (em->selectmode == SCE_SELECT_FACE)) {
+			EDBM_selectmode_flush_ex(em, SCE_SELECT_EDGE);
 		}
 	}
 }
@@ -6415,7 +6448,7 @@ static void createTransObject(bContext *C, TransInfo *t)
 		}
 		
 		/* select linked objects, but skip them later */
-		if (ob->id.lib != NULL) {
+		if (ID_IS_LINKED_DATABLOCK(ob)) {
 			td->flag |= TD_SKIP;
 		}
 		
@@ -7593,7 +7626,7 @@ static void createTransPaintCurveVerts(bContext *C, TransInfo *t)
 
 	for (pcp = pc->points, i = 0; i < pc->tot_points; i++, pcp++) {
 		if (PC_IS_ANY_SEL(pcp)) {
-			PaintCurvePointToTransData (pcp, td, td2d, tdpc);
+			PaintCurvePointToTransData(pcp, td, td2d, tdpc);
 
 			if (pcp->bez.f2 & SELECT) {
 				td += 3;
@@ -7669,7 +7702,11 @@ static void createTransGPencil(bContext *C, TransInfo *t)
 				if (ED_gpencil_stroke_can_use(C, gps) == false) {
 					continue;
 				}
-				
+				/* check if the color is editable */
+				if (ED_gpencil_stroke_color_use(gpl, gps) == false) {
+					continue;
+				}
+
 				if (is_prop_edit) {
 					/* Proportional Editing... */
 					if (is_prop_edit_connected) {
@@ -7717,14 +7754,27 @@ static void createTransGPencil(bContext *C, TransInfo *t)
 		if (gpencil_layer_is_editable(gpl) && (gpl->actframe != NULL)) {
 			bGPDframe *gpf = gpl->actframe;
 			bGPDstroke *gps;
+			float diff_mat[4][4];
+			float inverse_diff_mat[4][4];
+
+			/* calculate difference matrix if parent object */
+			if (gpl->parent != NULL) {
+				ED_gpencil_parent_location(gpl, diff_mat);
+				/* undo matrix */
+				invert_m4_m4(inverse_diff_mat, diff_mat);
+			}
 			
-			/* Make a new frame to work on if the layer's frame and the current scene frame don't match up 
+			/* Make a new frame to work on if the layer's frame and the current scene frame don't match up
 			 * - This is useful when animating as it saves that "uh-oh" moment when you realize you've
 			 *   spent too much time editing the wrong frame...
 			 */
 			// XXX: should this be allowed when framelock is enabled?
 			if (gpf->framenum != cfra) {
-				gpf = gpencil_frame_addcopy(gpl, cfra);
+				gpf = BKE_gpencil_frame_addcopy(gpl, cfra);
+				/* in some weird situations (framelock enabled) return NULL */
+				if (gpf == NULL) {
+					continue;
+				}
 			}
 			
 			/* Loop over strokes, adding TransData for points as needed... */
@@ -7737,7 +7787,10 @@ static void createTransGPencil(bContext *C, TransInfo *t)
 				if (ED_gpencil_stroke_can_use(C, gps) == false) {
 					continue;
 				}
-				
+				/* check if the color is editable */
+				if (ED_gpencil_stroke_color_use(gpl, gps) == false) {
+					continue;
+				}
 				/* What we need to include depends on proportional editing settings... */
 				if (is_prop_edit) {
 					if (is_prop_edit_connected) {
@@ -7801,16 +7854,47 @@ static void createTransGPencil(bContext *C, TransInfo *t)
 								td->ival = pt->pressure;
 							}
 							
-							/* configure 2D points so that they don't play up... */
-							if (gps->flag & (GP_STROKE_2DSPACE | GP_STROKE_2DIMAGE)) {
+							/* screenspace needs special matrices... */
+							if ((gps->flag & (GP_STROKE_3DSPACE | GP_STROKE_2DSPACE | GP_STROKE_2DIMAGE)) == 0) {
+								/* screenspace */
 								td->protectflag = OB_LOCK_LOCZ | OB_LOCK_ROTZ | OB_LOCK_SCALEZ;
-								// XXX: matrices may need to be different?
+								
+								/* apply parent transformations */
+								if (gpl->parent == NULL) {
+									copy_m3_m4(td->smtx, t->persmat);
+									copy_m3_m4(td->mtx, t->persinv);
+									unit_m3(td->axismtx);
+								}
+								else {
+									/* apply matrix transformation relative to parent */
+									copy_m3_m4(td->smtx, inverse_diff_mat); /* final position */
+									copy_m3_m4(td->mtx, diff_mat); /* display position */
+									copy_m3_m4(td->axismtx, diff_mat); /* axis orientation */
+								}
 							}
-							
-							copy_m3_m3(td->smtx, smtx);
-							copy_m3_m3(td->mtx, mtx);
-							unit_m3(td->axismtx); // XXX?
-							
+							else {
+								/* configure 2D dataspace points so that they don't play up... */
+								if (gps->flag & (GP_STROKE_2DSPACE | GP_STROKE_2DIMAGE)) {
+									td->protectflag = OB_LOCK_LOCZ | OB_LOCK_ROTZ | OB_LOCK_SCALEZ;
+									// XXX: matrices may need to be different?
+								}
+								
+								/* apply parent transformations */
+								if (gpl->parent == NULL) {
+									copy_m3_m3(td->smtx, smtx);
+									copy_m3_m3(td->mtx, mtx);
+									unit_m3(td->axismtx); // XXX?
+								}
+								else {
+									/* apply matrix transformation relative to parent */
+									copy_m3_m4(td->smtx, inverse_diff_mat); /* final position */
+									copy_m3_m4(td->mtx, diff_mat);  /* display position */
+									copy_m3_m4(td->axismtx, diff_mat); /* axis orientation */
+								}
+							}
+							/* Triangulation must be calculated again, so save the stroke for recalc function */
+							td->extra = gps;
+
 							td++;
 							tail++;
 						}

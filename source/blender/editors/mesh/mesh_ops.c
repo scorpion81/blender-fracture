@@ -106,6 +106,7 @@ void ED_operatortypes_mesh(void)
 	WM_operatortype_append(MESH_OT_beautify_fill);
 	WM_operatortype_append(MESH_OT_quads_convert_to_tris);
 	WM_operatortype_append(MESH_OT_tris_convert_to_quads);
+	WM_operatortype_append(MESH_OT_decimate);
 	WM_operatortype_append(MESH_OT_dissolve_verts);
 	WM_operatortype_append(MESH_OT_dissolve_edges);
 	WM_operatortype_append(MESH_OT_dissolve_faces);
@@ -338,7 +339,11 @@ void ED_keymap_mesh(wmKeyConfig *keyconf)
 	RNA_boolean_set(kmi->ptr, "deselect", false);
 	RNA_boolean_set(kmi->ptr, "toggle", true);
 
-	WM_keymap_add_item(keymap, "MESH_OT_shortest_path_pick", SELECTMOUSE, KM_PRESS, KM_CTRL, 0);
+	kmi = WM_keymap_add_item(keymap, "MESH_OT_shortest_path_pick", SELECTMOUSE, KM_PRESS, KM_CTRL, 0);
+	RNA_boolean_set(kmi->ptr, "use_fill", false);
+
+	kmi = WM_keymap_add_item(keymap, "MESH_OT_shortest_path_pick", SELECTMOUSE, KM_PRESS, KM_CTRL | KM_SHIFT, 0);
+	RNA_boolean_set(kmi->ptr, "use_fill", true);
 
 	kmi = WM_keymap_add_item(keymap, "MESH_OT_select_all", AKEY, KM_PRESS, 0, 0);
 	RNA_enum_set(kmi->ptr, "action", SEL_TOGGLE);

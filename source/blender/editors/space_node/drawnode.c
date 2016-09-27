@@ -961,6 +961,11 @@ static void node_shader_buts_tex_pointdensity(uiLayout *layout, bContext *UNUSED
 {
 	bNode *node = ptr->data;
 	NodeShaderTexPointDensity *shader_point_density = node->storage;
+	Object *ob = (Object *)node->id;
+	PointerRNA ob_ptr, obdata_ptr;
+
+	RNA_id_pointer_create((ID *)ob, &ob_ptr);
+	RNA_id_pointer_create(ob ? (ID *)ob->data : NULL, &obdata_ptr);
 
 	uiItemR(layout, ptr, "point_source", UI_ITEM_R_EXPAND, NULL, ICON_NONE);
 	uiItemR(layout, ptr, "object", 0, NULL, ICON_NONE);
@@ -976,7 +981,18 @@ static void node_shader_buts_tex_pointdensity(uiLayout *layout, bContext *UNUSED
 	uiItemR(layout, ptr, "interpolation", 0, NULL, ICON_NONE);
 	uiItemR(layout, ptr, "resolution", 0, NULL, ICON_NONE);
 	if (shader_point_density->point_source == SHD_POINTDENSITY_SOURCE_PSYS) {
-		uiItemR(layout, ptr, "color_source", 0, NULL, ICON_NONE);
+		uiItemR(layout, ptr, "particle_color_source", 0, NULL, ICON_NONE);
+	}
+	else {
+		uiItemR(layout, ptr, "vertex_color_source", 0, NULL, ICON_NONE);
+		if (shader_point_density->ob_color_source == SHD_POINTDENSITY_COLOR_VERTWEIGHT) {
+			if (ob_ptr.data)
+				uiItemPointerR(layout, ptr, "vertex_attribute_name", &ob_ptr, "vertex_groups", "", ICON_NONE);
+		}
+		if (shader_point_density->ob_color_source == SHD_POINTDENSITY_COLOR_VERTCOL) {
+			if (obdata_ptr.data)
+				uiItemPointerR(layout, ptr, "vertex_attribute_name", &obdata_ptr, "vertex_colors", "", ICON_NONE);
+		}
 	}
 }
 
@@ -1322,7 +1338,7 @@ static void node_composit_buts_renderlayers(uiLayout *layout, bContext *C, Point
 	
 	scn_ptr = RNA_pointer_get(ptr, "scene");
 	RNA_string_get(&scn_ptr, "name", scene_name);
-	
+
 	WM_operator_properties_create_ptr(&op_ptr, ot);
 	RNA_string_set(&op_ptr, "layer", layer_name);
 	RNA_string_set(&op_ptr, "scene", scene_name);
@@ -1937,6 +1953,7 @@ static void node_composit_buts_colorbalance(uiLayout *layout, bContext *UNUSED(C
 		uiTemplateColorPicker(col, ptr, "offset", 1, 1, 0, 1);
 		row = uiLayoutRow(col, false);
 		uiItemR(row, ptr, "offset", 0, NULL, ICON_NONE);
+		uiItemR(col, ptr, "offset_basis", 0, NULL, ICON_NONE);
 		
 		col = uiLayoutColumn(split, false);
 		uiTemplateColorPicker(col, ptr, "power", 1, 1, 0, 1);
@@ -2884,7 +2901,8 @@ static void node_texture_set_butfunc(bNodeType *ntype)
 static void node_property_update_default(Main *bmain, Scene *UNUSED(scene), PointerRNA *ptr)
 {
 	bNodeTree *ntree = ptr->id.data;
-	ED_node_tag_update_nodetree(bmain, ntree);
+	bNode *node = ptr->data;
+	ED_node_tag_update_nodetree(bmain, ntree, node);
 }
 
 static void node_socket_template_properties_update(bNodeType *ntype, bNodeSocketTemplate *stemp)

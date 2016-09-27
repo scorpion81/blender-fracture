@@ -58,6 +58,7 @@ set(SRC
 	intern/wm_draw.c
 	intern/wm_event_system.c
 	intern/wm_files.c
+	intern/wm_files_link.c
 	intern/wm_gesture.c
 	intern/wm_init_exit.c
 	intern/wm_jobs.c
@@ -143,6 +144,10 @@ endif()
 
 if(WITH_OPENSUBDIV)
 	add_definitions(-DWITH_OPENSUBDIV)
+endif()
+
+if(WITH_INPUT_NDOF)
+	add_definitions(-DWITH_INPUT_NDOF)
 endif()
 
 if(WIN32)

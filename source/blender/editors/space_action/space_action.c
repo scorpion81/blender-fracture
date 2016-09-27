@@ -33,6 +33,7 @@
 #include <stdio.h>
 
 #include "DNA_action_types.h"
+#include "DNA_group_types.h"
 #include "DNA_scene_types.h"
 
 #include "MEM_guardedalloc.h"
@@ -58,6 +59,32 @@
 #include "ED_markers.h"
 
 #include "action_intern.h"  /* own include */
+
+/* ******************** manage regions ********************* */
+
+ARegion *action_has_buttons_region(ScrArea *sa)
+{
+	ARegion *ar, *arnew;
+	
+	ar = BKE_area_find_region_type(sa, RGN_TYPE_UI);
+	if (ar) return ar;
+	
+	/* add subdiv level; after main */
+	ar = BKE_area_find_region_type(sa, RGN_TYPE_WINDOW);
+	
+	/* is error! */
+	if (ar == NULL) return NULL;
+	
+	arnew = MEM_callocN(sizeof(ARegion), "buttons for action");
+	
+	BLI_insertlinkafter(&sa->regionbase, ar, arnew);
+	arnew->regiontype = RGN_TYPE_UI;
+	arnew->alignment = RGN_ALIGN_RIGHT;
+	
+	arnew->flag = RGN_FLAG_HIDDEN;
+	
+	return arnew;
+}
 
 /* ******************** default callbacks for action space ***************** */
 
@@ -92,6 +119,14 @@ static SpaceLink *action_new(const bContext *C)
 	/* only need to set scroll settings, as this will use 'listview' v2d configuration */
 	ar->v2d.scroll = V2D_SCROLL_BOTTOM;
 	ar->v2d.flag = V2D_VIEWSYNC_AREA_VERTICAL;
+	
+	/* ui buttons */
+	ar = MEM_callocN(sizeof(ARegion), "buttons region for action");
+	
+	BLI_addtail(&saction->regionbase, ar);
+	ar->regiontype = RGN_TYPE_UI;
+	ar->alignment = RGN_ALIGN_RIGHT;
+	ar->flag = RGN_FLAG_HIDDEN;
 	
 	/* main region */
 	ar = MEM_callocN(sizeof(ARegion), "main region for action");
@@ -159,6 +194,8 @@ static void action_main_region_init(wmWindowManager *wm, ARegion *ar)
 	/* own keymap */
 	keymap = WM_keymap_find(wm->defaultconf, "Dopesheet", SPACE_ACTION, 0);
 	WM_event_add_keymap_handler_bb(&ar->handlers, keymap, &ar->v2d.mask, &ar->winrct);
+	keymap = WM_keymap_find(wm->defaultconf, "Dopesheet Generic", SPACE_ACTION, 0);
+	WM_event_add_keymap_handler(&ar->handlers, keymap);
 }
 
 static void action_main_region_draw(const bContext *C, ARegion *ar)
@@ -231,6 +268,9 @@ static void action_channel_region_init(wmWindowManager *wm, ARegion *ar)
 	/* own keymap */
 	keymap = WM_keymap_find(wm->defaultconf, "Animation Channels", 0, 0);
 	WM_event_add_keymap_handler_bb(&ar->handlers, keymap, &ar->v2d.mask, &ar->winrct);
+	
+	keymap = WM_keymap_find(wm->defaultconf, "Dopesheet Generic", SPACE_ACTION, 0);
+	WM_event_add_keymap_handler(&ar->handlers, keymap);
 }
 
 static void action_channel_region_draw(const bContext *C, ARegion *ar)
@@ -498,6 +538,54 @@ static void action_header_region_listener(bScreen *UNUSED(sc), ScrArea *UNUSED(s
 
 }
 
+/* add handlers, stuff you only do once or on area/region changes */
+static void action_buttons_area_init(wmWindowManager *wm, ARegion *ar)
+{
+	wmKeyMap *keymap;
+	
+	ED_region_panels_init(wm, ar);
+	
+	keymap = WM_keymap_find(wm->defaultconf, "Dopesheet Generic", SPACE_ACTION, 0);
+	WM_event_add_keymap_handler(&ar->handlers, keymap);
+}
+
+static void action_buttons_area_draw(const bContext *C, ARegion *ar)
+{
+	ED_region_panels(C, ar, NULL, -1, true);
+}
+
+static void action_region_listener(bScreen *UNUSED(sc), ScrArea *UNUSED(sa), ARegion *ar, wmNotifier *wmn)
+{
+	/* context changes */
+	switch (wmn->category) {
+		case NC_ANIMATION:
+			ED_region_tag_redraw(ar);
+			break;
+		case NC_SCENE:
+			switch (wmn->data) {
+				case ND_OB_ACTIVE:
+				case ND_FRAME:
+				case ND_MARKERS:
+					ED_region_tag_redraw(ar);
+					break;
+			}
+			break;
+		case NC_OBJECT:
+			switch (wmn->data) {
+				case ND_BONE_ACTIVE:
+				case ND_BONE_SELECT:
+				case ND_KEYS:
+					ED_region_tag_redraw(ar);
+					break;
+			}
+			break;
+		default:
+			if (wmn->data == ND_KEYS)
+				ED_region_tag_redraw(ar);
+			break;
+	}
+}
+
 static void action_refresh(const bContext *C, ScrArea *sa)
 {
 	SpaceAction *saction = (SpaceAction *)sa->spacedata.first;
@@ -527,6 +615,19 @@ static void action_refresh(const bContext *C, ScrArea *sa)
 	// XXX re-sizing y-extents of tot should go here?
 }
 
+static void action_id_remap(ScrArea *UNUSED(sa), SpaceLink *slink, ID *old_id, ID *new_id)
+{
+	SpaceAction *sact = (SpaceAction *)slink;
+
+	if (!ELEM(GS(old_id->name), ID_GR)) {
+		return;
+	}
+
+	if ((ID *)sact->ads.filter_grp == old_id) {
+		sact->ads.filter_grp = (Group *)new_id;
+	}
+}
+
 /* only called once, from space/spacetypes.c */
 void ED_spacetype_action(void)
 {
@@ -544,7 +645,8 @@ void ED_spacetype_action(void)
 	st->keymap = action_keymap;
 	st->listener = action_listener;
 	st->refresh = action_refresh;
-	
+	st->id_remap = action_id_remap;
+
 	/* regions: main window */
 	art = MEM_callocN(sizeof(ARegionType), "spacetype action region");
 	art->regionid = RGN_TYPE_WINDOW;
@@ -579,6 +681,18 @@ void ED_spacetype_action(void)
 	
 	BLI_addhead(&st->regiontypes, art);
 	
+	/* regions: UI buttons */
+	art = MEM_callocN(sizeof(ARegionType), "spacetype action region");
+	art->regionid = RGN_TYPE_UI;
+	art->prefsizex = 200;
+	art->keymapflag = ED_KEYMAP_UI;
+	art->listener = action_region_listener;
+	art->init = action_buttons_area_init;
+	art->draw = action_buttons_area_draw;
+	
+	BLI_addhead(&st->regiontypes, art);
+	
+	action_buttons_register(art);
 	
 	BKE_spacetype_register(st);
 }

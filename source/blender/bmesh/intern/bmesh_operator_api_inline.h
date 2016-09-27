@@ -39,32 +39,37 @@
 
 /* flags 15 and 16 (1 << 14 and 1 << 15) are reserved for bmesh api use */
 ATTR_WARN_UNUSED_RESULT ATTR_NONNULL(1, 2)
-BLI_INLINE short _bmo_elem_flag_test(BMesh *bm, BMFlagLayer *oflags, const short oflag)
+BLI_INLINE short _bmo_elem_flag_test(BMesh *bm, const BMFlagLayer *oflags, const short oflag)
 {
+	BLI_assert(bm->use_toolflags);
 	return oflags[bm->toolflag_index].f & oflag;
 }
 
 ATTR_WARN_UNUSED_RESULT ATTR_NONNULL(1, 2)
-BLI_INLINE bool _bmo_elem_flag_test_bool(BMesh *bm, BMFlagLayer *oflags, const short oflag)
+BLI_INLINE bool _bmo_elem_flag_test_bool(BMesh *bm, const BMFlagLayer *oflags, const short oflag)
 {
+	BLI_assert(bm->use_toolflags);
 	return (oflags[bm->toolflag_index].f & oflag) != 0;
 }
 
 ATTR_NONNULL(1, 2)
 BLI_INLINE void _bmo_elem_flag_enable(BMesh *bm, BMFlagLayer *oflags, const short oflag)
 {
+	BLI_assert(bm->use_toolflags);
 	oflags[bm->toolflag_index].f |= oflag;
 }
 
 ATTR_NONNULL(1, 2)
 BLI_INLINE void _bmo_elem_flag_disable(BMesh *bm, BMFlagLayer *oflags, const short oflag)
 {
+	BLI_assert(bm->use_toolflags);
 	oflags[bm->toolflag_index].f &= (short)~oflag;
 }
 
 ATTR_NONNULL(1, 2)
 BLI_INLINE void _bmo_elem_flag_set(BMesh *bm, BMFlagLayer *oflags, const short oflag, int val)
 {
+	BLI_assert(bm->use_toolflags);
 	if (val) oflags[bm->toolflag_index].f |= oflag;
 	else     oflags[bm->toolflag_index].f &= (short)~oflag;
 }
@@ -72,6 +77,7 @@ BLI_INLINE void _bmo_elem_flag_set(BMesh *bm, BMFlagLayer *oflags, const short o
 ATTR_NONNULL(1, 2)
 BLI_INLINE void _bmo_elem_flag_toggle(BMesh *bm, BMFlagLayer *oflags, const short oflag)
 {
+	BLI_assert(bm->use_toolflags);
 	oflags[bm->toolflag_index].f ^= oflag;
 }
 
@@ -82,7 +88,7 @@ BLI_INLINE void BMO_slot_map_int_insert(
 {
 	union { void *ptr; int val; } t = {NULL};
 	BLI_assert(slot->slot_subtype.map == BMO_OP_SLOT_SUBTYPE_MAP_INT);
-	BMO_slot_map_insert(op, slot, element, ((t.val = val), t.ptr));
+	BMO_slot_map_insert(op, slot, element, ((void)(t.val = val), t.ptr));
 }
 
 ATTR_NONNULL(1, 2)
@@ -92,7 +98,7 @@ BLI_INLINE void BMO_slot_map_bool_insert(
 {
 	union { void *ptr; bool val; } t = {NULL};
 	BLI_assert(slot->slot_subtype.map == BMO_OP_SLOT_SUBTYPE_MAP_BOOL);
-	BMO_slot_map_insert(op, slot, element, ((t.val = val), t.ptr));
+	BMO_slot_map_insert(op, slot, element, ((void)(t.val = val), t.ptr));
 }
 
 ATTR_NONNULL(1, 2)
@@ -102,7 +108,7 @@ BLI_INLINE void BMO_slot_map_float_insert(
 {
 	union { void *ptr; float val; } t = {NULL};
 	BLI_assert(slot->slot_subtype.map == BMO_OP_SLOT_SUBTYPE_MAP_FLT);
-	BMO_slot_map_insert(op, slot, element, ((t.val = val), t.ptr));
+	BMO_slot_map_insert(op, slot, element, ((void)(t.val = val), t.ptr));
 }
 
 

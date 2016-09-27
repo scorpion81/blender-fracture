@@ -35,7 +35,7 @@ class MultiDevice : public Device
 {
 public:
 	struct SubDevice {
-		SubDevice(Device *device_)
+		explicit SubDevice(Device *device_)
 		: device(device_) {}
 
 		Device *device;
@@ -51,7 +51,7 @@ public:
 		Device *device;
 
 		foreach(DeviceInfo& subinfo, info.multi_devices) {
-			device = Device::create(subinfo, stats, background);
+			device = Device::create(subinfo, sub_stats_, background);
 			devices.push_back(SubDevice(device));
 		}
 
@@ -107,6 +107,7 @@ public:
 		}
 
 		mem.device_pointer = unique_ptr++;
+		stats.mem_alloc(mem.device_size);
 	}
 
 	void mem_copy_to(device_memory& mem)
@@ -161,6 +162,7 @@ public:
 		}
 
 		mem.device_pointer = 0;
+		stats.mem_free(mem.device_size);
 	}
 
 	void const_copy_to(const char *name, void *host, size_t size)
@@ -175,7 +177,9 @@ public:
 	               interpolation,
 	               ExtensionType extension)
 	{
-		VLOG(1) << "Texture allocate: " << name << ", " << mem.memory_size() << " bytes.";
+		VLOG(1) << "Texture allocate: " << name << ", "
+		        << string_human_readable_number(mem.memory_size()) << " bytes. ("
+		        << string_human_readable_size(mem.memory_size()) << ")";
 
 		foreach(SubDevice& sub, devices) {
 			mem.device_pointer = 0;
@@ -184,6 +188,7 @@ public:
 		}
 
 		mem.device_pointer = unique_ptr++;
+		stats.mem_alloc(mem.device_size);
 	}
 
 	void tex_free(device_memory& mem)
@@ -197,6 +202,7 @@ public:
 		}
 
 		mem.device_pointer = 0;
+		stats.mem_free(mem.device_size);
 	}
 
 	void pixels_alloc(device_memory& mem)
@@ -334,6 +340,9 @@ public:
 		foreach(SubDevice& sub, devices)
 			sub.device->task_cancel();
 	}
+
+protected:
+	Stats sub_stats_;
 };
 
 Device *device_multi_create(DeviceInfo& info, Stats &stats, bool background)
@@ -352,7 +361,7 @@ static bool device_multi_add(vector<DeviceInfo>& devices, DeviceType type, bool 
 
 	info.advanced_shading = with_advanced_shading;
 	info.pack_images = false;
-	info.extended_images = true;
+	info.has_bindless_textures = true;
 
 	foreach(DeviceInfo& subinfo, devices) {
 		if(subinfo.type == type) {
@@ -376,7 +385,7 @@ static bool device_multi_add(vector<DeviceInfo>& devices, DeviceType type, bool 
 			if(subinfo.display_device)
 				info.display_device = true;
 			info.pack_images = info.pack_images || subinfo.pack_images;
-			info.extended_images = info.extended_images && subinfo.extended_images;
+			info.has_bindless_textures = info.has_bindless_textures && subinfo.has_bindless_textures;
 			num_added++;
 		}
 	}

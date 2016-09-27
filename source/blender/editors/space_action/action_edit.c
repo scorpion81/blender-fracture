@@ -239,6 +239,11 @@ static bool get_keyframe_extents(bAnimContext *ac, float *min, float *max, const
 			}
 		}
 
+		if (fabsf(*max - *min) < 0.001f) {
+			*min -= 0.0005f;
+			*max += 0.0005f;
+		}
+
 		/* free memory */
 		ANIM_animdata_freelist(&anim_data);
 	}
@@ -328,7 +333,7 @@ static bool actkeys_channels_get_selected_extents(bAnimContext *ac, float *min, 
 	ANIM_animdata_filter(ac, &anim_data, filter, ac->data, ac->datatype);
 	
 	/* loop through all channels, finding the first one that's selected */
-	y = (float)ACHANNEL_FIRST;
+	y = (float)ACHANNEL_FIRST(ac);
 	
 	for (ale = anim_data.first; ale; ale = ale->next) {
 		const bAnimChannelType *acf = ANIM_channel_get_typeinfo(ale);
@@ -338,8 +343,8 @@ static bool actkeys_channels_get_selected_extents(bAnimContext *ac, float *min, 
 		    ANIM_channel_setting_get(ac, ale, ACHANNEL_SETTING_SELECT))
 		{
 			/* update best estimate */
-			*min = (float)(y - ACHANNEL_HEIGHT_HALF);
-			*max = (float)(y + ACHANNEL_HEIGHT_HALF);
+			*min = (float)(y - ACHANNEL_HEIGHT_HALF(ac));
+			*max = (float)(y + ACHANNEL_HEIGHT_HALF(ac));
 			
 			/* is this high enough priority yet? */
 			found = acf->channel_role;
@@ -353,7 +358,7 @@ static bool actkeys_channels_get_selected_extents(bAnimContext *ac, float *min, 
 		}
 		
 		/* adjust y-position for next one */
-		y -= ACHANNEL_STEP;
+		y -= ACHANNEL_STEP(ac);
 	}
 	
 	/* free all temp data */
@@ -431,13 +436,7 @@ static int actkeys_viewsel_exec(bContext *C, wmOperator *UNUSED(op))
 	return actkeys_viewall(C, true);
 }
 
-static int actkeys_view_frame_exec(bContext *C, wmOperator *op)
-{
-	const int smooth_viewtx = WM_operator_smooth_viewtx_get(op);
-	ANIM_center_frame(C, smooth_viewtx);
-
-	return OPERATOR_FINISHED;
-}
+/* ......... */
 
 void ACTION_OT_view_all(wmOperatorType *ot)
 {
@@ -469,17 +468,27 @@ void ACTION_OT_view_selected(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
+/* ****************** View-All Operator ****************** */
+
+static int actkeys_view_frame_exec(bContext *C, wmOperator *op)
+{
+	const int smooth_viewtx = WM_operator_smooth_viewtx_get(op);
+	ANIM_center_frame(C, smooth_viewtx);
+	
+	return OPERATOR_FINISHED;
+}
+
 void ACTION_OT_view_frame(wmOperatorType *ot)
 {
 	/* identifiers */
 	ot->name = "View Frame";
 	ot->idname = "ACTION_OT_view_frame";
 	ot->description = "Reset viewable area to show range around current frame";
-
+	
 	/* api callbacks */
 	ot->exec = actkeys_view_frame_exec;
-	ot->poll = ED_operator_action_active; /* XXX: unchecked poll to get fsamples working too, but makes modifier damage trickier... */
-
+	ot->poll = ED_operator_action_active;
+	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
@@ -496,7 +505,7 @@ static short copy_action_keys(bAnimContext *ac)
 	int filter, ok = 0;
 	
 	/* clear buffer first */
-	free_anim_copybuf();
+	ANIM_fcurves_copybuf_free();
 	
 	/* filter data */
 	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE /*| ANIMFILTER_CURVESONLY*/ | ANIMFILTER_NODUPLIS);
@@ -667,6 +676,7 @@ static void insert_action_keys(bAnimContext *ac, short mode)
 	
 	ReportList *reports = ac->reports;
 	Scene *scene = ac->scene;
+	ToolSettings *ts = scene->toolsettings;
 	short flag = 0;
 	
 	/* filter data */
@@ -697,10 +707,13 @@ static void insert_action_keys(bAnimContext *ac, short mode)
 		 *                       so it's easier for now to just read the F-Curve directly.
 		 *                       (TODO: add the full-blown PointerRNA relative parsing case here...)
 		 */
-		if (ale->id && !ale->owner)
-			insert_keyframe(reports, ale->id, NULL, ((fcu->grp) ? (fcu->grp->name) : (NULL)), fcu->rna_path, fcu->array_index, cfra, flag);
-		else
-			insert_vert_fcurve(fcu, cfra, fcu->curval, 0);
+		if (ale->id && !ale->owner) {
+			insert_keyframe(reports, ale->id, NULL, ((fcu->grp) ? (fcu->grp->name) : (NULL)), fcu->rna_path, fcu->array_index, cfra, ts->keyframe_type, flag);
+		}
+		else {
+			const float curval = evaluate_fcurve(fcu, cfra);
+			insert_vert_fcurve(fcu, cfra, curval, ts->keyframe_type, 0);
+		}
 		
 		ale->update |= ANIM_UPDATE_DEFAULT;
 	}
@@ -737,7 +750,7 @@ static void insert_gpencil_keys(bAnimContext *ac, short mode)
 	/* insert gp frames */
 	for (ale = anim_data.first; ale; ale = ale->next) {
 		bGPDlayer *gpl = (bGPDlayer *)ale->data;
-		gpencil_layer_getframe(gpl, CFRA, add_frame_mode);
+		BKE_gpencil_layer_getframe(gpl, CFRA, add_frame_mode);
 	}
 	
 	ANIM_animdata_update(ac, &anim_data);

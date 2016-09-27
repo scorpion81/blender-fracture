@@ -234,7 +234,7 @@ static int open_exec(bContext *C, wmOperator *op)
 
 	if (pprop->prop) {
 		/* when creating new ID blocks, use is already 1, but RNA
-		 * pointer se also increases user, so this compensates it */
+		 * pointer use also increases user, so this compensates it */
 		id_us_min(&clip->id);
 
 		RNA_id_pointer_create(&clip->id, &idptr);
@@ -1405,6 +1405,7 @@ void CLIP_OT_mode_set(wmOperatorType *ot)
 	RNA_def_enum(ot->srna, "mode", rna_enum_clip_editor_mode_items, SC_MODE_TRACKING, "Mode", "");
 }
 
+#ifdef WITH_INPUT_NDOF
 /********************** NDOF operator *********************/
 
 /* Combined pan/zoom from a 3D mouse device.
@@ -1451,6 +1452,7 @@ void CLIP_OT_view_ndof(wmOperatorType *ot)
 	ot->invoke = clip_view_ndof_invoke;
 	ot->poll = ED_space_clip_view_clip_poll;
 }
+#endif /* WITH_INPUT_NDOF */
 
 /********************** Prefetch operator *********************/
 

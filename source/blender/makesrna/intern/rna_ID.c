@@ -52,6 +52,7 @@ EnumPropertyItem rna_enum_id_type_items[] = {
 	{ID_AR, "ARMATURE", ICON_ARMATURE_DATA, "Armature", ""},
 	{ID_BR, "BRUSH", ICON_BRUSH_DATA, "Brush", ""},
 	{ID_CA, "CAMERA", ICON_CAMERA_DATA, "Camera", ""},
+	{ID_CF, "CACHEFILE", ICON_FILE, "Cache File", ""},
 	{ID_CU, "CURVE", ICON_CURVE_DATA, "Curve", ""},
 	{ID_VF, "FONT", ICON_FONT_DATA, "Font", ""},
 	{ID_GD, "GREASEPENCIL", ICON_GREASEPENCIL, "Grease Pencil", ""},
@@ -64,10 +65,10 @@ EnumPropertyItem rna_enum_id_type_items[] = {
 	{ID_LT, "LATTICE", ICON_LATTICE_DATA, "Lattice", ""},
 	{ID_MSK, "MASK", ICON_MOD_MASK, "Mask", ""},
 	{ID_MA, "MATERIAL", ICON_MATERIAL_DATA, "Material", ""},
-	{ID_MB, "META", ICON_META_DATA, "MetaBall", ""},
+	{ID_MB, "META", ICON_META_DATA, "Metaball", ""},
 	{ID_ME, "MESH", ICON_MESH_DATA, "Mesh", ""},
-	{ID_MC, "MOVIECLIP", ICON_CLIP, "MovieClip", ""},
-	{ID_NT, "NODETREE", ICON_NODETREE, "NodeTree", ""},
+	{ID_MC, "MOVIECLIP", ICON_CLIP, "Movie Clip", ""},
+	{ID_NT, "NODETREE", ICON_NODETREE, "Node Tree", ""},
 	{ID_OB, "OBJECT", ICON_OBJECT_DATA, "Object", ""},
 	{ID_PC, "PAINTCURVE", ICON_CURVE_BEZCURVE, "Paint Curve", ""},
 	{ID_PAL, "PALETTE", ICON_COLOR, "Palette", ""},
@@ -87,10 +88,13 @@ EnumPropertyItem rna_enum_id_type_items[] = {
 
 #include "DNA_anim_types.h"
 
+#include "BLI_listbase.h"
+
 #include "BKE_font.h"
 #include "BKE_idprop.h"
 #include "BKE_library.h"
 #include "BKE_library_query.h"
+#include "BKE_library_remap.h"
 #include "BKE_animsys.h"
 #include "BKE_material.h"
 #include "BKE_depsgraph.h"
@@ -136,6 +140,7 @@ short RNA_type_to_ID_code(StructRNA *type)
 	if (RNA_struct_is_a(type, &RNA_Action)) return ID_AC;
 	if (RNA_struct_is_a(type, &RNA_Armature)) return ID_AR;
 	if (RNA_struct_is_a(type, &RNA_Brush)) return ID_BR;
+	if (RNA_struct_is_a(type, &RNA_CacheFile)) return ID_CF;
 	if (RNA_struct_is_a(type, &RNA_Camera)) return ID_CA;
 	if (RNA_struct_is_a(type, &RNA_Curve)) return ID_CU;
 	if (RNA_struct_is_a(type, &RNA_GreasePencil)) return ID_GD;
@@ -176,6 +181,7 @@ StructRNA *ID_code_to_RNA_type(short idcode)
 		case ID_AR: return &RNA_Armature;
 		case ID_BR: return &RNA_Brush;
 		case ID_CA: return &RNA_Camera;
+		case ID_CF: return &RNA_CacheFile;
 		case ID_CU: return &RNA_Curve;
 		case ID_GD: return &RNA_GreasePencil;
 		case ID_GR: return &RNA_Group;
@@ -274,11 +280,11 @@ StructRNA *rna_PropertyGroup_refine(PointerRNA *ptr)
 	return ptr->type;
 }
 
-static ID *rna_ID_copy(ID *id)
+static ID *rna_ID_copy(ID *id, Main *bmain)
 {
 	ID *newid;
 
-	if (id_copy(id, &newid, false)) {
+	if (id_copy(bmain, id, &newid, false)) {
 		if (newid) id_us_min(newid);
 		return newid;
 	}
@@ -333,6 +339,14 @@ static void rna_ID_user_clear(ID *id)
 	id->us = 0; /* don't save */
 }
 
+static void rna_ID_user_remap(ID *id, Main *bmain, ID *new_id)
+{
+	if (GS(id->name) == GS(new_id->name)) {
+		/* For now, do not allow remapping data in linked data from here... */
+		BKE_libblock_remap(bmain, id, new_id, ID_REMAP_SKIP_INDIRECT_USAGE | ID_REMAP_SKIP_NEVER_NULL_USAGE);
+	}
+}
+
 static AnimData * rna_ID_animation_data_create(ID *id, Main *bmain)
 {
 	AnimData *adt = BKE_animdata_add_id(id);
@@ -342,7 +356,7 @@ static AnimData * rna_ID_animation_data_create(ID *id, Main *bmain)
 
 static void rna_ID_animation_data_free(ID *id, Main *bmain)
 {
-	BKE_animdata_free(id);
+	BKE_animdata_free(id, true);
 	DAG_relations_tag_update(bmain);
 }
 
@@ -372,15 +386,15 @@ int rna_IDMaterials_assign_int(PointerRNA *ptr, int key, const PointerRNA *assig
 	}
 }
 
-static void rna_IDMaterials_append_id(ID *id, Material *ma)
+static void rna_IDMaterials_append_id(ID *id, Main *bmain, Material *ma)
 {
-	BKE_material_append_id(id, ma);
+	BKE_material_append_id(bmain, id, ma);
 
 	WM_main_add_notifier(NC_OBJECT | ND_DRAW, id);
 	WM_main_add_notifier(NC_OBJECT | ND_OB_SHADING, id);
 }
 
-static Material *rna_IDMaterials_pop_id(ID *id, ReportList *reports, int index_i, int remove_material_slot)
+static Material *rna_IDMaterials_pop_id(ID *id, Main *bmain, ReportList *reports, int index_i, int remove_material_slot)
 {
 	Material *ma;
 	short *totcol = give_totcolp_id(id);
@@ -394,7 +408,7 @@ static Material *rna_IDMaterials_pop_id(ID *id, ReportList *reports, int index_i
 		return NULL;
 	}
 
-	ma = BKE_material_pop_id(id, index_i, remove_material_slot);
+	ma = BKE_material_pop_id(bmain, id, index_i, remove_material_slot);
 
 	if (*totcol == totcol_orig) {
 		BKE_report(reports, RPT_ERROR, "No material to removed");
@@ -410,7 +424,7 @@ static Material *rna_IDMaterials_pop_id(ID *id, ReportList *reports, int index_i
 
 static void rna_IDMaterials_clear_id(ID *id, int remove_material_slot)
 {
-	BKE_material_clear_id(id, remove_material_slot);
+	BKE_material_clear_id(G.main, id, remove_material_slot);
 
 	DAG_id_tag_update(id, OB_RECALC_DATA);
 	WM_main_add_notifier(NC_OBJECT | ND_DRAW, id);
@@ -687,7 +701,7 @@ static void rna_ImagePreview_icon_pixels_float_set(PointerRNA *ptr, const float 
 static int rna_ImagePreview_icon_id_get(PointerRNA *ptr)
 {
 	/* Using a callback here allows us to only generate icon matching that preview when icon_id is requested. */
-	return BKE_icon_preview_ensure((PreviewImage *)(ptr->data));
+	return BKE_icon_preview_ensure(ptr->id.data, (PreviewImage *)(ptr->data));
 }
 static void rna_ImagePreview_icon_reload(PreviewImage *prv)
 {
@@ -806,12 +820,13 @@ static void rna_def_ID_materials(BlenderRNA *brna)
 	RNA_def_struct_ui_text(srna, "ID Materials", "Collection of materials");
 
 	func = RNA_def_function(srna, "append", "rna_IDMaterials_append_id");
+	RNA_def_function_flag(func, FUNC_USE_MAIN);
 	RNA_def_function_ui_description(func, "Add a new material to the data block");
 	parm = RNA_def_pointer(func, "material", "Material", "", "Material to add");
 	RNA_def_property_flag(parm, PROP_REQUIRED);
 
 	func = RNA_def_function(srna, "pop", "rna_IDMaterials_pop_id");
-	RNA_def_function_flag(func, FUNC_USE_REPORTS);
+	RNA_def_function_flag(func, FUNC_USE_REPORTS | FUNC_USE_MAIN);
 	RNA_def_function_ui_description(func, "Remove a material from the data block");
 	parm = RNA_def_int(func, "index", -1, -MAXMAT, MAXMAT, "", "Index of material to remove", 0, MAXMAT);
 	RNA_def_boolean(func, "update_data", 0, "", "Update data by re-adjusting the material slots assigned");
@@ -970,6 +985,7 @@ static void rna_def_ID(BlenderRNA *brna)
 	/* functions */
 	func = RNA_def_function(srna, "copy", "rna_ID_copy");
 	RNA_def_function_ui_description(func, "Create a copy of this data-block (not supported for all data-blocks)");
+	RNA_def_function_flag(func, FUNC_USE_MAIN);
 	parm = RNA_def_pointer(func, "id", "ID", "", "New copy of the ID");
 	RNA_def_function_return(func, parm);
 
@@ -977,10 +993,16 @@ static void rna_def_ID(BlenderRNA *brna)
 	RNA_def_function_ui_description(func, "Clear the user count of a data-block so its not saved, "
 	                                "on reload the data will be removed");
 
+	func = RNA_def_function(srna, "user_remap", "rna_ID_user_remap");
+	RNA_def_function_ui_description(func, "Replace all usage in the .blend file of this ID by new given one");
+	RNA_def_function_flag(func, FUNC_USE_MAIN);
+	parm = RNA_def_pointer(func, "new_id", "ID", "", "New ID to use");
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
+
 	func = RNA_def_function(srna, "user_of_id", "BKE_library_ID_use_ID");
 	RNA_def_function_ui_description(func, "Count the number of times that ID uses/references given one");
 	parm = RNA_def_pointer(func, "id", "ID", "", "ID to count usages");
-	RNA_def_property_flag(parm, PROP_NEVER_NULL);
+	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL);
 	parm = RNA_def_int(func, "count", 0, 0, INT_MAX,
 	                   "", "Number of usages/references of given id by current datablock", 0, INT_MAX);
 	RNA_def_function_return(func, parm);
@@ -1006,6 +1028,7 @@ static void rna_def_ID(BlenderRNA *brna)
 static void rna_def_library(BlenderRNA *brna)
 {
 	StructRNA *srna;
+	FunctionRNA *func;
 	PropertyRNA *prop;
 
 	srna = RNA_def_struct(brna, "Library", "ID");
@@ -1024,6 +1047,10 @@ static void rna_def_library(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "packed_file", PROP_POINTER, PROP_NONE);
 	RNA_def_property_pointer_sdna(prop, NULL, "packedfile");
 	RNA_def_property_ui_text(prop, "Packed File", "");
+
+	func = RNA_def_function(srna, "reload", "WM_lib_reload");
+	RNA_def_function_flag(func, FUNC_USE_REPORTS | FUNC_USE_CONTEXT);
+	RNA_def_function_ui_description(func, "Reload this library and all its linked datablocks");
 }
 void RNA_def_ID(BlenderRNA *brna)
 {

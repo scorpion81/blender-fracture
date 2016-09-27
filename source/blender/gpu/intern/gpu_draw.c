@@ -39,7 +39,6 @@
 #include <string.h>
 
 #include "GPU_glew.h"
-#include "GPU_debug.h"
 
 #include "BLI_blenlib.h"
 #include "BLI_linklist.h"
@@ -70,10 +69,11 @@
 #include "BKE_main.h"
 #include "BKE_material.h"
 #include "BKE_node.h"
-#include "BKE_object.h"
 #include "BKE_scene.h"
-#include "BKE_subsurf.h"
 #include "BKE_DerivedMesh.h"
+#ifdef WITH_GAMEENGINE
+#  include "BKE_object.h"
+#endif
 
 #include "GPU_basic_shader.h"
 #include "GPU_buffers.h"
@@ -85,9 +85,12 @@
 
 #include "PIL_time.h"
 
-#include "smoke_API.h"
+#ifdef WITH_SMOKE
+#  include "smoke_API.h"
+#endif
 
 #ifdef WITH_OPENSUBDIV
+#  include "BKE_subsurf.h"
 #  include "BKE_editmesh.h"
 
 #  include "gpu_codegen.h"
@@ -509,7 +512,61 @@ static void gpu_verify_reflection(Image *ima)
 	}
 }
 
-int GPU_verify_image(Image *ima, ImageUser *iuser, int textarget, int tftile, bool compare, bool mipmap, bool is_data)
+typedef struct VerifyThreadData {
+	ImBuf *ibuf;
+	float *srgb_frect;
+} VerifyThreadData;
+
+static void gpu_verify_high_bit_srgb_buffer_slice(float *srgb_frect,
+                                                  ImBuf *ibuf,
+                                                  const int start_line,
+                                                  const int height)
+{
+	size_t offset = ibuf->channels * start_line * ibuf->x;
+	float *current_srgb_frect = srgb_frect + offset;
+	float *current_rect_float = ibuf->rect_float + offset;
+	IMB_buffer_float_from_float(current_srgb_frect,
+	                            current_rect_float,
+	                            ibuf->channels,
+	                            IB_PROFILE_SRGB,
+	                            IB_PROFILE_LINEAR_RGB, true,
+	                            ibuf->x, height,
+	                            ibuf->x, ibuf->x);
+	IMB_buffer_float_unpremultiply(current_srgb_frect, ibuf->x, height);
+	/* Clamp buffer colors to 1.0 to avoid artifacts due to glu for hdr images. */
+	IMB_buffer_float_clamp(current_srgb_frect, ibuf->x, height);
+}
+
+static void verify_thread_do(void *data_v,
+                             int start_scanline,
+                             int num_scanlines)
+{
+	VerifyThreadData *data = (VerifyThreadData *)data_v;
+	gpu_verify_high_bit_srgb_buffer_slice(data->srgb_frect,
+	                                      data->ibuf,
+	                                      start_scanline,
+	                                      num_scanlines);
+}
+
+static void gpu_verify_high_bit_srgb_buffer(float *srgb_frect,
+                                            ImBuf *ibuf)
+{
+	if (ibuf->y < 64) {
+		gpu_verify_high_bit_srgb_buffer_slice(srgb_frect,
+		                                      ibuf,
+		                                      0, ibuf->y);
+	}
+	else {
+		VerifyThreadData data;
+		data.ibuf = ibuf;
+		data.srgb_frect = srgb_frect;
+		IMB_processor_apply_threaded_scanlines(ibuf->y, verify_thread_do, &data);
+	}
+}
+
+int GPU_verify_image(
+        Image *ima, ImageUser *iuser,
+        int textarget, int tftile, bool compare, bool mipmap, bool is_data)
 {
 	unsigned int *bind = NULL;
 	int tpx = 0, tpy = 0;
@@ -575,17 +632,18 @@ int GPU_verify_image(Image *ima, ImageUser *iuser, int textarget, int tftile, bo
 			 * a high precision format only if it is available */
 			use_high_bit_depth = true;
 		}
+		else if (ibuf->rect == NULL) {
+			IMB_rect_from_float(ibuf);
+		}
 		/* we may skip this in high precision, but if not, we need to have a valid buffer here */
 		else if (ibuf->userflags & IB_RECT_INVALID) {
 			IMB_rect_from_float(ibuf);
 		}
 
 		/* TODO unneeded when float images are correctly treated as linear always */
-		if (!is_data)
+		if (!is_data) {
 			do_color_management = true;
-
-		if (ibuf->rect == NULL)
-			IMB_rect_from_float(ibuf);
+		}
 	}
 
 	/* currently, tpage refresh is used by ima sequences */
@@ -622,12 +680,7 @@ int GPU_verify_image(Image *ima, ImageUser *iuser, int textarget, int tftile, bo
 			if (use_high_bit_depth) {
 				if (do_color_management) {
 					srgb_frect = MEM_mallocN(ibuf->x * ibuf->y * sizeof(float) * 4, "floar_buf_col_cor");
-					IMB_buffer_float_from_float(srgb_frect, ibuf->rect_float,
-						ibuf->channels, IB_PROFILE_SRGB, IB_PROFILE_LINEAR_RGB, true,
-						ibuf->x, ibuf->y, ibuf->x, ibuf->x);
-					IMB_buffer_float_unpremultiply(srgb_frect, ibuf->x, ibuf->y);
-					/* clamp buffer colors to 1.0 to avoid artifacts due to glu for hdr images */
-					IMB_buffer_float_clamp(srgb_frect, ibuf->x, ibuf->y);
+					gpu_verify_high_bit_srgb_buffer(srgb_frect, ibuf);
 					frect = srgb_frect + texwinsy * ibuf->x + texwinsx;
 				}
 				else {
@@ -650,13 +703,7 @@ int GPU_verify_image(Image *ima, ImageUser *iuser, int textarget, int tftile, bo
 			if (use_high_bit_depth) {
 				if (do_color_management) {
 					frect = srgb_frect = MEM_mallocN(ibuf->x * ibuf->y * sizeof(*srgb_frect) * 4, "floar_buf_col_cor");
-					IMB_buffer_float_from_float(
-					        srgb_frect, ibuf->rect_float,
-					        ibuf->channels, IB_PROFILE_SRGB, IB_PROFILE_LINEAR_RGB, true,
-					        ibuf->x, ibuf->y, ibuf->x, ibuf->x);
-					IMB_buffer_float_unpremultiply(srgb_frect, ibuf->x, ibuf->y);
-					/* clamp buffer colors to 1.0 to avoid artifacts due to glu for hdr images */
-					IMB_buffer_float_clamp(srgb_frect, ibuf->x, ibuf->y);
+					gpu_verify_high_bit_srgb_buffer(srgb_frect, ibuf);
 				}
 				else
 					frect = ibuf->rect_float;
@@ -756,7 +803,7 @@ static void **gpu_gen_cube_map(unsigned int *rect, float *frect, int rectw, int 
 	 * |      |      |      |
 	 * | NegZ | PosZ | PosY |
 	 * |______|______|______|
-	*/
+	 */
 	if (use_high_bit_depth) {
 		float (*frectb)[4] = (float(*)[4])frect;
 		float (**fsides)[4] = (float(**)[4])sides;
@@ -801,8 +848,9 @@ static void gpu_del_cube_map(void **cube_map)
 }
 
 /* Image *ima can be NULL */
-void GPU_create_gl_tex(unsigned int *bind, unsigned int *rect, float *frect, int rectw, int recth,
-	int textarget, bool mipmap, bool use_high_bit_depth, Image *ima)
+void GPU_create_gl_tex(
+        unsigned int *bind, unsigned int *rect, float *frect, int rectw, int recth,
+        int textarget, bool mipmap, bool use_high_bit_depth, Image *ima)
 {
 	ImBuf *ibuf = NULL;
 
@@ -1946,8 +1994,9 @@ int GPU_object_material_bind(int nr, void *attribs)
 		}
 		else {
 			/* or do fixed function opengl material */
-			GPU_basic_shader_colors(GMS.matbuf[nr].diff,
-				GMS.matbuf[nr].spec, GMS.matbuf[nr].hard, GMS.matbuf[nr].alpha);
+			GPU_basic_shader_colors(
+			        GMS.matbuf[nr].diff,
+			        GMS.matbuf[nr].spec, GMS.matbuf[nr].hard, GMS.matbuf[nr].alpha);
 
 			if (GMS.two_sided_lighting)
 				GPU_basic_shader_bind(GPU_SHADER_LIGHTING | GPU_SHADER_TWO_SIDED);
@@ -2241,8 +2290,6 @@ void GPU_state_init(void)
 	/* scaling matrices */
 	glEnable(GL_NORMALIZE);
 
-	glShadeModel(GL_FLAT);
-
 	glDisable(GL_ALPHA_TEST);
 	glDisable(GL_BLEND);
 	glDisable(GL_DEPTH_TEST);
@@ -2314,3 +2361,152 @@ void GPU_draw_update_fvar_offset(DerivedMesh *dm)
 	}
 }
 #endif
+
+
+/** \name Framebuffer color depth, for selection codes
+ * \{ */
+
+#ifdef __APPLE__
+
+/* apple seems to round colors to below and up on some configs */
+
+static unsigned int index_to_framebuffer(int index)
+{
+	unsigned int i = index;
+
+	switch (GPU_color_depth()) {
+		case 12:
+			i = ((i & 0xF00) << 12) + ((i & 0xF0) << 8) + ((i & 0xF) << 4);
+			/* sometimes dithering subtracts! */
+			i |= 0x070707;
+			break;
+		case 15:
+		case 16:
+			i = ((i & 0x7C00) << 9) + ((i & 0x3E0) << 6) + ((i & 0x1F) << 3);
+			i |= 0x030303;
+			break;
+		case 24:
+			break;
+		default: /* 18 bits... */
+			i = ((i & 0x3F000) << 6) + ((i & 0xFC0) << 4) + ((i & 0x3F) << 2);
+			i |= 0x010101;
+			break;
+	}
+
+	return i;
+}
+
+#else
+
+/* this is the old method as being in use for ages.... seems to work? colors are rounded to lower values */
+
+static unsigned int index_to_framebuffer(int index)
+{
+	unsigned int i = index;
+
+	switch (GPU_color_depth()) {
+		case 8:
+			i = ((i & 48) << 18) + ((i & 12) << 12) + ((i & 3) << 6);
+			i |= 0x3F3F3F;
+			break;
+		case 12:
+			i = ((i & 0xF00) << 12) + ((i & 0xF0) << 8) + ((i & 0xF) << 4);
+			/* sometimes dithering subtracts! */
+			i |= 0x0F0F0F;
+			break;
+		case 15:
+		case 16:
+			i = ((i & 0x7C00) << 9) + ((i & 0x3E0) << 6) + ((i & 0x1F) << 3);
+			i |= 0x070707;
+			break;
+		case 24:
+			break;
+		default:    /* 18 bits... */
+			i = ((i & 0x3F000) << 6) + ((i & 0xFC0) << 4) + ((i & 0x3F) << 2);
+			i |= 0x030303;
+			break;
+	}
+
+	return i;
+}
+
+#endif
+
+
+void GPU_select_index_set(int index)
+{
+	const int col = index_to_framebuffer(index);
+	glColor3ub(( (col)        & 0xFF),
+	           (((col) >>  8) & 0xFF),
+	           (((col) >> 16) & 0xFF));
+}
+
+void GPU_select_index_get(int index, int *r_col)
+{
+	const int col = index_to_framebuffer(index);
+	char *c_col = (char *)r_col;
+	c_col[0] = (col & 0xFF); /* red */
+	c_col[1] = ((col >>  8) & 0xFF); /* green */
+	c_col[2] = ((col >> 16) & 0xFF); /* blue */
+	c_col[3] = 0xFF; /* alpha */
+}
+
+
+#define INDEX_FROM_BUF_8(col)     ((((col) & 0xC00000) >> 18) + (((col) & 0xC000) >> 12) + (((col) & 0xC0) >> 6))
+#define INDEX_FROM_BUF_12(col)    ((((col) & 0xF00000) >> 12) + (((col) & 0xF000) >> 8)  + (((col) & 0xF0) >> 4))
+#define INDEX_FROM_BUF_15_16(col) ((((col) & 0xF80000) >> 9)  + (((col) & 0xF800) >> 6)  + (((col) & 0xF8) >> 3))
+#define INDEX_FROM_BUF_18(col)    ((((col) & 0xFC0000) >> 6)  + (((col) & 0xFC00) >> 4)  + (((col) & 0xFC) >> 2))
+#define INDEX_FROM_BUF_24(col)      ((col) & 0xFFFFFF)
+
+int GPU_select_to_index(unsigned int col)
+{
+	if (col == 0) {
+		return 0;
+	}
+
+	switch (GPU_color_depth()) {
+		case  8: return INDEX_FROM_BUF_8(col);
+		case 12: return INDEX_FROM_BUF_12(col);
+		case 15:
+		case 16: return INDEX_FROM_BUF_15_16(col);
+		case 24: return INDEX_FROM_BUF_24(col);
+		default: return INDEX_FROM_BUF_18(col);
+	}
+}
+
+void GPU_select_to_index_array(unsigned int *col, const unsigned int size)
+{
+#define INDEX_BUF_ARRAY(INDEX_FROM_BUF_BITS) \
+	for (i = size; i--; col++) { \
+		if ((c = *col)) { \
+			*col = INDEX_FROM_BUF_BITS(c); \
+		} \
+	} ((void)0)
+
+	if (size > 0) {
+		unsigned int i, c;
+
+		switch (GPU_color_depth()) {
+			case  8:
+				INDEX_BUF_ARRAY(INDEX_FROM_BUF_8);
+				break;
+			case 12:
+				INDEX_BUF_ARRAY(INDEX_FROM_BUF_12);
+				break;
+			case 15:
+			case 16:
+				INDEX_BUF_ARRAY(INDEX_FROM_BUF_15_16);
+				break;
+			case 24:
+				INDEX_BUF_ARRAY(INDEX_FROM_BUF_24);
+				break;
+			default:
+				INDEX_BUF_ARRAY(INDEX_FROM_BUF_18);
+				break;
+		}
+	}
+
+#undef INDEX_BUF_ARRAY
+}
+
+/** \} */

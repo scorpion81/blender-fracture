@@ -26,6 +26,8 @@ CCL_NAMESPACE_BEGIN
 /* SVM stack offsets with this value indicate that it's not on the stack */
 #define SVM_STACK_INVALID 255 
 
+#define SVM_BUMP_EVAL_STATE_SIZE 9
+
 /* Nodes */
 
 /* Known frequencies of used nodes, used for selective nodes compilation
@@ -45,13 +47,14 @@ CCL_NAMESPACE_BEGIN
 #define NODE_FEATURE_VOLUME     (1 << 0)
 #define NODE_FEATURE_HAIR       (1 << 1)
 #define NODE_FEATURE_BUMP       (1 << 2)
+#define NODE_FEATURE_BUMP_STATE (1 << 3)
 /* TODO(sergey): Consider using something like ((uint)(-1)).
  * Need to check carefully operand types around usage of this
  * define first.
  */
-#define NODE_FEATURE_ALL        (NODE_FEATURE_VOLUME|NODE_FEATURE_HAIR|NODE_FEATURE_BUMP)
+#define NODE_FEATURE_ALL        (NODE_FEATURE_VOLUME|NODE_FEATURE_HAIR|NODE_FEATURE_BUMP|NODE_FEATURE_BUMP_STATE)
 
-typedef enum NodeType {
+typedef enum ShaderNodeType {
 	NODE_END = 0,
 	NODE_CLOSURE_BSDF,
 	NODE_CLOSURE_EMISSION,
@@ -127,7 +130,9 @@ typedef enum NodeType {
 	NODE_HAIR_INFO,
 	NODE_UVMAP,
 	NODE_TEX_VOXEL,
-} NodeType;
+	NODE_ENTER_BUMP_EVAL,
+	NODE_LEAVE_BUMP_EVAL,
+} ShaderNodeType;
 
 typedef enum NodeAttributeType {
 	NODE_ATTR_FLOAT = 0,
@@ -343,12 +348,22 @@ typedef enum NodeNormalMapSpace {
 	NODE_NORMAL_MAP_BLENDER_WORLD,
 } NodeNormalMapSpace;
 
+typedef enum NodeImageColorSpace {
+	NODE_COLOR_SPACE_NONE  = 0,
+	NODE_COLOR_SPACE_COLOR = 1,
+} NodeImageColorSpace;
+
 typedef enum NodeImageProjection {
 	NODE_IMAGE_PROJ_FLAT   = 0,
 	NODE_IMAGE_PROJ_BOX    = 1,
 	NODE_IMAGE_PROJ_SPHERE = 2,
 	NODE_IMAGE_PROJ_TUBE   = 3,
 } NodeImageProjection;
+
+typedef enum NodeEnvironmentProjection {
+	NODE_ENVIRONMENT_EQUIRECTANGULAR = 0,
+	NODE_ENVIRONMENT_MIRROR_BALL = 1,
+} NodeEnvironmentProjection;
 
 typedef enum NodeBumpOffset {
 	NODE_BUMP_OFFSET_CENTER,
@@ -364,12 +379,16 @@ typedef enum NodeTexVoxelSpace {
 typedef enum ShaderType {
 	SHADER_TYPE_SURFACE,
 	SHADER_TYPE_VOLUME,
-	SHADER_TYPE_DISPLACEMENT
+	SHADER_TYPE_DISPLACEMENT,
+	SHADER_TYPE_BUMP,
 } ShaderType;
 
 /* Closure */
 
 typedef enum ClosureType {
+	/* Special type, flags generic node as a non-BSDF. */
+	CLOSURE_NONE_ID,
+
 	CLOSURE_BSDF_ID,
 
 	/* Diffuse */
@@ -383,8 +402,10 @@ typedef enum ClosureType {
 	CLOSURE_BSDF_REFLECTION_ID,
 	CLOSURE_BSDF_MICROFACET_GGX_ID,
 	CLOSURE_BSDF_MICROFACET_BECKMANN_ID,
+	CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID,
 	CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID,
 	CLOSURE_BSDF_MICROFACET_GGX_ANISO_ID,
+	CLOSURE_BSDF_MICROFACET_MULTI_GGX_ANISO_ID,
 	CLOSURE_BSDF_MICROFACET_BECKMANN_ANISO_ID,
 	CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ANISO_ID,
 	CLOSURE_BSDF_ASHIKHMIN_VELVET_ID,
@@ -400,6 +421,7 @@ typedef enum ClosureType {
 	CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID,
 	CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID,
 	CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID,
+	CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID,
 	CLOSURE_BSDF_SHARP_GLASS_ID,
 	CLOSURE_BSDF_HAIR_TRANSMISSION_ID,
 
@@ -433,6 +455,9 @@ typedef enum ClosureType {
 #define CLOSURE_IS_BSDF_TRANSMISSION(type) (type >= CLOSURE_BSDF_TRANSMISSION_ID && type <= CLOSURE_BSDF_HAIR_TRANSMISSION_ID)
 #define CLOSURE_IS_BSDF_BSSRDF(type) (type == CLOSURE_BSDF_BSSRDF_ID)
 #define CLOSURE_IS_BSDF_ANISOTROPIC(type) (type >= CLOSURE_BSDF_MICROFACET_GGX_ANISO_ID && type <= CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ANISO_ID)
+#define CLOSURE_IS_BSDF_MULTISCATTER(type) (type == CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID ||\
+                                            type == CLOSURE_BSDF_MICROFACET_MULTI_GGX_ANISO_ID || \
+											type == CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID)
 #define CLOSURE_IS_BSDF_OR_BSSRDF(type) (type <= CLOSURE_BSSRDF_BURLEY_ID)
 #define CLOSURE_IS_BSSRDF(type) (type >= CLOSURE_BSSRDF_CUBIC_ID && type <= CLOSURE_BSSRDF_BURLEY_ID)
 #define CLOSURE_IS_VOLUME(type) (type >= CLOSURE_VOLUME_ID && type <= CLOSURE_VOLUME_HENYEY_GREENSTEIN_ID)

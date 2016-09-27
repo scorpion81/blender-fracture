@@ -49,6 +49,7 @@
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 #include "BLI_linklist.h"
+#include "BLI_task.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_editmesh.h"
@@ -79,6 +80,7 @@ static DerivedMesh *navmesh_dm_createNavMeshForVisualization(DerivedMesh *dm);
 #include "GPU_shader.h"
 
 #ifdef WITH_OPENSUBDIV
+#  include "BKE_depsgraph.h"
 #  include "DNA_userdef_types.h"
 #endif
 
@@ -595,49 +597,48 @@ void DM_generate_tangent_tessface_data(DerivedMesh *dm, bool generate)
 	int mf_idx;
 
 	int *polyindex = CustomData_get_layer(fdata, CD_ORIGINDEX);
-	unsigned int (*loopindex)[4];
+	unsigned int (*loopindex)[4] = NULL;
 
 	/* Should never occure, but better abort than segfault! */
 	if (!polyindex)
 		return;
 
 	if (generate) {
-		for (int i = 0; i < ldata->totlayer; i++) {
-			if (ldata->layers[i].type == CD_TANGENT) {
-				CustomData_add_layer_named(fdata, CD_TANGENT, CD_CALLOC, NULL, totface, ldata->layers[i].name);
+		for (int j = 0; j < ldata->totlayer; j++) {
+			if (ldata->layers[j].type == CD_TANGENT) {
+				CustomData_add_layer_named(fdata, CD_TANGENT, CD_CALLOC, NULL, totface, ldata->layers[j].name);
+				CustomData_bmesh_update_active_layers(fdata, pdata, ldata);
+
+				if (!loopindex) {
+					loopindex = MEM_mallocN(sizeof(*loopindex) * totface, __func__);
+					for (mf_idx = 0, mf = mface; mf_idx < totface; mf_idx++, mf++) {
+						const int mf_len = mf->v4 ? 4 : 3;
+						unsigned int *ml_idx = loopindex[mf_idx];
+
+						/* Find out loop indices. */
+						/* NOTE: This assumes tessface are valid and in sync with loop/poly... Else, most likely, segfault! */
+						for (int i = mp[polyindex[mf_idx]].loopstart, not_done = mf_len; not_done; i++) {
+							const int tf_v = BKE_MESH_TESSFACE_VINDEX_ORDER(mf, ml[i].v);
+							if (tf_v != -1) {
+								ml_idx[tf_v] = i;
+								not_done--;
+							}
+						}
+					}
+				}
+
+				/* NOTE: quad detection issue - fourth vertidx vs fourth loopidx:
+				 * Here, our tfaces' fourth vertex index is never 0 for a quad. However, we know our fourth loop index may be
+				 * 0 for quads (because our quads may have been rotated compared to their org poly, see tessellation code).
+				 * So we pass the MFace's, and BKE_mesh_loops_to_tessdata will use MFace->v4 index as quad test.
+				 */
+				BKE_mesh_tangent_loops_to_tessdata(fdata, ldata, mface, polyindex, loopindex, totface, ldata->layers[j].name);
 			}
 		}
-		CustomData_bmesh_update_active_layers(fdata, pdata, ldata);
+		if (loopindex)
+			MEM_freeN(loopindex);
+		BLI_assert(CustomData_from_bmeshpoly_test(fdata, pdata, ldata, true));
 	}
-
-	BLI_assert(CustomData_from_bmeshpoly_test(fdata, pdata, ldata, true));
-
-	loopindex = MEM_mallocN(sizeof(*loopindex) * totface, __func__);
-
-	for (mf_idx = 0, mf = mface; mf_idx < totface; mf_idx++, mf++) {
-		const int mf_len = mf->v4 ? 4 : 3;
-		unsigned int *ml_idx = loopindex[mf_idx];
-		int i, not_done;
-
-		/* Find out loop indices. */
-		/* NOTE: This assumes tessface are valid and in sync with loop/poly... Else, most likely, segfault! */
-		for (i = mp[polyindex[mf_idx]].loopstart, not_done = mf_len; not_done; i++) {
-			const int tf_v = BKE_MESH_TESSFACE_VINDEX_ORDER(mf, ml[i].v);
-			if (tf_v != -1) {
-				ml_idx[tf_v] = i;
-				not_done--;
-			}
-		}
-	}
-
-	/* NOTE: quad detection issue - fourth vertidx vs fourth loopidx:
-	 * Here, our tfaces' fourth vertex index is never 0 for a quad. However, we know our fourth loop index may be
-	 * 0 for quads (because our quads may have been rotated compared to their org poly, see tessellation code).
-	 * So we pass the MFace's, and BKE_mesh_loops_to_tessdata will use MFace->v4 index as quad test.
-	 */
-	BKE_mesh_tangent_loops_to_tessdata(fdata, ldata, mface, polyindex, loopindex, totface);
-
-	MEM_freeN(loopindex);
 
 	if (G.debug & G_DEBUG)
 		printf("%s: Updated tessellated tangents of dm %p\n", __func__, dm);
@@ -647,13 +648,15 @@ void DM_generate_tangent_tessface_data(DerivedMesh *dm, bool generate)
 void DM_update_materials(DerivedMesh *dm, Object *ob)
 {
 	int i, totmat = ob->totcol + 1; /* materials start from 1, default material is 0 */
-	dm->totmat = totmat;
 
-	/* invalidate old materials */
-	if (dm->mat)
-		MEM_freeN(dm->mat);
+	if (dm->totmat != totmat) {
+		dm->totmat = totmat;
+		/* invalidate old materials */
+		if (dm->mat)
+			MEM_freeN(dm->mat);
 
-	dm->mat = MEM_callocN(totmat * sizeof(*dm->mat), "DerivedMesh.mat");
+		dm->mat = MEM_mallocN(totmat * sizeof(*dm->mat), "DerivedMesh.mat");
+	}
 
 	/* we leave last material as empty - rationale here is being able to index
 	 * the materials by using the mf->mat_nr directly and leaving the last
@@ -661,6 +664,7 @@ void DM_update_materials(DerivedMesh *dm, Object *ob)
 	for (i = 0; i < totmat - 1; i++) {
 		dm->mat[i] = give_current_material(ob, i + 1);
 	}
+	dm->mat[i] = NULL;
 }
 
 MLoopUV *DM_paint_uvlayer_active_get(DerivedMesh *dm, int mat_nr)
@@ -1082,7 +1086,7 @@ void DM_interp_tessface_data(
 
 void DM_swap_tessface_data(DerivedMesh *dm, int index, const int *corner_indices)
 {
-	CustomData_swap(&dm->faceData, index, corner_indices);
+	CustomData_swap_corners(&dm->faceData, index, corner_indices);
 }
 
 void DM_interp_loop_data(
@@ -1430,10 +1434,12 @@ static void calc_weightpaint_vert_array(
         Object *ob, DerivedMesh *dm, int const draw_flag, DMWeightColorInfo *dm_wcinfo,
         unsigned char (*r_wtcol_v)[4])
 {
-	MDeformVert *dv = DM_get_vert_data_layer(dm, CD_MDEFORMVERT);
-	int numVerts = dm->getNumVerts(dm);
+	BMEditMesh *em = (dm->type == DM_TYPE_EDITBMESH) ? BKE_editmesh_from_object(ob) : NULL;
+	const int numVerts = dm->getNumVerts(dm);
 
-	if (dv && (ob->actdef != 0)) {
+	if ((ob->actdef != 0) &&
+	    (CustomData_has_layer(em ? &em->bm->vdata : &dm->vertData, CD_MDEFORMVERT)))
+	{
 		unsigned char (*wc)[4] = r_wtcol_v;
 		unsigned int i;
 
@@ -1452,8 +1458,30 @@ static void calc_weightpaint_vert_array(
 			}
 		}
 
-		for (i = numVerts; i != 0; i--, wc++, dv++) {
-			calc_weightpaint_vert_color((unsigned char *)wc, dv, dm_wcinfo, defbase_tot, defbase_act, defbase_sel, defbase_sel_tot, draw_flag);
+		/* editmesh won't have deform verts unless modifiers require it,
+		 * avoid having to create an array of deform-verts only for drawing
+		 * by reading from the bmesh directly. */
+		if (em) {
+			BMIter iter;
+			BMVert *eve;
+			const int cd_dvert_offset = CustomData_get_offset(&em->bm->vdata, CD_MDEFORMVERT);
+			BLI_assert(cd_dvert_offset != -1);
+
+			BM_ITER_MESH_INDEX (eve, &iter, em->bm, BM_VERTS_OF_MESH, i) {
+				const MDeformVert *dv = BM_ELEM_CD_GET_VOID_P(eve, cd_dvert_offset);
+				calc_weightpaint_vert_color(
+				        (unsigned char *)wc, dv, dm_wcinfo,
+				        defbase_tot, defbase_act, defbase_sel, defbase_sel_tot, draw_flag);
+				wc++;
+			}
+		}
+		else {
+			const MDeformVert *dv = DM_get_vert_data_layer(dm, CD_MDEFORMVERT);
+			for (i = numVerts; i != 0; i--, wc++, dv++) {
+				calc_weightpaint_vert_color(
+				        (unsigned char *)wc, dv, dm_wcinfo,
+				        defbase_tot, defbase_act, defbase_sel, defbase_sel_tot, draw_flag);
+			}
 		}
 
 		if (defbase_sel) {
@@ -2000,15 +2028,10 @@ static void mesh_calc_modifiers(
 					DM_add_edge_layer(dm, CD_ORIGINDEX, CD_CALLOC, NULL);
 					DM_add_poly_layer(dm, CD_ORIGINDEX, CD_CALLOC, NULL);
 
-#pragma omp parallel sections if (dm->numVertData + dm->numEdgeData + dm->numPolyData >= BKE_MESH_OMP_LIMIT)
-					{
-#pragma omp section
-						{ range_vn_i(DM_get_vert_data_layer(dm, CD_ORIGINDEX), dm->numVertData, 0); }
-#pragma omp section
-						{ range_vn_i(DM_get_edge_data_layer(dm, CD_ORIGINDEX), dm->numEdgeData, 0); }
-#pragma omp section
-						{ range_vn_i(DM_get_poly_data_layer(dm, CD_ORIGINDEX), dm->numPolyData, 0); }
-					}
+					/* Not worth parallelizing this, gives less than 0.1% overall speedup in best of best cases... */
+					range_vn_i(DM_get_vert_data_layer(dm, CD_ORIGINDEX), dm->numVertData, 0);
+					range_vn_i(DM_get_edge_data_layer(dm, CD_ORIGINDEX), dm->numEdgeData, 0);
+					range_vn_i(DM_get_poly_data_layer(dm, CD_ORIGINDEX), dm->numPolyData, 0);
 				}
 			}
 
@@ -2260,7 +2283,7 @@ static void editbmesh_calc_modifiers(
 {
 	ModifierData *md, *previewmd = NULL;
 	float (*deformedVerts)[3] = NULL;
-	CustomDataMask mask, previewmask = 0, append_mask = 0;
+	CustomDataMask mask = 0, previewmask = 0, append_mask = 0;
 	DerivedMesh *dm = NULL, *orcodm = NULL;
 	int i, numVerts = 0, cageIndex = modifiers_getCageIndex(scene, ob, NULL, 1);
 	CDMaskLink *datamasks, *curr;
@@ -2284,7 +2307,7 @@ static void editbmesh_calc_modifiers(
 	modifiers_clearErrors(ob);
 
 	if (r_cage && cageIndex == -1) {
-		*r_cage = getEditDerivedBMesh(em, ob, NULL);
+		*r_cage = getEditDerivedBMesh(em, ob, dataMask, NULL);
 	}
 
 	md = modifiers_getVirtualModifierList(ob, &virtualModifierData);
@@ -2450,7 +2473,7 @@ static void editbmesh_calc_modifiers(
 			}
 			else {
 				*r_cage = getEditDerivedBMesh(
-				        em, ob,
+				        em, ob, mask,
 				        deformedVerts ? MEM_dupallocN(deformedVerts) : NULL);
 			}
 		}
@@ -2486,7 +2509,7 @@ static void editbmesh_calc_modifiers(
 	}
 	else {
 		/* this is just a copy of the editmesh, no need to calc normals */
-		*r_final = getEditDerivedBMesh(em, ob, deformedVerts);
+		*r_final = getEditDerivedBMesh(em, ob, dataMask, deformedVerts);
 		deformedVerts = NULL;
 
 		/* In this case, we should never have weight-modifying modifiers in stack... */
@@ -2543,15 +2566,28 @@ static void editbmesh_calc_modifiers(
  * we'll be using GPU backend of OpenSubdiv. This is so
  * playback performance is kept as high as possible.
  */
-static bool calc_modifiers_skip_orco(const Object *ob)
+static bool calc_modifiers_skip_orco(Scene *scene,
+                                     Object *ob,
+                                     bool use_render_params)
 {
-	const ModifierData *last_md = ob->modifiers.last;
+	ModifierData *last_md = ob->modifiers.last;
+	const int required_mode = use_render_params ? eModifierMode_Render : eModifierMode_Realtime;
 	if (last_md != NULL &&
-	    last_md->type == eModifierType_Subsurf)
+	    last_md->type == eModifierType_Subsurf &&
+	    modifier_isEnabled(scene, last_md, required_mode))
 	{
+		if (U.opensubdiv_compute_type == USER_OPENSUBDIV_COMPUTE_NONE) {
+			return false;
+		}
+		else if ((ob->mode & (OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT | OB_MODE_TEXTURE_PAINT)) != 0) {
+			return false;
+		}
+		else if ((DAG_get_eval_flags_for_object(scene, ob) & DAG_EVAL_NEED_CPU) != 0) {
+			return false;
+		}
 		SubsurfModifierData *smd = (SubsurfModifierData *)last_md;
 		/* TODO(sergey): Deduplicate this with checks from subsurf_ccg.c. */
-		return smd->use_opensubdiv && U.opensubdiv_compute_type != USER_OPENSUBDIV_COMPUTE_NONE;
+		return smd->use_opensubdiv != 0;
 	}
 	return false;
 }
@@ -2567,7 +2603,7 @@ static void mesh_build_data(
 	BKE_object_sculpt_modifiers_changed(ob);
 
 #ifdef WITH_OPENSUBDIV
-	if (calc_modifiers_skip_orco(ob)) {
+	if (calc_modifiers_skip_orco(scene, ob, false)) {
 		dataMask &= ~(CD_MASK_ORCO | CD_MASK_PREVIEW_MCOL);
 	}
 #endif
@@ -2602,7 +2638,7 @@ static void editbmesh_build_data(Scene *scene, Object *obedit, BMEditMesh *em, C
 	BKE_editmesh_free_derivedmesh(em);
 
 #ifdef WITH_OPENSUBDIV
-	if (calc_modifiers_skip_orco(obedit)) {
+	if (calc_modifiers_skip_orco(scene, obedit, false)) {
 		dataMask &= ~(CD_MASK_ORCO | CD_MASK_PREVIEW_MCOL);
 	}
 #endif
@@ -2849,9 +2885,9 @@ DerivedMesh *editbmesh_get_derived_cage(Scene *scene, Object *obedit, BMEditMesh
 	return em->derivedCage;
 }
 
-DerivedMesh *editbmesh_get_derived_base(Object *obedit, BMEditMesh *em)
+DerivedMesh *editbmesh_get_derived_base(Object *obedit, BMEditMesh *em, CustomDataMask data_mask)
 {
-	return getEditDerivedBMesh(em, obedit, NULL);
+	return getEditDerivedBMesh(em, obedit, data_mask, NULL);
 }
 
 /***/
@@ -3207,96 +3243,28 @@ finally:
 	pRes[3] = fSign;
 }
 
-void DM_calc_loop_tangents(DerivedMesh *dm)
+void DM_calc_tangents_names_from_gpu(
+        const GPUVertexAttribs *gattribs,
+        char (*tangent_names)[MAX_NAME], int *r_tangent_names_count)
 {
-	/* mesh vars */
-	const MLoopTri *looptri;
-	MVert *mvert;
-	MLoopUV *mloopuv;
-	MPoly *mpoly;
-	MLoop *mloop;
-	float (*orco)[3] = NULL, (*tangent)[4];
-	int /* totvert, */ totface;
-	float (*fnors)[3];
-	float (*tlnors)[3];
-
-	if (CustomData_get_layer_index(&dm->loopData, CD_TANGENT) != -1)
-		return;
-
-	fnors = dm->getPolyDataArray(dm, CD_NORMAL);
-	/* Note, we assume we do have tessellated loop normals at this point (in case it is object-enabled),
-	 * have to check this is valid...
-	 */
-	tlnors = dm->getLoopDataArray(dm, CD_NORMAL);
-
-	/* check we have all the needed layers */
-	/* totvert = dm->getNumVerts(dm); */ /* UNUSED */
-	looptri = dm->getLoopTriArray(dm);
-	totface = dm->getNumLoopTri(dm);
-
-	mvert = dm->getVertArray(dm);
-	mpoly = dm->getPolyArray(dm);
-	mloop = dm->getLoopArray(dm);
-	mloopuv = dm->getLoopDataArray(dm, CD_MLOOPUV);
-
-	if (!mloopuv) {
-		orco = dm->getVertDataArray(dm, CD_ORCO);
-		if (!orco)
-			return;
-	}
-	
-	/* create tangent layer */
-	DM_add_loop_layer(dm, CD_TANGENT, CD_CALLOC, NULL);
-	tangent = DM_get_loop_data_layer(dm, CD_TANGENT);
-	
-#ifdef USE_LOOPTRI_DETECT_QUADS
-	int num_face_as_quad_map;
-	int *face_as_quad_map = NULL;
-
-	/* map faces to quads */
-	if (totface != dm->getNumPolys(dm)) {
-		/* over alloc, since we dont know how many ngon or quads we have */
-
-		/* map fake face index to looptri */
-		face_as_quad_map = MEM_mallocN(sizeof(int) * totface, __func__);
-		int i, j;
-		for (i = 0, j = 0; j < totface; i++, j++) {
-			face_as_quad_map[i] = j;
-			/* step over all quads */
-			if (mpoly[looptri[j].poly].totloop == 4) {
-				j++;  /* skips the nest looptri */
-			}
+	int count = 0;
+	for (int b = 0; b < gattribs->totlayer; b++) {
+		if (gattribs->layer[b].type == CD_TANGENT) {
+			strcpy(tangent_names[count++], gattribs->layer[b].name);
 		}
-		num_face_as_quad_map = i;
 	}
-	else {
-		num_face_as_quad_map = totface;
-	}
-#endif
+	*r_tangent_names_count = count;
+}
 
+static void DM_calc_loop_tangents_thread(TaskPool *UNUSED(pool), void *taskdata, int UNUSED(threadid))
+{
+	struct SGLSLMeshToTangent *mesh2tangent = taskdata;
 	/* new computation method */
 	{
-		SGLSLMeshToTangent mesh2tangent = {NULL};
 		SMikkTSpaceContext sContext = {NULL};
 		SMikkTSpaceInterface sInterface = {NULL};
 
-		mesh2tangent.precomputedFaceNormals = fnors;
-		mesh2tangent.precomputedLoopNormals = tlnors;
-		mesh2tangent.looptri = looptri;
-		mesh2tangent.mloopuv = mloopuv;
-		mesh2tangent.mpoly = mpoly;
-		mesh2tangent.mloop = mloop;
-		mesh2tangent.mvert = mvert;
-		mesh2tangent.orco = orco;
-		mesh2tangent.tangent = tangent;
-		mesh2tangent.numTessFaces = totface;
-
-#ifdef USE_LOOPTRI_DETECT_QUADS
-		mesh2tangent.face_as_quad_map = face_as_quad_map;
-		mesh2tangent.num_face_as_quad_map = num_face_as_quad_map;
-#endif
-
-		sContext.m_pUserData = &mesh2tangent;
+		sContext.m_pUserData = mesh2tangent;
 		sContext.m_pInterface = &sInterface;
 		sInterface.m_getNumFaces = dm_ts_GetNumFaces;
 		sInterface.m_getNumVerticesOfFace = dm_ts_GetNumVertsOfFace;
@@ -3307,13 +3275,216 @@ void DM_calc_loop_tangents(DerivedMesh *dm)
 
 		/* 0 if failed */
 		genTangSpaceDefault(&sContext);
+	}
+}
 
+void DM_add_named_tangent_layer_for_uv(
+        CustomData *uv_data, CustomData *tan_data, int numLoopData,
+        const char *layer_name)
+{
+	if (CustomData_get_named_layer_index(tan_data, CD_TANGENT, layer_name) == -1 &&
+	    CustomData_get_named_layer_index(uv_data, CD_MLOOPUV, layer_name) != -1)
+	{
+		CustomData_add_layer_named(
+		        tan_data, CD_TANGENT, CD_CALLOC, NULL,
+		        numLoopData, layer_name);
+	}
+}
+
+/**
+ * Here we get some useful information such as active uv layer name and search if it is already in tangent_names.
+ * Also, we calculate tangent_mask that works as a descriptor of tangents state.
+ * If tangent_mask has changed, then recalculate tangents.
+ */
+void DM_calc_loop_tangents_step_0(
+        const CustomData *loopData, bool calc_active_tangent,
+        const char (*tangent_names)[MAX_NAME], int tangent_names_count,
+        bool *rcalc_act, bool *rcalc_ren, int *ract_uv_n, int *rren_uv_n,
+        char *ract_uv_name, char *rren_uv_name, char *rtangent_mask) {
+	/* Active uv in viewport */
+	int layer_index = CustomData_get_layer_index(loopData, CD_MLOOPUV);
+	*ract_uv_n = CustomData_get_active_layer(loopData, CD_MLOOPUV);
+	ract_uv_name[0] = 0;
+	if (*ract_uv_n != -1) {
+		strcpy(ract_uv_name, loopData->layers[*ract_uv_n + layer_index].name);
+	}
+
+	/* Active tangent in render */
+	*rren_uv_n = CustomData_get_render_layer(loopData, CD_MLOOPUV);
+	rren_uv_name[0] = 0;
+	if (*rren_uv_n != -1) {
+		strcpy(rren_uv_name, loopData->layers[*rren_uv_n + layer_index].name);
+	}
+
+	/* If active tangent not in tangent_names we take it into account */
+	*rcalc_act = false;
+	*rcalc_ren = false;
+	for (int i = 0; i < tangent_names_count; i++) {
+		if (tangent_names[i][0] == 0) {
+			calc_active_tangent = true;
+		}
+	}
+	if (calc_active_tangent) {
+		*rcalc_act = true;
+		*rcalc_ren = true;
+		for (int i = 0; i < tangent_names_count; i++) {
+			if (STREQ(ract_uv_name, tangent_names[i]))
+				*rcalc_act = false;
+			if (STREQ(rren_uv_name, tangent_names[i]))
+				*rcalc_ren = false;
+		}
+	}
+	*rtangent_mask = 0;
+
+	const int uv_layer_num = CustomData_number_of_layers(loopData, CD_MLOOPUV);
+	for (int n = 0; n < uv_layer_num; n++) {
+		const char *name = CustomData_get_layer_name(loopData, CD_MLOOPUV, n);
+		bool add = false;
+		for (int i = 0; i < tangent_names_count; i++) {
+			if (tangent_names[i][0] && STREQ(tangent_names[i], name)) {
+				add = true;
+				break;
+			}
+		}
+		if ((*rcalc_act && ract_uv_name[0] && STREQ(ract_uv_name, name)) ||
+		    (*rcalc_ren && rren_uv_name[0] && STREQ(rren_uv_name, name)))
+		{
+			add = true;
+		}
+		if (add)
+			*rtangent_mask |= 1 << n;
+	}
+}
+
+void DM_calc_loop_tangents(
+        DerivedMesh *dm, bool calc_active_tangent,
+        const char (*tangent_names)[MAX_NAME], int tangent_names_count)
+{
+	if (CustomData_number_of_layers(&dm->loopData, CD_MLOOPUV) == 0)
+		return;
+	int act_uv_n = -1;
+	int ren_uv_n = -1;
+	bool calc_act = false;
+	bool calc_ren = false;
+	char act_uv_name[MAX_NAME];
+	char ren_uv_name[MAX_NAME];
+	char tangent_mask = 0;
+	DM_calc_loop_tangents_step_0(
+	        &dm->loopData, calc_active_tangent, tangent_names, tangent_names_count,
+	        &calc_act, &calc_ren, &act_uv_n, &ren_uv_n, act_uv_name, ren_uv_name, &tangent_mask);
+	if ((dm->tangent_mask | tangent_mask) != dm->tangent_mask) {
+		/* Check we have all the needed layers */
+		MPoly *mpoly = dm->getPolyArray(dm);
+		const MLoopTri *looptri = dm->getLoopTriArray(dm);
+		int totface = dm->getNumLoopTri(dm);
+		/* Allocate needed tangent layers */
+		for (int i = 0; i < tangent_names_count; i++)
+			if (tangent_names[i][0])
+				DM_add_named_tangent_layer_for_uv(&dm->loopData, &dm->loopData, dm->numLoopData, tangent_names[i]);
+		if (calc_act && act_uv_name[0])
+			DM_add_named_tangent_layer_for_uv(&dm->loopData, &dm->loopData, dm->numLoopData, act_uv_name);
+		if (calc_ren && ren_uv_name[0])
+			DM_add_named_tangent_layer_for_uv(&dm->loopData, &dm->loopData, dm->numLoopData, ren_uv_name);
+
+#ifdef USE_LOOPTRI_DETECT_QUADS
+		int num_face_as_quad_map;
+		int *face_as_quad_map = NULL;
+
+		/* map faces to quads */
+		if (totface != dm->getNumPolys(dm)) {
+			/* over alloc, since we dont know how many ngon or quads we have */
+
+			/* map fake face index to looptri */
+			face_as_quad_map = MEM_mallocN(sizeof(int) * totface, __func__);
+			int k, j;
+			for (k = 0, j = 0; j < totface; k++, j++) {
+				face_as_quad_map[k] = j;
+				/* step over all quads */
+				if (mpoly[looptri[j].poly].totloop == 4) {
+					j++;  /* skips the nest looptri */
+				}
+			}
+			num_face_as_quad_map = k;
+		}
+		else {
+			num_face_as_quad_map = totface;
+		}
+#endif
+
+		/* Calculation */
+		{
+			TaskScheduler *scheduler = BLI_task_scheduler_get();
+			TaskPool *task_pool;
+			task_pool = BLI_task_pool_create(scheduler, NULL);
+
+			dm->tangent_mask = 0;
+			/* Calculate tangent layers */
+			SGLSLMeshToTangent data_array[MAX_MTFACE];
+			const int tangent_layer_num = CustomData_number_of_layers(&dm->loopData, CD_TANGENT);
+			for (int n = 0; n < tangent_layer_num; n++) {
+				int index = CustomData_get_layer_index_n(&dm->loopData, CD_TANGENT, n);
+				BLI_assert(n < MAX_MTFACE);
+				SGLSLMeshToTangent *mesh2tangent = &data_array[n];
+				mesh2tangent->numTessFaces = totface;
+#ifdef USE_LOOPTRI_DETECT_QUADS
+				mesh2tangent->face_as_quad_map = face_as_quad_map;
+				mesh2tangent->num_face_as_quad_map = num_face_as_quad_map;
+#endif
+				mesh2tangent->mvert = dm->getVertArray(dm);
+				mesh2tangent->mpoly = dm->getPolyArray(dm);
+				mesh2tangent->mloop = dm->getLoopArray(dm);
+				mesh2tangent->looptri = dm->getLoopTriArray(dm);
+				/* Note, we assume we do have tessellated loop normals at this point (in case it is object-enabled),
+				 * have to check this is valid...
+				 */
+				mesh2tangent->precomputedLoopNormals = dm->getLoopDataArray(dm, CD_NORMAL);
+				mesh2tangent->precomputedFaceNormals = CustomData_get_layer(&dm->faceData, CD_NORMAL);
+
+				mesh2tangent->orco = NULL;
+				mesh2tangent->mloopuv = CustomData_get_layer_named(&dm->loopData, CD_MLOOPUV, dm->loopData.layers[index].name);
+				if (!mesh2tangent->mloopuv) {
+					mesh2tangent->orco = dm->getVertDataArray(dm, CD_ORCO);
+					if (!mesh2tangent->orco)
+						continue;
+				}
+				mesh2tangent->tangent = dm->loopData.layers[index].data;
+
+				/* Fill the resulting tangent_mask */
+				int uv_ind = CustomData_get_named_layer_index(&dm->loopData, CD_MLOOPUV, dm->loopData.layers[index].name);
+				int uv_start = CustomData_get_layer_index(&dm->loopData, CD_MLOOPUV);
+				BLI_assert(uv_ind != -1 && uv_start != -1);
+				BLI_assert(uv_ind - uv_start < MAX_MTFACE);
+				dm->tangent_mask |= 1 << (uv_ind - uv_start);
+				BLI_task_pool_push(task_pool, DM_calc_loop_tangents_thread, mesh2tangent, false, TASK_PRIORITY_LOW);
+			}
+
+			BLI_assert(dm->tangent_mask == tangent_mask);
+			BLI_task_pool_work_and_wait(task_pool);
+			BLI_task_pool_free(task_pool);
+		}
 #ifdef USE_LOOPTRI_DETECT_QUADS
 		if (face_as_quad_map) {
 			MEM_freeN(face_as_quad_map);
 		}
 #undef USE_LOOPTRI_DETECT_QUADS
+
 #endif
+
+		int uv_index, tan_index;
+
+		/* Update active layer index */
+		uv_index = CustomData_get_layer_index_n(&dm->loopData, CD_MLOOPUV, act_uv_n);
+		if (uv_index != -1) {
+			tan_index = CustomData_get_named_layer_index(&dm->loopData, CD_TANGENT, dm->loopData.layers[uv_index].name);
+			CustomData_set_layer_active_index(&dm->loopData, CD_TANGENT, tan_index);
+		}
+
+		/* Update render layer index */
+		uv_index = CustomData_get_layer_index_n(&dm->loopData, CD_MLOOPUV, ren_uv_n);
+		if (uv_index != -1) {
+			tan_index = CustomData_get_named_layer_index(&dm->loopData, CD_TANGENT, dm->loopData.layers[uv_index].name);
+			CustomData_set_layer_render_index(&dm->loopData, CD_TANGENT, tan_index);
+		}
 	}
 }
 
@@ -3487,23 +3658,50 @@ void DM_vertex_attributes_from_gpu(DerivedMesh *dm, GPUVertexAttribs *gattribs, 
 	if (dm->auto_bump_scale <= 0.0f)
 		DM_calc_auto_bump_scale(dm);
 
-	/* add a tangent layer if necessary */
-	for (b = 0; b < gattribs->totlayer; b++) {
-		if (gattribs->layer[b].type == CD_TANGENT) {
-			if (CustomData_get_layer_index(&dm->loopData, CD_TANGENT) == -1) {
-				dm->calcLoopTangents(dm);
-			}
-			break;
-		}
-	}
+	char tangent_names[MAX_MTFACE][MAX_NAME];
+	int tangent_names_count;
+	/* Add a tangent layer/layers. */
+	DM_calc_tangents_names_from_gpu(gattribs, tangent_names, &tangent_names_count);
+
+	if (tangent_names_count)
+		dm->calcLoopTangents(dm, false, (const char (*)[MAX_NAME])tangent_names, tangent_names_count);
 
 	for (b = 0; b < gattribs->totlayer; b++) {
-		if (gattribs->layer[b].type == CD_MTFACE) {
+		int type = gattribs->layer[b].type;
+		layer = -1;
+		if (type == CD_AUTO_FROM_NAME) {
+			/* We need to deduct what exact layer is used.
+			 *
+			 * We do it based on the specified name.
+			 */
+			if (gattribs->layer[b].name[0]) {
+				layer = CustomData_get_named_layer_index(&dm->loopData, CD_TANGENT, gattribs->layer[b].name);
+				type = CD_TANGENT;
+				if (layer == -1) {
+					layer = CustomData_get_named_layer_index(ldata, CD_MLOOPCOL, gattribs->layer[b].name);
+					type = CD_MCOL;
+				}
+				if (layer == -1) {
+					layer = CustomData_get_named_layer_index(ldata, CD_MLOOPUV, gattribs->layer[b].name);
+					type = CD_MTFACE;
+				}
+				if (layer == -1) {
+					continue;
+				}
+			}
+			else {
+				/* Fall back to the UV layer, which matches old behavior. */
+				type = CD_MTFACE;
+			}
+		}
+		if (type == CD_MTFACE) {
 			/* uv coordinates */
-			if (gattribs->layer[b].name[0])
-				layer = CustomData_get_named_layer_index(ldata, CD_MLOOPUV, gattribs->layer[b].name);
-			else
-				layer = CustomData_get_active_layer_index(ldata, CD_MLOOPUV);
+			if (layer == -1) {
+				if (gattribs->layer[b].name[0])
+					layer = CustomData_get_named_layer_index(ldata, CD_MLOOPUV, gattribs->layer[b].name);
+				else
+					layer = CustomData_get_active_layer_index(ldata, CD_MLOOPUV);
+			}
 
 			a = attribs->tottface++;
 
@@ -3517,13 +3715,16 @@ void DM_vertex_attributes_from_gpu(DerivedMesh *dm, GPUVertexAttribs *gattribs, 
 			}
 
 			attribs->tface[a].gl_index = gattribs->layer[b].glindex;
+			attribs->tface[a].gl_info_index = gattribs->layer[b].glinfoindoex;
 			attribs->tface[a].gl_texco = gattribs->layer[b].gltexco;
 		}
-		else if (gattribs->layer[b].type == CD_MCOL) {
-			if (gattribs->layer[b].name[0])
-				layer = CustomData_get_named_layer_index(ldata, CD_MLOOPCOL, gattribs->layer[b].name);
-			else
-				layer = CustomData_get_active_layer_index(ldata, CD_MLOOPCOL);
+		else if (type == CD_MCOL) {
+			if (layer == -1) {
+				if (gattribs->layer[b].name[0])
+					layer = CustomData_get_named_layer_index(ldata, CD_MLOOPCOL, gattribs->layer[b].name);
+				else
+					layer = CustomData_get_active_layer_index(ldata, CD_MLOOPCOL);
+			}
 
 			a = attribs->totmcol++;
 
@@ -3538,27 +3739,36 @@ void DM_vertex_attributes_from_gpu(DerivedMesh *dm, GPUVertexAttribs *gattribs, 
 			}
 
 			attribs->mcol[a].gl_index = gattribs->layer[b].glindex;
+			attribs->mcol[a].gl_info_index = gattribs->layer[b].glinfoindoex;
 		}
-		else if (gattribs->layer[b].type == CD_TANGENT) {
+		else if (type == CD_TANGENT) {
 			/* note, even with 'is_editmesh' this uses the derived-meshes loop data */
-			layer = CustomData_get_layer_index(&dm->loopData, CD_TANGENT);
+			if (layer == -1) {
+				if (gattribs->layer[b].name[0])
+					layer = CustomData_get_named_layer_index(&dm->loopData, CD_TANGENT, gattribs->layer[b].name);
+				else
+					layer = CustomData_get_active_layer_index(&dm->loopData, CD_TANGENT);
+			}
 
-			attribs->tottang = 1;
+			a = attribs->tottang++;
 
 			if (layer != -1) {
-				attribs->tang.array = dm->loopData.layers[layer].data;
-				attribs->tang.em_offset = dm->loopData.layers[layer].offset;
+				attribs->tang[a].array = dm->loopData.layers[layer].data;
+				attribs->tang[a].em_offset = dm->loopData.layers[layer].offset;
 			}
 			else {
-				attribs->tang.array = NULL;
-				attribs->tang.em_offset = -1;
+				attribs->tang[a].array = NULL;
+				attribs->tang[a].em_offset = -1;
 			}
 
-			attribs->tang.gl_index = gattribs->layer[b].glindex;
+			attribs->tang[a].gl_index = gattribs->layer[b].glindex;
+			attribs->tang[a].gl_info_index = gattribs->layer[b].glinfoindoex;
 		}
-		else if (gattribs->layer[b].type == CD_ORCO) {
+		else if (type == CD_ORCO) {
 			/* original coordinates */
-			layer = CustomData_get_layer_index(vdata, CD_ORCO);
+			if (layer == -1) {
+				layer = CustomData_get_layer_index(vdata, CD_ORCO);
+			}
 			attribs->totorco = 1;
 
 			if (layer != -1) {
@@ -3572,6 +3782,7 @@ void DM_vertex_attributes_from_gpu(DerivedMesh *dm, GPUVertexAttribs *gattribs, 
 
 			attribs->orco.gl_index = gattribs->layer[b].glindex;
 			attribs->orco.gl_texco = gattribs->layer[b].gltexco;
+			attribs->orco.gl_info_index = gattribs->layer[b].glinfoindoex;
 		}
 	}
 }
@@ -3622,24 +3833,44 @@ void DM_draw_attrib_vertex(DMVertexAttribs *attribs, int a, int index, int vert,
 
 	/* vertex colors */
 	for (b = 0; b < attribs->totmcol; b++) {
-		GLubyte col[4];
+		GLfloat col[4];
 
 		if (attribs->mcol[b].array) {
 			const MLoopCol *cp = &attribs->mcol[b].array[loop];
-			copy_v4_v4_uchar(col, &cp->r);
+			rgba_uchar_to_float(col, &cp->r);
 		}
 		else {
-			col[0] = 0; col[1] = 0; col[2] = 0; col[3] = 0;
+			zero_v4(col);
 		}
 
-		glVertexAttrib4ubv(attribs->mcol[b].gl_index, col);
+		glVertexAttrib4fv(attribs->mcol[b].gl_index, col);
 	}
 
 	/* tangent for normal mapping */
-	if (attribs->tottang) {
-		/*const*/ float (*array)[4] = attribs->tang.array;
-		const float *tang = (array) ? array[loop] : zero;
-		glVertexAttrib4fv(attribs->tang.gl_index, tang);
+	for (b = 0; b < attribs->tottang; b++) {
+		if (attribs->tang[b].array) {
+			/*const*/ float (*array)[4] = attribs->tang[b].array;
+			const float *tang = (array) ? array[loop] : zero;
+			glVertexAttrib4fv(attribs->tang[b].gl_index, tang);
+		}
+	}
+}
+
+void DM_draw_attrib_vertex_uniforms(const DMVertexAttribs *attribs)
+{
+	int i;
+	if (attribs->totorco) {
+		glUniform1i(attribs->orco.gl_info_index, 0);
+	}
+	for (i = 0; i < attribs->tottface; i++) {
+		glUniform1i(attribs->tface[i].gl_info_index, 0);
+	}
+	for (i = 0; i < attribs->totmcol; i++) {
+		glUniform1i(attribs->mcol[i].gl_info_index, GPU_ATTR_INFO_SRGB);
+	}
+
+	for (i = 0; i < attribs->tottang; i++) {
+		glUniform1i(attribs->tang[i].gl_info_index, 0);
 	}
 }
 
@@ -3706,7 +3937,6 @@ static void navmesh_drawColored(DerivedMesh *dm)
 	/* if (GPU_buffer_legacy(dm) ) */ /* TODO - VBO draw code, not high priority - campbell */
 	{
 		DEBUG_VBO("Using legacy code. drawNavMeshColored\n");
-		//glShadeModel(GL_SMOOTH);
 		glBegin(glmode = GL_QUADS);
 		for (a = 0; a < dm->numTessFaceData; a++, mface++) {
 			int new_glmode = mface->v4 ? GL_QUADS : GL_TRIANGLES;
@@ -3863,7 +4093,7 @@ void DM_init_origspace(DerivedMesh *dm)
 			float p_nor[3], co[3];
 			float mat[3][3];
 
-			float min[2] = {FLT_MAX, FLT_MAX}, max[2] = {FLT_MIN, FLT_MIN};
+			float min[2] = {FLT_MAX, FLT_MAX}, max[2] = {-FLT_MAX, -FLT_MAX};
 			float translate[2], scale[2];
 
 			BKE_mesh_calc_poly_normal(mp, l, mv, p_nor);

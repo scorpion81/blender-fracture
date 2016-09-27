@@ -283,9 +283,8 @@ LinkNode *BLO_blendhandle_get_linkable_groups(BlendHandle *bh)
 			if (BKE_idcode_is_linkable(bhead->code)) {
 				const char *str = BKE_idcode_to_name(bhead->code);
 				
-				if (!BLI_gset_haskey(gathered, (void *)str)) {
+				if (BLI_gset_add(gathered, (void *)str)) {
 					BLI_linklist_prepend(&names, strdup(str));
-					BLI_gset_insert(gathered, (void *)str);
 				}
 			}
 		}
@@ -412,22 +411,23 @@ BlendFileData *BLO_read_from_memfile(Main *oldmain, const char *filename, MemFil
 			/* Even though directly used libs have been already moved to new main, indirect ones have not.
 			 * This is a bit annoying, but we have no choice but to keep them all for now - means some now unused
 			 * data may remain in memory, but think we'll have to live with it. */
-			Main *libmain;
+			Main *libmain, *libmain_next;
 			Main *newmain = bfd->main;
 			ListBase new_mainlist = {newmain, newmain};
 
-			for (libmain = oldmain->next; libmain; libmain = libmain->next) {
+			for (libmain = oldmain->next; libmain; libmain = libmain_next) {
+				libmain_next = libmain->next;
 				/* Note that LIB_INDIRECT does not work with libraries themselves, so we use non-NULL parent
 				 * to detect indirect-linked ones... */
 				if (libmain->curlib && (libmain->curlib->parent != NULL)) {
 					BLI_remlink(&old_mainlist, libmain);
 					BLI_addtail(&new_mainlist, libmain);
 				}
-#if 0
 				else {
+#ifdef PRINT_DEBUG
 					printf("Dropped Main for lib: %s\n", libmain->curlib->id.name);
-				}
 #endif
+				}
 			}
 			/* In any case, we need to move all lib datablocks themselves - those are 'first level data',
 			 * getting rid of them would imply updating spaces & co to prevent invalid pointers access. */

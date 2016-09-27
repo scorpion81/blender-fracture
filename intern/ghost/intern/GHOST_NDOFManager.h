@@ -21,6 +21,10 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
+#ifndef WITH_INPUT_NDOF
+#  error NDOF code included in non-NDOF-enabled build
+#endif
+
 #ifndef __GHOST_NDOFMANAGER_H__
 #define __GHOST_NDOFMANAGER_H__
 
@@ -40,6 +44,7 @@ typedef enum {
 	NDOF_SpaceMousePro,
 	NDOF_SpaceMouseWireless,
 	NDOF_SpaceMouseProWireless,
+	NDOF_SpaceMouseEnterprise,
 
 	// older devices
 	NDOF_SpacePilot,

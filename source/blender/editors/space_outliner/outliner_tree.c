@@ -38,6 +38,7 @@
 #include "DNA_armature_types.h"
 #include "DNA_constraint_types.h"
 #include "DNA_camera_types.h"
+#include "DNA_cachefile_types.h"
 #include "DNA_gpencil_types.h"
 #include "DNA_group_types.h"
 #include "DNA_key_types.h"
@@ -199,7 +200,7 @@ void outliner_cleanup_tree(SpaceOops *soops)
 }
 
 /* Find specific item from the treestore */
-TreeElement *outliner_find_tree_element(ListBase *lb, TreeStoreElem *store_elem)
+TreeElement *outliner_find_tree_element(ListBase *lb, const TreeStoreElem *store_elem)
 {
 	TreeElement *te, *tes;
 	for (te = lb->first; te; te = te->next) {
@@ -211,7 +212,7 @@ TreeElement *outliner_find_tree_element(ListBase *lb, TreeStoreElem *store_elem)
 }
 
 /* tse is not in the treestore, we use its contents to find a match */
-TreeElement *outliner_find_tse(SpaceOops *soops, TreeStoreElem *tse)
+TreeElement *outliner_find_tse(SpaceOops *soops, const TreeStoreElem *tse)
 {
 	TreeStoreElem *tselem;
 
@@ -226,25 +227,63 @@ TreeElement *outliner_find_tse(SpaceOops *soops, TreeStoreElem *tse)
 }
 
 /* Find treestore that refers to given ID */
-TreeElement *outliner_find_id(SpaceOops *soops, ListBase *lb, ID *id)
+TreeElement *outliner_find_id(SpaceOops *soops, ListBase *lb, const ID *id)
 {
-	TreeElement *te, *tes;
-	TreeStoreElem *tselem;
-	
-	for (te = lb->first; te; te = te->next) {
-		tselem = TREESTORE(te);
+	for (TreeElement *te = lb->first; te; te = te->next) {
+		TreeStoreElem *tselem = TREESTORE(te);
 		if (tselem->type == 0) {
-			if (tselem->id == id) return te;
+			if (tselem->id == id) {
+				return te;
+			}
 			/* only deeper on scene or object */
-			if (te->idcode == ID_OB || te->idcode == ID_SCE || (soops->outlinevis == SO_GROUPS && te->idcode == ID_GR)) {
-				tes = outliner_find_id(soops, &te->subtree, id);
-				if (tes) return tes;
+			if (ELEM(te->idcode, ID_OB, ID_SCE) ||
+			    ((soops->outlinevis == SO_GROUPS) && (te->idcode == ID_GR)))
+			{
+				TreeElement *tes = outliner_find_id(soops, &te->subtree, id);
+				if (tes) {
+					return tes;
+				}
 			}
 		}
 	}
 	return NULL;
 }
 
+TreeElement *outliner_find_posechannel(SpaceOops *soops, ListBase *lb, const bPoseChannel *pchan)
+{
+	for (TreeElement *te = lb->first; te; te = te->next) {
+		if (te->directdata == pchan) {
+			return te;
+		}
+
+		TreeStoreElem *tselem = TREESTORE(te);
+		if (ELEM(tselem->type, TSE_POSE_BASE, TSE_POSE_CHANNEL)) {
+			TreeElement *tes = outliner_find_posechannel(soops, &te->subtree, pchan);
+			if (tes) {
+				return tes;
+			}
+		}
+	}
+	return NULL;
+}
+
+TreeElement *outliner_find_editbone(SpaceOops *soops, ListBase *lb, const EditBone *ebone)
+{
+	for (TreeElement *te = lb->first; te; te = te->next) {
+		if (te->directdata == ebone) {
+			return te;
+		}
+
+		TreeStoreElem *tselem = TREESTORE(te);
+		if (ELEM(tselem->type, 0, TSE_EBONE)) {
+			TreeElement *tes = outliner_find_editbone(soops, &te->subtree, ebone);
+			if (tes) {
+				return tes;
+			}
+		}
+	}
+	return NULL;
+}
 
 ID *outliner_search_back(SpaceOops *UNUSED(soops), TreeElement *te, short idcode)
 {
@@ -452,7 +491,7 @@ static void outliner_add_object_contents(SpaceOops *soops, TreeElement *te, Tree
 	
 	outliner_add_element(soops, &te->subtree, ob->poselib, te, 0, 0); // XXX FIXME.. add a special type for this
 	
-	if (ob->proxy && ob->id.lib == NULL)
+	if (ob->proxy && !ID_IS_LINKED_DATABLOCK(ob))
 		outliner_add_element(soops, &te->subtree, ob->proxy, te, TSE_PROXY, 0);
 		
 	outliner_add_element(soops, &te->subtree, ob->gpd, te, 0, 0);
@@ -706,6 +745,16 @@ static void outliner_add_id_contents(SpaceOops *soops, TreeElement *te, TreeStor
 			
 			if (outliner_animdata_test(ca->adt))
 				outliner_add_element(soops, &te->subtree, ca, te, TSE_ANIM_DATA, 0);
+			break;
+		}
+		case ID_CF:
+		{
+			CacheFile *cache_file = (CacheFile *)id;
+
+			if (outliner_animdata_test(cache_file->adt)) {
+				outliner_add_element(soops, &te->subtree, cache_file, te, TSE_ANIM_DATA, 0);
+			}
+
 			break;
 		}
 		case ID_LA:

@@ -286,6 +286,7 @@ void modifier_type_init(ModifierTypeInfo *types[])
 	INIT_TYPE(DataTransfer);
 	INIT_TYPE(NormalEdit);
 	INIT_TYPE(CorrectiveSmooth);
+	INIT_TYPE(MeshSequenceCache);
 	INIT_TYPE(Fracture);
 #undef INIT_TYPE
 }

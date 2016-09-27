@@ -439,7 +439,7 @@ static void bm_face_split_by_edges_island_connect(
         LinkNode *e_link, const int e_link_len,
         MemArena *mem_arena_edgenet)
 {
-	BMEdge **edge_arr = BLI_memarena_alloc(mem_arena_edgenet, sizeof(BMEdge **) * e_link_len);
+	BMEdge **edge_arr = BLI_memarena_alloc(mem_arena_edgenet, sizeof(*edge_arr) * e_link_len);
 	int edge_arr_len = 0;
 
 	while (e_link) {
@@ -563,7 +563,7 @@ static BMEdge *bm_face_split_edge_find(
 				if (UNLIKELY(BM_edge_exists(v_pivot, l_iter->e->v1) ||
 				             BM_edge_exists(v_pivot, l_iter->e->v2)))
 				{
-					/* very unlikley but will cause complications splicing the verts together,
+					/* very unlikely but will cause complications splicing the verts together,
 					 * so just skip this case */
 					ok = false;
 				}

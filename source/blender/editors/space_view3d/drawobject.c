@@ -227,16 +227,25 @@ static void ob_wire_color_blend_theme_id(const unsigned char ob_wire_col[4], con
 	glColor3fv(col);
 }
 
+int view3d_effective_drawtype(const struct View3D *v3d)
+{
+	if (v3d->drawtype == OB_RENDER) {
+		return v3d->prev_drawtype;
+	}
+	return v3d->drawtype;
+}
+
 /* this condition has been made more complex since editmode can draw textures */
 bool check_object_draw_texture(Scene *scene, View3D *v3d, const char drawtype)
 {
+	const int v3d_drawtype = view3d_effective_drawtype(v3d);
 	/* texture and material draw modes */
-	if (ELEM(v3d->drawtype, OB_TEXTURE, OB_MATERIAL) && drawtype > OB_SOLID) {
+	if (ELEM(v3d_drawtype, OB_TEXTURE, OB_MATERIAL) && drawtype > OB_SOLID) {
 		return true;
 	}
 
 	/* textured solid */
-	if ((v3d->drawtype == OB_SOLID) &&
+	if ((v3d_drawtype == OB_SOLID) &&
 	    (v3d->flag2 & V3D_SOLID_TEX) &&
 	    (BKE_scene_use_new_shading_nodes(scene) == false))
 	{
@@ -298,7 +307,7 @@ bool draw_glsl_material(Scene *scene, Object *ob, View3D *v3d, const char dt)
 	
 	if (v3d->flag2 & V3D_SHOW_SOLID_MATCAP)
 		return true;
-	
+
 	if (v3d->drawtype == OB_TEXTURE)
 		return (scene->gm.matmode == GAME_MAT_GLSL && !BKE_scene_use_new_shading_nodes(scene));
 	else if (v3d->drawtype == OB_MATERIAL && dt > OB_SOLID)
@@ -893,7 +902,7 @@ void view3d_cached_text_draw_end(View3D *v3d, ARegion *ar, bool depth_write, flo
 		glPushMatrix();
 		glMatrixMode(GL_MODELVIEW);
 		glPushMatrix();
-		wmOrtho2_region_ui(ar);
+		wmOrtho2_region_pixelspace(ar);
 		glLoadIdentity();
 		
 		if (depth_write) {
@@ -1200,7 +1209,7 @@ static void drawlamp(View3D *v3d, RegionView3D *rv3d, Base *base,
 
 	if ((drawcone || drawshadowbox) && !v3d->transp) {
 		/* in this case we need to draw delayed */
-		ED_view3d_after_add(&v3d->afterdraw_transp, base, dflag);
+		ED_view3d_after_add(v3d->xray ? &v3d->afterdraw_xraytransp : &v3d->afterdraw_transp, base, dflag);
 		return;
 	}
 	
@@ -1392,8 +1401,8 @@ static void drawlamp(View3D *v3d, RegionView3D *rv3d, Base *base,
 				float blend = z_abs * (1.0f - pow2f(la->spotblend));
 
 				/* hide line if it is zero size or overlaps with outer border,
-				* previously it adjusted to always to show it but that seems
-				* confusing because it doesn't show the actual blend size */
+				 * previously it adjusted to always to show it but that seems
+				 * confusing because it doesn't show the actual blend size */
 				if (blend != 0.0f && blend != z_abs) {
 					circ(0.0f, 0.0f, blend);
 				}
@@ -1583,12 +1592,9 @@ static void draw_bundle_sphere(void)
 
 		displist = glGenLists(1);
 		glNewList(displist, GL_COMPILE);
-
 		qobj = gluNewQuadric();
 		gluQuadricDrawStyle(qobj, GLU_FILL);
-		glShadeModel(GL_SMOOTH);
 		gluSphere(qobj, 0.05, 8, 8);
-		glShadeModel(GL_FLAT);
 		gluDeleteQuadric(qobj);
 
 		glEndList();
@@ -1661,7 +1667,8 @@ static void draw_viewport_object_reconstruction(
 		         v3d->bundle_size / 0.05f / camera_size[1],
 		         v3d->bundle_size / 0.05f / camera_size[2]);
 
-		if (v3d->drawtype == OB_WIRE) {
+		const int v3d_drawtype = view3d_effective_drawtype(v3d);
+		if (v3d_drawtype == OB_WIRE) {
 			if ((dflag & DRAW_CONSTCOLOR) == 0) {
 				if (selected && (track->flag & TRACK_CUSTOMCOLOR) == 0) {
 					glColor3ubv(ob_wire_col);
@@ -1673,7 +1680,7 @@ static void draw_viewport_object_reconstruction(
 
 			drawaxes(rv3d->viewmatob, 0.05f, v3d->bundle_drawtype);
 		}
-		else if (v3d->drawtype > OB_WIRE) {
+		else if (v3d_drawtype > OB_WIRE) {
 			if (v3d->bundle_drawtype == OB_EMPTY_SPHERE) {
 				/* selection outline */
 				if (selected) {
@@ -1769,8 +1776,6 @@ static void draw_viewport_reconstruction(
 	GPU_basic_shader_colors(NULL, NULL, 0, 1.0f);
 	GPU_basic_shader_bind(GPU_SHADER_LIGHTING | GPU_SHADER_USE_COLOR);
 
-	glShadeModel(GL_SMOOTH);
-
 	tracking_object = tracking->objects.first;
 	while (tracking_object) {
 		draw_viewport_object_reconstruction(
@@ -1781,7 +1786,6 @@ static void draw_viewport_reconstruction(
 	}
 
 	/* restore */
-	glShadeModel(GL_FLAT);
 	GPU_basic_shader_bind(GPU_SHADER_USE_COLOR);
 
 	if ((dflag & DRAW_CONSTCOLOR) == 0) {
@@ -1920,16 +1924,15 @@ static void drawcamera_stereo3d(
 
 	if (is_stereo3d_cameras) {
 		/* draw connecting lines */
-		glPushAttrib(GL_ENABLE_BIT);
-
-		glLineStipple(2, 0xAAAA);
-		glEnable(GL_LINE_STIPPLE);
+		GPU_basic_shader_bind_enable(GPU_SHADER_LINE | GPU_SHADER_STIPPLE);
+		GPU_basic_shader_line_stipple(2, 0xAAAA);
 
 		glBegin(GL_LINES);
 		glVertex3fv(origin[0]);
 		glVertex3fv(origin[1]);
 		glEnd();
-		glPopAttrib();
+
+		GPU_basic_shader_bind_disable(GPU_SHADER_LINE | GPU_SHADER_STIPPLE);
 	}
 
 	/* draw convergence plane */
@@ -2341,7 +2344,6 @@ static void drawlattice(View3D *v3d, Object *ob)
 		
 		if (ob->defbase.first && lt->dvert) {
 			actdef_wcol = ob->actdef;
-			glShadeModel(GL_SMOOTH);
 		}
 	}
 
@@ -2370,10 +2372,6 @@ static void drawlattice(View3D *v3d, Object *ob)
 		}
 	}
 	glEnd();
-	
-	/* restoration for weight colors */
-	if (actdef_wcol)
-		glShadeModel(GL_FLAT);
 
 	if (is_edit) {
 		BPoint *actbp = BKE_lattice_active_point_get(lt);
@@ -3238,17 +3236,15 @@ static void draw_em_fancy_edges(BMEditMesh *em, Scene *scene, View3D *v3d,
 			    ((ts->selectmode & SCE_SELECT_VERTEX) || (me->drawflag & ME_DRAWEIGHT)))
 			{
 				if (draw_dm_edges_weight_check(me, v3d)) {
-					glShadeModel(GL_SMOOTH);
+					// Interpolate vertex weights
 					draw_dm_edges_weight_interp(em, cageDM, ts->weightuser);
-					glShadeModel(GL_FLAT);
 				}
 				else if (ts->selectmode == SCE_SELECT_FACE) {
 					draw_dm_edges_sel(em, cageDM, wireCol, selCol, actCol, eed_act);
 				}
 				else {
-					glShadeModel(GL_SMOOTH);
+					// Interpolate vertex selection
 					draw_dm_edges_sel_interp(em, cageDM, wireCol, selCol);
-					glShadeModel(GL_FLAT);
 				}
 			}
 			else {
@@ -3678,29 +3674,10 @@ static void draw_em_fancy(Scene *scene, ARegion *ar, View3D *v3d,
 {
 	RegionView3D *rv3d = ar->regiondata;
 	Mesh *me = ob->data;
-	BMFace *efa_act = BM_mesh_active_face_get(em->bm, false, true); /* annoying but active faces is stored differently */
-	BMEdge *eed_act = NULL;
-	BMVert *eve_act = NULL;
-	bool use_occlude_wire = (v3d->flag2 & V3D_OCCLUDE_WIRE) && (dt > OB_WIRE);
+	const bool use_occlude_wire = (dt > OB_WIRE) && (v3d->flag2 & V3D_OCCLUDE_WIRE);
+	bool use_depth_offset = false;
 	
 	glLineWidth(1);
-
-	if (em->bm->selected.last) {
-		BMEditSelection *ese = em->bm->selected.last;
-		/* face is handled above */
-#if 0
-		if (ese->type == BM_FACE) {
-			efa_act = (BMFace *)ese->data;
-		}
-		else
-#endif
-		if (ese->htype == BM_EDGE) {
-			eed_act = (BMEdge *)ese->ele;
-		}
-		else if (ese->htype == BM_VERT) {
-			eve_act = (BMVert *)ese->ele;
-		}
-	}
 	
 	BM_mesh_elem_table_ensure(em->bm, BM_VERT | BM_EDGE | BM_FACE);
 
@@ -3710,6 +3687,7 @@ static void draw_em_fancy(Scene *scene, ARegion *ar, View3D *v3d,
 
 			ED_view3d_polygon_offset(rv3d, 1.0);
 			glDepthMask(0);
+			use_depth_offset = true;
 		}
 		else {
 			glEnable(GL_DEPTH_TEST);
@@ -3756,6 +3734,7 @@ static void draw_em_fancy(Scene *scene, ARegion *ar, View3D *v3d,
 
 		ED_view3d_polygon_offset(rv3d, 1.0);
 		glDepthMask(0);
+		use_depth_offset = true;
 	}
 	else {
 		if (cageDM != finalDM) {
@@ -3764,145 +3743,172 @@ static void draw_em_fancy(Scene *scene, ARegion *ar, View3D *v3d,
 		}
 	}
 
-	if ((me->drawflag & ME_DRAWFACES) && (use_occlude_wire == false)) {  /* transp faces */
-		unsigned char col1[4], col2[4], col3[4];
-#ifdef WITH_FREESTYLE
-		unsigned char col4[4];
-#endif
-
-		UI_GetThemeColor4ubv(TH_FACE, col1);
-		UI_GetThemeColor4ubv(TH_FACE_SELECT, col2);
-		UI_GetThemeColor4ubv(TH_EDITMESH_ACTIVE, col3);
-#ifdef WITH_FREESTYLE
-		UI_GetThemeColor4ubv(TH_FREESTYLE_FACE_MARK, col4);
-#endif
-
-		glEnable(GL_BLEND);
-		glDepthMask(0);  /* disable write in zbuffer, needed for nice transp */
-
-		/* don't draw unselected faces, only selected, this is MUCH nicer when texturing */
-		if (check_object_draw_texture(scene, v3d, dt))
-			col1[3] = 0;
-
-#ifdef WITH_FREESTYLE
-		if (!(me->drawflag & ME_DRAW_FREESTYLE_FACE) || !CustomData_has_layer(&em->bm->pdata, CD_FREESTYLE_FACE))
-			col4[3] = 0;
-
-		draw_dm_faces_sel(em, cageDM, col1, col2, col3, col4, efa_act);
-#else
-		draw_dm_faces_sel(em, cageDM, col1, col2, col3, efa_act);
-#endif
-
-		glDisable(GL_BLEND);
-		glDepthMask(1);  /* restore write in zbuffer */
-	}
-	else if (efa_act) {
-		/* even if draw faces is off it would be nice to draw the stipple face
-		 * Make all other faces zero alpha except for the active */
-		unsigned char col1[4], col2[4], col3[4];
-#ifdef WITH_FREESTYLE
-		unsigned char col4[4];
-		col4[3] = 0; /* don't draw */
-#endif
-		col1[3] = col2[3] = 0; /* don't draw */
-
-		UI_GetThemeColor4ubv(TH_EDITMESH_ACTIVE, col3);
-
-		glEnable(GL_BLEND);
-		glDepthMask(0);  /* disable write in zbuffer, needed for nice transp */
-
-#ifdef WITH_FREESTYLE
-		draw_dm_faces_sel(em, cageDM, col1, col2, col3, col4, efa_act);
-#else
-		draw_dm_faces_sel(em, cageDM, col1, col2, col3, efa_act);
-#endif
-
-		glDisable(GL_BLEND);
-		glDepthMask(1);  /* restore write in zbuffer */
-	}
-
-	/* here starts all fancy draw-extra over */
-	if ((me->drawflag & ME_DRAWEDGES) == 0 && check_object_draw_texture(scene, v3d, dt)) {
-		/* we are drawing textures and 'ME_DRAWEDGES' is disabled, don't draw any edges */
-		
-		/* only draw selected edges otherwise there is no way of telling if a face is selected */
-		draw_em_fancy_edges(em, scene, v3d, me, cageDM, 1, eed_act);
-		
+	if ((dt > OB_WIRE) && (v3d->flag2 & V3D_RENDER_SHADOW)) {
+		/* pass */
 	}
 	else {
-		if (me->drawflag & ME_DRAWSEAMS) {
-			UI_ThemeColor(TH_EDGE_SEAM);
-			glLineWidth(2);
+		/* annoying but active faces is stored differently */
+		BMFace *efa_act = BM_mesh_active_face_get(em->bm, false, true);
+		BMEdge *eed_act = NULL;
+		BMVert *eve_act = NULL;
 
-			draw_dm_edges_seams(em, cageDM);
-
-			glColor3ub(0, 0, 0);
+		if (em->bm->selected.last) {
+			BMEditSelection *ese = em->bm->selected.last;
+			/* face is handled above */
+#if 0
+			if (ese->type == BM_FACE) {
+				efa_act = (BMFace *)ese->data;
+			}
+			else
+#endif
+			if (ese->htype == BM_EDGE) {
+				eed_act = (BMEdge *)ese->ele;
+			}
+			else if (ese->htype == BM_VERT) {
+				eve_act = (BMVert *)ese->ele;
+			}
 		}
-		
-		if (me->drawflag & ME_DRAWSHARP) {
-			UI_ThemeColor(TH_EDGE_SHARP);
-			glLineWidth(2);
 
-			draw_dm_edges_sharp(em, cageDM);
+		if ((me->drawflag & ME_DRAWFACES) && (use_occlude_wire == false)) {  /* transp faces */
+			unsigned char col1[4], col2[4], col3[4];
+#ifdef WITH_FREESTYLE
+			unsigned char col4[4];
+#endif
 
-			glColor3ub(0, 0, 0);
-		}
+			UI_GetThemeColor4ubv(TH_FACE, col1);
+			UI_GetThemeColor4ubv(TH_FACE_SELECT, col2);
+			UI_GetThemeColor4ubv(TH_EDITMESH_ACTIVE, col3);
+#ifdef WITH_FREESTYLE
+			UI_GetThemeColor4ubv(TH_FREESTYLE_FACE_MARK, col4);
+#endif
+
+			glEnable(GL_BLEND);
+			glDepthMask(0);  /* disable write in zbuffer, needed for nice transp */
+
+			/* don't draw unselected faces, only selected, this is MUCH nicer when texturing */
+			if (check_object_draw_texture(scene, v3d, dt))
+				col1[3] = 0;
 
 #ifdef WITH_FREESTYLE
-		if (me->drawflag & ME_DRAW_FREESTYLE_EDGE && CustomData_has_layer(&em->bm->edata, CD_FREESTYLE_EDGE)) {
-			UI_ThemeColor(TH_FREESTYLE_EDGE_MARK);
-			glLineWidth(2);
-	
-			draw_dm_edges_freestyle(em, cageDM);
-	
-			glColor3ub(0, 0, 0);
-		}
+			if (!(me->drawflag & ME_DRAW_FREESTYLE_FACE) || !CustomData_has_layer(&em->bm->pdata, CD_FREESTYLE_FACE))
+				col4[3] = 0;
+
+			draw_dm_faces_sel(em, cageDM, col1, col2, col3, col4, efa_act);
+#else
+			draw_dm_faces_sel(em, cageDM, col1, col2, col3, efa_act);
 #endif
-	
-		if (me->drawflag & ME_DRAWCREASES) {
-			draw_dm_creases(em, cageDM);
+
+			glDisable(GL_BLEND);
+			glDepthMask(1);  /* restore write in zbuffer */
 		}
-		if (me->drawflag & ME_DRAWBWEIGHTS) {
-			draw_dm_bweights(em, scene, cageDM);
+		else if (efa_act) {
+			/* even if draw faces is off it would be nice to draw the stipple face
+			 * Make all other faces zero alpha except for the active */
+			unsigned char col1[4], col2[4], col3[4];
+#ifdef WITH_FREESTYLE
+			unsigned char col4[4];
+			col4[3] = 0; /* don't draw */
+#endif
+			col1[3] = col2[3] = 0; /* don't draw */
+
+			UI_GetThemeColor4ubv(TH_EDITMESH_ACTIVE, col3);
+
+			glEnable(GL_BLEND);
+			glDepthMask(0);  /* disable write in zbuffer, needed for nice transp */
+
+#ifdef WITH_FREESTYLE
+			draw_dm_faces_sel(em, cageDM, col1, col2, col3, col4, efa_act);
+#else
+			draw_dm_faces_sel(em, cageDM, col1, col2, col3, efa_act);
+#endif
+
+			glDisable(GL_BLEND);
+			glDepthMask(1);  /* restore write in zbuffer */
 		}
 
-		glLineWidth(1);
-		draw_em_fancy_edges(em, scene, v3d, me, cageDM, 0, eed_act);
+		/* here starts all fancy draw-extra over */
+		if ((me->drawflag & ME_DRAWEDGES) == 0 && check_object_draw_texture(scene, v3d, dt)) {
+			/* we are drawing textures and 'ME_DRAWEDGES' is disabled, don't draw any edges */
+
+			/* only draw selected edges otherwise there is no way of telling if a face is selected */
+			draw_em_fancy_edges(em, scene, v3d, me, cageDM, 1, eed_act);
+
+		}
+		else {
+			if (me->drawflag & ME_DRAWSEAMS) {
+				UI_ThemeColor(TH_EDGE_SEAM);
+				glLineWidth(2);
+
+				draw_dm_edges_seams(em, cageDM);
+
+				glColor3ub(0, 0, 0);
+			}
+
+			if (me->drawflag & ME_DRAWSHARP) {
+				UI_ThemeColor(TH_EDGE_SHARP);
+				glLineWidth(2);
+
+				draw_dm_edges_sharp(em, cageDM);
+
+				glColor3ub(0, 0, 0);
+			}
+
+#ifdef WITH_FREESTYLE
+			if (me->drawflag & ME_DRAW_FREESTYLE_EDGE && CustomData_has_layer(&em->bm->edata, CD_FREESTYLE_EDGE)) {
+				UI_ThemeColor(TH_FREESTYLE_EDGE_MARK);
+				glLineWidth(2);
+
+				draw_dm_edges_freestyle(em, cageDM);
+
+				glColor3ub(0, 0, 0);
+			}
+#endif
+
+			if (me->drawflag & ME_DRAWCREASES) {
+				draw_dm_creases(em, cageDM);
+			}
+			if (me->drawflag & ME_DRAWBWEIGHTS) {
+				draw_dm_bweights(em, scene, cageDM);
+			}
+
+			glLineWidth(1);
+			draw_em_fancy_edges(em, scene, v3d, me, cageDM, 0, eed_act);
+		}
+
+		{
+			draw_em_fancy_verts(scene, v3d, ob, em, cageDM, eve_act, rv3d);
+
+			if (me->drawflag & ME_DRAWNORMALS) {
+				UI_ThemeColor(TH_NORMAL);
+				draw_dm_face_normals(em, scene, ob, cageDM);
+			}
+			if (me->drawflag & ME_DRAW_VNORMALS) {
+				UI_ThemeColor(TH_VNORMAL);
+				draw_dm_vert_normals(em, scene, ob, cageDM);
+			}
+			if (me->drawflag & ME_DRAW_LNORMALS) {
+				UI_ThemeColor(TH_LNORMAL);
+				draw_dm_loop_normals(em, scene, ob, cageDM);
+			}
+
+			if ((me->drawflag & (ME_DRAWEXTRA_EDGELEN |
+			                     ME_DRAWEXTRA_FACEAREA |
+			                     ME_DRAWEXTRA_FACEANG |
+			                     ME_DRAWEXTRA_EDGEANG)) &&
+			    !(v3d->flag2 & V3D_RENDER_OVERRIDE))
+			{
+				draw_em_measure_stats(ar, v3d, ob, em, &scene->unit);
+			}
+
+			if ((G.debug & G_DEBUG) && (me->drawflag & ME_DRAWEXTRA_INDICES) &&
+			    !(v3d->flag2 & V3D_RENDER_OVERRIDE))
+			{
+				draw_em_indices(em);
+			}
+		}
 	}
 
-	{
-		draw_em_fancy_verts(scene, v3d, ob, em, cageDM, eve_act, rv3d);
-
-		if (me->drawflag & ME_DRAWNORMALS) {
-			UI_ThemeColor(TH_NORMAL);
-			draw_dm_face_normals(em, scene, ob, cageDM);
-		}
-		if (me->drawflag & ME_DRAW_VNORMALS) {
-			UI_ThemeColor(TH_VNORMAL);
-			draw_dm_vert_normals(em, scene, ob, cageDM);
-		}
-		if (me->drawflag & ME_DRAW_LNORMALS) {
-			UI_ThemeColor(TH_LNORMAL);
-			draw_dm_loop_normals(em, scene, ob, cageDM);
-		}
-
-		if ((me->drawflag & (ME_DRAWEXTRA_EDGELEN |
-		                     ME_DRAWEXTRA_FACEAREA |
-		                     ME_DRAWEXTRA_FACEANG |
-		                     ME_DRAWEXTRA_EDGEANG)) &&
-		    !(v3d->flag2 & V3D_RENDER_OVERRIDE))
-		{
-			draw_em_measure_stats(ar, v3d, ob, em, &scene->unit);
-		}
-
-		if ((G.debug & G_DEBUG) && (me->drawflag & ME_DRAWEXTRA_INDICES) &&
-		    !(v3d->flag2 & V3D_RENDER_OVERRIDE))
-		{
-			draw_em_indices(em);
-		}
-	}
-
-	if (dt > OB_WIRE) {
+	if (use_depth_offset) {
 		glDepthMask(1);
 		ED_view3d_polygon_offset(rv3d, 0.0);
 		GPU_object_material_unbind();
@@ -4221,7 +4227,7 @@ static bool draw_mesh_object(Scene *scene, ARegion *ar, View3D *v3d, RegionView3
 	/* If we are drawing shadows and any of the materials don't cast a shadow,
 	 * then don't draw the object */
 	if (v3d->flag2 & V3D_RENDER_SHADOW) {
-		for (int i = 0; i < ob->totcol; ++i) {
+		for (int i = 1; i <= ob->totcol; ++i) {
 			Material *ma = give_current_material(ob, i);
 			if (ma && !(ma->mode2 & MA_CASTSHADOW)) {
 				return true;
@@ -4244,12 +4250,15 @@ static bool draw_mesh_object(Scene *scene, ARegion *ar, View3D *v3d, RegionView3
 	if (ob == obedit || drawlinked) {
 		DerivedMesh *finalDM, *cageDM;
 		
-		if (obedit != ob)
-			finalDM = cageDM = editbmesh_get_derived_base(ob, em);
-		else
+		if (obedit != ob) {
+			finalDM = cageDM = editbmesh_get_derived_base(
+			        ob, em, scene->customdata_mask);
+		}
+		else {
 			cageDM = editbmesh_get_derived_cage_and_final(
 			        scene, ob, em, scene->customdata_mask,
 			        &finalDM);
+		}
 
 		const bool use_material = ((me->drawflag & ME_DRAWEIGHT) == 0);
 
@@ -4441,10 +4450,6 @@ static void drawDispListsolid(ListBase *lb, Object *ob, const short dflag,
 
 	glEnableClientState(GL_VERTEX_ARRAY);
 
-	if (ob->type == OB_MBALL) {  /* mball always smooth shaded */
-		glShadeModel(GL_SMOOTH);
-	}
-
 	/* track current material, -1 for none (needed for lines) */
 	short col = -1;
 	
@@ -4466,7 +4471,6 @@ static void drawDispListsolid(ListBase *lb, Object *ob, const short dflag,
 
 					// glVertexPointer(3, GL_FLOAT, 0, dl->verts);
 					// glDrawArrays(GL_LINE_STRIP, 0, dl->nr);
-
 					glBegin(GL_LINE_STRIP);
 					for (int nr = dl->nr; nr; nr--, data += 3)
 						glVertex3fv(data);
@@ -4497,15 +4501,15 @@ static void drawDispListsolid(ListBase *lb, Object *ob, const short dflag,
 						GPU_object_material_bind(dl->col + 1, use_glsl ? &gattribs : NULL);
 						col = dl->col;
 					}
-
-					if (dl->rt & CU_SMOOTH) glShadeModel(GL_SMOOTH);
-					else glShadeModel(GL_FLAT);
+					/* FLAT/SMOOTH shading for surfaces */
+					glShadeModel((dl->rt & CU_SMOOTH) ? GL_SMOOTH : GL_FLAT);
 
 					glEnableClientState(GL_NORMAL_ARRAY);
 					glVertexPointer(3, GL_FLOAT, 0, dl->verts);
 					glNormalPointer(GL_FLOAT, 0, dl->nors);
 					glDrawElements(GL_QUADS, 4 * dl->totindex, GL_UNSIGNED_INT, dl->index);
 					glDisableClientState(GL_NORMAL_ARRAY);
+					glShadeModel(GL_SMOOTH);
 				}
 				break;
 
@@ -4550,7 +4554,6 @@ static void drawDispListsolid(ListBase *lb, Object *ob, const short dflag,
 	}
 
 	glDisableClientState(GL_VERTEX_ARRAY);
-	glShadeModel(GL_FLAT);
 	glFrontFace(GL_CCW);
 
 	if (col != -1) {
@@ -4660,7 +4663,7 @@ static bool drawDispList_nobackface(Scene *scene, View3D *v3d, RegionView3D *rv3
 				index3_nors_incr = true;
 			}
 			else {
-				if (!render_only || (render_only && BKE_displist_has_faces(lb))) {
+				if (!render_only || BKE_displist_has_faces(lb)) {
 					return drawDispListwire(lb, ob->type);
 				}
 			}
@@ -5015,7 +5018,7 @@ static void draw_new_particle_system(Scene *scene, View3D *v3d, RegionView3D *rv
 	unsigned char tcol[4] = {0, 0, 0, 255};
 
 /* 1. */
-	if (part == NULL || !psys_check_enabled(ob, psys))
+	if (part == NULL || !psys_check_enabled(ob, psys, G.is_rendering))
 		return;
 
 	if (pars == NULL) return;
@@ -5723,7 +5726,7 @@ static void draw_update_ptcache_edit(Scene *scene, Object *ob, PTCacheEdit *edit
 
 	/* create path and child path cache if it doesn't exist already */
 	if (edit->pathcache == NULL)
-		psys_cache_edit_paths(scene, ob, edit, CFRA);
+		psys_cache_edit_paths(scene, ob, edit, CFRA, G.is_rendering);
 }
 
 static void draw_ptcache_edit(Scene *scene, View3D *v3d, PTCacheEdit *edit)
@@ -5759,8 +5762,6 @@ static void draw_ptcache_edit(Scene *scene, View3D *v3d, PTCacheEdit *edit)
 
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_COLOR_ARRAY);
-
-	glShadeModel(GL_SMOOTH);
 
 	if (pset->brushtype == PE_BRUSH_WEIGHT)
 		glLineWidth(2.0f);
@@ -5876,7 +5877,6 @@ static void draw_ptcache_edit(Scene *scene, View3D *v3d, PTCacheEdit *edit)
 	glDisableClientState(GL_COLOR_ARRAY);
 	glDisableClientState(GL_NORMAL_ARRAY);
 	glDisableClientState(GL_VERTEX_ARRAY);
-	glShadeModel(GL_FLAT);
 	if (v3d->zbuf) glEnable(GL_DEPTH_TEST);
 }
 
@@ -7334,7 +7334,7 @@ static void draw_object_wire_color(Scene *scene, Base *base, unsigned char r_ob_
 	}
 	else {
 		/* Sets the 'colindex' */
-		if (ob->id.lib) {
+		if (ID_IS_LINKED_DATABLOCK(ob)) {
 			colindex = (base->flag & (SELECT + BA_WAS_SEL)) ? 2 : 1;
 		}
 		/* Sets the 'theme_id' or fallback to wire */
@@ -7671,7 +7671,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 
 	/* maximum drawtype */
 	char dt = v3d->drawtype;
-	if (dt == OB_RENDER) dt = OB_SOLID;
+	if (dt == OB_RENDER) dt = v3d->prev_drawtype;
 	dt = MIN2(dt, ob->dt);
 	if (v3d->zbuf == 0 && dt > OB_WIRE) dt = OB_WIRE;
 	short dtx = 0;
@@ -8181,7 +8181,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 				    !(G.f & G_RENDER_OGL))
 				{
 					/* check > 0 otherwise grease pencil can draw into the circle select which is annoying. */
-					drawcentercircle(v3d, rv3d, ob->obmat[3], do_draw_center, ob->id.lib || ob->id.us > 1);
+					drawcentercircle(v3d, rv3d, ob->obmat[3], do_draw_center, ID_IS_LINKED_DATABLOCK(ob) || ob->id.us > 1);
 				}
 			}
 		}
@@ -8310,7 +8310,7 @@ static void bbs_obmode_mesh_verts__mapFunc(void *userData, int index, const floa
 	MVert *mv = &data->mvert[index];
 
 	if (!(mv->flag & ME_HIDE)) {
-		WM_framebuffer_index_set(data->offset + index);
+		GPU_select_index_set(data->offset + index);
 		glVertex3fv(co);
 	}
 }
@@ -8335,7 +8335,7 @@ static void bbs_mesh_verts__mapFunc(void *userData, int index, const float co[3]
 	BMVert *eve = BM_vert_at_index(data->bm, index);
 
 	if (!BM_elem_flag_test(eve, BM_ELEM_HIDDEN)) {
-		WM_framebuffer_index_set(data->offset + index);
+		GPU_select_index_set(data->offset + index);
 		glVertex3fv(co);
 	}
 }
@@ -8354,7 +8354,7 @@ static DMDrawOption bbs_mesh_wire__setDrawOptions(void *userData, int index)
 	BMEdge *eed = BM_edge_at_index(data->bm, index);
 
 	if (!BM_elem_flag_test(eed, BM_ELEM_HIDDEN)) {
-		WM_framebuffer_index_set(data->offset + index);
+		GPU_select_index_set(data->offset + index);
 		return DM_DRAW_OPTION_NORMAL;
 	}
 	else {
@@ -8368,7 +8368,7 @@ static void bbs_mesh_wire(BMEditMesh *em, DerivedMesh *dm, int offset)
 }
 
 /**
- * dont set #WM_framebuffer_index_set. just use to mask other
+ * dont set #GPU_framebuffer_index_set. just use to mask other
  */
 static DMDrawOption bbs_mesh_mask__setSolidDrawOptions(void *userData, int index)
 {
@@ -8387,7 +8387,7 @@ static DMDrawOption bbs_mesh_solid__setSolidDrawOptions(void *userData, int inde
 	BMFace *efa = BM_face_at_index(userData, index);
 
 	if (!BM_elem_flag_test(efa, BM_ELEM_HIDDEN)) {
-		WM_framebuffer_index_set(index + 1);
+		GPU_select_index_set(index + 1);
 		return DM_DRAW_OPTION_NORMAL;
 	}
 	else {
@@ -8400,7 +8400,7 @@ static void bbs_mesh_solid__drawCenter(void *userData, int index, const float ce
 	BMFace *efa = BM_face_at_index(userData, index);
 
 	if (!BM_elem_flag_test(efa, BM_ELEM_HIDDEN)) {
-		WM_framebuffer_index_set(index + 1);
+		GPU_select_index_set(index + 1);
 
 		glVertex3fv(cent);
 	}
@@ -8431,7 +8431,7 @@ static void bbs_mesh_solid_EM(BMEditMesh *em, Scene *scene, View3D *v3d,
 
 static DMDrawOption bbs_mesh_solid__setDrawOpts(void *UNUSED(userData), int index)
 {
-	WM_framebuffer_index_set(index + 1);
+	GPU_select_index_set(index + 1);
 	return DM_DRAW_OPTION_NORMAL;
 }
 
@@ -8440,7 +8440,7 @@ static DMDrawOption bbs_mesh_solid_hide__setDrawOpts(void *userData, int index)
 	Mesh *me = userData;
 
 	if (!(me->mpoly[index].flag & ME_HIDE)) {
-		WM_framebuffer_index_set(index + 1);
+		GPU_select_index_set(index + 1);
 		return DM_DRAW_OPTION_NORMAL;
 	}
 	else {
@@ -8448,7 +8448,7 @@ static DMDrawOption bbs_mesh_solid_hide__setDrawOpts(void *userData, int index)
 	}
 }
 
-/* must have called WM_framebuffer_index_set beforehand */
+/* must have called GPU_framebuffer_index_set beforehand */
 static DMDrawOption bbs_mesh_solid_hide2__setDrawOpts(void *userData, int index)
 {
 	Mesh *me = userData;
@@ -8574,7 +8574,7 @@ static void draw_object_mesh_instance(Scene *scene, View3D *v3d, RegionView3D *r
 	DerivedMesh *dm = NULL, *edm = NULL;
 	
 	if (ob->mode & OB_MODE_EDIT) {
-		edm = editbmesh_get_derived_base(ob, me->edit_btmesh);
+		edm = editbmesh_get_derived_base(ob, me->edit_btmesh, CD_MASK_BAREMESH);
 		DM_update_materials(edm, ob);
 	}
 	else {

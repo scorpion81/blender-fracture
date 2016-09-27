@@ -40,6 +40,9 @@
 #include "BKE_library_query.h"
 
 #include "DNA_ID.h"
+/* Those folowing are only to support hack of not listing some internal 'backward' pointers in generated user_map... */
+#include "DNA_object_types.h"
+#include "DNA_key_types.h"
 
 #include "bpy_util.h"
 #include "bpy_rna_id_collection.h"
@@ -80,7 +83,8 @@ static bool id_check_type(const ID *id, const BLI_bitmap *types_bitmap)
 	return BLI_BITMAP_TEST_BOOL(types_bitmap, id_code_as_index(GS(id->name)));
 }
 
-static bool foreach_libblock_id_user_map_callback(void *user_data, ID **id_p, int UNUSED(cb_flag))
+static int foreach_libblock_id_user_map_callback(
+        void *user_data, ID *self_id, ID **id_p, int UNUSED(cb_flag))
 {
 	IDUserMapData *data = user_data;
 
@@ -88,8 +92,17 @@ static bool foreach_libblock_id_user_map_callback(void *user_data, ID **id_p, in
 
 		if (data->types_bitmap) {
 			if (!id_check_type(*id_p, data->types_bitmap)) {
-				return true;
+				return IDWALK_RET_NOP;
 			}
+		}
+
+		if ((GS(self_id->name) == ID_OB) && (id_p == (ID **)&((Object *)self_id)->proxy_from)) {
+			/* We skip proxy_from here, since it some internal pointer which is not irrelevant info for py/API level. */
+			return IDWALK_RET_NOP;
+		}
+		else if ((GS(self_id->name) == ID_KE) && (id_p == (ID **)&((Key *)self_id)->from)) {
+			/* We skip from here, since it some internal pointer which is not irrelevant info for py/API level. */
+			return IDWALK_RET_NOP;
 		}
 
 		/* pyrna_struct_hash() uses ptr.data only,
@@ -104,7 +117,7 @@ static bool foreach_libblock_id_user_map_callback(void *user_data, ID **id_p, in
 
 			/* limit to key's added already */
 			if (data->is_subset) {
-				return true;
+				return IDWALK_RET_NOP;
 			}
 
 			/* Cannot use our placeholder key here! */
@@ -122,7 +135,7 @@ static bool foreach_libblock_id_user_map_callback(void *user_data, ID **id_p, in
 		PySet_Add(set, data->py_id_curr);
 	}
 
-	return true;
+	return IDWALK_RET_NOP;
 }
 
 PyDoc_STRVAR(bpy_user_map_doc,
@@ -197,7 +210,7 @@ static PyObject *bpy_user_map(PyObject *UNUSED(self), PyObject *args, PyObject *
 		PyObject **subset_array = PySequence_Fast_ITEMS(subset_fast);
 		Py_ssize_t subset_len = PySequence_Fast_GET_SIZE(subset_fast);
 
-		data_cb.user_map = PyDict_New();
+		data_cb.user_map = _PyDict_NewPresized(subset_len);
 		data_cb.is_subset = true;
 		for (; subset_len; subset_array++, subset_len--) {
 			PyObject *set = PySet_New(NULL);
@@ -232,8 +245,26 @@ static PyObject *bpy_user_map(PyObject *UNUSED(self), PyObject *args, PyObject *
 				data_cb.py_id_key_lookup_only = pyrna_id_CreatePyObject(id);
 			}
 
+			if (!data_cb.is_subset) {
+				PyObject *key = data_cb.py_id_key_lookup_only;
+				PyObject *set;
+
+				RNA_id_pointer_create(id, &((BPy_StructRNA *)key)->ptr);
+
+				/* We have to insert the key now, otherwise ID unused would be missing from final dict... */
+				if ((set = PyDict_GetItem(data_cb.user_map, key)) == NULL) {
+					/* Cannot use our placeholder key here! */
+					key = pyrna_id_CreatePyObject(id);
+					set = PySet_New(NULL);
+					PyDict_SetItem(data_cb.user_map, key, set);
+					Py_DECREF(set);
+					Py_DECREF(key);
+				}
+			}
+
 			data_cb.id_curr = id;
 			BKE_library_foreach_ID_link(id, foreach_libblock_id_user_map_callback, &data_cb, IDWALK_NOP);
+
 			if (data_cb.py_id_curr) {
 				Py_DECREF(data_cb.py_id_curr);
 				data_cb.py_id_curr = NULL;

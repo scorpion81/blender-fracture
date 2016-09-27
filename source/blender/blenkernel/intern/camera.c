@@ -49,6 +49,8 @@
 #include "BKE_object.h"
 #include "BKE_global.h"
 #include "BKE_library.h"
+#include "BKE_library_query.h"
+#include "BKE_library_remap.h"
 #include "BKE_main.h"
 #include "BKE_scene.h"
 #include "BKE_screen.h"
@@ -76,6 +78,8 @@ void BKE_camera_init(Camera *cam)
 	/* stereoscopy 3d */
 	cam->stereo.interocular_distance = 0.065f;
 	cam->stereo.convergence_distance = 30.f * 0.065f;
+	cam->stereo.pole_merge_angle_from = DEG2RADF(60.0f);
+	cam->stereo.pole_merge_angle_to = DEG2RADF(75.0f);
 }
 
 void *BKE_camera_add(Main *bmain, const char *name)
@@ -89,71 +93,26 @@ void *BKE_camera_add(Main *bmain, const char *name)
 	return cam;
 }
 
-Camera *BKE_camera_copy(Camera *cam)
+Camera *BKE_camera_copy(Main *bmain, Camera *cam)
 {
 	Camera *camn;
 	
-	camn = BKE_libblock_copy(&cam->id);
+	camn = BKE_libblock_copy(bmain, &cam->id);
 
-	id_lib_extern((ID *)camn->dof_ob);
-
-	if (cam->id.lib) {
-		BKE_id_lib_local_paths(G.main, cam->id.lib, &camn->id);
-	}
+	BKE_id_copy_ensure_local(bmain, &cam->id, &camn->id);
 
 	return camn;
 }
 
-void BKE_camera_make_local(Camera *cam)
+void BKE_camera_make_local(Main *bmain, Camera *cam, const bool lib_local)
 {
-	Main *bmain = G.main;
-	Object *ob;
-	bool is_local = false, is_lib = false;
-
-	/* - only lib users: do nothing
-	 * - only local users: set flag
-	 * - mixed: make copy
-	 */
-	
-	if (cam->id.lib == NULL) return;
-	if (cam->id.us == 1) {
-		id_clear_lib_data(bmain, &cam->id);
-		return;
-	}
-	
-	for (ob = bmain->object.first; ob && ELEM(0, is_lib, is_local); ob = ob->id.next) {
-		if (ob->data == cam) {
-			if (ob->id.lib) is_lib = true;
-			else is_local = true;
-		}
-	}
-	
-	if (is_local && is_lib == false) {
-		id_clear_lib_data(bmain, &cam->id);
-	}
-	else if (is_local && is_lib) {
-		Camera *cam_new = BKE_camera_copy(cam);
-
-		cam_new->id.us = 0;
-
-		/* Remap paths of new ID using old library as base. */
-		BKE_id_lib_local_paths(bmain, cam->id.lib, &cam_new->id);
-
-		for (ob = bmain->object.first; ob; ob = ob->id.next) {
-			if (ob->data == cam) {
-				if (ob->id.lib == NULL) {
-					ob->data = cam_new;
-					id_us_plus(&cam_new->id);
-					id_us_min(&cam->id);
-				}
-			}
-		}
-	}
+	BKE_id_make_local_generic(bmain, &cam->id, true, lib_local);
 }
 
+/** Free (or release) any data used by this camera (does not free the camera itself). */
 void BKE_camera_free(Camera *ca)
 {
-	BKE_animdata_free((ID *)ca);
+	BKE_animdata_free((ID *)ca, false);
 }
 
 /******************************** Camera Usage *******************************/
@@ -845,6 +804,29 @@ void BKE_camera_multiview_model_matrix(RenderData *rd, Object *camera, const cha
 	normalize_m4(r_modelmat);
 }
 
+bool BKE_camera_multiview_spherical_stereo(RenderData *rd, Object *camera)
+{
+	Camera *cam;
+	const bool is_multiview = (rd && rd->scemode & R_MULTIVIEW) != 0;
+
+	if (!is_multiview)
+		return false;
+
+	if (camera->type != OB_CAMERA)
+		return false;
+	else
+		cam = camera->data;
+
+	if ((rd->views_format == SCE_VIEWS_FORMAT_STEREO_3D) &&
+	    ELEM(cam->type, CAM_PANO, CAM_PERSP) &&
+	    ((cam->stereo.flag & CAM_S3D_SPHERICAL) != 0))
+	{
+		return true;
+	}
+
+	return false;
+}
+
 static Object *camera_multiview_advanced(Scene *scene, Object *camera, const char *suffix)
 {
 	SceneRenderView *srv;
@@ -881,7 +863,7 @@ static Object *camera_multiview_advanced(Scene *scene, Object *camera, const cha
 /* returns the camera to be used for render */
 Object *BKE_camera_multiview_render(Scene *scene, Object *camera, const char *viewname)
 {
-	const bool is_multiview = (scene->r.scemode & R_MULTIVIEW) != 0;
+	const bool is_multiview = (camera != NULL) &&  (scene->r.scemode & R_MULTIVIEW) != 0;
 
 	if (!is_multiview) {
 		return camera;

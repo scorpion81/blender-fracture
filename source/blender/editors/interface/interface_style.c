@@ -160,7 +160,8 @@ void UI_fontstyle_draw_ex(
 	/* set the flag */
 	if (fs->shadow) {
 		font_flag |= BLF_SHADOW;
-		BLF_shadow(fs->uifont_id, fs->shadow, fs->shadowcolor, fs->shadowcolor, fs->shadowcolor, fs->shadowalpha);
+		const float shadow_color[4] = {fs->shadowcolor, fs->shadowcolor, fs->shadowcolor, fs->shadowalpha};
+		BLF_shadow(fs->uifont_id, fs->shadow, shadow_color);
 		BLF_shadow_offset(fs->uifont_id, fs->shadx, fs->shady);
 	}
 	if (fs->kerning == 1) {
@@ -251,7 +252,8 @@ void UI_fontstyle_draw_rotated(const uiFontStyle *fs, const rcti *rect, const ch
 
 	if (fs->shadow) {
 		BLF_enable(fs->uifont_id, BLF_SHADOW);
-		BLF_shadow(fs->uifont_id, fs->shadow, fs->shadowcolor, fs->shadowcolor, fs->shadowcolor, fs->shadowalpha);
+		const float shadow_color[4] = {fs->shadowcolor, fs->shadowcolor, fs->shadowcolor, fs->shadowalpha};
+		BLF_shadow(fs->uifont_id, fs->shadow, shadow_color);
 		BLF_shadow_offset(fs->uifont_id, fs->shadx, fs->shady);
 	}
 
@@ -415,6 +417,11 @@ void uiStyleInit(void)
 		blf_mono_font = -1;
 	}
 
+	if (blf_mono_font_render != -1) {
+		BLF_unload_id(blf_mono_font_render);
+		blf_mono_font_render = -1;
+	}
+
 	font = U.uifonts.first;
 
 	/* default builtin */
@@ -514,7 +521,12 @@ void uiStyleInit(void)
 
 	BLF_size(blf_mono_font, 12 * U.pixelsize, 72);
 	
-	/* second for rendering else we get threading problems */
+	/**
+	 * Second for rendering else we get threading problems,
+	 *
+	 * \note This isn't good that the render font depends on the preferences,
+	 * keep for now though, since without this there is no way to display many unicode chars.
+	 */
 	if (blf_mono_font_render == -1)
 		blf_mono_font_render = BLF_load_mem_unique("monospace", monofont_ttf, monofont_size);
 

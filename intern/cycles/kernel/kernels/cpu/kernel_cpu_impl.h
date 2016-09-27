@@ -24,6 +24,7 @@
 #include "kernel_math.h"
 #include "kernel_types.h"
 #include "kernel_globals.h"
+#include "kernel_cpu_image.h"
 #include "kernel_film.h"
 #include "kernel_path.h"
 #include "kernel_path_branched.h"
@@ -108,6 +109,7 @@ void KERNEL_FUNCTION_FULL_NAME(shader)(KernelGlobals *kg,
 {
 	if(type >= SHADER_EVAL_BAKE) {
 		kernel_assert(output_luma == NULL);
+#ifdef __BAKING__
 		kernel_bake_evaluate(kg,
 		                     input,
 		                     output,
@@ -116,6 +118,7 @@ void KERNEL_FUNCTION_FULL_NAME(shader)(KernelGlobals *kg,
 		                     i,
 		                     offset,
 		                     sample);
+#endif
 	}
 	else {
 		kernel_shader_evaluate(kg,

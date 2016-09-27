@@ -40,6 +40,7 @@
 
 #include "DNA_anim_types.h"
 #include "DNA_armature_types.h"
+#include "DNA_cachefile_types.h"
 #include "DNA_camera_types.h"
 #include "DNA_object_types.h"
 #include "DNA_particle_types.h"
@@ -1573,6 +1574,88 @@ static bAnimChannelType ACF_DSTEX =
 	acf_generic_dataexpand_setting_valid,   /* has setting */
 	acf_dstex_setting_flag,                 /* flag for setting */
 	acf_dstex_setting_ptr                   /* pointer for setting */
+};
+
+/* Camera Expander  ------------------------------------------- */
+
+// TODO: just get this from RNA?
+static int acf_dscachefile_icon(bAnimListElem *ale)
+{
+	UNUSED_VARS(ale);
+	return ICON_FILE;
+}
+
+/* get the appropriate flag(s) for the setting when it is valid  */
+static int acf_dscachefile_setting_flag(bAnimContext *ac, eAnimChannel_Settings setting, bool *neg)
+{
+	/* clear extra return data first */
+	*neg = false;
+
+	switch (setting) {
+		case ACHANNEL_SETTING_EXPAND: /* expanded */
+			return CACHEFILE_DS_EXPAND;
+
+		case ACHANNEL_SETTING_MUTE: /* mute (only in NLA) */
+			return ADT_NLA_EVAL_OFF;
+
+		case ACHANNEL_SETTING_VISIBLE: /* visible (only in Graph Editor) */
+			*neg = true;
+			return ADT_CURVES_NOT_VISIBLE;
+
+		case ACHANNEL_SETTING_SELECT: /* selected */
+			return ADT_UI_SELECTED;
+
+		default: /* unsupported */
+			return 0;
+	}
+
+	UNUSED_VARS(ac);
+}
+
+/* get pointer to the setting */
+static void *acf_dscachefile_setting_ptr(bAnimListElem *ale, eAnimChannel_Settings setting, short *type)
+{
+	CacheFile *cache_file = (CacheFile *)ale->data;
+
+	/* clear extra return data first */
+	*type = 0;
+
+	switch (setting) {
+		case ACHANNEL_SETTING_EXPAND: /* expanded */
+			return GET_ACF_FLAG_PTR(cache_file->flag, type);
+
+		case ACHANNEL_SETTING_SELECT: /* selected */
+		case ACHANNEL_SETTING_MUTE: /* muted (for NLA only) */
+		case ACHANNEL_SETTING_VISIBLE: /* visible (for Graph Editor only) */
+			if (cache_file->adt) {
+				return GET_ACF_FLAG_PTR(cache_file->adt->flag, type);
+			}
+
+			return NULL;
+
+		default: /* unsupported */
+			return NULL;
+	}
+}
+
+/* CacheFile expander type define. */
+static bAnimChannelType ACF_DSCACHEFILE =
+{
+	"Cache File Expander",          /* type name */
+	ACHANNEL_ROLE_EXPANDER,         /* role */
+
+	acf_generic_dataexpand_color,   /* backdrop color */
+	acf_generic_dataexpand_backdrop, /* backdrop */
+	acf_generic_indention_1,        /* indent level */
+	acf_generic_basic_offset,       /* offset */
+
+	acf_generic_idblock_name,       /* name */
+	acf_generic_idfill_name_prop,   /* name prop */
+	acf_dscachefile_icon,           /* icon */
+
+	acf_generic_dataexpand_setting_valid,   /* has setting */
+	acf_dscachefile_setting_flag,           /* flag for setting */
+	acf_dscachefile_setting_ptr             /* pointer for setting */
 };
 
 /* Camera Expander  ------------------------------------------- */
@@ -3388,6 +3471,7 @@ static void ANIM_init_channel_typeinfo_data(void)
 		animchannelTypeInfo[type++] = &ACF_DSMAT;        /* Material Channel */
 		animchannelTypeInfo[type++] = &ACF_DSLAM;        /* Lamp Channel */
 		animchannelTypeInfo[type++] = &ACF_DSCAM;        /* Camera Channel */
+		animchannelTypeInfo[type++] = &ACF_DSCACHEFILE;  /* CacheFile Channel */
 		animchannelTypeInfo[type++] = &ACF_DSCUR;        /* Curve Channel */
 		animchannelTypeInfo[type++] = &ACF_DSSKEY;       /* ShapeKey Channel */
 		animchannelTypeInfo[type++] = &ACF_DSWOR;        /* World Channel */
@@ -3817,22 +3901,26 @@ static void achannel_setting_flush_widget_cb(bContext *C, void *ale_npoin, void 
 	
 	/* send notifiers before doing anything else... */
 	WM_event_add_notifier(C, NC_ANIMATION | ND_ANIMCHAN | NA_EDITED, NULL);
+
+	/* verify that we have a channel to operate on. */
+	if (!ale_setting) {
+		return;
+	}
+
+	if (ale_setting->type == ANIMTYPE_GPLAYER)
+		WM_event_add_notifier(C, NC_GPENCIL | ND_DATA, NULL);
 	
 	/* verify animation context */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
 		return;
 	
-	/* verify that we have a channel to operate on, and that it has all we need */
-	if (ale_setting) {
-		/* check if the setting is on... */
-		on = ANIM_channel_setting_get(&ac, ale_setting, setting);
-		
-		/* on == -1 means setting not found... */
-		if (on == -1)
-			return;
-	}
-	else
+	/* check if the setting is on... */
+	on = ANIM_channel_setting_get(&ac, ale_setting, setting);
+
+	/* on == -1 means setting not found... */
+	if (on == -1) {
 		return;
+	}
 	
 	/* get all channels that can possibly be chosen - but ignore hierarchy */
 	filter = ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_CHANNELS;
@@ -3874,6 +3962,7 @@ static void achannel_setting_slider_cb(bContext *C, void *id_poin, void *fcu_poi
 	
 	ReportList *reports = CTX_wm_reports(C);
 	Scene *scene = CTX_data_scene(C);
+	ToolSettings *ts = scene->toolsettings;
 	PointerRNA id_ptr, ptr;
 	PropertyRNA *prop;
 	short flag = 0;
@@ -3896,7 +3985,7 @@ static void achannel_setting_slider_cb(bContext *C, void *id_poin, void *fcu_poi
 			flag |= INSERTKEY_REPLACE;
 		
 		/* insert a keyframe for this F-Curve */
-		done = insert_keyframe_direct(reports, ptr, prop, fcu, cfra, flag);
+		done = insert_keyframe_direct(reports, ptr, prop, fcu, cfra, ts->keyframe_type, flag);
 		
 		if (done)
 			WM_event_add_notifier(C, NC_ANIMATION | ND_ANIMCHAN | NA_EDITED, NULL);
@@ -3912,6 +4001,7 @@ static void achannel_setting_slider_shapekey_cb(bContext *C, void *key_poin, voi
 	
 	ReportList *reports = CTX_wm_reports(C);
 	Scene *scene = CTX_data_scene(C);
+	ToolSettings *ts = scene->toolsettings;
 	PointerRNA id_ptr, ptr;
 	PropertyRNA *prop;
 	short flag = 0;
@@ -3939,7 +4029,7 @@ static void achannel_setting_slider_shapekey_cb(bContext *C, void *key_poin, voi
 			flag |= INSERTKEY_REPLACE;
 		
 		/* insert a keyframe for this F-Curve */
-		done = insert_keyframe_direct(reports, ptr, prop, fcu, cfra, flag);
+		done = insert_keyframe_direct(reports, ptr, prop, fcu, cfra, ts->keyframe_type, flag);
 		
 		if (done)
 			WM_event_add_notifier(C, NC_ANIMATION | ND_ANIMCHAN | NA_EDITED, NULL);
@@ -3962,6 +4052,7 @@ static void achannel_setting_slider_nla_curve_cb(bContext *C, void *UNUSED(id_po
 	
 	ReportList *reports = CTX_wm_reports(C);
 	Scene *scene = CTX_data_scene(C);
+	ToolSettings *ts = scene->toolsettings;
 	short flag = 0;
 	bool done = false;
 	float cfra;
@@ -3981,7 +4072,7 @@ static void achannel_setting_slider_nla_curve_cb(bContext *C, void *UNUSED(id_po
 			flag |= INSERTKEY_REPLACE;
 		
 		/* insert a keyframe for this F-Curve */
-		done = insert_keyframe_direct(reports, ptr, prop, fcu, cfra, flag);
+		done = insert_keyframe_direct(reports, ptr, prop, fcu, cfra, ts->keyframe_type, flag);
 		
 		if (done)
 			WM_event_add_notifier(C, NC_ANIMATION | ND_ANIMCHAN | NA_EDITED, NULL);
@@ -4202,6 +4293,8 @@ void ANIM_channel_draw_widgets(const bContext *C, bAnimContext *ac, bAnimListEle
 			offset += ICON_WIDTH; 
 		}
 		else if (ale->type == ANIMTYPE_GPLAYER) {
+#if 0
+			/* XXX: Maybe need a better design */
 			/* color swatch for layer color */
 			bGPDlayer *gpl = (bGPDlayer *)ale->data;
 			PointerRNA ptr;
@@ -4210,7 +4303,6 @@ void ANIM_channel_draw_widgets(const bContext *C, bAnimContext *ac, bAnimListEle
 			RNA_pointer_create(ale->id, &RNA_GPencilLayer, ale->data, &ptr);
 			
 			UI_block_align_begin(block);
-			
 			UI_block_emboss_set(block, RNA_boolean_get(&ptr, "is_stroke_visible") ? UI_EMBOSS : UI_EMBOSS_NONE);
 			uiDefButR(block, UI_BTYPE_COLOR, 1, "", offset, yminc, w, ICON_WIDTH, 
 			          &ptr, "color", -1, 
@@ -4220,11 +4312,11 @@ void ANIM_channel_draw_widgets(const bContext *C, bAnimContext *ac, bAnimListEle
 			uiDefButR(block, UI_BTYPE_COLOR, 1, "", offset + w, yminc, w, ICON_WIDTH, 
 			          &ptr, "fill_color", -1, 
 			          0, 0, 0, 0, gpl->info);
-			
 			UI_block_emboss_set(block, UI_EMBOSS_NONE);
 			UI_block_align_end(block);
-			
+
 			offset += ICON_WIDTH;
+#endif
 		}
 	}
 	

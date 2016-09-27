@@ -34,6 +34,7 @@
 /* allow readfile to use deprecated functionality */
 #define DNA_DEPRECATED_ALLOW
 
+#include "DNA_armature_types.h"
 #include "DNA_brush_types.h"
 #include "DNA_camera_types.h"
 #include "DNA_cloth_types.h"
@@ -63,6 +64,8 @@
 #include "BKE_scene.h"
 #include "BKE_sequencer.h"
 #include "BKE_screen.h"
+#include "BKE_tracking.h"
+#include "BKE_gpencil.h"
 
 #include "BLI_math.h"
 #include "BLI_listbase.h"
@@ -73,6 +76,23 @@
 #include "readfile.h"
 
 #include "MEM_guardedalloc.h"
+
+/**
+ * Setup rotation stabilization from ancient single track spec.
+ * Former Version of 2D stabilization used a single tracking marker to determine the rotation
+ * to be compensated. Now several tracks can contribute to rotation detection and this feature
+ * is enabled by the MovieTrackingTrack#flag on a per track base.
+ */
+static void migrate_single_rot_stabilization_track_settings(MovieTrackingStabilization *stab)
+{
+	if (stab->rot_track) {
+		if (!(stab->rot_track->flag & TRACK_USE_2D_STAB_ROT)) {
+			stab->tot_rot_track++;
+			stab->rot_track->flag |= TRACK_USE_2D_STAB_ROT;
+		}
+	}
+	stab->rot_track = NULL; /* this field is now ignored */
+}
 
 static void do_version_constraints_radians_degrees_270_1(ListBase *lb)
 {
@@ -135,6 +155,40 @@ static void do_version_constraints_stretch_to_limits(ListBase *lb)
 			data->bulge_min = 1.0f;
 			data->bulge_max = 1.0f;
 		}
+	}
+}
+
+static void do_version_action_editor_properties_region(ListBase *regionbase)
+{
+	ARegion *ar;
+	
+	for (ar = regionbase->first; ar; ar = ar->next) {
+		if (ar->regiontype == RGN_TYPE_UI) {
+			/* already exists */
+			return;
+		}
+		else if (ar->regiontype == RGN_TYPE_WINDOW) {
+			/* add new region here */
+			ARegion *arnew = MEM_callocN(sizeof(ARegion), "buttons for action");
+			
+			BLI_insertlinkbefore(regionbase, ar, arnew);
+			
+			arnew->regiontype = RGN_TYPE_UI;
+			arnew->alignment = RGN_ALIGN_RIGHT;
+			arnew->flag = RGN_FLAG_HIDDEN;
+			
+			return;
+		}
+	}
+}
+
+static void do_version_bones_super_bbone(ListBase *lb)
+{
+	for (Bone *bone = lb->first; bone; bone = bone->next) {
+		bone->scaleIn = 1.0f;
+		bone->scaleOut = 1.0f;
+		
+		do_version_bones_super_bbone(&bone->childbase);
 	}
 }
 
@@ -581,34 +635,6 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 				ca->gpu_dof.focal_length = 1.0f;
 				ca->gpu_dof.focus_distance = 1.0f;
 				ca->gpu_dof.sensor = 1.0f;
-			}
-		}
-	}
-
-	if (!MAIN_VERSION_ATLEAST(main, 273, 7)) {
-		bScreen *scr;
-		ScrArea *sa;
-		SpaceLink *sl;
-		ARegion *ar;
-
-		for (scr = main->screen.first; scr; scr = scr->id.next) {
-			/* Remove old deprecated region from filebrowsers */
-			for (sa = scr->areabase.first; sa; sa = sa->next) {
-				for (sl = sa->spacedata.first; sl; sl = sl->next) {
-					if (sl->spacetype == SPACE_FILE) {
-						for (ar = sl->regionbase.first; ar; ar = ar->next) {
-							if (ar->regiontype == RGN_TYPE_CHANNELS) {
-								break;
-							}
-						}
-
-						if (ar) {
-							/* Free old deprecated 'channel' region... */
-							BKE_area_region_free(NULL, ar);
-							BLI_freelinkN(&sl->regionbase, ar);
-						}
-					}
-				}
 			}
 		}
 	}
@@ -1070,6 +1096,315 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 		Scene *scene;
 		for (scene = main->scene.first; scene != NULL; scene = scene->id.next) {
 			scene->r.bake.pass_filter = R_BAKE_PASS_FILTER_ALL;
+		}
+	}
+
+	if (!MAIN_VERSION_ATLEAST(main, 277, 1)) {
+		for (Scene *scene = main->scene.first; scene; scene = scene->id.next) {
+			ParticleEditSettings *pset = &scene->toolsettings->particle;
+			for (int a = 0; a < PE_TOT_BRUSH; a++) {
+				if (pset->brush[a].strength > 1.0f) {
+					pset->brush[a].strength *= 0.01f;
+				}
+			}
+		}
+
+		for (bScreen *screen = main->screen.first; screen; screen = screen->id.next) {
+			for (ScrArea *sa = screen->areabase.first; sa; sa = sa->next) {
+				for (SpaceLink *sl = sa->spacedata.first; sl; sl = sl->next) {
+					ListBase *regionbase = (sl == sa->spacedata.first) ? &sa->regionbase : &sl->regionbase;
+					/* Bug: Was possible to add preview region to sequencer view by using AZones. */
+					if (sl->spacetype == SPACE_SEQ) {
+						SpaceSeq *sseq = (SpaceSeq *)sl;
+						if (sseq->view == SEQ_VIEW_SEQUENCE) {
+							for (ARegion *ar = regionbase->first; ar; ar = ar->next) {
+								/* remove preview region for sequencer-only view! */
+								if (ar->regiontype == RGN_TYPE_PREVIEW) {
+									ar->flag |= RGN_FLAG_HIDDEN;
+									ar->alignment = RGN_ALIGN_NONE;
+									break;
+								}
+							}
+						}
+					}
+					/* Remove old deprecated region from filebrowsers */
+					else if (sl->spacetype == SPACE_FILE) {
+						for (ARegion *ar = regionbase->first; ar; ar = ar->next) {
+							if (ar->regiontype == RGN_TYPE_CHANNELS) {
+								/* Free old deprecated 'channel' region... */
+								BKE_area_region_free(NULL, ar);
+								BLI_freelinkN(regionbase, ar);
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		for (Scene *scene = main->scene.first; scene; scene = scene->id.next) {
+			CurvePaintSettings *cps = &scene->toolsettings->curve_paint_settings;
+			if (cps->error_threshold == 0) {
+				cps->curve_type = CU_BEZIER;
+				cps->flag |= CURVE_PAINT_FLAG_CORNERS_DETECT;
+				cps->error_threshold = 8;
+				cps->radius_max = 1.0f;
+				cps->corner_angle = DEG2RADF(70.0f);
+			}
+		}
+
+		for (Scene *scene = main->scene.first; scene; scene = scene->id.next) {
+			Sequence *seq;
+
+			SEQ_BEGIN (scene->ed, seq)
+			{
+				if (seq->type == SEQ_TYPE_TEXT) {
+					TextVars *data = seq->effectdata;
+					if (data->color[3] == 0.0f) {
+						copy_v4_fl(data->color, 1.0f);
+						data->shadow_color[3] = 1.0f;
+					}
+				}
+			}
+			SEQ_END
+		}
+
+		/* Adding "Properties" region to DopeSheet */
+		for (bScreen *screen = main->screen.first; screen; screen = screen->id.next) {
+			for (ScrArea *sa = screen->areabase.first; sa; sa = sa->next) {
+				/* handle pushed-back space data first */
+				for (SpaceLink *sl = sa->spacedata.first; sl; sl = sl->next) {
+					if (sl->spacetype == SPACE_ACTION) {
+						SpaceAction *saction = (SpaceAction *)sl;
+						do_version_action_editor_properties_region(&saction->regionbase);
+					}
+				}
+				
+				/* active spacedata info must be handled too... */
+				if (sa->spacetype == SPACE_ACTION) {
+					do_version_action_editor_properties_region(&sa->regionbase);
+				}
+			}
+		}
+	}
+
+	if (!MAIN_VERSION_ATLEAST(main, 277, 2)) {
+		if (!DNA_struct_elem_find(fd->filesdna, "Bone", "float", "scaleIn")) {
+			for (bArmature *arm = main->armature.first; arm; arm = arm->id.next) {
+				do_version_bones_super_bbone(&arm->bonebase);
+			}
+		}
+		if (!DNA_struct_elem_find(fd->filesdna, "bPoseChannel", "float", "scaleIn")) {
+			for (Object *ob = main->object.first; ob; ob = ob->id.next) {
+				if (ob->pose) {
+					for (bPoseChannel *pchan = ob->pose->chanbase.first; pchan; pchan = pchan->next) {
+						/* see do_version_bones_super_bbone()... */
+						pchan->scaleIn = 1.0f;
+						pchan->scaleOut = 1.0f;
+						
+						/* also make sure some legacy (unused for over a decade) flags are unset,
+						 * so that we can reuse them for stuff that matters now...
+						 * (i.e. POSE_IK_MAT, (unknown/unused x 4), POSE_HAS_IK)
+						 *
+						 * These seem to have been runtime flags used by the IK solver, but that stuff
+						 * should be able to be recalculated automatically anyway, so it should be fine.
+						 */
+						pchan->flag &= ~((1 << 3) | (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8));
+					}
+				}
+			}
+		}
+
+		for (Camera *camera = main->camera.first; camera != NULL; camera = camera->id.next) {
+			if (camera->stereo.pole_merge_angle_from == 0.0f &&
+				camera->stereo.pole_merge_angle_to == 0.0f)
+			{
+				camera->stereo.pole_merge_angle_from = DEG2RADF(60.0f);
+				camera->stereo.pole_merge_angle_to = DEG2RADF(75.0f);
+			}
+		}
+
+		if (!DNA_struct_elem_find(fd->filesdna, "NormalEditModifierData", "float", "mix_limit")) {
+			Object *ob;
+
+			for (ob = main->object.first; ob; ob = ob->id.next) {
+				ModifierData *md;
+				for (md = ob->modifiers.first; md; md = md->next) {
+					if (md->type == eModifierType_NormalEdit) {
+						NormalEditModifierData *nemd = (NormalEditModifierData *)md;
+						nemd->mix_limit = DEG2RADF(180.0f);
+					}
+				}
+			}
+		}
+
+		if (!DNA_struct_elem_find(fd->filesdna, "BooleanModifierData", "float", "double_threshold")) {
+			Object *ob;
+			for (ob = main->object.first; ob; ob = ob->id.next) {
+				ModifierData *md;
+				for (md = ob->modifiers.first; md; md = md->next) {
+					if (md->type == eModifierType_Boolean) {
+						BooleanModifierData *bmd = (BooleanModifierData *)md;
+						bmd->double_threshold = 1e-6f;
+					}
+				}
+			}
+		}
+
+		for (Brush *br = main->brush.first; br; br = br->id.next) {
+			if (br->sculpt_tool == SCULPT_TOOL_FLATTEN) {
+				br->flag |= BRUSH_ACCUMULATE;
+			}
+		}
+
+		if (!DNA_struct_elem_find(fd->filesdna, "ClothSimSettings", "float", "time_scale")) {
+			Object *ob;
+			ModifierData *md;
+			for (ob = main->object.first; ob; ob = ob->id.next) {
+				for (md = ob->modifiers.first; md; md = md->next) {
+					if (md->type == eModifierType_Cloth) {
+						ClothModifierData *clmd = (ClothModifierData *)md;
+						clmd->sim_parms->time_scale = 1.0f;
+					}
+					else if (md->type == eModifierType_ParticleSystem) {
+						ParticleSystemModifierData *pmd = (ParticleSystemModifierData *)md;
+						if (pmd->psys->clmd) {
+							pmd->psys->clmd->sim_parms->time_scale = 1.0f;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if (!MAIN_VERSION_ATLEAST(main, 277, 3)) {
+		/* ------- init of grease pencil initialization --------------- */
+		if (!DNA_struct_elem_find(fd->filesdna, "bGPDstroke", "bGPDpalettecolor", "*palcolor")) {
+			for (Scene *scene = main->scene.first; scene; scene = scene->id.next) {
+				ToolSettings *ts = scene->toolsettings;
+				/* initialize use position for sculpt brushes */
+				ts->gp_sculpt.flag |= GP_BRUSHEDIT_FLAG_APPLY_POSITION;
+				/* initialize  selected vertices alpha factor */
+				ts->gp_sculpt.alpha = 1.0f;
+
+				/* new strength sculpt brush */
+				if (ts->gp_sculpt.brush[0].size >= 11) {
+					GP_BrushEdit_Settings *gset = &ts->gp_sculpt;
+					GP_EditBrush_Data *brush;
+
+					brush = &gset->brush[GP_EDITBRUSH_TYPE_STRENGTH];
+					brush->size = 25;
+					brush->strength = 0.5f;
+					brush->flag = GP_EDITBRUSH_FLAG_USE_FALLOFF;
+				}
+			}
+			/* create a default grease pencil drawing brushes set */
+			if (!BLI_listbase_is_empty(&main->gpencil)) {
+				for (Scene *scene = main->scene.first; scene; scene = scene->id.next) {
+					ToolSettings *ts = scene->toolsettings;
+					if (BLI_listbase_is_empty(&ts->gp_brushes)) {
+						BKE_gpencil_brush_init_presets(ts);
+					}
+				}
+			}
+			/* Convert Grease Pencil to new palettes/brushes
+			 * Loop all strokes and create the palette and all colors
+			 */
+			for (bGPdata *gpd = main->gpencil.first; gpd; gpd = gpd->id.next) {
+				if (BLI_listbase_is_empty(&gpd->palettes)) {
+					/* create palette */
+					bGPDpalette *palette = BKE_gpencil_palette_addnew(gpd, "GP_Palette", true);
+					for (bGPDlayer *gpl = gpd->layers.first; gpl; gpl = gpl->next) {
+						/* create color using layer name */
+						bGPDpalettecolor *palcolor = BKE_gpencil_palettecolor_addnew(palette, gpl->info, true);
+						if (palcolor != NULL) {
+							/* set color attributes */
+							copy_v4_v4(palcolor->color, gpl->color);
+							copy_v4_v4(palcolor->fill, gpl->fill);
+							
+							if (gpl->flag & GP_LAYER_HIDE)       palcolor->flag |= PC_COLOR_HIDE;
+							if (gpl->flag & GP_LAYER_LOCKED)     palcolor->flag |= PC_COLOR_LOCKED;
+							if (gpl->flag & GP_LAYER_ONIONSKIN)  palcolor->flag |= PC_COLOR_ONIONSKIN;
+							if (gpl->flag & GP_LAYER_VOLUMETRIC) palcolor->flag |= PC_COLOR_VOLUMETRIC;
+							if (gpl->flag & GP_LAYER_HQ_FILL)    palcolor->flag |= PC_COLOR_HQ_FILL;
+							
+							/* set layer opacity to 1 */
+							gpl->opacity = 1.0f;
+							
+							/* set tint color */
+							ARRAY_SET_ITEMS(gpl->tintcolor, 0.0f, 0.0f, 0.0f, 0.0f);
+							
+							/* flush relevant layer-settings to strokes */
+							for (bGPDframe *gpf = gpl->frames.first; gpf; gpf = gpf->next) {
+								for (bGPDstroke *gps = gpf->strokes.first; gps; gps = gps->next) {
+									/* set stroke to palette and force recalculation */
+									BLI_strncpy(gps->colorname, gpl->info, sizeof(gps->colorname));
+									gps->palcolor = NULL;
+									gps->flag |= GP_STROKE_RECALC_COLOR;
+									gps->thickness = gpl->thickness;
+									
+									/* set alpha strength to 1 */
+									for (int i = 0; i < gps->totpoints; i++) {
+										gps->points[i].strength = 1.0f;
+									}
+								}
+							}
+						}
+						
+						/* set thickness to 0 (now it is a factor to override stroke thickness) */
+						gpl->thickness = 0.0f;
+					}
+					/* set first color as active */
+					if (palette->colors.first)
+						BKE_gpencil_palettecolor_setactive(palette, palette->colors.first);
+				}
+			}
+		}
+		/* ------- end of grease pencil initialization --------------- */
+	}
+
+	if (!MAIN_VERSION_ATLEAST(main, 278, 0)) {
+		if (!DNA_struct_elem_find(fd->filesdna, "MovieTrackingTrack", "float", "weight_stab")) {
+			MovieClip *clip;
+			for (clip = main->movieclip.first; clip; clip = clip->id.next) {
+				MovieTracking *tracking = &clip->tracking;
+				MovieTrackingObject *tracking_object;
+				for (tracking_object = tracking->objects.first;
+				     tracking_object != NULL;
+				     tracking_object = tracking_object->next)
+				{
+					ListBase *tracksbase = BKE_tracking_object_get_tracks(tracking, tracking_object);
+					MovieTrackingTrack *track;
+					for (track = tracksbase->first;
+					     track != NULL;
+					     track = track->next)
+					{
+						track->weight_stab = track->weight;
+					}
+				}
+			}
+		}
+
+		if (!DNA_struct_elem_find(fd->filesdna, "MovieTrackingStabilization", "int", "tot_rot_track")) {
+			MovieClip *clip;
+			for (clip = main->movieclip.first; clip != NULL; clip = clip->id.next) {
+				if (clip->tracking.stabilization.rot_track) {
+					migrate_single_rot_stabilization_track_settings(&clip->tracking.stabilization);
+				}
+				if (clip->tracking.stabilization.scale == 0.0f) {
+					/* ensure init.
+					 * Was previously used for autoscale only,
+					 * now used always (as "target scale") */
+					clip->tracking.stabilization.scale = 1.0f;
+				}
+				/* blender prefers 1-based frame counting;
+				 * thus using frame 1 as reference typically works best */
+				clip->tracking.stabilization.anchor_frame = 1;
+				/* by default show the track lists expanded, to improve "discoverability" */
+				clip->tracking.stabilization.flag |= TRACKING_SHOW_STAB_TRACKS;
+				/* deprecated, not used anymore */
+				clip->tracking.stabilization.ok = false;
+			}
 		}
 	}
 }

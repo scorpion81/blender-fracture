@@ -117,7 +117,7 @@ static void imb_stereo3d_write_anaglyph(Stereo3DData *s3d, enum eStereo3dAnaglyp
 					to[0] = from[r][0];
 					to[1] = from[g][1];
 					to[2] = from[b][2];
-					to[3] = MAX2(from[0][3], from[0][3]);
+					to[3] = MAX2(from[0][3], from[1][3]);
 				}
 			}
 		}
@@ -154,7 +154,7 @@ static void imb_stereo3d_write_anaglyph(Stereo3DData *s3d, enum eStereo3dAnaglyp
 					to[0] = from[r][0];
 					to[1] = from[g][1];
 					to[2] = from[b][2];
-					to[3] = MAX2(from[0][3], from[0][3]);
+					to[3] = MAX2(from[0][3], from[1][3]);
 				}
 			}
 		}
@@ -718,6 +718,9 @@ ImBuf *IMB_stereo3d_ImBuf(ImageFormatData *im_format, ImBuf *ibuf_left, ImBuf *i
 
 	IMB_stereo3d_write_dimensions(im_format->stereo3d_format.display_mode, false, ibuf_left->x, ibuf_left->y, &width, &height);
 	ibuf_stereo = IMB_allocImBuf(width, height, ibuf_left->planes, (is_float ? IB_rectfloat : IB_rect));
+
+	ibuf_stereo->rect_colorspace = ibuf_left->rect_colorspace;
+	ibuf_stereo->float_colorspace = ibuf_left->float_colorspace;
 
 	/* copy flags for IB_fields and other settings */
 	ibuf_stereo->flags = ibuf_left->flags;

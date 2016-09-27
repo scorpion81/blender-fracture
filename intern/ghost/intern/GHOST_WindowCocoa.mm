@@ -622,8 +622,6 @@ GHOST_WindowCocoa::GHOST_WindowCocoa(
 		m_lionStyleFullScreen = true;
 	}
 	
-	[NSApp activateIgnoringOtherApps:YES]; // raise application to front, important for new blender instance animation play case
-	
 	[pool drain];
 }
 
@@ -663,7 +661,7 @@ GHOST_WindowCocoa::~GHOST_WindowCocoa()
 
 bool GHOST_WindowCocoa::getValid() const
 {
-	return GHOST_Window::getValid() && m_window != 0 && m_openGLView != 0;
+	return GHOST_Window::getValid() && m_window != NULL && m_openGLView != NULL;
 }
 
 void* GHOST_WindowCocoa::getOSWindow() const

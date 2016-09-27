@@ -187,9 +187,7 @@ static void viewAxisCorrectCenter(TransInfo *t, float t_con_center[3])
 
 		if (l < min_dist) {
 			float diff[3];
-			normalize_v3_v3(diff, t->viewinv[2]);
-			mul_v3_fl(diff, min_dist - l);
-
+			normalize_v3_v3_length(diff, t->viewinv[2], min_dist - l);
 			sub_v3_v3(t_con_center, diff);
 		}
 	}
@@ -225,9 +223,8 @@ static void axisProjection(TransInfo *t, const float axis[3], const float in[3],
 		if (factor < 0.0f) factor *= -factor;
 		else factor *= factor;
 
-		copy_v3_v3(out, axis);
-		normalize_v3(out);
-		mul_v3_fl(out, -factor);  /* -factor makes move down going backwards */
+		/* -factor makes move down going backwards */
+		normalize_v3_v3_length(out, axis, -factor);
 	}
 	else {
 		float v[3], i1[3], i2[3];
@@ -267,9 +264,9 @@ static void axisProjection(TransInfo *t, const float axis[3], const float in[3],
 
 			/* possible some values become nan when
 			 * viewpoint and object are both zero */
-			if (!finite(out[0])) out[0] = 0.0f;
-			if (!finite(out[1])) out[1] = 0.0f;
-			if (!finite(out[2])) out[2] = 0.0f;
+			if (!isfinite(out[0])) out[0] = 0.0f;
+			if (!isfinite(out[1])) out[1] = 0.0f;
+			if (!isfinite(out[2])) out[2] = 0.0f;
 		}
 	}
 }

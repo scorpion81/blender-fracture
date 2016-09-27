@@ -304,7 +304,7 @@ static void calc_tangent_vector(ObjectRen *obr, VlakRen *vlr, int do_tangent)
 
 typedef struct {
 	ObjectRen *obr;
-
+	int mtface_index;
 } SRenderMeshToTangent;
 
 /* interface */
@@ -337,7 +337,7 @@ static void GetTextureCoordinate(const SMikkTSpaceContext *pContext, float r_uv[
 	//assert(vert_index>=0 && vert_index<4);
 	SRenderMeshToTangent *pMesh = (SRenderMeshToTangent *) pContext->m_pUserData;
 	VlakRen *vlr= RE_findOrAddVlak(pMesh->obr, face_num);
-	MTFace *tface= RE_vlakren_get_tface(pMesh->obr, vlr, pMesh->obr->actmtface, NULL, 0);
+	MTFace *tface= RE_vlakren_get_tface(pMesh->obr, vlr, pMesh->mtface_index, NULL, 0);
 	const float *coord;
 	
 	if (tface  != NULL) {
@@ -371,7 +371,7 @@ static void SetTSpace(const SMikkTSpaceContext *pContext, const float fvTangent[
 	//assert(vert_index>=0 && vert_index<4);
 	SRenderMeshToTangent *pMesh = (SRenderMeshToTangent *) pContext->m_pUserData;
 	VlakRen *vlr = RE_findOrAddVlak(pMesh->obr, face_num);
-	float *ftang = RE_vlakren_get_nmap_tangent(pMesh->obr, vlr, 1);
+	float *ftang = RE_vlakren_get_nmap_tangent(pMesh->obr, vlr, pMesh->mtface_index, true);
 	if (ftang!=NULL) {
 		copy_v3_v3(&ftang[iVert*4+0], fvTangent);
 		ftang[iVert*4+3]=fSign;
@@ -457,7 +457,12 @@ static void calc_vertexnormals(Render *UNUSED(re), ObjectRen *obr, bool do_verte
 		sInterface.m_getNormal = GetNormal;
 		sInterface.m_setTSpaceBasic = SetTSpace;
 
-		genTangSpaceDefault(&sContext);
+		for (a = 0; a < MAX_MTFACE; a++) {
+			if (obr->tangent_mask & 1 << a) {
+				mesh2tangent.mtface_index = a;
+				genTangSpaceDefault(&sContext);
+			}
+		}
 	}
 }
 
@@ -1325,7 +1330,7 @@ static int render_new_particle_system(Render *re, ObjectRen *obr, ParticleSystem
 	part=psys->part;
 	pars=psys->particles;
 
-	if (part==NULL || pars==NULL || !psys_check_enabled(ob, psys))
+	if (part==NULL || pars==NULL || !psys_check_enabled(ob, psys, G.is_rendering))
 		return 0;
 	
 	if (part->ren_as==PART_DRAW_OB || part->ren_as==PART_DRAW_GR || part->ren_as==PART_DRAW_NOT)
@@ -2811,7 +2816,7 @@ static void init_render_curve(Render *re, ObjectRen *obr, int timeoffset)
 						}
 					}
 
-					if (dl->bevelSplitFlag || timeoffset==0) {
+					if (dl->bevel_split || timeoffset == 0) {
 						const int startvlak= obr->totvlak;
 
 						for (a=0; a<dl->parts; a++) {
@@ -2851,10 +2856,15 @@ static void init_render_curve(Render *re, ObjectRen *obr, int timeoffset)
 							}
 						}
 
-						if (dl->bevelSplitFlag) {
-							for (a=0; a<dl->parts-1+!!(dl->flag&DL_CYCL_V); a++)
-								if (dl->bevelSplitFlag[a>>5]&(1<<(a&0x1F)))
-									split_v_renderfaces(obr, startvlak, startvert, dl->parts, dl->nr, a, dl->flag&DL_CYCL_V, dl->flag&DL_CYCL_U);
+						if (dl->bevel_split) {
+							for (a = 0; a < dl->parts - 1 + !!(dl->flag & DL_CYCL_V); a++) {
+								if (BLI_BITMAP_TEST(dl->bevel_split, a)) {
+									split_v_renderfaces(
+									        obr, startvlak, startvert, dl->parts, dl->nr, a,
+									        /* intentionally swap (v, u) --> (u, v) */
+									        dl->flag & DL_CYCL_V, dl->flag & DL_CYCL_U);
+								}
+							}
 						}
 
 						/* vertex normals */
@@ -3113,7 +3123,8 @@ static void init_render_mesh(Render *re, ObjectRen *obr, int timeoffset)
 	float xn, yn, zn,  imat[3][3], mat[4][4];  //nor[3],
 	float *orco = NULL;
 	short (*loop_nors)[4][3] = NULL;
-	bool need_orco = false, need_stress = false, need_nmap_tangent = false, need_tangent = false, need_origindex = false;
+	bool need_orco = false, need_stress = false, need_tangent = false, need_origindex = false;
+	bool need_nmap_tangent_concrete = false;
 	int a, a1, ok, vertofs;
 	int end, totvert = 0;
 	bool do_autosmooth = false, do_displace = false;
@@ -3148,9 +3159,11 @@ static void init_render_mesh(Render *re, ObjectRen *obr, int timeoffset)
 			if (ma->mode_l & MA_NORMAP_TANG) {
 				if (me->mtpoly==NULL) {
 					need_orco= 1;
-					need_tangent= 1;
 				}
-				need_nmap_tangent= 1;
+				need_tangent= 1;
+			}
+			if (ma->mode2_l & MA_TANGENT_CONCRETE) {
+				need_nmap_tangent_concrete = true;
 			}
 		}
 	}
@@ -3159,9 +3172,8 @@ static void init_render_mesh(Render *re, ObjectRen *obr, int timeoffset)
 		/* exception for tangent space baking */
 		if (me->mtpoly==NULL) {
 			need_orco= 1;
-			need_tangent= 1;
 		}
-		need_nmap_tangent= 1;
+		need_tangent= 1;
 	}
 
 	/* check autosmooth and displacement, we then have to skip only-verts optimize
@@ -3274,14 +3286,13 @@ static void init_render_mesh(Render *re, ObjectRen *obr, int timeoffset)
 			/* store customdata names, because DerivedMesh is freed */
 			RE_set_customdata_names(obr, &dm->faceData);
 
-			/* add tangent layer if we need one */
-			if (need_nmap_tangent!=0 && CustomData_get_layer_index(&dm->faceData, CD_TANGENT) == -1) {
-				bool generate_data = false;
-				if (CustomData_get_layer_index(&dm->loopData, CD_TANGENT) == -1) {
-					dm->calcLoopTangents(dm);
-					generate_data = true;
-				}
-				DM_generate_tangent_tessface_data(dm, generate_data);
+			/* add tangent layers if we need */
+			if ((ma->nmap_tangent_names_count && need_nmap_tangent_concrete) || need_tangent) {
+				dm->calcLoopTangents(
+				        dm, need_tangent,
+				        (const char (*)[MAX_NAME])ma->nmap_tangent_names, ma->nmap_tangent_names_count);
+				obr->tangent_mask = dm->tangent_mask;
+				DM_generate_tangent_tessface_data(dm, need_nmap_tangent_concrete || need_tangent);
 			}
 			
 			/* still to do for keys: the correct local texture coordinate */
@@ -3401,7 +3412,7 @@ static void init_render_mesh(Render *re, ObjectRen *obr, int timeoffset)
 								CustomDataLayer *layer;
 								MTFace *mtface, *mtf;
 								MCol *mcol, *mc;
-								int index, mtfn= 0, mcn= 0, mtng=0, mln = 0, vindex;
+								int index, mtfn= 0, mcn= 0, mln = 0, vindex;
 								char *name;
 								int nr_verts = v4!=0 ? 4 : 3;
 
@@ -3424,17 +3435,24 @@ static void init_render_mesh(Render *re, ObjectRen *obr, int timeoffset)
 										for (vindex=0; vindex<nr_verts; vindex++)
 											mc[vindex]=mcol[a*4+rev_tab[vindex]];
 									}
-									else if (layer->type == CD_TANGENT && mtng < 1) {
-										if (need_nmap_tangent != 0) {
-											const float * tangent = (const float *) layer->data;
-											float * ftang = RE_vlakren_get_nmap_tangent(obr, vlr, 1);
+									else if (layer->type == CD_TANGENT) {
+										if (need_nmap_tangent_concrete || need_tangent) {
+											int uv_start = CustomData_get_layer_index(&dm->faceData, CD_MTFACE);
+											int uv_index = CustomData_get_named_layer_index(&dm->faceData, CD_MTFACE, layer->name);
+											BLI_assert(uv_start >= 0 && uv_index >= 0);
+											if ((uv_start < 0 || uv_index < 0))
+												continue;
+											int n = uv_index - uv_start;
+
+											const float *tangent = (const float *) layer->data;
+											float *ftang = RE_vlakren_get_nmap_tangent(obr, vlr, n, true);
+
 											for (vindex=0; vindex<nr_verts; vindex++) {
 												copy_v4_v4(ftang+vindex*4, tangent+a*16+rev_tab[vindex]*4);
 												mul_mat3_m4_v3(mat, ftang+vindex*4);
 												normalize_v3(ftang+vindex*4);
 											}
 										}
-										mtng++;
 									}
 									else if (layer->type == CD_TESSLOOPNORMAL && mln < 1) {
 										if (loop_nors) {
@@ -3542,7 +3560,7 @@ static void init_render_mesh(Render *re, ObjectRen *obr, int timeoffset)
 		}
 
 		if (recalc_normals!=0 || need_tangent!=0)
-			calc_vertexnormals(re, obr, recalc_normals, need_tangent, need_nmap_tangent);
+			calc_vertexnormals(re, obr, recalc_normals, need_tangent, need_nmap_tangent_concrete);
 	}
 
 	MEM_SAFE_FREE(loop_nors);
@@ -3801,6 +3819,9 @@ static GroupObject *add_render_lamp(Render *re, Object *ob)
 	lar->falloff_type = la->falloff_type;
 	lar->ld1= la->att1;
 	lar->ld2= la->att2;
+	lar->coeff_const= la->coeff_const;
+	lar->coeff_lin= la->coeff_lin;
+	lar->coeff_quad= la->coeff_quad;
 	lar->curfalloff = curvemapping_copy(la->curfalloff);
 
 	if (lar->curfalloff) {
@@ -4171,7 +4192,7 @@ static void split_quads(ObjectRen *obr, int dir)
 		vlr= RE_findOrAddVlak(obr, a);
 		
 		/* test if rendering as a quad or triangle, skip wire */
-		if (vlr->v4 && (vlr->flag & R_STRAND)==0 && (vlr->mat->material_type != MA_TYPE_WIRE)) {
+		if ((vlr->flag & R_STRAND)==0 && (vlr->mat->material_type != MA_TYPE_WIRE)) {
 			
 			if (vlr->v4) {
 
@@ -4680,7 +4701,7 @@ static void add_render_object(Render *re, Object *ob, Object *par, DupliObject *
 	if (ob->particlesystem.first) {
 		psysindex= 1;
 		for (psys=ob->particlesystem.first; psys; psys=psys->next, psysindex++) {
-			if (!psys_check_enabled(ob, psys))
+			if (!psys_check_enabled(ob, psys, G.is_rendering))
 				continue;
 			
 			obr= RE_addRenderObject(re, ob, par, index, psysindex, ob->lay);
@@ -5209,7 +5230,7 @@ void RE_Database_FromScene(Render *re, Main *bmain, Scene *scene, unsigned int l
 
 		if (re->wrld.mode & (WO_AMB_OCC|WO_ENV_LIGHT|WO_INDIRECT_LIGHT))
 			if (re->wrld.ao_samp_method == WO_AOSAMP_CONSTANT)
-				init_ao_sphere(&re->wrld);
+				init_ao_sphere(re, &re->wrld);
 	}
 	
 	/* still bad... doing all */
@@ -5935,7 +5956,7 @@ void RE_Database_Baking(Render *re, Main *bmain, Scene *scene, unsigned int lay,
 		
 		if (re->wrld.mode & (WO_AMB_OCC|WO_ENV_LIGHT|WO_INDIRECT_LIGHT))
 			if (re->wrld.ao_samp_method == WO_AOSAMP_CONSTANT)
-				init_ao_sphere(&re->wrld);
+				init_ao_sphere(re, &re->wrld);
 	}
 	
 	/* still bad... doing all */

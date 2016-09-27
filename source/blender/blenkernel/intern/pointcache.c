@@ -55,11 +55,8 @@
 
 #include "PIL_time.h"
 
-#include "WM_api.h"
-
 #include "BKE_appdir.h"
 #include "BKE_anim.h"
-#include "BKE_blender.h"
 #include "BKE_cloth.h"
 #include "BKE_dynamicpaint.h"
 #include "BKE_global.h"
@@ -391,9 +388,9 @@ static void ptcache_particle_interpolate(int index, void *psys_v, void **data, f
 		}
 	}
 
-	/* determine rotation from velocity */
+	/* default to no rotation */
 	if (data[BPHYS_DATA_LOCATION] && !data[BPHYS_DATA_ROTATION]) {
-		vec_to_quat(keys[2].rot, keys[2].vel, OB_NEGX, OB_POSZ);
+		unit_qt(keys[2].rot);
 	}
 
 	if (cfra > pa->time)
@@ -1142,13 +1139,13 @@ static int ptcache_smoke_openvdb_read(struct OpenVDBReader *reader, void *smoke_
 
 		OpenVDB_import_grid_fl(reader, "density", &dens, sds->res_wt);
 
-		if (fluid_fields & SM_ACTIVE_FIRE) {
+		if (cache_fields & SM_ACTIVE_FIRE) {
 			OpenVDB_import_grid_fl(reader, "flame", &flame, sds->res_wt);
 			OpenVDB_import_grid_fl(reader, "fuel", &fuel, sds->res_wt);
 			OpenVDB_import_grid_fl(reader, "react", &react, sds->res_wt);
 		}
 
-		if (fluid_fields & SM_ACTIVE_COLORS) {
+		if (cache_fields & SM_ACTIVE_COLORS) {
 			OpenVDB_import_grid_vec(reader, "color", &r, &g, &b, sds->res_wt);
 		}
 
@@ -2625,7 +2622,7 @@ static int ptcache_read_openvdb_stream(PTCacheID *pid, int cfra)
 #ifdef WITH_OPENVDB
 	char filename[FILE_MAX * 2];
 
-	 /* save blend file before using disk pointcache */
+	/* save blend file before using disk pointcache */
 	if (!G.relbase_valid && (pid->cache->flag & PTCACHE_EXTERNAL) == 0)
 		return 0;
 
@@ -2758,7 +2755,7 @@ static int ptcache_interpolate(PTCacheID *pid, float cfra, int cfra1, int cfra2)
 }
 /* reads cache from disk or memory */
 /* possible to get old or interpolated result */
-int BKE_ptcache_read(PTCacheID *pid, float cfra)
+int BKE_ptcache_read(PTCacheID *pid, float cfra, bool no_extrapolate_old)
 {
 	int cfrai = (int)floor(cfra), cfra1=0, cfra2=0;
 	int ret = 0;
@@ -2784,10 +2781,17 @@ int BKE_ptcache_read(PTCacheID *pid, float cfra)
 		return 0;
 
 	/* don't read old cache if already simulated past cached frame */
-	if (cfra1 == 0 && cfra2 && cfra2 <= pid->cache->simframe)
-		return 0;
-	if (cfra1 && cfra1 == cfra2)
-		return 0;
+	if (no_extrapolate_old) {
+		if (cfra1 == 0 && cfra2 && cfra2 <= pid->cache->simframe)
+			return 0;
+		if (cfra1 && cfra1 == cfra2)
+			return 0;
+	}
+	else {
+		/* avoid calling interpolate between the same frame values */
+		if (cfra1 && cfra1 == cfra2)
+			cfra1 = 0;
+	}
 
 	if (cfra1) {
 		if (pid->file_type == PTCACHE_FILE_OPENVDB && pid->read_openvdb_stream) {

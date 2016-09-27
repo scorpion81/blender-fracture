@@ -15,43 +15,10 @@
  */
 
 #include "stdosl.h"
-#include "oslutil.h"
-
-float ramp_lookup(color ramp[RAMP_TABLE_SIZE], float at, int component)
-{
-	if (at < 0.0 || at > 1.0) {
-		float t0, dy;
-		if (at < 0.0) {
-			t0 = ramp[0][component];
-			dy = t0 - ramp[1][component];
-			at = -at;
-		}
-		else {
-			t0 = ramp[RAMP_TABLE_SIZE - 1][component];
-			dy = t0 - ramp[RAMP_TABLE_SIZE - 2][component];
-			at = at - 1.0;
-		}
-		return t0 + dy * at * (RAMP_TABLE_SIZE - 1);
-	}
-
-	float f = clamp(at, 0.0, 1.0) * (RAMP_TABLE_SIZE - 1);
-
-	/* clamp int as well in case of NaN */
-	int i = (int)f;
-	if (i < 0) i = 0;
-	if (i >= RAMP_TABLE_SIZE) i = RAMP_TABLE_SIZE - 1;
-	float t = f - (float)i;
-
-	float result = ramp[i][component];
-
-	if (t > 0.0)
-		result = (1.0 - t) * result + t * ramp[i + 1][component];
-	
-	return result;
-}
+#include "node_ramp_util.h"
 
 shader node_vector_curves(
-	color ramp[RAMP_TABLE_SIZE] = {0.0},
+	color ramp[] = {0.0},
 	float min_x = 0.0,
 	float max_x = 1.0,
 
@@ -61,9 +28,13 @@ shader node_vector_curves(
 {
 	vector c = (VectorIn - vector(min_x, min_x, min_x)) / (max_x - min_x);
 
-	VectorOut[0] = ramp_lookup(ramp, c[0], 0);
-	VectorOut[1] = ramp_lookup(ramp, c[1], 1);
-	VectorOut[2] = ramp_lookup(ramp, c[2], 2);
+	color r = rgb_ramp_lookup(ramp, c[0], 1, 1);
+	color g = rgb_ramp_lookup(ramp, c[0], 1, 1);
+	color b = rgb_ramp_lookup(ramp, c[0], 1, 1);
+
+	VectorOut[0] = r[0];
+	VectorOut[1] = g[1];
+	VectorOut[2] = b[2];
 
 	VectorOut = mix(VectorIn, VectorOut, Fac);
 }

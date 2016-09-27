@@ -32,9 +32,6 @@
  * with checks for drivers and GPU support.
  */
 
-#include "MEM_guardedalloc.h"
-
-#include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
 #include "BLI_math_base.h"
 #include "BLI_math_vector.h"
@@ -42,7 +39,6 @@
 #include "BKE_global.h"
 
 #include "GPU_basic_shader.h"
-#include "GPU_draw.h"
 #include "GPU_extensions.h"
 #include "GPU_glew.h"
 #include "GPU_texture.h"
@@ -81,9 +77,10 @@ static struct GPUGlobal {
 	GPUDeviceType device;
 	GPUOSType os;
 	GPUDriverType driver;
-	float dfdyfactors[2]; /* workaround for different calculation of dfdy factors on GPUs. Some GPUs/drivers
-	                         calculate dfdy in shader differently when drawing to an offscreen buffer. First
-	                         number is factor on screen and second is off-screen */
+	/* workaround for different calculation of dfdy factors on GPUs. Some GPUs/drivers
+	 * calculate dfdy in shader differently when drawing to an offscreen buffer. First
+	 * number is factor on screen and second is off-screen */
+	float dfdyfactors[2];
 	float max_anisotropy;
 } GG = {1, 0};
 
@@ -258,9 +255,9 @@ bool GPU_legacy_support(void)
 			glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &profile);
 
 			if (G.debug & G_DEBUG_GPU) {
-				printf("GL_CONTEXT_PROFILE_MASK = %#x (%s profile)\n", profile,
-				       profile & GL_CONTEXT_COMPATIBILITY_PROFILE_BIT ? "compatibility" :
-				       profile & GL_CONTEXT_CORE_PROFILE_BIT ? "core" : "unknown");
+				printf("GL_CONTEXT_PROFILE_MASK = %#x (%s profile)\n", (unsigned int)profile,
+				       (profile & GL_CONTEXT_COMPATIBILITY_PROFILE_BIT) ? "compatibility" :
+				       (profile & GL_CONTEXT_CORE_PROFILE_BIT) ? "core" : "unknown");
 			}
 
 			if (profile == 0) {

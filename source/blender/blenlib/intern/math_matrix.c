@@ -587,6 +587,15 @@ void mul_v3_m3v3(float r[3], float M[3][3], const float a[3])
 	r[2] = M[0][2] * a[0] + M[1][2] * a[1] + M[2][2] * a[2];
 }
 
+void mul_v3_m3v3_db(double r[3], double M[3][3], const double a[3])
+{
+	BLI_assert(r != a);
+
+	r[0] = M[0][0] * a[0] + M[1][0] * a[1] + M[2][0] * a[2];
+	r[1] = M[0][1] * a[0] + M[1][1] * a[1] + M[2][1] * a[2];
+	r[2] = M[0][2] * a[0] + M[1][2] * a[1] + M[2][2] * a[2];
+}
+
 void mul_v2_m3v3(float r[2], float M[3][3], const float a[3])
 {
 	BLI_assert(r != a);
@@ -597,10 +606,12 @@ void mul_v2_m3v3(float r[2], float M[3][3], const float a[3])
 
 void mul_m3_v3(float M[3][3], float r[3])
 {
-	float tmp[3];
+	mul_v3_m3v3(r, M, (const float[3]){UNPACK3(r)});
+}
 
-	mul_v3_m3v3(tmp, M, r);
-	copy_v3_v3(r, tmp);
+void mul_m3_v3_db(double M[3][3], double r[3])
+{
+	mul_v3_m3v3_db(r, M, (const double[3]){UNPACK3(r)});
 }
 
 void mul_transposed_m3_v3(float mat[3][3], float vec[3])
@@ -1826,6 +1837,21 @@ bool is_zero_m4(float mat[4][4])
 	        is_zero_v4(mat[1]) &&
 	        is_zero_v4(mat[2]) &&
 	        is_zero_v4(mat[3]));
+}
+
+bool equals_m3m3(float mat1[3][3], float mat2[3][3])
+{
+	return (equals_v3v3(mat1[0], mat2[0]) &&
+	        equals_v3v3(mat1[1], mat2[1]) &&
+	        equals_v3v3(mat1[2], mat2[2]));
+}
+
+bool equals_m4m4(float mat1[4][4], float mat2[4][4])
+{
+	return (equals_v4v4(mat1[0], mat2[0]) &&
+	        equals_v4v4(mat1[1], mat2[1]) &&
+	        equals_v4v4(mat1[2], mat2[2]) &&
+	        equals_v4v4(mat1[3], mat2[3]));
 }
 
 /* make a 4x4 matrix out of 3 transform components */

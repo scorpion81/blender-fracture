@@ -38,42 +38,6 @@
 #include <set>
 #include <errno.h>
 #include <algorithm>
-
-#include "DNA_scene_types.h" /* For OpenEXR compression constants */
-
-#include <openexr_api.h>
-
-#if defined (WIN32) && !defined(FREE_WINDOWS)
-#include "utfconv.h"
-#endif
-
-extern "C"
-{
-
-// The following prevents a linking error in debug mode for MSVC using the libs in CVS
-#if defined(WITH_OPENEXR) && defined(_WIN32) && defined(DEBUG) && !defined(__MINGW32__)
-_CRTIMP void __cdecl _invalid_parameter_noinfo(void)
-{
-}
-#endif
-
-#include "MEM_guardedalloc.h"
-
-#include "BLI_blenlib.h"
-#include "BLI_math_color.h"
-#include "BLI_threads.h"
-
-#include "BKE_idprop.h"
-#include "BKE_image.h"
-
-#include "IMB_imbuf_types.h"
-#include "IMB_imbuf.h"
-#include "IMB_allocimbuf.h"
-#include "IMB_metadata.h"
-
-#include "openexr_multi.h"
-}
-
 #include <iostream>
 
 #include <half.h>
@@ -100,6 +64,41 @@ _CRTIMP void __cdecl _invalid_parameter_noinfo(void)
 #include <ImfTiledOutputPart.h>
 #include <ImfPartType.h>
 #include <ImfPartHelper.h>
+
+#include "DNA_scene_types.h" /* For OpenEXR compression constants */
+
+#include <openexr_api.h>
+
+#if defined (WIN32) && !defined(FREE_WINDOWS)
+#include "utfconv.h"
+#endif
+
+extern "C"
+{
+
+// The following prevents a linking error in debug mode for MSVC using the libs in CVS
+#if defined(WITH_OPENEXR) && defined(_WIN32) && defined(DEBUG) && !defined(__MINGW32__) && _MSC_VER < 1900
+_CRTIMP void __cdecl _invalid_parameter_noinfo(void)
+{
+}
+#endif
+
+#include "MEM_guardedalloc.h"
+
+#include "BLI_blenlib.h"
+#include "BLI_math_color.h"
+#include "BLI_threads.h"
+
+#include "BKE_idprop.h"
+#include "BKE_image.h"
+
+#include "IMB_imbuf_types.h"
+#include "IMB_imbuf.h"
+#include "IMB_allocimbuf.h"
+#include "IMB_metadata.h"
+
+#include "openexr_multi.h"
+}
 
 extern "C" {
 #include "IMB_colormanagement.h"
@@ -128,7 +127,7 @@ class Mem_IStream : public Imf::IStream
 {
 public:
 
-	Mem_IStream (unsigned char *exrbuf, size_t exrsize) :
+	Mem_IStream(unsigned char *exrbuf, size_t exrsize) :
 		IStream("dummy"), _exrpos(0), _exrsize(exrsize)
 	{
 		_exrbuf = exrbuf;

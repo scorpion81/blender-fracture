@@ -58,6 +58,8 @@
 #include "BIF_gl.h"
 #include "BIF_glutil.h"
 
+#include "GPU_basic_shader.h"
+
 #include "ED_screen.h"
 #include "ED_view3d.h"
 
@@ -86,7 +88,6 @@ typedef struct PaintStroke {
 
 	/* Cached values */
 	ViewContext vc;
-	bglMats mats;
 	Brush *brush;
 	UnifiedPaintSettings *ups;
 
@@ -160,11 +161,11 @@ static void paint_draw_line_cursor(bContext *C, int x, int y, void *customdata)
 	glEnable(GL_LINE_SMOOTH);
 	glEnable(GL_BLEND);
 
-	glEnable(GL_LINE_STIPPLE);
-	glLineStipple(3, 0xAAAA);
+	GPU_basic_shader_bind_enable(GPU_SHADER_LINE | GPU_SHADER_STIPPLE);
+	GPU_basic_shader_line_stipple(3, 0xAAAA);
+	GPU_basic_shader_line_width(3.0);
 
 	glColor4ub(0, 0, 0, paint->paint_cursor_col[3]);
-	glLineWidth(3.0);
 	if (stroke->constrain_line) {
 		sdrawline((int)stroke->last_mouse_position[0], (int)stroke->last_mouse_position[1],
 		        stroke->constrained_pos[0], stroke->constrained_pos[1]);
@@ -175,7 +176,7 @@ static void paint_draw_line_cursor(bContext *C, int x, int y, void *customdata)
 	}
 
 	glColor4ub(255, 255, 255, paint->paint_cursor_col[3]);
-	glLineWidth(1.0);
+	GPU_basic_shader_line_width(1.0);
 	if (stroke->constrain_line) {
 		sdrawline((int)stroke->last_mouse_position[0], (int)stroke->last_mouse_position[1],
 		        stroke->constrained_pos[0], stroke->constrained_pos[1]);
@@ -185,7 +186,7 @@ static void paint_draw_line_cursor(bContext *C, int x, int y, void *customdata)
 		        x, y);
 	}
 
-	glDisable(GL_LINE_STIPPLE);
+	GPU_basic_shader_bind_disable(GPU_SHADER_LINE | GPU_SHADER_STIPPLE);
 
 	glDisable(GL_BLEND);
 	glDisable(GL_LINE_SMOOTH);
@@ -489,31 +490,30 @@ static void paint_brush_stroke_add_step(bContext *C, wmOperator *op, const float
 }
 
 /* Returns zero if no sculpt changes should be made, non-zero otherwise */
-static int paint_smooth_stroke(PaintStroke *stroke, float output[2], float *outpressure,
-                               const PaintSample *sample, PaintMode mode)
+static bool paint_smooth_stroke(
+        PaintStroke *stroke, const PaintSample *sample, PaintMode mode,
+        float r_mouse[2], float *r_pressure)
 {
 	if (paint_supports_smooth_stroke(stroke->brush, mode)) {
 		float radius = stroke->brush->smooth_stroke_radius * stroke->zoom_2d;
-		float u = stroke->brush->smooth_stroke_factor, v = 1.0f - u;
-		float dx = stroke->last_mouse_position[0] - sample->mouse[0];
-		float dy = stroke->last_mouse_position[1] - sample->mouse[1];
+		float u = stroke->brush->smooth_stroke_factor;
 
 		/* If the mouse is moving within the radius of the last move,
 		 * don't update the mouse position. This allows sharp turns. */
-		if (dx * dx + dy * dy <  radius * radius)
-			return 0;
+		if (len_squared_v2v2(stroke->last_mouse_position, sample->mouse) < SQUARE(radius)) {
+			return false;
+		}
 
-		output[0] = sample->mouse[0] * v + stroke->last_mouse_position[0] * u;
-		output[1] = sample->mouse[1] * v + stroke->last_mouse_position[1] * u;
-		*outpressure = sample->pressure * v + stroke->last_pressure * u;
+		interp_v2_v2v2(r_mouse, sample->mouse, stroke->last_mouse_position, u);
+		*r_pressure = interpf(sample->pressure, stroke->last_pressure, u);
 	}
 	else {
-		output[0] = sample->mouse[0];
-		output[1] = sample->mouse[1];
-		*outpressure = sample->pressure;
+		r_mouse[0] = sample->mouse[0];
+		r_mouse[1] = sample->mouse[1];
+		*r_pressure = sample->pressure;
 	}
 
-	return 1;
+	return true;
 }
 
 static float paint_space_stroke_spacing(const Scene *scene, PaintStroke *stroke, float size_pressure, float spacing_pressure)
@@ -674,8 +674,6 @@ PaintStroke *paint_stroke_new(bContext *C,
 	float zoomx, zoomy;
 
 	view3d_set_viewcontext(C, &stroke->vc);
-	if (stroke->vc.v3d)
-		view3d_get_transformation(stroke->vc.ar, stroke->vc.rv3d, stroke->vc.obact, &stroke->mats);
 
 	stroke->get_location = get_location;
 	stroke->test_start = test_start;
@@ -1101,12 +1099,14 @@ int paint_stroke_modal(bContext *C, wmOperator *op, const wmEvent *event)
 	paint_stroke_add_sample(p, stroke, event->mval[0], event->mval[1], pressure);
 	paint_stroke_sample_average(stroke, &sample_average);
 
+#ifdef WITH_INPUT_NDOF
 	/* let NDOF motion pass through to the 3D view so we can paint and rotate simultaneously!
 	 * this isn't perfect... even when an extra MOUSEMOVE is spoofed, the stroke discards it
 	 * since the 2D deltas are zero -- code in this file needs to be updated to use the
 	 * post-NDOF_MOTION MOUSEMOVE */
 	if (event->type == NDOF_MOTION)
 		return OPERATOR_PASS_THROUGH;
+#endif
 
 	/* one time initialization */
 	if (!stroke->stroke_init) {
@@ -1156,7 +1156,7 @@ int paint_stroke_modal(bContext *C, wmOperator *op, const wmEvent *event)
 		if (event->val == KM_RELEASE) {
 			copy_v2_fl2(mouse, event->mval[0], event->mval[1]);
 			paint_stroke_line_constrain(stroke, mouse);
-			paint_stroke_line_end (C, op, stroke, mouse);
+			paint_stroke_line_end(C, op, stroke, mouse);
 			stroke_done(C, op);
 			return OPERATOR_FINISHED;
 		}
@@ -1188,7 +1188,7 @@ int paint_stroke_modal(bContext *C, wmOperator *op, const wmEvent *event)
 	         /* airbrush */
 	         ((br->flag & BRUSH_AIRBRUSH) && event->type == TIMER && event->customdata == stroke->timer))
 	{
-		if (paint_smooth_stroke(stroke, mouse, &pressure, &sample_average, mode)) {
+		if (paint_smooth_stroke(stroke, &sample_average, mode, mouse, &pressure)) {
 			if (stroke->stroke_started) {
 				if (paint_space_stroke_enabled(br, mode)) {
 					if (paint_space_stroke(C, op, mouse, pressure))

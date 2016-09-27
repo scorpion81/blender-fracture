@@ -115,6 +115,13 @@ float dist_signed_squared_to_corner_v3v3v3(
         const float p[3],
         const float v1[3], const float v2[3], const float v3[3],
         const float axis_ref[3]);
+float dist_squared_to_ray_v3(
+        const float ray_origin[3], const float ray_direction[3],
+        const float co[3], float *r_depth);
+float dist_squared_ray_to_seg_v3(
+        const float ray_origin[3], const float ray_direction[3],
+        const float v0[3], const float v1[3],
+        float r_point[3], float *r_depth);
 float closest_to_line_v2(float r_close[2], const float p[2], const float l1[2], const float l2[2]);
 float closest_to_line_v3(float r_close[3], const float p[3], const float l1[3], const float l2[3]);
 void closest_to_line_segment_v2(float r_close[2], const float p[2], const float l1[2], const float l2[2]);
@@ -126,6 +133,12 @@ void closest_to_plane3_v3(float r_close[3], const float plane[3], const float pt
 
 /* Set 'r' to the point in triangle (t1, t2, t3) closest to point 'p' */
 void closest_on_tri_to_point_v3(float r[3], const float p[3], const float t1[3], const float t2[3], const float t3[3]);
+
+float ray_point_factor_v3_ex(
+        const float p[3], const float ray_origin[3], const float ray_direction[3],
+        const float epsilon, const float fallback);
+float ray_point_factor_v3(
+        const float p[3], const float ray_origin[3], const float ray_direction[3]);
 
 float line_point_factor_v3_ex(
         const float p[3], const float l1[3], const float l2[3],
@@ -463,6 +476,10 @@ MINLINE float shell_v3v3_normalized_to_dist(const float a[3], const float b[3]);
 MINLINE float shell_v2v2_normalized_to_dist(const float a[2], const float b[2]);
 MINLINE float shell_v3v3_mid_normalized_to_dist(const float a[3], const float b[3]);
 MINLINE float shell_v2v2_mid_normalized_to_dist(const float a[2], const float b[2]);
+
+/********************************* Cubic (Bezier) *******************************/
+
+float cubic_tangent_factor_circle_v3(const float tan_l[3], const float tan_r[3]);
 
 /**************************** Inline Definitions ******************************/
 

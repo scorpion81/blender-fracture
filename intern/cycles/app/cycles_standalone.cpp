@@ -32,6 +32,7 @@
 #include "util_string.h"
 #include "util_time.h"
 #include "util_transform.h"
+#include "util_version.h"
 
 #ifdef WITH_CYCLES_STANDALONE_GUI
 #include "util_view.h"
@@ -358,7 +359,7 @@ static void options_parse(int argc, const char **argv)
 
 	/* parse options */
 	ArgParse ap;
-	bool help = false, debug = false;
+	bool help = false, debug = false, version = false;
 	int verbosity = 1;
 
 	ap.options ("Usage: cycles [options] file.xml",
@@ -374,12 +375,15 @@ static void options_parse(int argc, const char **argv)
 		"--threads %d", &options.session_params.threads, "CPU Rendering Threads",
 		"--width  %d", &options.width, "Window width in pixel",
 		"--height %d", &options.height, "Window height in pixel",
+		"--tile-width %d", &options.session_params.tile_size.x, "Tile width in pixels",
+		"--tile-height %d", &options.session_params.tile_size.y, "Tile height in pixels",
 		"--list-devices", &list, "List information about all available devices",
 #ifdef WITH_CYCLES_LOGGING
 		"--debug", &debug, "Enable debug logging",
 		"--verbose %d", &verbosity, "Set verbosity of the logger",
 #endif
 		"--help", &help, "Print help message",
+		"--version", &version, "Print version number",
 		NULL);
 
 	if(ap.parse(argc, argv) < 0) {
@@ -404,6 +408,10 @@ static void options_parse(int argc, const char **argv)
 				(info.display_device)? " (display)": "");
 		}
 
+		exit(EXIT_SUCCESS);
+	}
+	else if(version) {
+		printf("%s\n", CYCLES_VERSION_STRING);
 		exit(EXIT_SUCCESS);
 	}
 	else if(help || options.filepath == "") {

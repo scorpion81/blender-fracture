@@ -81,9 +81,7 @@
 #include "wm_event_system.h"
 #include "wm_event_types.h"
 
-#ifndef NDEBUG
-#  include "RNA_enum_types.h"
-#endif
+#include "RNA_enum_types.h"
 
 static void wm_notifier_clear(wmNotifier *note);
 static void update_tablet_data(wmWindow *win, wmEvent *event);
@@ -241,7 +239,7 @@ void WM_main_remove_notifier_reference(const void *reference)
 	}
 }
 
-void WM_main_remove_editor_id_reference(const ID *id)
+void WM_main_remap_editor_id_reference(ID *old_id, ID *new_id)
 {
 	Main *bmain = G.main;
 	bScreen *sc;
@@ -253,7 +251,7 @@ void WM_main_remove_editor_id_reference(const ID *id)
 			SpaceLink *sl;
 
 			for (sl = sa->spacedata.first; sl; sl = sl->next) {
-				ED_spacedata_id_unref(sl, id);
+				ED_spacedata_id_remap(sa, sl, old_id, new_id);
 			}
 		}
 	}
@@ -410,15 +408,15 @@ void wm_event_do_notifiers(bContext *C)
 	CTX_wm_window_set(C, NULL);
 }
 
-static int wm_event_always_pass(wmEvent *event)
+static int wm_event_always_pass(const wmEvent *event)
 {
 	/* some events we always pass on, to ensure proper communication */
-	return ISTIMER(event->type) || (event->type == WINDEACTIVATE) || (event->type == EVT_BUT_OPEN);
+	return ISTIMER(event->type) || (event->type == WINDEACTIVATE);
 }
 
 /* ********************* ui handler ******************* */
 
-static int wm_handler_ui_call(bContext *C, wmEventHandler *handler, wmEvent *event, int always_pass)
+static int wm_handler_ui_call(bContext *C, wmEventHandler *handler, const wmEvent *event, int always_pass)
 {
 	ScrArea *area = CTX_wm_area(C);
 	ARegion *region = CTX_wm_region(C);
@@ -550,8 +548,6 @@ void WM_operator_region_active_win_set(bContext *C)
 }
 
 /* for debugging only, getting inspecting events manually is tedious */
-#ifndef NDEBUG
-
 void WM_event_print(const wmEvent *event)
 {
 	if (event) {
@@ -571,6 +567,7 @@ void WM_event_print(const wmEvent *event)
 		       BLI_str_utf8_size(event->utf8_buf), event->utf8_buf,
 		       event->keymap_idname, (const void *)event);
 
+#ifdef WITH_INPUT_NDOF
 		if (ISNDOF(event->type)) {
 			const wmNDOFMotionData *ndof = event->customdata;
 			if (event->type == NDOF_MOTION) {
@@ -581,6 +578,7 @@ void WM_event_print(const wmEvent *event)
 				/* ndof buttons printed already */
 			}
 		}
+#endif /* WITH_INPUT_NDOF */
 
 		if (event->tablet_data) {
 			const wmTabletData *wmtab = event->tablet_data;
@@ -592,8 +590,6 @@ void WM_event_print(const wmEvent *event)
 		printf("wmEvent - NULL\n");
 	}
 }
-
-#endif /* NDEBUG */
 
 /**
  * Show the report in the info header.
@@ -619,10 +615,12 @@ bool WM_event_is_absolute(const wmEvent *event)
 	return (event->tablet_data != NULL);
 }
 
+#ifdef WITH_INPUT_NDOF
 void WM_ndof_deadzone_set(float deadzone)
 {
 	GHOST_setNDOFDeadZone(deadzone);
 }
+#endif
 
 static void wm_add_reports(ReportList *reports)
 {
@@ -793,7 +791,10 @@ static int wm_operator_exec(bContext *C, wmOperator *op, const bool repeat, cons
 		wm_operator_finished(C, op, repeat);
 	}
 	else if (repeat == 0) {
-		WM_operator_free(op);
+		/* warning: modal from exec is bad practice, but avoid crashing. */
+		if (retval & (OPERATOR_FINISHED | OPERATOR_CANCELLED)) {
+			WM_operator_free(op);
+		}
 	}
 	
 	return retval | OPERATOR_HANDLED;
@@ -1526,7 +1527,7 @@ int WM_userdef_event_map(int kmitype)
 }
 
 
-static int wm_eventmatch(wmEvent *winevent, wmKeyMapItem *kmi)
+static int wm_eventmatch(const wmEvent *winevent, wmKeyMapItem *kmi)
 {
 	int kmitype = WM_userdef_event_map(kmi->type);
 
@@ -1792,9 +1793,12 @@ static int wm_handler_fileselect_do(bContext *C, ListBase *handlers, wmEventHand
 				if (sa->prev) {
 					sa = sa->prev;
 				}
-				ED_area_newspace(C, sa, SPACE_FILE);     /* 'sa' is modified in-place */
+				ED_area_newspace(C, sa, SPACE_FILE, true);     /* 'sa' is modified in-place */
 				/* we already had a fullscreen here -> mark new space as a stacked fullscreen */
-				sa->flag |= AREA_FLAG_STACKED_FULLSCREEN;
+				sa->flag |= (AREA_FLAG_STACKED_FULLSCREEN | AREA_FLAG_TEMP_TYPE);
+			}
+			else if (sa->spacetype == SPACE_FILE) {
+				sa = ED_screen_state_toggle(C, CTX_wm_window(C), sa, SCREENMAXIMIZED);
 			}
 			else {
 				sa = ED_screen_full_newspace(C, sa, SPACE_FILE);    /* sets context */
@@ -1823,11 +1827,9 @@ static int wm_handler_fileselect_do(bContext *C, ListBase *handlers, wmEventHand
 
 			if (val != EVT_FILESELECT_EXTERNAL_CANCEL) {
 				ScrArea *sa = CTX_wm_area(C);
-				const SpaceLink *sl = sa->spacedata.first;
-				const bool was_prev_temp = (sl->next && sl->next->spacetype == SPACE_IMAGE);
 
 				if (sa->full) {
-					ED_screen_full_prevspace(C, sa, was_prev_temp);
+					ED_screen_full_prevspace(C, sa);
 				}
 				/* user may have left fullscreen */
 				else {
@@ -1920,7 +1922,7 @@ static int wm_handler_fileselect_do(bContext *C, ListBase *handlers, wmEventHand
 	return action;
 }
 
-static int wm_handler_fileselect_call(bContext *C, ListBase *handlers, wmEventHandler *handler, wmEvent *event)
+static int wm_handler_fileselect_call(bContext *C, ListBase *handlers, wmEventHandler *handler, const wmEvent *event)
 {
 	int action = WM_HANDLER_CONTINUE;
 	
@@ -1932,7 +1934,7 @@ static int wm_handler_fileselect_call(bContext *C, ListBase *handlers, wmEventHa
 	return wm_handler_fileselect_do(C, handlers, handler, event->val);
 }
 
-static bool handler_boundbox_test(wmEventHandler *handler, wmEvent *event)
+static bool handler_boundbox_test(wmEventHandler *handler, const wmEvent *event)
 {
 	if (handler->bbwin) {
 		if (handler->bblocal) {
@@ -1965,15 +1967,11 @@ static int wm_action_not_handled(int action)
 
 static int wm_handlers_do_intern(bContext *C, wmEvent *event, ListBase *handlers)
 {
-#ifndef NDEBUG
 	const bool do_debug_handler = (G.debug & G_DEBUG_HANDLERS) &&
 	        /* comment this out to flood the console! (if you really want to test) */
 	        !ELEM(event->type, MOUSEMOVE, INBETWEEN_MOUSEMOVE)
 	        ;
-#    define PRINT if (do_debug_handler) printf
-#else
-#  define PRINT(format, ...)
-#endif
+# define PRINT if (do_debug_handler) printf
 
 	wmWindowManager *wm = CTX_wm_manager(C);
 	wmEventHandler *handler, *nexthandler;
@@ -2196,12 +2194,6 @@ static int wm_event_inside_i(wmEvent *event, rcti *rect)
 		return 1;
 	if (BLI_rcti_isect_pt_v(rect, &event->x))
 		return 1;
-	if (event->type == MOUSEMOVE) {
-		if (BLI_rcti_isect_pt_v(rect, &event->prevx)) {
-			return 1;
-		}
-		return 0;
-	}
 	return 0;
 }
 
@@ -2244,7 +2236,7 @@ static void wm_paintcursor_tag(bContext *C, wmPaintCursor *pc, ARegion *ar)
 
 /* called on mousemove, check updates for paintcursors */
 /* context was set on active area and region */
-static void wm_paintcursor_test(bContext *C, wmEvent *event)
+static void wm_paintcursor_test(bContext *C, const wmEvent *event)
 {
 	wmWindowManager *wm = CTX_wm_manager(C);
 	
@@ -2311,7 +2303,7 @@ static void wm_event_drag_test(wmWindowManager *wm, wmWindow *win, wmEvent *even
 }
 
 /* filter out all events of the pie that spawned the last pie unless it's a release event */
-static bool wm_event_pie_filter(wmWindow *win, wmEvent *event)
+static bool wm_event_pie_filter(wmWindow *win, const wmEvent *event)
 {
 	if (win->lock_pie_event && win->lock_pie_event == event->type) {
 		if (event->val == KM_RELEASE) {
@@ -2364,7 +2356,7 @@ void wm_event_do_handlers(bContext *C)
 					
 					if (is_playing_sound == 0) {
 						const float time = BKE_sound_sync_scene(scene);
-						if (finite(time)) {
+						if (isfinite(time)) {
 							int ncfra = time * (float)FPS + 0.5f;
 							if (ncfra != scene->r.cfra) {
 								scene->r.cfra = ncfra;
@@ -2384,20 +2376,16 @@ void wm_event_do_handlers(bContext *C)
 		while ( (event = win->queue.first) ) {
 			int action = WM_HANDLER_CONTINUE;
 
-#ifndef NDEBUG
 			if (G.debug & (G_DEBUG_HANDLERS | G_DEBUG_EVENTS) && !ELEM(event->type, MOUSEMOVE, INBETWEEN_MOUSEMOVE)) {
 				printf("\n%s: Handling event\n", __func__);
 				WM_event_print(event);
 			}
-#endif
 
 			/* take care of pie event filter */
 			if (wm_event_pie_filter(win, event)) {
-#ifndef NDEBUG
 				if (G.debug & (G_DEBUG_HANDLERS | G_DEBUG_EVENTS) && !ELEM(event->type, MOUSEMOVE, INBETWEEN_MOUSEMOVE)) {
 					printf("\n%s: event filtered due to pie button pressed\n", __func__);
 				}
-#endif
 				BLI_remlink(&win->queue, event);
 				wm_event_free(event);
 				continue;
@@ -2431,7 +2419,6 @@ void wm_event_do_handlers(bContext *C)
 			if ((action & WM_HANDLER_BREAK) == 0) {
 				ScrArea *sa;
 				ARegion *ar;
-				int doit = 0;
 	
 				/* Note: setting subwin active should be done here, after modal handlers have been done */
 				if (event->type == MOUSEMOVE) {
@@ -2440,9 +2427,11 @@ void wm_event_do_handlers(bContext *C)
 					/* for regions having custom cursors */
 					wm_paintcursor_test(C, event);
 				}
+#ifdef WITH_INPUT_NDOF
 				else if (event->type == NDOF_MOTION) {
 					win->addmousemove = true;
 				}
+#endif
 
 				for (sa = win->screen->areabase.first; sa; sa = sa->next) {
 					/* after restoring a screen from SCREENMAXIMIZED we have to wait
@@ -2483,8 +2472,6 @@ void wm_event_do_handlers(bContext *C)
 									if (CTX_wm_window(C) == NULL)
 										return;
 
-									doit |= (BLI_rcti_isect_pt_v(&ar->winrct, &event->x));
-									
 									if (action & WM_HANDLER_BREAK)
 										break;
 								}
@@ -2517,18 +2504,12 @@ void wm_event_do_handlers(bContext *C)
 						return;
 				}
 
-				/* XXX hrmf, this gives reliable previous mouse coord for area change, feels bad? 
-				 * doing it on ghost queue gives errors when mousemoves go over area borders */
-				if (doit && win->screen->subwinactive != win->screen->mainwin) {
-					win->eventstate->prevx = event->x;
-					win->eventstate->prevy = event->y;
-					//printf("win->eventstate->prev = %d %d\n", event->x, event->y);
-				}
-				else {
-					//printf("not setting prev to %d %d\n", event->x, event->y);
-				}
 			}
-			
+
+			/* update previous mouse position for following events to use */
+			win->eventstate->prevx = event->x;
+			win->eventstate->prevy = event->y;
+
 			/* unlink and free here, blender-quit then frees all */
 			BLI_remlink(&win->queue, event);
 			wm_event_free(event);
@@ -2911,6 +2892,7 @@ static int convert_key(GHOST_TKey key)
 			case GHOST_kKeyQuote:           return QUOTEKEY;
 			case GHOST_kKeyComma:           return COMMAKEY;
 			case GHOST_kKeyMinus:           return MINUSKEY;
+			case GHOST_kKeyPlus:            return PLUSKEY;
 			case GHOST_kKeyPeriod:          return PERIODKEY;
 			case GHOST_kKeySlash:           return SLASHKEY;
 
@@ -3050,6 +3032,7 @@ static void update_tablet_data(wmWindow *win, wmEvent *event)
 	}
 }
 
+#ifdef WITH_INPUT_NDOF
 /* adds customdata to event */
 static void attach_ndof_data(wmEvent *event, const GHOST_TEventNDOFMotionData *ghost)
 {
@@ -3076,6 +3059,7 @@ static void attach_ndof_data(wmEvent *event, const GHOST_TEventNDOFMotionData *g
 	event->customdata = data;
 	event->customdatafree = 1;
 }
+#endif /* WITH_INPUT_NDOF */
 
 /* imperfect but probably usable... draw/enable drags to other windows */
 static wmWindow *wm_event_cursor_other_windows(wmWindowManager *wm, wmWindow *win, wmEvent *event)
@@ -3123,7 +3107,7 @@ static wmWindow *wm_event_cursor_other_windows(wmWindowManager *wm, wmWindow *wi
 	return NULL;
 }
 
-static bool wm_event_is_double_click(wmEvent *event, wmEvent *event_state)
+static bool wm_event_is_double_click(wmEvent *event, const wmEvent *event_state)
 {
 	if ((event->type == event_state->prevtype) &&
 	    (event_state->prevval == KM_RELEASE) &&
@@ -3463,6 +3447,7 @@ void wm_event_add_ghostevent(wmWindowManager *wm, wmWindow *win, int type, int U
 			break;
 		}
 
+#ifdef WITH_INPUT_NDOF
 		case GHOST_kEventNDOFMotion:
 		{
 			event.type = NDOF_MOTION;
@@ -3498,6 +3483,7 @@ void wm_event_add_ghostevent(wmWindowManager *wm, wmWindow *win, int type, int U
 
 			break;
 		}
+#endif /* WITH_INPUT_NDOF */
 
 		case GHOST_kEventUnknown:
 		case GHOST_kNumEventTypes:
@@ -3569,6 +3555,7 @@ void WM_set_locked_interface(wmWindowManager *wm, bool lock)
 }
 
 
+#ifdef WITH_INPUT_NDOF
 /* -------------------------------------------------------------------- */
 /* NDOF */
 
@@ -3611,6 +3598,7 @@ void WM_event_ndof_to_quat(const struct wmNDOFMotionData *ndof, float q[4])
 	angle = WM_event_ndof_to_axis_angle(ndof, axis);
 	axis_angle_to_quat(q, axis, angle);
 }
+#endif /* WITH_INPUT_NDOF */
 
 /* if this is a tablet event, return tablet pressure and set *pen_flip
  * to 1 if the eraser tool is being used, 0 otherwise */

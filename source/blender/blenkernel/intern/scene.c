@@ -49,6 +49,7 @@
 #include "DNA_space_types.h"
 #include "DNA_view3d_types.h"
 #include "DNA_windowmanager_types.h"
+#include "DNA_gpencil_types.h"
 
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
@@ -64,6 +65,7 @@
 #include "BKE_animsys.h"
 #include "BKE_action.h"
 #include "BKE_armature.h"
+#include "BKE_cachefile.h"
 #include "BKE_colortools.h"
 #include "BKE_depsgraph.h"
 #include "BKE_editmesh.h"
@@ -100,11 +102,6 @@
 #include "IMB_imbuf.h"
 
 #include "bmesh.h"
-
-#ifdef WIN32
-#else
-#  include <sys/time.h>
-#endif
 
 const char *RE_engine_id_BLENDER_RENDER = "BLENDER_RENDER";
 const char *RE_engine_id_BLENDER_GAME = "BLENDER_GAME";
@@ -155,7 +152,7 @@ static void remove_sequencer_fcurves(Scene *sce)
 	}
 }
 
-Scene *BKE_scene_copy(Scene *sce, int type)
+Scene *BKE_scene_copy(Main *bmain, Scene *sce, int type)
 {
 	Scene *scen;
 	SceneRenderLayer *srl, *new_srl;
@@ -165,8 +162,7 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 	
 	if (type == SCE_COPY_EMPTY) {
 		ListBase rl, rv;
-		/* XXX. main should become an arg */
-		scen = BKE_scene_add(G.main, sce->id.name + 2);
+		scen = BKE_scene_add(bmain, sce->id.name + 2);
 		
 		rl = scen->r.layers;
 		rv = scen->r.views;
@@ -187,10 +183,10 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 		BKE_sound_destroy_scene(scen);
 	}
 	else {
-		scen = BKE_libblock_copy(&sce->id);
+		scen = BKE_libblock_copy(bmain, &sce->id);
 		BLI_duplicatelist(&(scen->base), &(sce->base));
 		
-		BKE_main_id_clear_newpoins(G.main);
+		BKE_main_id_clear_newpoins(bmain);
 		
 		id_us_plus((ID *)scen->world);
 		id_us_plus((ID *)scen->set);
@@ -214,7 +210,7 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 
 		if (sce->nodetree) {
 			/* ID's are managed on both copy and switch */
-			scen->nodetree = ntreeCopyTree(sce->nodetree);
+			scen->nodetree = ntreeCopyTree(bmain, sce->nodetree);
 			ntreeSwitchID(scen->nodetree, &sce->id, &scen->id);
 		}
 
@@ -242,7 +238,7 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 				for (lineset = new_srl->freestyleConfig.linesets.first; lineset; lineset = lineset->next) {
 					if (lineset->linestyle) {
 						id_us_plus((ID *)lineset->linestyle);
-						lineset->linestyle = BKE_linestyle_copy(G.main, lineset->linestyle);
+						lineset->linestyle = BKE_linestyle_copy(bmain, lineset->linestyle);
 					}
 				}
 			}
@@ -291,6 +287,13 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 		ts->imapaint.paintcursor = NULL;
 		id_us_plus((ID *)ts->imapaint.stencil);
 		ts->particle.paintcursor = NULL;
+		/* duplicate Grease Pencil Drawing Brushes */
+		BLI_listbase_clear(&ts->gp_brushes);
+		for (bGPDbrush *brush = sce->toolsettings->gp_brushes.first; brush; brush = brush->next) {
+			bGPDbrush *newbrush = BKE_gpencil_brush_duplicate(brush);
+			BLI_addtail(&ts->gp_brushes, newbrush);
+		}
+
 	}
 	
 	/* make a private copy of the avicodecdata */
@@ -325,7 +328,7 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 	if (type == SCE_COPY_FULL) {
 		if (scen->world) {
 			id_us_plus((ID *)scen->world);
-			scen->world = BKE_world_copy(scen->world);
+			scen->world = BKE_world_copy(bmain, scen->world);
 			BKE_animdata_copy_id_action((ID *)scen->world);
 		}
 
@@ -339,7 +342,7 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 	/* grease pencil */
 	if (scen->gpd) {
 		if (type == SCE_COPY_FULL) {
-			scen->gpd = gpencil_data_duplicate(scen->gpd, false);
+			scen->gpd = BKE_gpencil_data_duplicate(bmain, scen->gpd, false);
 		}
 		else if (type == SCE_COPY_EMPTY) {
 			scen->gpd = NULL;
@@ -349,9 +352,7 @@ Scene *BKE_scene_copy(Scene *sce, int type)
 		}
 	}
 
-	if (sce->preview) {
-		scen->preview = BKE_previewimg_copy(sce->preview);
-	}
+	BKE_previewimg_id_copy(&scen->id, &sce->id);
 
 	return scen;
 }
@@ -362,46 +363,41 @@ void BKE_scene_groups_relink(Scene *sce)
 		BKE_rigidbody_world_groups_relink(sce->rigidbody_world);
 }
 
-/* do not free scene itself */
+void BKE_scene_make_local(Main *bmain, Scene *sce, const bool lib_local)
+{
+	/* For now should work, may need more work though to support all possible corner cases
+	 * (also scene_copy probably needs some love). */
+	BKE_id_make_local_generic(bmain, &sce->id, true, lib_local);
+}
+
+/** Free (or release) any data used by this scene (does not free the scene itself). */
 void BKE_scene_free(Scene *sce)
 {
-	Base *base;
 	SceneRenderLayer *srl;
+
+	BKE_animdata_free((ID *)sce, false);
 
 	/* check all sequences */
 	BKE_sequencer_clear_scene_in_allseqs(G.main, sce);
 
-	base = sce->base.first;
-	while (base) {
-		id_us_min(&base->object->id);
-		base = base->next;
-	}
-	/* do not free objects! */
-	
-	if (sce->gpd) {
-#if 0   /* removed since this can be invalid memory when freeing everything */
-		/* since the grease pencil data is freed before the scene.
-		 * since grease pencil data is not (yet?), shared between objects
-		 * its probably safe not to do this, some save and reload will free this. */
-		id_us_min(&sce->gpd->id);
-#endif
-		sce->gpd = NULL;
-	}
-
+	sce->basact = NULL;
 	BLI_freelistN(&sce->base);
 	BKE_sequencer_editing_free(sce);
 
-	BKE_animdata_free((ID *)sce);
 	BKE_keyingsets_free(&sce->keyingsets);
-	
-	if (sce->rigidbody_world)
-	{
+
+	/* is no lib link block, but scene extension */
+	if (sce->nodetree) {
+		ntreeFreeTree(sce->nodetree);
+		MEM_freeN(sce->nodetree);
+		sce->nodetree = NULL;
+	}
+
+	if (sce->rigidbody_world) {
 		BKE_rigidbody_free_world(sce->rigidbody_world);
-		/* might happen that this is used in Fracture Modifier objects still,
-		 * a scene with a freed, but not NULLed rigidbodyworld, so null it here.*/
 		sce->rigidbody_world = NULL;
 	}
-	
+
 	if (sce->r.avicodecdata) {
 		free_avicodecdata(sce->r.avicodecdata);
 		MEM_freeN(sce->r.avicodecdata);
@@ -444,6 +440,10 @@ void BKE_scene_free(Scene *sce)
 			BKE_paint_free(&sce->toolsettings->uvsculpt->paint);
 			MEM_freeN(sce->toolsettings->uvsculpt);
 		}
+		/* free Grease Pencil Drawing Brushes */
+		BKE_gpencil_free_brushes(&sce->toolsettings->gp_brushes);
+		BLI_freelistN(&sce->toolsettings->gp_brushes);
+
 		BKE_paint_free(&sce->toolsettings->imapaint.paint);
 
 		MEM_freeN(sce->toolsettings);
@@ -454,15 +454,8 @@ void BKE_scene_free(Scene *sce)
 	if (sce->depsgraph)
 		DEG_graph_free(sce->depsgraph);
 	
-	if (sce->nodetree) {
-		ntreeFreeTree(sce->nodetree);
-		MEM_freeN(sce->nodetree);
-	}
-
-	if (sce->stats)
-		MEM_freeN(sce->stats);
-	if (sce->fps_info)
-		MEM_freeN(sce->fps_info);
+	MEM_SAFE_FREE(sce->stats);
+	MEM_SAFE_FREE(sce->fps_info);
 
 	BKE_sound_destroy_scene(sce);
 
@@ -555,7 +548,7 @@ void BKE_scene_init(Scene *sce)
 	sce->r.bake.im_format.compress = 15;
 
 	sce->r.scemode = R_DOCOMP | R_DOSEQ | R_EXTENSION;
-	sce->r.stamp = R_STAMP_TIME | R_STAMP_FRAME | R_STAMP_DATE | R_STAMP_CAMERA | R_STAMP_SCENE | R_STAMP_FILENAME | R_STAMP_RENDERTIME;
+	sce->r.stamp = R_STAMP_TIME | R_STAMP_FRAME | R_STAMP_DATE | R_STAMP_CAMERA | R_STAMP_SCENE | R_STAMP_FILENAME | R_STAMP_RENDERTIME | R_STAMP_MEMORY;
 	sce->r.stamp_font_id = 12;
 	sce->r.fg_stamp[0] = sce->r.fg_stamp[1] = sce->r.fg_stamp[2] = 0.8f;
 	sce->r.fg_stamp[3] = 1.0f;
@@ -620,6 +613,12 @@ void BKE_scene_init(Scene *sce)
 	sce->toolsettings->skgen_subdivisions[0] = SKGEN_SUB_CORRELATION;
 	sce->toolsettings->skgen_subdivisions[1] = SKGEN_SUB_LENGTH;
 	sce->toolsettings->skgen_subdivisions[2] = SKGEN_SUB_ANGLE;
+
+	sce->toolsettings->curve_paint_settings.curve_type = CU_BEZIER;
+	sce->toolsettings->curve_paint_settings.flag |= CURVE_PAINT_FLAG_CORNERS_DETECT;
+	sce->toolsettings->curve_paint_settings.error_threshold = 8;
+	sce->toolsettings->curve_paint_settings.radius_max = 1.0f;
+	sce->toolsettings->curve_paint_settings.corner_angle = DEG2RADF(70.0f);
 
 	sce->toolsettings->statvis.overhang_axis = OB_NEGZ;
 	sce->toolsettings->statvis.overhang_min = 0;
@@ -777,6 +776,11 @@ void BKE_scene_init(Scene *sce)
 		gp_brush->strength = 0.5f;
 		gp_brush->flag = GP_EDITBRUSH_FLAG_USE_FALLOFF;
 		
+		gp_brush = &gset->brush[GP_EDITBRUSH_TYPE_STRENGTH];
+		gp_brush->size = 25;
+		gp_brush->strength = 0.5f;
+		gp_brush->flag = GP_EDITBRUSH_FLAG_USE_FALLOFF;
+
 		gp_brush = &gset->brush[GP_EDITBRUSH_TYPE_GRAB];
 		gp_brush->size = 50;
 		gp_brush->strength = 0.3f;
@@ -894,7 +898,7 @@ void BKE_scene_set_background(Main *bmain, Scene *scene)
 	/* no full animation update, this to enable render code to work (render code calls own animation updates) */
 }
 
-/* called from creator.c */
+/* called from creator_args.c */
 Scene *BKE_scene_set_name(Main *bmain, const char *name)
 {
 	Scene *sce = (Scene *)BKE_libblock_find_name_ex(bmain, ID_SCE, name);
@@ -906,40 +910,6 @@ Scene *BKE_scene_set_name(Main *bmain, const char *name)
 
 	printf("Can't find scene: '%s' in file: '%s'\n", name, bmain->name);
 	return NULL;
-}
-
-void BKE_scene_unlink(Main *bmain, Scene *sce, Scene *newsce)
-{
-	Scene *sce1;
-	bScreen *screen;
-
-	/* check all sets */
-	for (sce1 = bmain->scene.first; sce1; sce1 = sce1->id.next)
-		if (sce1->set == sce)
-			sce1->set = NULL;
-	
-	for (sce1 = bmain->scene.first; sce1; sce1 = sce1->id.next) {
-		bNode *node;
-		
-		if (sce1 == sce || !sce1->nodetree)
-			continue;
-		
-		for (node = sce1->nodetree->nodes.first; node; node = node->next) {
-			if (node->id == &sce->id)
-				node->id = NULL;
-		}
-	}
-	
-	/* all screens */
-	for (screen = bmain->screen.first; screen; screen = screen->id.next) {
-		if (screen->scene == sce) {
-			screen->scene = newsce;
-		}
-
-		/* editors are handled by WM_main_remove_editor_id_reference */
-	}
-
-	BKE_libblock_free(bmain, sce);
 }
 
 /* Used by metaballs, return *all* objects (including duplis) existing in the scene (including scene's sets) */
@@ -1177,7 +1147,7 @@ char *BKE_scene_find_last_marker_name(Scene *scene, int frame)
 
 Base *BKE_scene_base_add(Scene *sce, Object *ob)
 {
-	Base *b = MEM_callocN(sizeof(*b), "BKE_scene_base_add");
+	Base *b = MEM_callocN(sizeof(*b), __func__);
 	BLI_addhead(&sce->base, b);
 
 	b->object = ob;
@@ -1197,6 +1167,8 @@ void BKE_scene_base_unlink(Scene *sce, Base *base)
 		BKE_rigidbody_remove_object(sce, base->object);
 	
 	BLI_remlink(&sce->base, base);
+	if (sce->basact == base)
+		sce->basact = NULL;
 }
 
 void BKE_scene_base_deselect_all(Scene *sce)
@@ -1587,10 +1559,11 @@ static void print_threads_statistics(ThreadedObjectUpdateState *state)
 #else
 	finish_time = PIL_check_seconds_timer();
 	tot_thread = BLI_system_thread_count();
+	int total_objects = 0;
 
 	for (i = 0; i < tot_thread; i++) {
-		int total_objects = 0;
-		double total_time = 0.0;
+		int thread_total_objects = 0;
+		double thread_total_time = 0.0;
 		StatisicsEntry *entry;
 
 		if (state->has_updated_objects) {
@@ -1599,11 +1572,14 @@ static void print_threads_statistics(ThreadedObjectUpdateState *state)
 			     entry;
 			     entry = entry->next)
 			{
-				total_objects++;
-				total_time += entry->duration;
+				thread_total_objects++;
+				thread_total_time += entry->duration;
 			}
 
-			printf("Thread %d: total %d objects in %f sec.\n", i, total_objects, total_time);
+			printf("Thread %d: total %d objects in %f sec.\n",
+			       i,
+			       thread_total_objects,
+			       thread_total_time);
 
 			for (entry = state->statistics[i].first;
 			     entry;
@@ -1611,12 +1587,16 @@ static void print_threads_statistics(ThreadedObjectUpdateState *state)
 			{
 				printf("  %s in %f sec\n", entry->object->id.name + 2, entry->duration);
 			}
+
+			total_objects += thread_total_objects;
 		}
 
 		BLI_freelistN(&state->statistics[i]);
 	}
 	if (state->has_updated_objects) {
-		printf("Scene update in %f sec\n", finish_time - state->base_time);
+		printf("Scene updated %d objects in %f sec\n",
+		       total_objects,
+		       finish_time - state->base_time);
 	}
 #endif
 }
@@ -1773,7 +1753,7 @@ static void prepare_mesh_for_viewport_render(Main *bmain, Scene *scene)
 		{
 			if (check_rendered_viewport_visible(bmain)) {
 				BMesh *bm = mesh->edit_btmesh->bm;
-				BM_mesh_bm_to_me(bm, mesh, false);
+				BM_mesh_bm_to_me(bm, mesh, (&(struct BMeshToMeshParams){0}));
 				DAG_id_tag_update(&mesh->id, 0);
 			}
 		}
@@ -1953,6 +1933,9 @@ void BKE_scene_update_for_newframe_ex(EvaluationContext *eval_ctx, Main *bmain, 
 #endif
 
 	BKE_mask_evaluate_all_masks(bmain, ctime, true);
+
+	/* Update animated cache files for modifiers. */
+	BKE_cachefile_update_frame(bmain, sce, ctime, (((double)sce->r.frs_sec) / (double)sce->r.frs_sec_base));
 
 #ifdef POSE_ANIMATION_WORKAROUND
 	scene_armature_depsgraph_workaround(bmain);
@@ -2197,6 +2180,19 @@ bool BKE_scene_use_shading_nodes_custom(Scene *scene)
 	return (type && type->flag & RE_USE_SHADING_NODES_CUSTOM);
 }
 
+bool BKE_scene_use_world_space_shading(Scene *scene)
+{
+	const RenderEngineType *type = RE_engines_find(scene->r.engine);
+	return ((scene->r.mode & R_USE_WS_SHADING) ||
+	        (type && (type->flag & RE_USE_SHADING_NODES)));
+}
+
+bool BKE_scene_use_spherical_stereo(Scene *scene)
+{
+	RenderEngineType *type = RE_engines_find(scene->r.engine);
+	return (type && type->flag & RE_USE_SPHERICAL_STEREO);
+}
+
 bool BKE_scene_uses_blender_internal(const  Scene *scene)
 {
 	return STREQ(scene->r.engine, RE_engine_id_BLENDER_RENDER);
@@ -2422,7 +2418,6 @@ SceneRenderView *BKE_scene_multiview_render_view_findindex(const RenderData *rd,
 	if ((rd->scemode & R_MULTIVIEW) == 0)
 		return NULL;
 
-	nr = 0;
 	for (srv = rd->views.first, nr = 0; srv; srv = srv->next) {
 		if (BKE_scene_multiview_is_render_view_active(rd, srv)) {
 			if (nr++ == view_id)
@@ -2453,7 +2448,6 @@ int BKE_scene_multiview_view_id_get(const RenderData *rd, const char *viewname)
 	if ((!viewname) || (!viewname[0]))
 		return 0;
 
-	nr = 0;
 	for (srv = rd->views.first, nr = 0; srv; srv = srv->next) {
 		if (BKE_scene_multiview_is_render_view_active(rd, srv)) {
 			if (STREQ(viewname, srv->name)) {

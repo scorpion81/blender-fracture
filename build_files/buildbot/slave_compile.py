@@ -56,7 +56,6 @@ if 'cmake' in builder:
     chroot_name = None  # If not None command will be delegated to that chroot
     cuda_chroot_name = None  # If not None cuda compilationcommand will be delegated to that chroot
     build_cubins = True  # Whether to build Cycles CUDA kernels
-    remove_install_dir = False  # Remove installation folder before building
     bits = 64
 
     # Config file to be used (relative to blender's sources root)
@@ -70,36 +69,56 @@ if 'cmake' in builder:
     cuda_cmake_options = []
 
     if builder.startswith('mac'):
-        install_dir = None
         # Set up OSX architecture
         if builder.endswith('x86_64_10_6_cmake'):
             cmake_extra_options.append('-DCMAKE_OSX_ARCHITECTURES:STRING=x86_64')
+        cmake_extra_options.append('-DCUDA_NVCC_EXECUTABLE=/usr/local/cuda-hack/bin/nvcc')
+        cmake_extra_options.append('-DCUDA_NVCC8_EXECUTABLE=/usr/local/cuda8-hack/bin/nvcc')
 
     elif builder.startswith('win'):
-        install_dir = None
-        if builder.startswith('win64'):
-            cmake_options.append(['-G', '"Visual Studio 12 2013 Win64"'])
-        elif builder.startswith('win32'):
-            bits = 32
-            cmake_options.append(['-G', '"Visual Studio 12 2013"'])
+        if builder.endswith('_vc2015'):
+            if builder.startswith('win64'):
+                cmake_options.extend(['-G', 'Visual Studio 14 2015 Win64'])
+            elif builder.startswith('win32'):
+                bits = 32
+                cmake_options.extend(['-G', 'Visual Studio 14 2015'])
+            cmake_extra_options.append('-DCUDA_NVCC_FLAGS=--cl-version;2013;' +
+                '--compiler-bindir;C:\\Program Files (x86)\\Microsoft Visual Studio 12.0\\VC\\bin')
+        else:
+            if builder.startswith('win64'):
+                cmake_options.extend(['-G', 'Visual Studio 12 2013 Win64'])
+            elif builder.startswith('win32'):
+                bits = 32
+                cmake_options.extend(['-G', 'Visual Studio 12 2013'])
+        cmake_extra_options.append('-DCUDA_NVCC_EXECUTABLE:FILEPATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v7.5/bin/nvcc.exe')
+        cmake_extra_options.append('-DCUDA_NVCC8_EXECUTABLE:FILEPATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0/bin/nvcc.exe')
 
     elif builder.startswith('linux'):
-        remove_install_dir = True
+        tokens = builder.split("_")
+        glibc = tokens[1]
+        if glibc == 'glibc219':
+            deb_name = "jessie"
+        elif glibc == 'glibc211':
+            deb_name = "squeeze"
         cmake_config_file = "build_files/buildbot/config/blender_linux.cmake"
         cmake_player_config_file = "build_files/buildbot/config/blender_linux_player.cmake"
         if builder.endswith('x86_64_cmake'):
-            chroot_name = 'buildbot_squeeze_x86_64'
+            chroot_name = 'buildbot_' + deb_name + '_x86_64'
             targets = ['player', 'blender']
-        elif builder.endswith('i386_cmake'):
+        elif builder.endswith('i686_cmake'):
             bits = 32
-            chroot_name = 'buildbot_squeeze_i686'
-            cuda_chroot_name = 'buildbot_squeeze_x86_64'
+            chroot_name = 'buildbot_' + deb_name + '_i686'
+            cuda_chroot_name = 'buildbot_' + deb_name + '_x86_64'
             targets = ['player', 'blender', 'cuda']
+
+        cmake_extra_options.append('-DCUDA_NVCC_EXECUTABLE=/usr/local/cuda-7.5/bin/nvcc')
+        cmake_extra_options.append('-DCUDA_NVCC8_EXECUTABLE=/usr/local/cuda-8.0/bin/nvcc')
 
     cmake_options.append("-C" + os.path.join(blender_dir, cmake_config_file))
 
     # Prepare CMake options needed to configure cuda binaries compilation.
     cuda_cmake_options.append("-DWITH_CYCLES_CUDA_BINARIES=%s" % ('ON' if build_cubins else 'OFF'))
+    cuda_cmake_options.append("-DCYCLES_CUDA_BINARIES_ARCH=sm_20;sm_21;sm_30;sm_35;sm_37;sm_50;sm_52;sm_60;sm_61")
     if build_cubins or 'cuda' in targets:
         if bits == 32:
             cuda_cmake_options.append("-DCUDA_64_BIT_DEVICE_CODE=OFF")
@@ -110,8 +129,7 @@ if 'cmake' in builder:
     if 'cuda' not in targets:
         cmake_options += cuda_cmake_options
 
-    if install_dir:
-        cmake_options.append("-DCMAKE_INSTALL_PREFIX=%s" % (install_dir))
+    cmake_options.append("-DCMAKE_INSTALL_PREFIX=%s" % (install_dir))
 
     cmake_options += cmake_extra_options
 
@@ -126,10 +144,8 @@ if 'cmake' in builder:
         cuda_chroot_prefix = chroot_prefix[:]
 
     # Make sure no garbage remained from the previous run
-    # (only do it if builder requested this)
-    if remove_install_dir:
-        if os.path.isdir(install_dir):
-            shutil.rmtree(install_dir)
+    if os.path.isdir(install_dir):
+        shutil.rmtree(install_dir)
 
     for target in targets:
         print("Building target %s" % (target))
@@ -181,7 +197,7 @@ if 'cmake' in builder:
             sys.exit(retcode)
 
         if builder.startswith('linux') and target == 'cuda':
-            blender_h = os.path.join(blender_dir, "source", "blender", "blenkernel", "BKE_blender.h")
+            blender_h = os.path.join(blender_dir, "source", "blender", "blenkernel", "BKE_blender_version.h")
             blender_version = int(parse_header_file(blender_h, 'BLENDER_VERSION'))
             blender_version = "%d.%d" % (blender_version // 100, blender_version % 100)
             kernels = os.path.join(target_build_dir, 'intern', 'cycles', 'kernel')

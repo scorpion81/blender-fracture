@@ -183,7 +183,7 @@ static int has_poselib_pose_data_poll(bContext *C)
 static int has_poselib_pose_data_for_editing_poll(bContext *C)
 {
 	Object *ob = get_poselib_object(C);
-	return (ob && ob->poselib && !ob->poselib->id.lib);
+	return (ob && ob->poselib && !ID_IS_LINKED_DATABLOCK(ob->poselib));
 }
 
 /* ----------------------------------- */
@@ -385,7 +385,7 @@ static int poselib_add_poll(bContext *C)
 	if (ED_operator_posemode(C)) {
 		Object *ob = get_poselib_object(C);
 		if (ob) {
-			if ((ob->poselib == NULL) || (ob->poselib->id.lib == 0)) {
+			if ((ob->poselib == NULL) || !ID_IS_LINKED_DATABLOCK(ob->poselib)) {
 				return true;
 			}
 		}
@@ -762,7 +762,7 @@ typedef struct tPoseLib_PreviewData {
 	char searchstr[64];     /* (Part of) Name to search for to filter poses that get shown */
 	char searchold[64];     /* Previously set searchstr (from last loop run), so that we can detected when to rebuild searchp */
 	
-	char headerstr[200];    /* Info-text to print in header */
+	char headerstr[UI_MAX_DRAW_STR];    /* Info-text to print in header */
 } tPoseLib_PreviewData;
 
 /* defines for tPoseLib_PreviewData->state values */
@@ -1016,7 +1016,7 @@ static void poselib_preview_apply(bContext *C, wmOperator *op)
 	if (pld->state == PL_PREVIEW_RUNNING) {
 		if (pld->flag & PL_PREVIEW_SHOWORIGINAL) {
 			BLI_strncpy(pld->headerstr,
-			            "PoseLib Previewing Pose: [Showing Original Pose] | Use Tab to start previewing poses again",
+			            IFACE_("PoseLib Previewing Pose: [Showing Original Pose] | Use Tab to start previewing poses again"),
 			            sizeof(pld->headerstr));
 			ED_area_headerprint(pld->sa, pld->headerstr);
 		}
@@ -1041,16 +1041,16 @@ static void poselib_preview_apply(bContext *C, wmOperator *op)
 			BLI_strncpy(markern, pld->marker ? pld->marker->name : "No Matches", sizeof(markern));
 
 			BLI_snprintf(pld->headerstr, sizeof(pld->headerstr),
-			             "PoseLib Previewing Pose: Filter - [%s] | "
-			             "Current Pose - \"%s\"  | "
-			             "Use ScrollWheel or PageUp/Down to change",
+			             IFACE_("PoseLib Previewing Pose: Filter - [%s] | "
+			                    "Current Pose - \"%s\"  | "
+			                    "Use ScrollWheel or PageUp/Down to change"),
 			             tempstr, markern);
 			ED_area_headerprint(pld->sa, pld->headerstr);
 		}
 		else {
 			BLI_snprintf(pld->headerstr, sizeof(pld->headerstr),
-			             "PoseLib Previewing Pose: \"%s\"  | "
-			             "Use ScrollWheel or PageUp/Down to change",
+			             IFACE_("PoseLib Previewing Pose: \"%s\"  | "
+			                    "Use ScrollWheel or PageUp/Down to change"),
 			             pld->marker->name);
 			ED_area_headerprint(pld->sa, pld->headerstr);
 		}

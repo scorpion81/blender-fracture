@@ -155,13 +155,8 @@ void BlenderSync::sync_light(BL::Object& b_parent,
 	light->dir = -transform_get_column(&tfm, 2);
 
 	/* shader */
-	vector<uint> used_shaders;
-
+	vector<Shader*> used_shaders;
 	find_shader(b_lamp, used_shaders, scene->default_light);
-
-	if(used_shaders.size() == 0)
-		used_shaders.push_back(scene->default_light);
-
 	light->shader = used_shaders[0];
 
 	/* shadow */
@@ -258,11 +253,20 @@ static bool object_boundbox_clip(Scene *scene,
 		                       boundbox[3 * i + 1],
 		                       boundbox[3 * i + 2]);
 		p = transform_point(&tfm, p);
-		p = transform_point(&worldtondc, p);
-		if(p.z >= -margin) {
+
+		float4 b = make_float4(p.x, p.y, p.z, 1.0f);
+		float4 c = make_float4(dot(worldtondc.x, b),
+		                       dot(worldtondc.y, b),
+		                       dot(worldtondc.z, b),
+		                       dot(worldtondc.w, b));
+		p = float4_to_float3(c / c.w);
+		if(c.z < 0.0f) {
+			p.x = 1.0f - p.x;
+			p.y = 1.0f - p.y;
+		}
+		if(c.z >= -margin) {
 			all_behind = false;
 		}
-		p /= p.z;
 		bb_min = min(bb_min, p);
 		bb_max = max(bb_max, p);
 	}
@@ -325,14 +329,16 @@ Object *BlenderSync::sync_object(BL::Object& b_parent,
 			/* object transformation */
 			if(tfm != object->tfm) {
 				VLOG(1) << "Object " << b_ob.name() << " motion detected.";
-				if(motion_time == -1.0f) {
-					object->motion.pre = tfm;
+				if(motion_time == -1.0f || motion_time == 1.0f) {
 					object->use_motion = true;
 				}
-				else if(motion_time == 1.0f) {
-					object->motion.post = tfm;
-					object->use_motion = true;
-				}
+			}
+
+			if(motion_time == -1.0f) {
+				object->motion.pre = tfm;
+			}
+			else if(motion_time == 1.0f) {
+				object->motion.post = tfm;
 			}
 
 			/* mesh deformation */
@@ -370,13 +376,12 @@ Object *BlenderSync::sync_object(BL::Object& b_parent,
 	}
 
 	/* make holdout objects on excluded layer invisible for non-camera rays */
-	if(use_holdout && (layer_flag & render_layer.exclude_layer))
+	if(use_holdout && (layer_flag & render_layer.exclude_layer)) {
 		visibility &= ~(PATH_RAY_ALL_VISIBILITY - PATH_RAY_CAMERA);
+	}
 
-	/* camera flag is not actually used, instead is tested against render layer
-	 * flags */
-	if(visibility & PATH_RAY_CAMERA) {
-		visibility |= layer_flag << PATH_RAY_LAYER_SHIFT;
+	/* hide objects not on render layer from camera rays */
+	if(!(layer_flag & render_layer.layer)) {
 		visibility &= ~PATH_RAY_CAMERA;
 	}
 
@@ -392,8 +397,8 @@ Object *BlenderSync::sync_object(BL::Object& b_parent,
 		object->name = b_ob.name().c_str();
 		object->pass_id = b_ob.pass_index();
 		object->tfm = tfm;
-		object->motion.pre = tfm;
-		object->motion.post = tfm;
+		object->motion.pre = transform_empty();
+		object->motion.post = transform_empty();
 		object->use_motion = false;
 
 		/* motion blur */
@@ -577,7 +582,6 @@ void BlenderSync::sync_objects(BL::SpaceView3D& b_v3d, float motion_time)
 			bool hide = (render_layer.use_viewport_visibility)? b_ob.hide(): b_ob.hide_render();
 			uint ob_layer = get_layer(b_base->layers(),
 			                          b_base->layers_local_view(),
-			                          render_layer.use_localview,
 			                          object_is_light(b_ob),
 			                          scene_layers);
 			hide = hide || !(ob_layer & scene_layer);
@@ -694,6 +698,7 @@ void BlenderSync::sync_motion(BL::RenderSettings& b_render,
 	Camera prevcam = *(scene->camera);
 
 	int frame_center = b_scene.frame_current();
+	float subframe_center = b_scene.frame_subframe();
 	float frame_center_delta = 0.0f;
 
 	if(scene->need_motion() != Scene::MOTION_PASS &&
@@ -707,7 +712,7 @@ void BlenderSync::sync_motion(BL::RenderSettings& b_render,
 			assert(scene->camera->motion_position == Camera::MOTION_POSITION_START);
 			frame_center_delta = shuttertime * 0.5f;
 		}
-		float time = frame_center + frame_center_delta;
+		float time = frame_center + subframe_center + frame_center_delta;
 		int frame = (int)floorf(time);
 		float subframe = time - frame;
 		python_thread_state_restore(python_thread_state);
@@ -727,15 +732,10 @@ void BlenderSync::sync_motion(BL::RenderSettings& b_render,
 		        << relative_time << ".";
 
 		/* fixed shutter time to get previous and next frame for motion pass */
-		float shuttertime;
-
-		if(scene->need_motion() == Scene::MOTION_PASS)
-			shuttertime = 2.0f;
-		else
-			shuttertime = scene->camera->shuttertime;
+		float shuttertime = scene->motion_shutter_time();
 
 		/* compute frame and subframe time */
-		float time = frame_center + frame_center_delta + relative_time * shuttertime * 0.5f;
+		float time = frame_center + subframe_center + frame_center_delta + relative_time * shuttertime * 0.5f;
 		int frame = (int)floorf(time);
 		float subframe = time - frame;
 
@@ -760,7 +760,7 @@ void BlenderSync::sync_motion(BL::RenderSettings& b_render,
 	 * function assumes it is being executed from python and will
 	 * try to save the thread state */
 	python_thread_state_restore(python_thread_state);
-	b_engine.frame_set(frame_center, 0.0f);
+	b_engine.frame_set(frame_center, subframe_center);
 	python_thread_state_save(python_thread_state);
 
 	/* tag camera for motion update */

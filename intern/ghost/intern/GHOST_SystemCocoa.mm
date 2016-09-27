@@ -240,6 +240,7 @@ static GHOST_TKey convertKey(int rawCode, unichar recvChar, UInt16 keyAction)
 
 				switch (recvChar) {
 					case '-': 	return GHOST_kKeyMinus;
+					case '+': 	return GHOST_kKeyPlus;
 					case '=': 	return GHOST_kKeyEqual;
 					case ',': 	return GHOST_kKeyComma;
 					case '.': 	return GHOST_kKeyPeriod;
@@ -284,10 +285,11 @@ extern "C" int GHOST_HACK_getFirstFile(char buf[FIRSTFILEBUFLG])
  * CocoaAppDelegate
  * ObjC object to capture applicationShouldTerminate, and send quit event
  **/
-@interface CocoaAppDelegate : NSObject <NSFileManagerDelegate> {
+@interface CocoaAppDelegate : NSObject <NSApplicationDelegate> {
 	GHOST_SystemCocoa *systemCocoa;
 }
 - (void)setSystemCocoa:(GHOST_SystemCocoa *)sysCocoa;
+- (void)applicationDidFinishLaunching:(NSNotification *)aNotification;
 - (BOOL)application:(NSApplication *)theApplication openFile:(NSString *)filename;
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender;
 - (void)applicationWillTerminate:(NSNotification *)aNotification;
@@ -299,6 +301,15 @@ extern "C" int GHOST_HACK_getFirstFile(char buf[FIRSTFILEBUFLG])
 -(void)setSystemCocoa:(GHOST_SystemCocoa *)sysCocoa
 {
 	systemCocoa = sysCocoa;
+}
+
+- (void)applicationDidFinishLaunching:(NSNotification *)aNotification
+{
+	// raise application to front, convenient when starting from the terminal
+	// and important for launching the animation player. we call this after the
+	// application finishes launching, as doing it earlier can make us end up
+	// with a frontmost window but an inactive application
+	[NSApp activateIgnoringOtherApps:YES];
 }
 
 - (BOOL)application:(NSApplication *)theApplication openFile:(NSString *)filename
@@ -401,65 +412,64 @@ GHOST_TSuccess GHOST_SystemCocoa::init()
 		}*/
 		
 		NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
-		if (NSApp == nil) {
-			[NSApplication sharedApplication];
+		[NSApplication sharedApplication]; // initializes	NSApp
+		
+		if ([NSApp mainMenu] == nil) {
+			NSMenu *mainMenubar = [[NSMenu alloc] init];
+			NSMenuItem *menuItem;
+			NSMenu *windowMenu;
+			NSMenu *appMenu;
 			
-			if ([NSApp mainMenu] == nil) {
-				NSMenu *mainMenubar = [[NSMenu alloc] init];
-				NSMenuItem *menuItem;
-				NSMenu *windowMenu;
-				NSMenu *appMenu;
-				
-				//Create the application menu
-				appMenu = [[NSMenu alloc] initWithTitle:@"Blender"];
-				
-				[appMenu addItemWithTitle:@"About Blender" action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
-				[appMenu addItem:[NSMenuItem separatorItem]];
-				
-				menuItem = [appMenu addItemWithTitle:@"Hide Blender" action:@selector(hide:) keyEquivalent:@"h"];
-				[menuItem setKeyEquivalentModifierMask:NSCommandKeyMask];
-				 
-				menuItem = [appMenu addItemWithTitle:@"Hide others" action:@selector(hideOtherApplications:) keyEquivalent:@"h"];
-				[menuItem setKeyEquivalentModifierMask:(NSAlternateKeyMask | NSCommandKeyMask)];
-				
-				[appMenu addItemWithTitle:@"Show All" action:@selector(unhideAllApplications:) keyEquivalent:@""];
-				
-				menuItem = [appMenu addItemWithTitle:@"Quit Blender" action:@selector(terminate:) keyEquivalent:@"q"];
-				[menuItem setKeyEquivalentModifierMask:NSCommandKeyMask];
-				
-				menuItem = [[NSMenuItem alloc] init];
-				[menuItem setSubmenu:appMenu];
-				
-				[mainMenubar addItem:menuItem];
-				[menuItem release];
-				[NSApp performSelector:@selector(setAppleMenu:) withObject:appMenu]; //Needed for 10.5
-				[appMenu release];
-				
-				//Create the window menu
-				windowMenu = [[NSMenu alloc] initWithTitle:@"Window"];
-				
-				menuItem = [windowMenu addItemWithTitle:@"Minimize" action:@selector(performMiniaturize:) keyEquivalent:@"m"];
-				[menuItem setKeyEquivalentModifierMask:NSCommandKeyMask];
-				
-				[windowMenu addItemWithTitle:@"Zoom" action:@selector(performZoom:) keyEquivalent:@""];
-				
-				menuItem = [windowMenu addItemWithTitle:@"Enter Full Screen" action:@selector(toggleFullScreen:) keyEquivalent:@"f" ];
-				[menuItem setKeyEquivalentModifierMask:NSControlKeyMask | NSCommandKeyMask];
+			//Create the application menu
+			appMenu = [[NSMenu alloc] initWithTitle:@"Blender"];
+			
+			[appMenu addItemWithTitle:@"About Blender" action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
+			[appMenu addItem:[NSMenuItem separatorItem]];
+			
+			menuItem = [appMenu addItemWithTitle:@"Hide Blender" action:@selector(hide:) keyEquivalent:@"h"];
+			[menuItem setKeyEquivalentModifierMask:NSCommandKeyMask];
+			 
+			menuItem = [appMenu addItemWithTitle:@"Hide others" action:@selector(hideOtherApplications:) keyEquivalent:@"h"];
+			[menuItem setKeyEquivalentModifierMask:(NSAlternateKeyMask | NSCommandKeyMask)];
+			
+			[appMenu addItemWithTitle:@"Show All" action:@selector(unhideAllApplications:) keyEquivalent:@""];
+			
+			menuItem = [appMenu addItemWithTitle:@"Quit Blender" action:@selector(terminate:) keyEquivalent:@"q"];
+			[menuItem setKeyEquivalentModifierMask:NSCommandKeyMask];
+			
+			menuItem = [[NSMenuItem alloc] init];
+			[menuItem setSubmenu:appMenu];
+			
+			[mainMenubar addItem:menuItem];
+			[menuItem release];
+			[NSApp performSelector:@selector(setAppleMenu:) withObject:appMenu]; //Needed for 10.5
+			[appMenu release];
+			
+			//Create the window menu
+			windowMenu = [[NSMenu alloc] initWithTitle:@"Window"];
+			
+			menuItem = [windowMenu addItemWithTitle:@"Minimize" action:@selector(performMiniaturize:) keyEquivalent:@"m"];
+			[menuItem setKeyEquivalentModifierMask:NSCommandKeyMask];
+			
+			[windowMenu addItemWithTitle:@"Zoom" action:@selector(performZoom:) keyEquivalent:@""];
+			
+			menuItem = [windowMenu addItemWithTitle:@"Enter Full Screen" action:@selector(toggleFullScreen:) keyEquivalent:@"f" ];
+			[menuItem setKeyEquivalentModifierMask:NSControlKeyMask | NSCommandKeyMask];
 
-				menuItem = [windowMenu addItemWithTitle:@"Close" action:@selector(performClose:) keyEquivalent:@"w"];
-				[menuItem setKeyEquivalentModifierMask:NSCommandKeyMask];
-				
-				menuItem = [[NSMenuItem	alloc] init];
-				[menuItem setSubmenu:windowMenu];
-				
-				[mainMenubar addItem:menuItem];
-				[menuItem release];
-				
-				[NSApp setMainMenu:mainMenubar];
-				[NSApp setWindowsMenu:windowMenu];
-				[windowMenu release];
-			}
+			menuItem = [windowMenu addItemWithTitle:@"Close" action:@selector(performClose:) keyEquivalent:@"w"];
+			[menuItem setKeyEquivalentModifierMask:NSCommandKeyMask];
+			
+			menuItem = [[NSMenuItem	alloc] init];
+			[menuItem setSubmenu:windowMenu];
+			
+			[mainMenubar addItem:menuItem];
+			[menuItem release];
+			
+			[NSApp setMainMenu:mainMenubar];
+			[NSApp setWindowsMenu:windowMenu];
+			[windowMenu release];
 		}
+
 		if ([NSApp delegate] == nil) {
 			CocoaAppDelegate *appDelegate = [[CocoaAppDelegate alloc] init];
 			[appDelegate setSystemCocoa:this];
@@ -538,7 +548,7 @@ GHOST_IWindow* GHOST_SystemCocoa::createWindow(
 )
 {
 	NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
-	GHOST_IWindow* window = 0;
+	GHOST_IWindow* window = NULL;
 	
 	//Get the available rect for including window contents
 	NSRect frame = [[NSScreen mainScreen] visibleFrame];
@@ -566,7 +576,7 @@ GHOST_IWindow* GHOST_SystemCocoa::createWindow(
 	else {
 		GHOST_PRINT("GHOST_SystemCocoa::createWindow(): window invalid\n");
 		delete window;
-		window = 0;
+		window = NULL;
 	}
 	
 	[pool drain];
@@ -829,7 +839,7 @@ GHOST_TSuccess GHOST_SystemCocoa::handleWindowEvent(GHOST_TEventType eventType, 
 				window->updateDrawingContext();
 				pushEvent( new GHOST_Event(getMilliSeconds(), GHOST_kEventWindowSize, window) );
 				//Mouse up event is trapped by the resizing event loop, so send it anyway to the window manager
-				pushEvent(new GHOST_EventButton(getMilliSeconds(), GHOST_kEventButtonUp, window, convertButton(0)));
+				pushEvent(new GHOST_EventButton(getMilliSeconds(), GHOST_kEventButtonUp, window, GHOST_kButtonMaskLeft));
 				//m_ignoreWindowSizedMessages = true;
 			}
 			break;
@@ -1277,19 +1287,29 @@ GHOST_TSuccess GHOST_SystemCocoa::handleMouseEvent(void *eventPtr)
 	
 	switch ([event type]) {
 		case NSLeftMouseDown:
+			pushEvent(new GHOST_EventButton([event timestamp] * 1000, GHOST_kEventButtonDown, window, GHOST_kButtonMaskLeft));
+			handleTabletEvent(event); //Handle tablet events combined with mouse events
+			break;
 		case NSRightMouseDown:
+			pushEvent(new GHOST_EventButton([event timestamp] * 1000, GHOST_kEventButtonDown, window, GHOST_kButtonMaskRight));
+			handleTabletEvent(event); //Handle tablet events combined with mouse events
+			break;
 		case NSOtherMouseDown:
 			pushEvent(new GHOST_EventButton([event timestamp] * 1000, GHOST_kEventButtonDown, window, convertButton([event buttonNumber])));
-			//Handle tablet events combined with mouse events
-			handleTabletEvent(event);
+			handleTabletEvent(event); //Handle tablet events combined with mouse events
 			break;
 
 		case NSLeftMouseUp:
+			pushEvent(new GHOST_EventButton([event timestamp] * 1000, GHOST_kEventButtonUp, window, GHOST_kButtonMaskLeft));
+			handleTabletEvent(event); //Handle tablet events combined with mouse events
+			break;
 		case NSRightMouseUp:
+			pushEvent(new GHOST_EventButton([event timestamp] * 1000, GHOST_kEventButtonUp, window, GHOST_kButtonMaskRight));
+			handleTabletEvent(event); //Handle tablet events combined with mouse events
+			break;
 		case NSOtherMouseUp:
 			pushEvent(new GHOST_EventButton([event timestamp] * 1000, GHOST_kEventButtonUp, window, convertButton([event buttonNumber])));
-			//Handle tablet events combined with mouse events
-			handleTabletEvent(event);
+			handleTabletEvent(event); //Handle tablet events combined with mouse events
 			break;
 			
 		case NSLeftMouseDragged:

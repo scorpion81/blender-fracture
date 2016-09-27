@@ -618,7 +618,7 @@ void RNA_api_ui_layout(StructRNA *srna)
 #endif
 
 	func = RNA_def_function(srna, "label", "rna_uiItemL");
-	RNA_def_function_ui_description(func, "Item. Display text and/or icon in the layout");
+	RNA_def_function_ui_description(func, "Item. Displays text and/or icon in the layout");
 	api_ui_item_common(func);
 	parm = RNA_def_property(func, "icon_value", PROP_INT, PROP_UNSIGNED);
 	RNA_def_property_ui_text(parm, "Icon Value", "Override automatic icon of the item");
@@ -644,6 +644,7 @@ void RNA_api_ui_layout(StructRNA *srna)
 	/* templates */
 	func = RNA_def_function(srna, "template_header", "uiTemplateHeader");
 	RNA_def_function_flag(func, FUNC_USE_CONTEXT);
+	RNA_def_function_ui_description(func, "Inserts common Space header UI (editor type selector)");
 
 	func = RNA_def_function(srna, "template_ID", "uiTemplateID");
 	RNA_def_function_flag(func, FUNC_USE_CONTEXT);
@@ -853,9 +854,12 @@ void RNA_api_ui_layout(StructRNA *srna)
 
 	func = RNA_def_function(srna, "template_header_3D", "uiTemplateHeader3D");
 	RNA_def_function_flag(func, FUNC_USE_CONTEXT);
+	RNA_def_function_ui_description(func, "Inserts common 3DView header UI (selectors for context mode, shading, etc.)");
+
 
 	func = RNA_def_function(srna, "template_edit_mode_selection", "uiTemplateEditModeSelection");
 	RNA_def_function_flag(func, FUNC_USE_CONTEXT);
+	RNA_def_function_ui_description(func, "Inserts common 3DView Edit modes header UI (selector for selection mode)");
 	
 	func = RNA_def_function(srna, "template_reports_banner", "uiTemplateReportsBanner");
 	RNA_def_function_flag(func, FUNC_USE_CONTEXT);
@@ -912,6 +916,11 @@ void RNA_api_ui_layout(StructRNA *srna)
 	RNA_def_function_ui_description(func, "Node Socket Icon");
 	RNA_def_function_flag(func, FUNC_USE_CONTEXT);
 	RNA_def_float_array(func, "color", 4, node_socket_color_default, 0.0f, 1.0f, "Color", "", 0.0f, 1.0f);
+
+	func = RNA_def_function(srna, "template_cache_file", "uiTemplateCacheFile");
+	RNA_def_function_ui_description(func, "Item(s). User interface for selecting cache files and their source paths");
+	RNA_def_function_flag(func, FUNC_USE_CONTEXT);
+	api_ui_item_rna_common(func);
 }
 
 #endif

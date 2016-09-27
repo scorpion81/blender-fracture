@@ -156,16 +156,12 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.label(text="Object:")
         col.prop(md, "object", text="")
 
-        """
-        layout.prop(md, "use_bmesh")
-        if md.use_bmesh:
-            box = layout.box()
-            box.label("BMesh Options:")
-            box.prop(md, "use_bmesh_separate")
-            box.prop(md, "use_bmesh_dissolve")
-            box.prop(md, "use_bmesh_connect_regions")
-            box.prop(md, "threshold")
-        """
+        split = layout.split()
+        split.column().label(text="Solver:")
+        split.column().prop(md, "solver", text="")
+
+        if md.solver == 'BMESH':
+            layout.prop(md, "double_threshold")
 
     def BUILD(self, layout, ob, md):
         split = layout.split()
@@ -184,6 +180,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
     def MESH_CACHE(self, layout, ob, md):
         layout.prop(md, "cache_format")
         layout.prop(md, "filepath")
+
+        if md.cache_format == 'ABC':
+            layout.prop(md, "sub_object")
 
         layout.label(text="Evaluation:")
         layout.prop(md, "factor", slider=True)
@@ -218,6 +217,22 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         split.label(text="Flip Axis:")
         row = split.row()
         row.prop(md, "flip_axis")
+
+    def MESH_SEQUENCE_CACHE(self, layout, ob, md):
+        layout.label(text="Cache File Properties:")
+        box = layout.box()
+        box.template_cache_file(md, "cache_file")
+
+        cache_file = md.cache_file
+
+        layout.label(text="Modifier Properties:")
+        box = layout.box()
+
+        if cache_file is not None:
+            box.prop_search(md, "object_path", cache_file, "object_paths")
+
+        if ob.type == 'MESH':
+            box.row().prop(md, "read_data")
 
     def CAST(self, layout, ob, md):
         split = layout.split(percentage=0.25)
@@ -506,13 +521,12 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         split = layout.split()
 
         col = split.column()
-        col.active = not md.is_bound
+        col.enabled = not md.is_bound
         col.label(text="Object:")
         col.prop(md, "object", text="")
 
         col = split.column()
         col.label(text="Vertex Group:")
-
         row = col.row(align=True)
         row.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
         sub = row.row(align=True)
@@ -520,15 +534,16 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         sub.prop(md, "invert_vertex_group", text="", icon='ARROW_LEFTRIGHT')
 
         layout.separator()
+        row = layout.row()
+        row.enabled = not md.is_bound
+        row.prop(md, "precision")
+        row.prop(md, "use_dynamic_bind")
 
+        layout.separator()
         if md.is_bound:
             layout.operator("object.meshdeform_bind", text="Unbind")
         else:
             layout.operator("object.meshdeform_bind", text="Bind")
-
-            row = layout.row()
-            row.prop(md, "precision")
-            row.prop(md, "use_dynamic_bind")
 
     def MIRROR(self, layout, ob, md):
         split = layout.split(percentage=0.25)
@@ -741,7 +756,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         col.prop(md, "target", text="")
         col = split.column()
         col.label(text="Vertex Group:")
-        col.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
+        row = col.row(align=True)
+        row.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
+        row.prop(md, "invert_vertex_group", text="", icon='ARROW_LEFTRIGHT')
 
         split = layout.split()
 
@@ -789,7 +806,9 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
         col = split.column()
         col.label(text="Vertex Group:")
-        col.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
+        row = col.row(align=True)
+        row.prop_search(md, "vertex_group", ob, "vertex_groups", text="")
+        row.prop(md, "invert_vertex_group", text="", icon='ARROW_LEFTRIGHT')
 
         split = layout.split()
 
@@ -883,16 +902,47 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
         split = layout.split()
         col = split.column()
-        col.label(text="Subdivisions:")
-        col.prop(md, "levels", text="View")
-        col.prop(md, "render_levels", text="Render")
+
+        scene = bpy.context.scene
+        engine = scene.render.engine
+        show_adaptive_options = (engine == "CYCLES" and md == ob.modifiers[-1] and
+                                 scene.cycles.feature_set == "EXPERIMENTAL")
+
+        if show_adaptive_options:
+            col.label(text="View:")
+            col.prop(md, "levels", text="Levels")
+            col.label(text="Render:")
+            col.prop(ob.cycles, "use_adaptive_subdivision", text="Adaptive")
+            if ob.cycles.use_adaptive_subdivision:
+                col.prop(ob.cycles, "dicing_rate")
+            else:
+                col.prop(md, "render_levels", text="Levels")
+        else:
+            col.label(text="Subdivisions:")
+            col.prop(md, "levels", text="View")
+            col.prop(md, "render_levels", text="Render")
 
         col = split.column()
         col.label(text="Options:")
-        col.prop(md, "use_subsurf_uv")
+
+        sub = col.column()
+        sub.active = (not show_adaptive_options) or (not ob.cycles.use_adaptive_subdivision)
+        sub.prop(md, "use_subsurf_uv")
+
         col.prop(md, "show_only_control_edges")
         if hasattr(md, "use_opensubdiv"):
             col.prop(md, "use_opensubdiv")
+
+        if show_adaptive_options and ob.cycles.use_adaptive_subdivision:
+            col = layout.column(align=True)
+            col.scale_y = 0.6
+            col.separator()
+            col.label("Final Dicing Rate:")
+            col.separator()
+
+            render = max(scene.cycles.dicing_rate * ob.cycles.dicing_rate, 0.1)
+            preview = max(scene.cycles.preview_dicing_rate * ob.cycles.dicing_rate, 0.1)
+            col.label("Render %.2f px, Preview %.2f px" % (render, preview))
 
     def SURFACE(self, layout, ob, md):
         layout.label(text="Settings are inside the Physics tab")
@@ -1417,6 +1467,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         sub = row.row(align=True)
         sub.active = has_vgroup
         sub.prop(md, "invert_vertex_group", text="", icon='ARROW_LEFTRIGHT')
+        subcol.prop(md, "mix_limit")
 
     def CORRECTIVE_SMOOTH(self, layout, ob, md):
         is_bind = md.is_bind

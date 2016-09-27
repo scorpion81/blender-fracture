@@ -196,8 +196,33 @@ function(blender_source_group
 endfunction()
 
 
+# Support per-target CMake flags
+# Read from: CMAKE_C_FLAGS_**** (made upper case) when set.
+#
+# 'name' should alway match the target name,
+# use this macro before add_library or add_executable.
+#
+# Optionally takes an arg passed to set(), eg PARENT_SCOPE.
+macro(add_cc_flags_custom_test
+	name
+	)
+
+	string(TOUPPER ${name} _name_upper)
+	if(DEFINED CMAKE_C_FLAGS_${_name_upper})
+		message(STATUS "Using custom CFLAGS: CMAKE_C_FLAGS_${_name_upper} in \"${CMAKE_CURRENT_SOURCE_DIR}\"")
+		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${_name_upper}}" ${ARGV1})
+	endif()
+	if(DEFINED CMAKE_CXX_FLAGS_${_name_upper})
+		message(STATUS "Using custom CXXFLAGS: CMAKE_CXX_FLAGS_${_name_upper} in \"${CMAKE_CURRENT_SOURCE_DIR}\"")
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_name_upper}}" ${ARGV1})
+	endif()
+	unset(_name_upper)
+
+endmacro()
+
+
 # only MSVC uses SOURCE_GROUP
-function(blender_add_lib_nolist
+function(blender_add_lib__impl
 	name
 	sources
 	includes
@@ -225,6 +250,18 @@ function(blender_add_lib_nolist
 endfunction()
 
 
+function(blender_add_lib_nolist
+	name
+	sources
+	includes
+	includes_sys
+	)
+
+	add_cc_flags_custom_test(${name} PARENT_SCOPE)
+
+	blender_add_lib__impl(${name} "${sources}" "${includes}" "${includes_sys}")
+endfunction()
+
 function(blender_add_lib
 	name
 	sources
@@ -232,13 +269,18 @@ function(blender_add_lib
 	includes_sys
 	)
 
-	blender_add_lib_nolist(${name} "${sources}" "${includes}" "${includes_sys}")
+	add_cc_flags_custom_test(${name} PARENT_SCOPE)
+
+	blender_add_lib__impl(${name} "${sources}" "${includes}" "${includes_sys}")
 
 	set_property(GLOBAL APPEND PROPERTY BLENDER_LINK_LIBS ${name})
 endfunction()
 
 
 function(SETUP_LIBDIRS)
+
+	# NOTE: For all new libraries, use absolute library paths.
+	# This should eventually be phased out.
 
 	link_directories(${JPEG_LIBPATH} ${PNG_LIBPATH} ${ZLIB_LIBPATH} ${FREETYPE_LIBPATH})
 
@@ -269,12 +311,6 @@ function(SETUP_LIBDIRS)
 	if(WITH_OPENVDB)
 		link_directories(${OPENVDB_LIBPATH})
 	endif()
-	if(WITH_IMAGE_OPENJPEG AND WITH_SYSTEM_OPENJPEG)
-		link_directories(${OPENJPEG_LIBPATH})
-	endif()
-	if(WITH_CODEC_QUICKTIME)
-		link_directories(${QUICKTIME_LIBPATH})
-	endif()
 	if(WITH_OPENAL)
 		link_directories(${OPENAL_LIBPATH})
 	endif()
@@ -289,14 +325,17 @@ function(SETUP_LIBDIRS)
 	endif()
 	if(WITH_OPENCOLLADA)
 		link_directories(${OPENCOLLADA_LIBPATH})
-		link_directories(${PCRE_LIBPATH})
-		link_directories(${EXPAT_LIBPATH})
+		## Never set
+		# link_directories(${PCRE_LIBPATH})
+		# link_directories(${EXPAT_LIBPATH})
 	endif()
 	if(WITH_LLVM)
 		link_directories(${LLVM_LIBPATH})
 	endif()
-	if(WITH_MEM_JEMALLOC)
-		link_directories(${JEMALLOC_LIBPATH})
+
+	if(WITH_ALEMBIC)
+		link_directories(${ALEMBIC_LIBPATH})
+		link_directories(${HDF5_LIBPATH})
 	endif()
 
 	if(WIN32 AND NOT UNIX)
@@ -320,7 +359,6 @@ function(setup_liblinks
 	target_link_libraries(
 		${target}
 		${PNG_LIBRARIES}
-		${ZLIB_LIBRARIES}
 		${FREETYPE_LIBRARY}
 	)
 
@@ -377,7 +415,7 @@ function(setup_liblinks
 	if(WITH_OPENCOLORIO)
 		target_link_libraries(${target} ${OPENCOLORIO_LIBRARIES})
 	endif()
-	if(WITH_OPENSUBDIV)
+	if(WITH_OPENSUBDIV OR WITH_CYCLES_OPENSUBDIV)
 		if(WIN32 AND NOT UNIX)
 			file_list_suffix(OPENSUBDIV_LIBRARIES_DEBUG "${OPENSUBDIV_LIBRARIES}" "_d")
 			target_link_libraries_debug(${target} "${OPENSUBDIV_LIBRARIES_DEBUG}")
@@ -400,6 +438,9 @@ function(setup_liblinks
 		endif()
 	endif()
 	target_link_libraries(${target} ${JPEG_LIBRARIES})
+	if(WITH_ALEMBIC)
+		target_link_libraries(${target} ${ALEMBIC_LIBRARIES} ${HDF5_LIBRARIES})
+	endif()
 	if(WITH_IMAGE_OPENEXR)
 		target_link_libraries(${target} ${OPENEXR_LIBRARIES})
 	endif()
@@ -440,9 +481,6 @@ function(setup_liblinks
 	if(WITH_MEM_JEMALLOC)
 		target_link_libraries(${target} ${JEMALLOC_LIBRARIES})
 	endif()
-	if(WITH_INPUT_NDOF)
-		target_link_libraries(${target} ${NDOF_LIBRARIES})
-	endif()
 	if(WITH_MOD_CLOTH_ELTOPO)
 		target_link_libraries(${target} ${LAPACK_LIBRARIES})
 	endif()
@@ -456,6 +494,9 @@ function(setup_liblinks
 		if(WITH_OPENMP_STATIC)
 			target_link_libraries(${target} ${OpenMP_LIBRARIES})
 		endif()
+		if(WITH_INPUT_NDOF)
+			target_link_libraries(${target} ${NDOF_LIBRARIES})
+		endif()
 	endif()
 
 	# We put CLEW and CUEW here because OPENSUBDIV_LIBRARIES dpeends on them..
@@ -467,6 +508,11 @@ function(setup_liblinks
 			target_link_libraries(${target} ${CUDA_CUDA_LIBRARY})
 		endif()
 	endif()
+
+	target_link_libraries(
+		${target}
+		${ZLIB_LIBRARIES}
+	)
 
 	#system libraries with no dependencies such as platform link libs or opengl should go last
 	target_link_libraries(${target}
@@ -492,6 +538,7 @@ function(SETUP_BLENDER_SORTED_LIBS)
 	if(WITH_CYCLES)
 		list(APPEND BLENDER_LINK_LIBS
 			cycles_render
+			cycles_graph
 			cycles_bvh
 			cycles_device
 			cycles_kernel
@@ -556,11 +603,11 @@ function(SETUP_BLENDER_SORTED_LIBS)
 		bf_modifiers
 		bf_bmesh
 		bf_gpu
+		bf_blenloader
 		bf_blenkernel
 		bf_physics
 		bf_nodes
 		bf_rna
-		bf_blenloader
 		bf_imbuf
 		bf_blenlib
 		bf_depsgraph
@@ -572,6 +619,7 @@ function(SETUP_BLENDER_SORTED_LIBS)
 		bf_imbuf_openimageio
 		bf_imbuf_dds
 		bf_collada
+		bf_alembic
 		bf_intern_elbeem
 		bf_intern_memutil
 		bf_intern_guardedalloc
@@ -583,6 +631,7 @@ function(SETUP_BLENDER_SORTED_LIBS)
 		ge_phys_bullet
 		bf_intern_smoke
 		extern_lzma
+		extern_curve_fit_nd
 		ge_logic_ketsji
 		extern_recastnavigation
 		ge_logic
@@ -604,6 +653,7 @@ function(SETUP_BLENDER_SORTED_LIBS)
 		bf_intern_dualcon
 		bf_intern_cycles
 		cycles_render
+		cycles_graph
 		cycles_bvh
 		cycles_device
 		cycles_kernel
@@ -663,10 +713,6 @@ function(SETUP_BLENDER_SORTED_LIBS)
 		list(APPEND BLENDER_SORTED_LIBS bf_quicktime)
 	endif()
 
-	if(WITH_INPUT_NDOF)
-		list(APPEND BLENDER_SORTED_LIBS bf_intern_ghostndof3dconnexion)
-	endif()
-	
 	if(WITH_MOD_BOOLEAN)
 		list(APPEND BLENDER_SORTED_LIBS extern_carve)
 	endif()
@@ -691,11 +737,19 @@ function(SETUP_BLENDER_SORTED_LIBS)
 		list_insert_after(BLENDER_SORTED_LIBS "ge_logic_ngnetwork" "extern_bullet")
 	endif()
 
+	if(WITH_GAMEENGINE_DECKLINK)
+		list(APPEND BLENDER_SORTED_LIBS bf_intern_decklink)
+	endif()
+
+	if(WIN32)
+		list(APPEND BLENDER_SORTED_LIBS bf_intern_gpudirect)
+	endif()
+
 	if(WITH_VORO)
 		list(APPEND BLENDER_SORTED_LIBS extern_voro)
 	endif()
 		
-	if(WITH_OPENSUBDIV)
+	if(WITH_OPENSUBDIV OR WITH_CYCLES_OPENSUBDIV)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_opensubdiv)
 	endif()
 
@@ -811,7 +865,15 @@ macro(TEST_UNORDERED_MAP_SUPPORT)
 	#  UNORDERED_MAP_NAMESPACE, namespace for unordered_map, if found
 
 	include(CheckIncludeFileCXX)
-	CHECK_INCLUDE_FILE_CXX("unordered_map" HAVE_STD_UNORDERED_MAP_HEADER)
+
+	# Workaround for newer GCC (6.x+) where C++11 was enabled by default, which lead us
+	# to a situation when there is <unordered_map> include but which can't be used uless
+	# C++11 is enabled.
+	if(CMAKE_COMPILER_IS_GNUCC AND (NOT "${CMAKE_C_COMPILER_VERSION}" VERSION_LESS "6.0") AND (NOT WITH_CXX11))
+		set(HAVE_STD_UNORDERED_MAP_HEADER False)
+	else()
+		CHECK_INCLUDE_FILE_CXX("unordered_map" HAVE_STD_UNORDERED_MAP_HEADER)
+	endif()
 	if(HAVE_STD_UNORDERED_MAP_HEADER)
 		# Even so we've found unordered_map header file it doesn't
 		# mean unordered_map and unordered_set will be declared in
@@ -881,8 +943,16 @@ macro(TEST_SHARED_PTR_SUPPORT)
 	# otherwise it's assumed to be defined in std namespace.
 
 	include(CheckIncludeFileCXX)
+	include(CheckCXXSourceCompiles)
 	set(SHARED_PTR_FOUND FALSE)
-	CHECK_INCLUDE_FILE_CXX(memory HAVE_STD_MEMORY_HEADER)
+	# Workaround for newer GCC (6.x+) where C++11 was enabled by default, which lead us
+	# to a situation when there is <unordered_map> include but which can't be used uless
+	# C++11 is enabled.
+	if(CMAKE_COMPILER_IS_GNUCC AND (NOT "${CMAKE_C_COMPILER_VERSION}" VERSION_LESS "6.0") AND (NOT WITH_CXX11))
+		set(HAVE_STD_MEMORY_HEADER False)
+	else()
+		CHECK_INCLUDE_FILE_CXX(memory HAVE_STD_MEMORY_HEADER)
+	endif()
 	if(HAVE_STD_MEMORY_HEADER)
 		# Finding the memory header doesn't mean that shared_ptr is in std
 		# namespace.
@@ -890,7 +960,6 @@ macro(TEST_SHARED_PTR_SUPPORT)
 		# In particular, MSVC 2008 has shared_ptr declared in std::tr1.  In
 		# order to support this, we do an extra check to see which namespace
 		# should be used.
-		include(CheckCXXSourceCompiles)
 		CHECK_CXX_SOURCE_COMPILES("#include <memory>
 		                           int main() {
 		                             std::shared_ptr<int> int_ptr;
@@ -976,6 +1045,7 @@ macro(remove_strict_flags)
 		remove_cc_flag(
 			"-Wstrict-prototypes"
 			"-Wmissing-prototypes"
+			"-Wmissing-declarations"
 			"-Wmissing-format-attribute"
 			"-Wunused-local-typedefs"
 			"-Wunused-macros"
@@ -1057,6 +1127,19 @@ macro(remove_strict_flags_file
 
 endmacro()
 
+# External libs may need 'signed char' to be default.
+macro(remove_cc_flag_unsigned_char)
+	if(CMAKE_C_COMPILER_ID MATCHES "^(GNU|Clang|Intel)$")
+		remove_cc_flag("-funsigned-char")
+	elseif(MSVC)
+		remove_cc_flag("/J")
+	else()
+		message(WARNING
+			"Compiler '${CMAKE_C_COMPILER_ID}' failed to disable 'unsigned char' flag."
+			"Build files need updating."
+		)
+	endif()
+endmacro()
 
 function(ADD_CHECK_C_COMPILER_FLAG
 	_CFLAGS
@@ -1103,10 +1186,10 @@ function(get_blender_version)
 	# - BLENDER_VERSION_CYCLE (alpha, beta, rc, release)
 
 	# So cmake depends on BKE_blender.h, beware of inf-loops!
-	CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/source/blender/blenkernel/BKE_blender.h
-	               ${CMAKE_BINARY_DIR}/source/blender/blenkernel/BKE_blender.h.done)
+	CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/source/blender/blenkernel/BKE_blender_version.h
+	               ${CMAKE_BINARY_DIR}/source/blender/blenkernel/BKE_blender_version.h.done)
 
-	file(STRINGS ${CMAKE_SOURCE_DIR}/source/blender/blenkernel/BKE_blender.h _contents REGEX "^#define[ \t]+BLENDER_.*$")
+	file(STRINGS ${CMAKE_SOURCE_DIR}/source/blender/blenkernel/BKE_blender_version.h _contents REGEX "^#define[ \t]+BLENDER_.*$")
 
 	string(REGEX REPLACE ".*#define[ \t]+BLENDER_VERSION[ \t]+([0-9]+).*" "\\1" _out_version "${_contents}")
 	string(REGEX REPLACE ".*#define[ \t]+BLENDER_SUBVERSION[ \t]+([0-9]+).*" "\\1" _out_subversion "${_contents}")
@@ -1481,3 +1564,44 @@ function(print_all_vars)
 		message("${_var}=${${_var}}")
 	endforeach()
 endfunction()
+
+macro(openmp_delayload
+	projectname
+	)
+		if(MSVC)
+			if(WITH_OPENMP)
+				if(MSVC_VERSION EQUAL 1800)
+					set(OPENMP_DLL_NAME "vcomp120")
+				else()
+					set(OPENMP_DLL_NAME "vcomp140")
+				endif()
+				SET_TARGET_PROPERTIES(${projectname} PROPERTIES LINK_FLAGS_RELEASE "/DELAYLOAD:${OPENMP_DLL_NAME}.dll delayimp.lib")
+				SET_TARGET_PROPERTIES(${projectname} PROPERTIES LINK_FLAGS_DEBUG "/DELAYLOAD:${OPENMP_DLL_NAME}d.dll delayimp.lib")
+				SET_TARGET_PROPERTIES(${projectname} PROPERTIES LINK_FLAGS_RELWITHDEBINFO "/DELAYLOAD:${OPENMP_DLL_NAME}.dll delayimp.lib")
+				SET_TARGET_PROPERTIES(${projectname} PROPERTIES LINK_FLAGS_MINSIZEREL "/DELAYLOAD:${OPENMP_DLL_NAME}.dll delayimp.lib")
+			endif(WITH_OPENMP)
+		endif(MSVC)
+endmacro()
+
+MACRO(WINDOWS_SIGN_TARGET target)
+	if (WITH_WINDOWS_CODESIGN)
+		if (!SIGNTOOL_EXE)
+			error("Codesigning is enabled, but signtool is not found")
+		else()
+			if (WINDOWS_CODESIGN_PFX_PASSWORD)
+				set(CODESIGNPASSWORD /p ${WINDOWS_CODESIGN_PFX_PASSWORD})
+			else()
+				if ($ENV{PFXPASSWORD})
+					set(CODESIGNPASSWORD /p $ENV{PFXPASSWORD})
+				else()
+					message( FATAL_ERROR "WITH_WINDOWS_CODESIGN is on but WINDOWS_CODESIGN_PFX_PASSWORD not set, and environment variable PFXPASSWORD not found, unable to sign code.")
+				endif()
+			endif()
+			add_custom_command(TARGET ${target}
+						POST_BUILD
+						COMMAND ${SIGNTOOL_EXE} sign /f ${WINDOWS_CODESIGN_PFX} ${CODESIGNPASSWORD} $<TARGET_FILE:${target}>
+						VERBATIM
+				)
+		endif()
+	endif()
+ENDMACRO()

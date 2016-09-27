@@ -131,6 +131,7 @@ bool nla_panel_context(const bContext *C, PointerRNA *adt_ptr, PointerRNA *nlt_p
 			case ANIMTYPE_DSMAT:    /* Datablock AnimData Expanders */
 			case ANIMTYPE_DSLAM:
 			case ANIMTYPE_DSCAM:
+			case ANIMTYPE_DSCACHEFILE:
 			case ANIMTYPE_DSCUR:
 			case ANIMTYPE_DSSKEY:
 			case ANIMTYPE_DSWOR:
@@ -478,12 +479,10 @@ static void nla_panel_modifiers(const bContext *C, Panel *pa)
 		row = uiLayoutRow(pa->layout, false);
 		block = uiLayoutGetBlock(row);
 		
-		// XXX for now, this will be a operator button which calls a temporary 'add modifier' operator
 		// FIXME: we need to set the only-active property so that this will only add modifiers for the active strip (not all selected)
-		uiDefButO(block, UI_BTYPE_BUT, "NLA_OT_fmodifier_add", WM_OP_INVOKE_REGION_WIN, IFACE_("Add Modifier"), 10, 0, UI_UNIT_X * 7.0f, UI_UNIT_Y,
-		          TIP_("Adds a new F-Modifier for the active NLA Strip"));
+		uiItemMenuEnumO(row, (bContext *)C, "NLA_OT_fmodifier_add", "type", IFACE_("Add Modifier"), ICON_NONE);
 		
-		/* copy/paste (as sub-row)*/
+		/* copy/paste (as sub-row) */
 		row = uiLayoutRow(row, true);
 		uiItemO(row, "", ICON_COPYDOWN, "NLA_OT_fmodifier_copy");
 		uiItemO(row, "", ICON_PASTEDOWN, "NLA_OT_fmodifier_paste");
@@ -569,7 +568,7 @@ void NLA_OT_properties(wmOperatorType *ot)
 {
 	ot->name = "Properties";
 	ot->idname = "NLA_OT_properties";
-	ot->description = "Toggle display properties panel";
+	ot->description = "Toggle the properties region visibility";
 	
 	ot->exec = nla_properties_toggle_exec;
 	ot->poll = ED_operator_nla_active;
