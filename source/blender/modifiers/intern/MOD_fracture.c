@@ -686,7 +686,8 @@ static DerivedMesh *get_clean_dm(Object *ob, DerivedMesh *dm)
 		DerivedMesh *result = NULL;
 
 		/* convert to BMesh, remove doubles, limited dissolve and convert back */
-		BMesh *bm = DM_to_bmesh(dm, true);
+		BMesh *bm = BM_mesh_create(&bm_mesh_allocsize_default, &((struct BMeshCreateParams){.use_toolflags = true,}));
+		DM_to_bmesh_ex(dm, bm, true);
 
 		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 		             "remove_doubles verts=%av dist=%f", BM_VERTS_OF_MESH, 0.0001, false);
