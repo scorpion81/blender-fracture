@@ -122,7 +122,7 @@ static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle, b
 		rotation_between_quats_to_quat(qdiff, q1, q2);
 		normalize_qt(qdiff);
 		*angle = 2.0f * saacos(qdiff[0]);
-		if (!finite(*angle)) {
+		if (!isfinite(*angle)) {
 			*angle = 0.0f;
 		}
 	}
