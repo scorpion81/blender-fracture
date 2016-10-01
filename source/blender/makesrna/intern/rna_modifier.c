@@ -1256,7 +1256,7 @@ static void rna_FractureModifier_mesh_island_remove(ID *id, FractureModifierData
 	MeshIsland *mi = mi_ptr->data;
 
 	if (BLI_findindex(&fmd->meshIslands, mi) == -1) {
-		BKE_reportf(reports, RPT_ERROR, "MeshIsland '%s' not in this fracture modifier", mi->id);
+		BKE_reportf(reports, RPT_ERROR, "MeshIsland '%s' not in this fracture modifier", mi->name);
 		return;
 	}
 
@@ -1377,14 +1377,14 @@ static void rna_MeshCon_breaking_threshold_set(PointerRNA *ptr, float value)
 #endif
 }
 
-static void rna_MeshCon_position_set(PointerRNA *ptr, float value[3])
+static void rna_MeshCon_position_set(PointerRNA *ptr, const float value[3])
 {
 	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
 	copy_v3_v3(rbc->pos, value);
 	rbc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 }
 
-static void rna_MeshCon_orientation_set(PointerRNA *ptr, float value[4])
+static void rna_MeshCon_orientation_set(PointerRNA *ptr, const float value[4])
 {
 	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
 	copy_qt_qt(rbc->orn, value);
