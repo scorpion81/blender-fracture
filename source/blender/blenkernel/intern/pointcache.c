@@ -1277,6 +1277,21 @@ static int ptcache_dynamicpaint_read(PTCacheFile *pf, void *dp_v)
 	return 1;
 }
 
+static MeshIsland *find_meshisland(FractureModifierData *fmd, int id)
+{
+	MeshIsland *mi = (MeshIsland*)fmd->meshIslands.first;
+	while (mi)
+	{
+		if (mi->id == id)
+		{
+			return mi;
+		}
+		mi = mi->next;
+	}
+
+	return NULL;
+}
+
 /* Rigid Body functions */
 static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra)
 {
@@ -1319,7 +1334,8 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 		}
 		else if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
-			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
+			//MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
+			MeshIsland *mi = find_meshisland(fmd, rbo->meshisland_index);
 			int frame = (int)floor(cfra);
 
 //			if (!mi)
@@ -1397,7 +1413,7 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 			MeshIsland *mi = NULL;
 			int frame = (int)floor(cfra);
 
-			mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
+			mi = find_meshisland(fmd, rbo->meshisland_index);
 
 //			if (!mi)
 //				return;
@@ -1458,7 +1474,8 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 		{
 			float loc[3], rot[4];
 
-			MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
+			MeshIsland *mi = find_meshisland(fmd, rbo->meshisland_index);
+
 			int frame = (int)floor(cfra);
 			frame = frame - mi->start_frame;
 

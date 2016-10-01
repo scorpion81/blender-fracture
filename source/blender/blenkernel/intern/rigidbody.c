@@ -2027,14 +2027,11 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	return check_colgroup_ghost(ob1, ob2);
 }
 
-static bool contains(float loc[3], Object* collider, float point[3], Object* ob, bool limit)
+static bool can_break(Object* collider, Object* ob, bool limit, Shard *s)
 {
-	float size[3];
-	BKE_object_dimensions_get(collider, size);
-
-	if ((fabsf(loc[0] - point[0]) < size[0]) &&
-	    (fabsf(loc[1] - point[1]) < size[1]) &&
-	    (fabsf(loc[2] - point[2]) < size[2]))
+	//allow limit impact only on initial shard and 1st level shards ?
+	if (collider && collider->rigidbody_object && (collider->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER &&
+	   s && (s->parent_id == 0 || s->shard_id == 0)))
 	{
 		if (limit && (collider == ob)) {
 			return false;
@@ -2043,7 +2040,7 @@ static bool contains(float loc[3], Object* collider, float point[3], Object* ob,
 		return true;
 	}
 
-	return false;
+	return !limit;
 }
 
 static Shard* findShard(FractureModifierData *fmd, int id)
@@ -2140,8 +2137,8 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				int id = rbw->cache_index_map[linear_index1]->meshisland_index;
 				Shard *s = findShard(fmd1, id);
 
-				if (force > fmd1->dynamic_force || (s && ob2 && (fmd1->limit_impact &&
-				   contains(cp->contact_pos_world_onA, ob2, s->centroid, ob1, fmd1->limit_impact))))
+				if (force > fmd1->dynamic_force || (/*force > fmd1->dynamic_force &&*/ s && ob2 && (fmd1->limit_impact &&
+				   can_break(ob2, ob1, fmd1->limit_impact, s))))
 				{
 					if (s) {
 						float size[3];
@@ -2154,7 +2151,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 					if (check_shard_size(fmd1, id))
 					{
 						FractureID* fid1 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid1");
-						fid1->shardID = rbw->cache_index_map[linear_index1]->meshisland_index;
+						fid1->shardID = id;
 						BLI_addtail(&fmd1->fracture_ids, fid1);
 						fmd1->update_dynamic = true;
 					}
@@ -2173,11 +2170,11 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 		{
 			if (fmd2->current_shard_entry && fmd2->current_shard_entry->is_new)
 			{
-				int id = rbw->cache_index_map[linear_index1]->meshisland_index;
+				int id = rbw->cache_index_map[linear_index2]->meshisland_index;
 				Shard *s = findShard(fmd2, id);
 
-				if (force > fmd2->dynamic_force || (ob1 && s && (fmd2->limit_impact &&
-				   contains(cp->contact_pos_world_onB, ob1, s->centroid, ob2, fmd2->limit_impact))))
+				if (force > fmd2->dynamic_force || ( /*force > fmd2->dynamic_force &&*/ ob1 && s && (fmd2->limit_impact &&
+				   can_break(ob1, ob2, fmd2->limit_impact, s))))
 				{
 					if (s) {
 						float size[3];
@@ -2985,8 +2982,10 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw)
 						rbw->cache_index_map[counter] = mi->rigidbody; /* map all shards of an object to this object index*/
 						rbw->cache_offset_map[counter] = i;
 						mi->linear_index = counter;
-						if (mi->rigidbody)
-							mi->rigidbody->meshisland_index = j;
+						if (mi->rigidbody) {
+							//as we search by id now in the pointcache, we set the id here too
+							mi->rigidbody->meshisland_index = mi->id;
+						}
 						counter++;
 						j++;
 					}
@@ -4344,8 +4343,9 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 						{
 							float (*vertexCos)[3];
 							int totvert = dm->getNumVerts(dm);
-							dm->getVertCos(dm, vertexCos);
+
 							vertexCos = MEM_callocN(sizeof(float) * 3 * totvert, "Vertex Cos");
+							dm->getVertCos(dm, vertexCos);
 							mti->deformVerts(md, ob, dm, vertexCos, totvert, 0);
 							CDDM_apply_vert_coords(dm, vertexCos);
 							MEM_freeN(vertexCos);

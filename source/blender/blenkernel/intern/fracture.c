@@ -997,9 +997,6 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	{
 		j = 1;
 
-		//if (mode == MOD_FRACTURE_DYNAMIC)
-		//	j = 1;
-
 		if (fm->shard_map.last)
 		{
 			j += ((Shard*)(fm->shard_map.last))->shard_id;
@@ -1007,7 +1004,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	}
 	else
 	{
-		j = 0;
+		j = 1;
 	}
 
 	for (i = 0; i < expected_shards; i++) {
@@ -1016,7 +1013,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 		if (s != NULL) {
 			add_shard(fm, s, mat);
-			s->shard_id += j+1;
+			s->shard_id += j;
 			s->parent_id = parent_id;
 			s->setting_id = active_setting;
 			//printf("ADDED: %d %d %d\n", i, j, s->shard_id);

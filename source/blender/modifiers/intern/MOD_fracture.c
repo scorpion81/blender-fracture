@@ -90,6 +90,7 @@ static void do_prehalving(FractureModifierData *fmd, Object* ob, DerivedMesh* de
 static Shard* copy_shard(Shard *s);
 static void arrange_shard(FractureModifierData *fmd, ShardID id, bool do_verts, float cent[]);
 static Shard* find_shard(ListBase *shards, ShardID id);
+static void cleanup_arrange_shard(FractureModifierData *fmd, Shard *s, float cent[]);
 
 //TODO XXX Make BKE
 static FracMesh* copy_fracmesh(FracMesh* fm)
@@ -1163,40 +1164,54 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 	{
 		float cent[3], bmin[3], bmax[3];
 		int count = emd->shard_count;
+		Shard *s = NULL;
+
 		INIT_MINMAX(min, max);
+		//for limit impact we need entire container always, because we need to determine secondary impacts on the shards at their original pos
 		if (!BKE_get_shard_minmax(emd->frac_mesh, id, min, max, fracmesh))
 			return points; //id 0 should be entire mesh
 
+		//arrange shards according to their original centroid (parent centroid sum) position in shard-space (else they are centered at 0, 0, 0)
 		arrange_shard(emd, id, false, cent);
 		add_v3_v3v3(bmax, max, cent);
 		add_v3_v3v3(bmin, min, cent);
 
 		//first impact only, so shard has id 0
-		if (emd->fracture_mode == MOD_FRACTURE_DYNAMIC && emd->limit_impact && id == 0) {
+		if (emd->fracture_mode == MOD_FRACTURE_DYNAMIC && emd->limit_impact) {
 			//shrink pointcloud container around impact point, to a size
-			Shard *s = BKE_shard_by_id(emd->frac_mesh, 0, fracmesh);
-			if (s != NULL) {
+			s = BKE_shard_by_id(emd->frac_mesh, id, fracmesh);
+			if (s != NULL && (s->shard_id == 0 || s->parent_id == 0)) {
 				float size[3], nmin[3], nmax[3], loc[3], imat[4][4], tmin[3], tmax[3], quat[4];
 				print_v3("Impact Loc\n", s->impact_loc);
 				print_v3("Impact Size\n", s->impact_size);
 
 				//invert_m4_m4(imat, ob->obmat);
 				//mul_v3_m4v3(loc, imat, s->impact_loc);
-				//mat4_to_quat(quat, imat);
 				//sub_v3_v3v3(loc, s->impact_loc, ob->loc);
+				//mat4_to_quat(quat, imat);
 				//mul_qt_v3(quat, loc);
 				copy_v3_v3(loc, s->impact_loc);
-				mul_v3_v3fl(size, s->impact_size, 0.5f);
+				copy_v3_v3(tmax, s->max);
+				copy_v3_v3(tmin, s->min);
+
+				//sub_v3_v3(loc, cent);
+				//sub_v3_v3(loc, s->centroid);
+
+				mul_v3_v3fl(size, s->impact_size, 0.75f);
 				sub_v3_v3v3(nmin, loc, size);
 				add_v3_v3v3(nmax, loc, size);
 
-				copy_v3_v3(tmin, min);
-				copy_v3_v3(tmax, max);
+				/*sub_v3_v3(tmin, cent);
+				sub_v3_v3(tmin, s->centroid);
 
-				/*mat4_to_quat(quat, ob->obmat);
+				sub_v3_v3(tmax, cent);
+				sub_v3_v3(tmax, s->centroid);
+
+				mat4_to_quat(quat, ob->obmat);
 				mul_qt_v3(quat, tmin);
-				mul_qt_v3(quat, tmax);
-				add_v3_v3(tmin, ob->loc);
+				mul_qt_v3(quat, tmax);*/
+
+				/*add_v3_v3(tmin, ob->loc);
 				add_v3_v3(tmax, ob->loc);*/
 
 				//clamp
@@ -1228,8 +1243,6 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 				copy_v3_v3(min, nmin);
 			}
 		}
-
-		printf("min, max: (%f %f %f), (%f %f %f)\n", min[0], min[1], min[2], max[0], max[1], max[2]);
 
 		if (emd->frac_algorithm == MOD_FRACTURE_BISECT_FAST || emd->frac_algorithm == MOD_FRACTURE_BISECT_FAST_FILL ||
 		    emd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL) {
@@ -3354,6 +3367,8 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 			copy_v3_v3(mi->rigidbody->ang_vel, par->rigidbody->ang_vel);
 			mi->rigidbody->flag = par->rigidbody->flag;
 		}
+
+		mi->rigidbody->meshisland_index = mi->id;
 
 		/*if (fmd->limit_impact)
 		{
