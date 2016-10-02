@@ -2173,6 +2173,17 @@ void BKE_free_constraints(FractureModifierData *fmd)
 	MeshIsland *mi = NULL;
 	RigidBodyShardCon *rbsc = NULL;
 
+	//hmm after loading the pointers might be out of sync...
+	if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) {
+		if (fmd->current_mi_entry) {
+			fmd->meshIslands = fmd->current_mi_entry->meshIslands;
+		}
+		else {
+			fmd->meshIslands.first = NULL;
+			fmd->meshIslands.last = NULL;
+		}
+	}
+
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 		if (mi->participating_constraints != NULL && mi->participating_constraint_count > 0) {
 			MEM_freeN(mi->participating_constraints);

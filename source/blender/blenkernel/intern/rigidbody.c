@@ -2137,12 +2137,21 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				int id = rbw->cache_index_map[linear_index1]->meshisland_index;
 				Shard *s = findShard(fmd1, id);
 
-				if (force > fmd1->dynamic_force || (/*force > fmd1->dynamic_force &&*/ s && ob2 && (fmd1->limit_impact &&
-				   can_break(ob2, ob1, fmd1->limit_impact, s))))
+				if ((force > fmd1->dynamic_force && (!fmd1->limit_impact || (fmd1->limit_impact && s && (s->parent_id > 0 || s->shard_id > 0)) ||
+				    (s && ob2 && (fmd1->limit_impact && can_break(ob2, ob1, fmd1->limit_impact, s))))))
 				{
 					if (s) {
 						float size[3];
-						BKE_object_dimensions_get(ob2, size);
+
+						if (ob1 == ob2 || (ob2 && ob2->rigidbody_object && ob2->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
+							size[0] = -1.0f; //mark as invalid, so the regular object size is used
+							size[1] = -1.0f;
+							size[2] = -1.0f;
+						}
+						else {
+							BKE_object_dimensions_get(ob2, size);
+						}
+
 						copy_v3_v3(s->impact_loc, cp->contact_pos_world_onA);
 						copy_v3_v3(s->impact_size, size);
 					}
@@ -2173,12 +2182,19 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				int id = rbw->cache_index_map[linear_index2]->meshisland_index;
 				Shard *s = findShard(fmd2, id);
 
-				if (force > fmd2->dynamic_force || ( /*force > fmd2->dynamic_force &&*/ ob1 && s && (fmd2->limit_impact &&
-				   can_break(ob1, ob2, fmd2->limit_impact, s))))
+				if (force > fmd2->dynamic_force && (!fmd2->limit_impact || (fmd2->limit_impact && s && (s->parent_id > 0 || s->shard_id > 0)) ||
+				        (ob1 && s && (fmd2->limit_impact && can_break(ob1, ob2, fmd2->limit_impact, s)))))
 				{
 					if (s) {
 						float size[3];
-						BKE_object_dimensions_get(ob1, size);
+						if (ob1 == ob2 || (ob1 && ob1->rigidbody_object && ob1->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
+							size[0] = -1.0f; //mark as invalid, so the regular object size is used
+							size[1] = -1.0f;
+							size[2] = -1.0f;
+						}
+						else {
+							BKE_object_dimensions_get(ob1, size);
+						}
 						copy_v3_v3(s->impact_loc, cp->contact_pos_world_onB);
 						copy_v3_v3(s->impact_size, size);
 					}
@@ -3696,7 +3712,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				//TODO ensure evaluation on transform change too
 			}
 
-			else if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE) {
+			else if (rbsc->flag & RBC_FLAG_NEEDS_VALIDATE || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) {
 				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, false);
 				//if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 				//	BKE_rigidbody_start_dist_angle(rbsc, true);
@@ -4354,6 +4370,11 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 						if (mti->applyModifier)
 						{
 							DerivedMesh *ndm;
+
+							if (md == (ModifierData*)fmd) {
+								BLI_mutex_unlock(&reset_lock);
+							}
+
 							ndm = mti->applyModifier(md, ob, dm, 0);
 							if (ndm != dm)
 							{
@@ -4370,7 +4391,7 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 						break;
 					}
 				}
-				BLI_mutex_unlock(&reset_lock);
+				//BLI_mutex_unlock(&reset_lock);
 
 				//DAG_id_tag_update(go->ob, OB_RECALC_ALL);
 				//WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, go->ob);

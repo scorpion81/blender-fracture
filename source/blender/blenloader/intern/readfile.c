@@ -5407,6 +5407,10 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			Shard *s;
 
 			fmd->dm = NULL;
+			fmd->refresh_constraints = true;
+			fmd->meshConstraints.first = NULL;
+			fmd->meshConstraints.last = NULL;
+
 			link_list(fd, &fmd->shard_sequence);
 
 			for (ssq = fmd->shard_sequence.first; ssq; ssq = ssq->next)
