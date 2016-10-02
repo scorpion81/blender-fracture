@@ -2945,6 +2945,10 @@ static void find_other_face(FractureModifierData *fmd, int i, BMesh* bm, Object*
 		return;
 	}
 
+	if (other >= bm->totface) {
+		return;
+	}
+
 	f1 = BM_face_at_index(bm, i);
 	f2 = BM_face_at_index(bm, other);
 
