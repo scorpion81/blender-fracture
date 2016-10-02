@@ -1197,7 +1197,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 				//sub_v3_v3(loc, cent);
 				//sub_v3_v3(loc, s->centroid);
 
-				mul_v3_v3fl(size, s->impact_size, 0.75f);
+				mul_v3_v3fl(size, s->impact_size, 1.25f);
 				sub_v3_v3v3(nmin, loc, size);
 				add_v3_v3v3(nmax, loc, size);
 
@@ -3366,14 +3366,15 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 			copy_v3_v3(mi->rigidbody->lin_vel, par->rigidbody->lin_vel);
 			copy_v3_v3(mi->rigidbody->ang_vel, par->rigidbody->ang_vel);
 			mi->rigidbody->flag = par->rigidbody->flag;
+
+			//keep 1st level shards kinematic if parent is triggered
+			if (par->id == 0 && (par->rigidbody->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION) && fmd->limit_impact) {
+				mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
+				mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+			}
 		}
 
 		mi->rigidbody->meshisland_index = mi->id;
-
-		/*if (fmd->limit_impact)
-		{
-			set_rigidbody_type(fmd, s, mi);
-		}*/
 	}
 }
 
