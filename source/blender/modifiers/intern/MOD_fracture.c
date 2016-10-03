@@ -1180,7 +1180,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 		if (emd->fracture_mode == MOD_FRACTURE_DYNAMIC && emd->limit_impact) {
 			//shrink pointcloud container around impact point, to a size
 			s = BKE_shard_by_id(emd->frac_mesh, id, fracmesh);
-			if (s != NULL && (s->shard_id == 0 || s->parent_id == 0 || s->impact_size[0] > 0.0f)) {
+			if (s != NULL && (/*s->shard_id == 0 || s->parent_id == 0 || */s->impact_size[0] > 0.0f)) {
 				float size[3], nmin[3], nmax[3], loc[3], imat[4][4], tmin[3], tmax[3], quat[4];
 				print_v3("Impact Loc\n", s->impact_loc);
 				print_v3("Impact Size\n", s->impact_size);
@@ -3181,7 +3181,7 @@ static MeshIsland* find_meshisland(ListBase* meshIslands, int id)
 }
 
 
-#if 0
+
 static bool contains(float loc[3], float size[3], float point[3])
 {
 	if ((fabsf(loc[0] - point[0]) < size[0]) &&
@@ -3194,6 +3194,7 @@ static bool contains(float loc[3], float size[3], float point[3])
 	return false;
 }
 
+#if 0
 void set_rigidbody_type(FractureModifierData *fmd, Shard *s, MeshIsland *mi)
 {
 	//how far is impact location away from this shard, if beyond a bbox, keep passive
@@ -3373,6 +3374,21 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 
 			//keep 1st level shards kinematic if parent is triggered
 			if (par->id == 0 && (par->rigidbody->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION) && fmd->limit_impact) {
+#if 0
+				ShardSequence *prev_shards = fmd->current_shard_entry ? fmd->current_shard_entry->prev : NULL;
+				Shard *par_shard = prev_shards ? BKE_shard_by_id(prev_shards->frac_mesh, s->parent_id, NULL) : NULL;
+
+				if (par_shard) {
+
+					float size[3];
+					mul_v3_v3fl(size, par_shard->impact_size, 0.5f);
+
+					if (!contains(par_shard->impact_loc, size, s->centroid)) {
+						mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
+						mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					}
+				}
+#endif
 				mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
 				mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 			}

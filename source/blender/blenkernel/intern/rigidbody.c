@@ -2065,7 +2065,7 @@ static Shard* findShard(FractureModifierData *fmd, int id)
 static bool check_shard_size(FractureModifierData *fmd, int id)
 {
 	FractureID *fid;
-	float size = 0.1f;
+	float size = 0.05f;
 	Shard *s = NULL;
 
 	s = findShard(fmd, id);
@@ -2077,12 +2077,16 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 
 	BKE_shard_calc_minmax(s);
 
-	if ((fabsf(s->max[0] - s->min[0]) < size) ||
-	   (fabsf(s->max[1] - s->min[1]) < size) ||
+	if ((fabsf(s->max[0] - s->min[0]) < size) &&
+	   (fabsf(s->max[1] - s->min[1]) < size) &&
 	   (fabsf(s->max[2] - s->min[2]) < size))
 	{
 		return false;
 	}
+
+	/*if (s->raw_volume < size) {
+		return false;
+	}*/
 
 	for (fid = fmd->fracture_ids.first; fid; fid = fid->next)
 	{
@@ -2137,13 +2141,13 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				int id = rbw->cache_index_map[linear_index1]->meshisland_index;
 				Shard *s = findShard(fmd1, id);
 
-				if ((force > fmd1->dynamic_force && (!fmd1->limit_impact || (fmd1->limit_impact && s && (s->parent_id > 0 || s->shard_id > 0)) ||
-				    (s && ob2 && (fmd1->limit_impact && can_break(ob2, ob1, fmd1->limit_impact, s))))))
+				if ((force > fmd1->dynamic_force && (!fmd1->limit_impact || (fmd1->limit_impact && s && (s->parent_id > 0 || s->shard_id > 0)))) ||
+				    (s && ob2 && (fmd1->limit_impact && can_break(ob2, ob1, fmd1->limit_impact, s))))
 				{
 					if (s) {
 						float size[3];
 
-						if (ob1 == ob2 || (ob2 && ob2->rigidbody_object && ob2->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
+						if (s->parent_id > 0 || ob1 == ob2 || (ob2 && ob2->rigidbody_object && ob2->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
 							size[0] = -1.0f; //mark as invalid, so the regular object size is used
 							size[1] = -1.0f;
 							size[2] = -1.0f;
@@ -2182,12 +2186,12 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				int id = rbw->cache_index_map[linear_index2]->meshisland_index;
 				Shard *s = findShard(fmd2, id);
 
-				if (force > fmd2->dynamic_force && (!fmd2->limit_impact || (fmd2->limit_impact && s && (s->parent_id > 0 || s->shard_id > 0)) ||
-				        (ob1 && s && (fmd2->limit_impact && can_break(ob1, ob2, fmd2->limit_impact, s)))))
+				if ((force > fmd2->dynamic_force && (!fmd2->limit_impact || (fmd2->limit_impact && s && (s->parent_id > 0 || s->shard_id > 0)))) ||
+				        (ob1 && s && (fmd2->limit_impact && can_break(ob1, ob2, fmd2->limit_impact, s))))
 				{
 					if (s) {
 						float size[3];
-						if (ob1 == ob2 || (ob1 && ob1->rigidbody_object && ob1->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
+						if (s->parent_id > 0 ||ob1 == ob2 || (ob1 && ob1->rigidbody_object && ob1->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
 							size[0] = -1.0f; //mark as invalid, so the regular object size is used
 							size[1] = -1.0f;
 							size[2] = -1.0f;

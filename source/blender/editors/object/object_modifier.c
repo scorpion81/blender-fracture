@@ -108,6 +108,7 @@
 #include "PIL_time.h"
 
 static void modifier_skin_customdata_delete(struct Object *ob);
+static void apply_loc_rot_scale(struct Object* ob, struct Scene *scene);
 
 /******************************** API ****************************/
 
@@ -2465,76 +2466,34 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
+#if 0
+	if (rmd->fracture_mode == MOD_FRACTURE_DYNAMIC) {
+		//apply rot and loc here too
+		copy_m4_m4(rmd->origmat, obact->obmat);
+		zero_m4(rmd->passive_parent_mat);
+
+		apply_loc_rot_scale(obact, scene);
+	}
+#endif
+
 	BKE_scene_frame_set(scene, start);
 	DAG_relations_tag_update(G.main);
 	WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
 	WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
 	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
 	
-	/*if (!rmd->execute_threaded)*/ {
-#if 0
-		float vec[3] = {0.0f, 0.0f, 0.0f};
-		if (rv3d != NULL)
-		{
-			/* need 2, 6, and 10 as forward vector, as seen in a 16-float array */
-			vec[0] = rv3d->viewmat[0][2];
-			vec[1] = rv3d->viewmat[1][2];
-			vec[2] = rv3d->viewmat[2][2];
-		}
-		copy_v3_v3(rmd->forward_vector, vec);
-#endif
-		rmd->refresh = true;
-		rmd->last_frame = INT_MAX; // delete dynamic data as well
-		DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
-		WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
-	}
-#if 0
-	else {
-		/* job stuff */
-		int factor, verts, shardprogress, halvingprogress, totalprogress;
-		scene->r.cfra = cfra;
-
-		/* setup job */
-		wm_job = WM_jobs_get(CTX_wm_manager(C), CTX_wm_window(C), scene, "Fracture",
-							 WM_JOB_PROGRESS, WM_JOB_TYPE_OBJECT_FRACTURE);
-		fj = MEM_callocN(sizeof(FractureJob), "object fracture job");
-		fj->fmd = rmd;
-		fj->ob = obact;
-		fj->scene = scene;
-
-		/* if we have shards, totalprogress = shards + islands
-		 * if we dont have shards, then calculate number of processed halving steps
-		 * if we split island to shards, add both */
-		factor = (fj->fmd->frac_algorithm == MOD_FRACTURE_BISECT_FAST) ? 4 : 2;
-		shardprogress = fj->fmd->shard_count * (factor+1); /* +1 for the meshisland creation */
-
-		if (obact->derivedFinal) {
-			verts = obact->derivedFinal->getNumVerts(obact->derivedFinal);
-		}
-		else {
-			verts = ((Mesh*)obact->data)->totvert;
-		}
-
-		halvingprogress = (int)(verts / 1000) + (fj->fmd->shard_count * factor); /*-> 1000 size of each partitioned separate loose*/
-		totalprogress = (rmd->shards_to_islands || rmd->point_source != MOD_FRACTURE_UNIFORM) ? shardprogress + halvingprogress : shardprogress;
-		fj->total_progress = totalprogress;
-
-		WM_jobs_customdata_set(wm_job, fj, fracture_free);
-		WM_jobs_timer(wm_job, 0.1, NC_WM | ND_JOB, NC_OBJECT | ND_MODIFIER);
-		WM_jobs_callbacks(wm_job, fracture_startjob, NULL, fracture_update, fracture_endjob);
-
-		WM_jobs_start(CTX_wm_manager(C), wm_job);
-	}
-#endif
+	rmd->refresh = true;
+	rmd->last_frame = INT_MAX; // delete dynamic data as well
+	DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
+	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
 
 	return OPERATOR_FINISHED;
 }
 
-static void apply_scale(Object* ob, Scene* scene)
-{
-	float mat[4][4], smat[3][3];
-	/*better apply scale prior to fracture, else shards get distorted*/
-	BKE_object_scale_to_mat3(ob, smat);
+static void apply_transform(Object* ob, Scene* scene, float smat[3][3]) {
+
+	float mat[4][4];
+
 	copy_m4_m3(mat, smat);
 
 	/* apply to object data */
@@ -2549,13 +2508,59 @@ static void apply_scale(Object* ob, Scene* scene)
 		/* update normals */
 		BKE_mesh_calc_normals(me);
 	}
-	else if (ELEM(ob->type, OB_CURVE, OB_SURF, OB_FONT)) {
+	else if (ELEM(ob->type, OB_CURVE, OB_SURF)) {
 		float scale = 1.0f;
 		Curve *cu = ob->data;
 
 		scale = mat3_to_scale(smat);
 		BKE_curve_transform_ex(cu, mat, true, scale);
 	}
+	else if (ob->type == OB_FONT) {
+		Curve *cu = ob->data;
+		int i;
+		float scale;
+
+		scale = mat3_to_scale(smat);
+
+		for (i = 0; i < cu->totbox; i++) {
+			TextBox *tb = &cu->tb[i];
+			tb->x *= scale;
+			tb->y *= scale;
+			tb->w *= scale;
+			tb->h *= scale;
+		}
+
+		cu->fsize *= scale;
+	}
+}
+
+static void apply_loc_rot_scale(Object* ob, Scene* scene)
+{
+	float rsmat[3][3];
+
+	//determine matrix
+	BKE_object_to_mat3(ob, rsmat);
+	copy_v3_v3(rsmat[3], ob->loc);
+
+	//apply to object data
+	apply_transform(ob, scene, rsmat);
+
+	//reset object values
+	zero_v3(ob->loc);
+	ob->size[0] = ob->size[1] = ob->size[2] = 1.0f;
+	zero_v3(ob->rot);
+	unit_qt(ob->quat);
+	unit_axis_angle(ob->rotAxis, &ob->rotAngle);
+}
+
+static void apply_scale(Object* ob, Scene* scene)
+{
+	float smat[3][3];
+	/*better apply scale prior to fracture, else shards get distorted*/
+	BKE_object_scale_to_mat3(ob, smat);
+
+	/* apply to object data */
+	apply_transform(ob, scene, smat);
 
 	/*clear scale too*/
 	ob->size[0] = ob->size[1] = ob->size[2] = 1.0f;
