@@ -1181,38 +1181,17 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 			//shrink pointcloud container around impact point, to a size
 			s = BKE_shard_by_id(emd->frac_mesh, id, fracmesh);
 			if (s != NULL && (/*s->shard_id == 0 || s->parent_id == 0 || */s->impact_size[0] > 0.0f)) {
-				float size[3], nmin[3], nmax[3], loc[3], imat[4][4], tmin[3], tmax[3], quat[4];
+				float size[3], nmin[3], nmax[3], loc[3], tmin[3], tmax[3];
 				print_v3("Impact Loc\n", s->impact_loc);
 				print_v3("Impact Size\n", s->impact_size);
 
-				//invert_m4_m4(imat, ob->obmat);
-				//mul_v3_m4v3(loc, imat, s->impact_loc);
-				//sub_v3_v3v3(loc, s->impact_loc, ob->loc);
-				//mat4_to_quat(quat, imat);
-				//mul_qt_v3(quat, loc);
 				copy_v3_v3(loc, s->impact_loc);
 				copy_v3_v3(tmax, s->max);
 				copy_v3_v3(tmin, s->min);
 
-				//sub_v3_v3(loc, cent);
-				//sub_v3_v3(loc, s->centroid);
-
 				mul_v3_v3fl(size, s->impact_size, 1.25f);
 				sub_v3_v3v3(nmin, loc, size);
 				add_v3_v3v3(nmax, loc, size);
-
-				/*sub_v3_v3(tmin, cent);
-				sub_v3_v3(tmin, s->centroid);
-
-				sub_v3_v3(tmax, cent);
-				sub_v3_v3(tmax, s->centroid);
-
-				mat4_to_quat(quat, ob->obmat);
-				mul_qt_v3(quat, tmin);
-				mul_qt_v3(quat, tmax);*/
-
-				/*add_v3_v3(tmin, ob->loc);
-				add_v3_v3(tmax, ob->loc);*/
 
 				//clamp
 				if (fabsf(tmin[0]) < fabsf(nmin[0])) {

@@ -2101,6 +2101,14 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 	return true;
 }
 
+static void impact_to_shard(Shard* s, Object* ob)
+{
+	float mat[4][4];
+
+	invert_m4_m4(mat, ob->obmat);
+	mul_m4_v3(mat, s->impact_loc);
+}
+
 static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 {
 	int linear_index1, linear_index2;
@@ -2138,7 +2146,8 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 		{
 			if (fmd1->current_shard_entry && fmd1->current_shard_entry->is_new)
 			{
-				int id = rbw->cache_index_map[linear_index1]->meshisland_index;
+				RigidBodyOb *rbo = rbw->cache_index_map[linear_index1];
+				int id = rbo->meshisland_index;
 				Shard *s = findShard(fmd1, id);
 
 				if ((force > fmd1->dynamic_force && (!fmd1->limit_impact || (fmd1->limit_impact && s && (s->parent_id > 0 || s->shard_id > 0)))) ||
@@ -2158,6 +2167,11 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 
 						copy_v3_v3(s->impact_loc, cp->contact_pos_world_onA);
 						copy_v3_v3(s->impact_size, size);
+
+						if (fmd1->limit_impact && s && ((s->shard_id == 0)))
+						{
+							impact_to_shard(s, ob1);
+						}
 					}
 					/*only fracture on new entries, this is necessary because after loading a file
 					 *the pointcache thinks it is empty and a fracture is attempted ! */
@@ -2183,7 +2197,8 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 		{
 			if (fmd2->current_shard_entry && fmd2->current_shard_entry->is_new)
 			{
-				int id = rbw->cache_index_map[linear_index2]->meshisland_index;
+				RigidBodyOb *rbo = rbw->cache_index_map[linear_index2];
+				int id = rbo->meshisland_index;
 				Shard *s = findShard(fmd2, id);
 
 				if ((force > fmd2->dynamic_force && (!fmd2->limit_impact || (fmd2->limit_impact && s && (s->parent_id > 0 || s->shard_id > 0)))) ||
@@ -2191,6 +2206,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				{
 					if (s) {
 						float size[3];
+
 						if (s->parent_id > 0 ||ob1 == ob2 || (ob1 && ob1->rigidbody_object && ob1->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
 							size[0] = -1.0f; //mark as invalid, so the regular object size is used
 							size[1] = -1.0f;
@@ -2201,6 +2217,11 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 						}
 						copy_v3_v3(s->impact_loc, cp->contact_pos_world_onB);
 						copy_v3_v3(s->impact_size, size);
+
+						if (fmd2->limit_impact && s && (s->shard_id == 0))
+						{
+							impact_to_shard(s, ob2);
+						}
 					}
 
 					if (check_shard_size(fmd2, id))
