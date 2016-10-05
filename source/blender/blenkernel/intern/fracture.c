@@ -1810,7 +1810,7 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 			s = (Shard *)fmd->frac_mesh->shard_map.first;
 		}
 
-		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			/*keep old behavior for now for older modes */
 			CustomData_merge(&s->vertData, &result->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, num_verts);

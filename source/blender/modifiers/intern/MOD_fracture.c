@@ -2929,7 +2929,7 @@ static void find_other_face(FractureModifierData *fmd, int i, BMesh* bm, Object*
 	int other = GET_INT_FROM_POINTER(BLI_ghash_lookup(fmd->face_pairs, SET_INT_IN_POINTER(i)));
 	int inner_index = BKE_object_material_slot_find_index(ob, fmd->inner_material) - 1;
 
-	if (other == i)
+	if ((other == i) && (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC))
 	{
 		//printf("other == i %d \n", i);
 		f1 = BM_face_at_index(bm, i);
