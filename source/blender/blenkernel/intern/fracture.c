@@ -937,7 +937,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		}
 
 		BLI_kdtree_balance(preselect_tree);
-
+#pragma omp parallel for if (algorithm == MOD_FRACTURE_BOOLEAN && !threaded)
 		for (i = 0; i < expected_shards; i++)	{
 			bool stop = handle_boolean_bisect(fm, obj, expected_shards, algorithm, parent_id, tempshards, dm_parent,
 			                      bm_parent, obmat, inner_material_index, num_cuts, num_levels, fractal,

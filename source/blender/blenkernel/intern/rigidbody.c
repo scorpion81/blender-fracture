@@ -2027,15 +2027,19 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	return check_colgroup_ghost(ob1, ob2);
 }
 
-static bool can_break(Object* collider, Object* ob, bool limit, Shard *s)
+static bool can_break(Object* collider, Object* ob, bool limit)
 {
 	//allow limit impact only on initial shard and 1st level shards ?
-	if (collider && collider->rigidbody_object && (collider->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER &&
-	   s && (s->parent_id == 0 || s->shard_id == 0)))
+	if (collider && collider->rigidbody_object && (collider->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER))
 	{
-		/*if (limit && (collider == ob)) {
+		if (limit && (collider == ob)) {
 			return false;
-		}*/
+		}
+
+		//dont allow limit impact with ground
+		if (collider->rigidbody_object->type == RBO_TYPE_PASSIVE) {
+			return false;
+		}
 
 		return true;
 	}
@@ -2065,7 +2069,7 @@ static Shard* findShard(FractureModifierData *fmd, int id)
 static bool check_shard_size(FractureModifierData *fmd, int id)
 {
 	FractureID *fid;
-	float size = 0.05f;
+	float size = 1.0f;
 	Shard *s = NULL;
 
 	s = findShard(fmd, id);
@@ -2084,10 +2088,6 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 		return false;
 	}
 
-	/*if (s->raw_volume < size) {
-		return false;
-	}*/
-
 	for (fid = fmd->fracture_ids.first; fid; fid = fid->next)
 	{
 		if (fid->shardID == id)
@@ -2099,18 +2099,6 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 	printf("FRACTURE : %d\n", id);
 
 	return true;
-}
-
-static void impact_to_shard(Shard* s/*, Object* ob,*/, RigidBodyOb *rbo)
-{
-	float mat[4][4];
-
-	if ((s->shard_id == 0) /*|| (s->parent_id == 0)*/)
-	{
-		/*invert_m4_m4(mat, ob->obmat);
-		mul_m4_v3(mat, s->impact_loc);*/
-		sub_v3_v3(s->impact_loc, rbo->pos);
-	}
 }
 
 static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
@@ -2155,17 +2143,16 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				Shard *s = findShard(fmd1, id);
 
 				//printf("FORCE1:%f\n",force);
+				bool canbreak = (force > fmd1->dynamic_force) || (fmd1->limit_impact && can_break(ob2, ob1, fmd1->limit_impact));
 
-				if (((force > fmd1->dynamic_force) && (!fmd1->limit_impact || (fmd1->limit_impact && s && (s->parent_id > 0 || s->shard_id >= 0)))) ||
-				    (s && ob2 && (fmd1->limit_impact && can_break(ob2, ob1, fmd1->limit_impact, s))))
+				if (canbreak)
 				{
 					if (s) {
 						float size[3];
 
-						if (s->parent_id > 0 || ob1 == ob2 || (ob2 && ob2->rigidbody_object && ob2->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
-							size[0] = -1.0f; //mark as invalid, so the regular object size is used
-							size[1] = -1.0f;
-							size[2] = -1.0f;
+						if (ob1 == ob2) {
+							//todo calculate shard...
+							size[0] = size[1] = size[2] = force;
 						}
 						else {
 							BKE_object_dimensions_get(ob2, size);
@@ -2173,11 +2160,6 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 
 						copy_v3_v3(s->impact_loc, cp->contact_pos_world_onA);
 						copy_v3_v3(s->impact_size, size);
-
-						if (fmd1->limit_impact && s)
-						{
-							impact_to_shard(s, rbo);
-						}
 					}
 					/*only fracture on new entries, this is necessary because after loading a file
 					 *the pointcache thinks it is empty and a fracture is attempted ! */
@@ -2208,28 +2190,21 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				Shard *s = findShard(fmd2, id);
 
 				//printf("FORCE2:%f\n",force);
+				bool canbreak = (force > fmd2->dynamic_force) || (fmd2->limit_impact && can_break(ob1, ob2, fmd2->limit_impact));
 
-				if (((force > fmd2->dynamic_force) && (!fmd2->limit_impact || (fmd2->limit_impact && s && (s->parent_id > 0 || s->shard_id >= 0)))) ||
-				        (ob1 && s && (fmd2->limit_impact && can_break(ob1, ob2, fmd2->limit_impact, s))))
+				if (canbreak)
 				{
 					if (s) {
 						float size[3];
 
-						if (s->parent_id > 0 ||ob1 == ob2 || (ob1 && ob1->rigidbody_object && ob1->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
-							size[0] = -1.0f; //mark as invalid, so the regular object size is used
-							size[1] = -1.0f;
-							size[2] = -1.0f;
+						if (ob1 == ob2) {
+							size[0] = size[1] = size[2] = force;
 						}
 						else {
 							BKE_object_dimensions_get(ob1, size);
 						}
 						copy_v3_v3(s->impact_loc, cp->contact_pos_world_onB);
 						copy_v3_v3(s->impact_size, size);
-
-						if (fmd2->limit_impact && s)
-						{
-							impact_to_shard(s, rbo);
-						}
 					}
 
 					if (check_shard_size(fmd2, id))

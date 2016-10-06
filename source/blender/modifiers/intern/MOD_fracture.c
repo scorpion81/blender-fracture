@@ -1183,10 +1183,37 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 			s = BKE_shard_by_id(emd->frac_mesh, id, fracmesh);
 			if (s != NULL && s->impact_size[0] > 0.0f) {
 				float size[3], nmin[3], nmax[3], loc[3], tmin[3], tmax[3];
+				MeshIslandSequence *msq = emd->current_mi_entry, *prev = NULL;
+				MeshIsland *mi = NULL;
+				RigidBodyOb *rbo = NULL;
+
+				if (msq) {
+					if (msq->prev) {
+						prev = msq->prev;
+					}
+					else {
+						prev = msq;
+					}
+
+					mi = find_meshisland(&prev->meshIslands, s->parent_id);
+					if (!mi) {
+						mi = find_meshisland(&prev->meshIslands, id);
+					}
+
+					rbo = mi->rigidbody;
+				}
+
 				print_v3("Impact Loc\n", s->impact_loc);
 				print_v3("Impact Size\n", s->impact_size);
 
 				copy_v3_v3(loc, s->impact_loc);
+
+				if (rbo) {
+					sub_v3_v3(loc, rbo->pos);
+					add_v3_v3(loc, cent);
+					add_v3_v3(loc, s->centroid);
+				}
+
 				copy_v3_v3(tmax, s->max);
 				copy_v3_v3(tmin, s->min);
 
@@ -3357,21 +3384,21 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 
 			//keep 1st level shards kinematic if parent is triggered
 			if (par->id == 0 && (par->rigidbody->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION) && fmd->limit_impact) {
-#if 0
-				ShardSequence *prev_shards = fmd->current_shard_entry ? fmd->current_shard_entry->prev : NULL;
+
+				/*ShardSequence *prev_shards = fmd->current_shard_entry ? fmd->current_shard_entry->prev : NULL;
 				Shard *par_shard = prev_shards ? BKE_shard_by_id(prev_shards->frac_mesh, s->parent_id, NULL) : NULL;
 
 				if (par_shard) {
 
 					float size[3];
-					mul_v3_v3fl(size, par_shard->impact_size, 0.5f);
+					//mul_v3_v3fl(size, par_shard->impact_size, 0.5f);
 
 					if (!contains(par_shard->impact_loc, size, s->centroid)) {
 						mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
 						mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					}
-				}
-#endif
+				}*/
+
 				mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
 				mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 			}
