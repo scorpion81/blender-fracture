@@ -91,6 +91,7 @@ static Shard* copy_shard(Shard *s);
 static void arrange_shard(FractureModifierData *fmd, ShardID id, bool do_verts, float cent[]);
 static Shard* find_shard(ListBase *shards, ShardID id);
 static void cleanup_arrange_shard(FractureModifierData *fmd, Shard *s, float cent[]);
+static MeshIsland* find_meshisland(ListBase* meshIslands, int id);
 
 //TODO XXX Make BKE
 static FracMesh* copy_fracmesh(FracMesh* fm)
@@ -1180,7 +1181,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 		if (emd->fracture_mode == MOD_FRACTURE_DYNAMIC && emd->limit_impact) {
 			//shrink pointcloud container around impact point, to a size
 			s = BKE_shard_by_id(emd->frac_mesh, id, fracmesh);
-			if (s != NULL && (/*s->shard_id == 0 || s->parent_id == 0 || */s->impact_size[0] > 0.0f)) {
+			if (s != NULL && s->impact_size[0] > 0.0f) {
 				float size[3], nmin[3], nmax[3], loc[3], tmin[3], tmax[3];
 				print_v3("Impact Loc\n", s->impact_loc);
 				print_v3("Impact Size\n", s->impact_size);
@@ -1231,6 +1232,9 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 				count *= 2;
 			}
 		}
+
+		//print_v3("MIN:", min);
+		//print_v3("MAX:", max);
 
 		BLI_srandom(emd->point_seed);
 		for (i = 0; i < count; ++i) {

@@ -2033,9 +2033,9 @@ static bool can_break(Object* collider, Object* ob, bool limit, Shard *s)
 	if (collider && collider->rigidbody_object && (collider->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER &&
 	   s && (s->parent_id == 0 || s->shard_id == 0)))
 	{
-		if (limit && (collider == ob)) {
+		/*if (limit && (collider == ob)) {
 			return false;
-		}
+		}*/
 
 		return true;
 	}
@@ -2101,12 +2101,16 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 	return true;
 }
 
-static void impact_to_shard(Shard* s, Object* ob)
+static void impact_to_shard(Shard* s/*, Object* ob,*/, RigidBodyOb *rbo)
 {
 	float mat[4][4];
 
-	invert_m4_m4(mat, ob->obmat);
-	mul_m4_v3(mat, s->impact_loc);
+	if ((s->shard_id == 0) /*|| (s->parent_id == 0)*/)
+	{
+		/*invert_m4_m4(mat, ob->obmat);
+		mul_m4_v3(mat, s->impact_loc);*/
+		sub_v3_v3(s->impact_loc, rbo->pos);
+	}
 }
 
 static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
@@ -2150,7 +2154,9 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				int id = rbo->meshisland_index;
 				Shard *s = findShard(fmd1, id);
 
-				if ((force > fmd1->dynamic_force && (!fmd1->limit_impact || (fmd1->limit_impact && s && (s->parent_id > 0 || s->shard_id > 0)))) ||
+				//printf("FORCE1:%f\n",force);
+
+				if (((force > fmd1->dynamic_force) && (!fmd1->limit_impact || (fmd1->limit_impact && s && (s->parent_id > 0 || s->shard_id >= 0)))) ||
 				    (s && ob2 && (fmd1->limit_impact && can_break(ob2, ob1, fmd1->limit_impact, s))))
 				{
 					if (s) {
@@ -2168,9 +2174,9 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 						copy_v3_v3(s->impact_loc, cp->contact_pos_world_onA);
 						copy_v3_v3(s->impact_size, size);
 
-						if (fmd1->limit_impact && s && ((s->shard_id == 0)))
+						if (fmd1->limit_impact && s)
 						{
-							impact_to_shard(s, ob1);
+							impact_to_shard(s, rbo);
 						}
 					}
 					/*only fracture on new entries, this is necessary because after loading a file
@@ -2201,7 +2207,9 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				int id = rbo->meshisland_index;
 				Shard *s = findShard(fmd2, id);
 
-				if ((force > fmd2->dynamic_force && (!fmd2->limit_impact || (fmd2->limit_impact && s && (s->parent_id > 0 || s->shard_id > 0)))) ||
+				//printf("FORCE2:%f\n",force);
+
+				if (((force > fmd2->dynamic_force) && (!fmd2->limit_impact || (fmd2->limit_impact && s && (s->parent_id > 0 || s->shard_id >= 0)))) ||
 				        (ob1 && s && (fmd2->limit_impact && can_break(ob1, ob2, fmd2->limit_impact, s))))
 				{
 					if (s) {
@@ -2218,9 +2226,9 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 						copy_v3_v3(s->impact_loc, cp->contact_pos_world_onB);
 						copy_v3_v3(s->impact_size, size);
 
-						if (fmd2->limit_impact && s && (s->shard_id == 0))
+						if (fmd2->limit_impact && s)
 						{
-							impact_to_shard(s, ob2);
+							impact_to_shard(s, rbo);
 						}
 					}
 
