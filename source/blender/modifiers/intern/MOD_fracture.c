@@ -1182,12 +1182,12 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 			//shrink pointcloud container around impact point, to a size
 			s = BKE_shard_by_id(emd->frac_mesh, id, fracmesh);
 			if (s != NULL && s->impact_size[0] > 0.0f) {
-				float size[3], nmin[3], nmax[3], loc[3], tmin[3], tmax[3], rloc[3] = {0,0,0}, diff[3] = {0, 0, 0};
+				float size[3], nmin[3], nmax[3], loc[3], tmin[3], tmax[3], rloc[3] = {0,0,0}, diff[3] = {0, 0, 0}, orn[4] = {1,0,0,0};
 				MeshIslandSequence *msq = emd->current_mi_entry->prev ? emd->current_mi_entry->prev : emd->current_mi_entry;
 				MeshIsland *mi = NULL;
 				RigidBodyOb *rbo = NULL;
 
-				if (msq && id == 0) {
+				if (msq /*&& id == 0*/) {
 					mi = find_meshisland(&msq->meshIslands, s->parent_id);
 					if (!mi) {
 						mi = find_meshisland(&msq->meshIslands, id);
@@ -1196,6 +1196,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 					if (mi) {
 						rbo = mi->rigidbody;
 						copy_v3_v3(rloc, rbo->pos);
+						copy_qt_qt(orn, rbo->orn);
 					}
 				}
 
@@ -1203,9 +1204,15 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 				print_v3("Impact Size\n", s->impact_size);
 
 				copy_v3_v3(loc, s->impact_loc);
-				sub_v3_v3(loc, rloc);
-				//sub_v3_v3v3(diff, s->impact_loc, s->centroid);
-				copy_v3_v3(diff, s->centroid);
+
+				if (id == 0) {
+					sub_v3_v3(loc, rloc);
+					mul_qt_v3(loc, orn);
+					copy_v3_v3(diff, s->centroid);
+				}
+				else {
+					copy_v3_v3(diff, rloc);
+				}
 
 				copy_v3_v3(tmax, s->max);
 				copy_v3_v3(tmin, s->min);
@@ -1216,63 +1223,27 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 
 				//clamp
 				if (tmin[0] > nmin[0] ) {
-					if (diff[0] < s->impact_loc[0]) {
-						nmin[0] = tmin[0] + diff[0];
-					}
-					else
-					{
-						nmin[0] = tmin[0] - diff[0];
-					}
+					nmin[0] = tmin[0] + diff[0];
 				}
 
 				if (tmin[1] > nmin[1]) {
-					if (diff[1] < s->impact_loc[1]) {
-						nmin[1] = tmin[1] + diff[1];
-					}
-					else
-					{
-						nmin[1] = tmin[1] - diff[1];
-					}
+					nmin[1] = tmin[1] + diff[1];
 				}
 
 				if (tmin[2] > nmin[2]) {
-					if (diff[2] < s->impact_loc[2]) {
-						nmin[2] = tmin[2] + diff[2];
-					}
-					else
-					{
-						nmin[2] = tmin[2] - diff[2];
-					}
+					nmin[2] = tmin[2] + diff[2];
 				}
 
 				if (tmax[0] < nmax[0]) {
-					if (diff[0] > s->impact_loc[0]) {
-						nmax[0] = tmax[0] + diff[0];
-					}
-					else
-					{
-						nmax[0] = tmax[0] - diff[0];
-					}
+					nmax[0] = tmax[0] - diff[0];
 				}
 
 				if (tmax[1] < nmax[1]) {
-					if (diff[1] > s->impact_loc[1]) {
-						nmax[1] = tmax[1] + diff[1];
-					}
-					else
-					{
-						nmax[1] = tmax[1] - diff[1];
-					}
+					nmax[1] = tmax[1] - diff[1];
 				}
 
 				if (tmax[2] < nmax[2]) {
-					if (diff[2] > s->impact_loc[2]) {
-						nmax[2] = tmax[2] + diff[2];
-					}
-					else
-					{
-						nmax[2] = tmax[2] - diff[2];
-					}
+					nmax[2] = tmax[2] - diff[2];
 				}
 
 				copy_v3_v3(max, nmax);
