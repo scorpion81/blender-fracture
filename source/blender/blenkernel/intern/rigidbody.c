@@ -2150,9 +2150,9 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 					if (s) {
 						float size[3];
 
-						if (ob1 == ob2) {
+						if (ob1 == ob2 || (ob2->rigidbody_object && ob1->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
 							//todo calculate shard...
-							size[0] = size[1] = size[2] = force;
+							size[0] = size[1] = size[2] = -1.0f;
 						}
 						else {
 							BKE_object_dimensions_get(ob2, size);
@@ -2197,8 +2197,8 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 					if (s) {
 						float size[3];
 
-						if (ob1 == ob2) {
-							size[0] = size[1] = size[2] = force;
+						if (ob1 == ob2 || (ob1->rigidbody_object && ob1->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
+							size[0] = size[1] = size[2] = -1.0f;
 						}
 						else {
 							BKE_object_dimensions_get(ob1, size);
