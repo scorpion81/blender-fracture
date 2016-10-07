@@ -1182,37 +1182,30 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 			//shrink pointcloud container around impact point, to a size
 			s = BKE_shard_by_id(emd->frac_mesh, id, fracmesh);
 			if (s != NULL && s->impact_size[0] > 0.0f) {
-				float size[3], nmin[3], nmax[3], loc[3], tmin[3], tmax[3];
-				MeshIslandSequence *msq = emd->current_mi_entry, *prev = NULL;
+				float size[3], nmin[3], nmax[3], loc[3], tmin[3], tmax[3], rloc[3] = {0,0,0}, diff[3] = {0, 0, 0};
+				MeshIslandSequence *msq = emd->current_mi_entry->prev ? emd->current_mi_entry->prev : emd->current_mi_entry;
 				MeshIsland *mi = NULL;
 				RigidBodyOb *rbo = NULL;
 
-				if (msq) {
-					if (msq->prev) {
-						prev = msq->prev;
-					}
-					else {
-						prev = msq;
-					}
-
-					mi = find_meshisland(&prev->meshIslands, s->parent_id);
+				if (msq && id == 0) {
+					mi = find_meshisland(&msq->meshIslands, s->parent_id);
 					if (!mi) {
-						mi = find_meshisland(&prev->meshIslands, id);
+						mi = find_meshisland(&msq->meshIslands, id);
 					}
 
-					rbo = mi->rigidbody;
+					if (mi) {
+						rbo = mi->rigidbody;
+						copy_v3_v3(rloc, rbo->pos);
+					}
 				}
 
 				print_v3("Impact Loc\n", s->impact_loc);
 				print_v3("Impact Size\n", s->impact_size);
 
 				copy_v3_v3(loc, s->impact_loc);
-
-				if (rbo) {
-					sub_v3_v3(loc, rbo->pos);
-					add_v3_v3(loc, cent);
-					add_v3_v3(loc, s->centroid);
-				}
+				sub_v3_v3(loc, rloc);
+				//sub_v3_v3v3(diff, s->impact_loc, s->centroid);
+				copy_v3_v3(diff, s->centroid);
 
 				copy_v3_v3(tmax, s->max);
 				copy_v3_v3(tmin, s->min);
@@ -1222,32 +1215,75 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 				add_v3_v3v3(nmax, loc, size);
 
 				//clamp
-				if (fabsf(tmin[0]) < fabsf(nmin[0])) {
-					nmin[0] = tmin[0];
+				if (tmin[0] > nmin[0] ) {
+					if (diff[0] < s->impact_loc[0]) {
+						nmin[0] = tmin[0] + diff[0];
+					}
+					else
+					{
+						nmin[0] = tmin[0] - diff[0];
+					}
 				}
 
-				if (fabsf(tmin[1]) < fabsf(nmin[1])) {
-					nmin[1] = tmin[1];
+				if (tmin[1] > nmin[1]) {
+					if (diff[1] < s->impact_loc[1]) {
+						nmin[1] = tmin[1] + diff[1];
+					}
+					else
+					{
+						nmin[1] = tmin[1] - diff[1];
+					}
 				}
 
-				if (fabsf(tmin[2]) < fabsf(nmin[2])) {
-					nmin[2] = tmin[2];
+				if (tmin[2] > nmin[2]) {
+					if (diff[2] < s->impact_loc[2]) {
+						nmin[2] = tmin[2] + diff[2];
+					}
+					else
+					{
+						nmin[2] = tmin[2] - diff[2];
+					}
 				}
 
-				if (fabsf(tmax[0]) < fabsf(nmax[0])) {
-					nmax[0] = tmax[0];
+				if (tmax[0] < nmax[0]) {
+					if (diff[0] > s->impact_loc[0]) {
+						nmax[0] = tmax[0] + diff[0];
+					}
+					else
+					{
+						nmax[0] = tmax[0] - diff[0];
+					}
 				}
 
-				if (fabsf(tmax[1]) < fabsf(nmax[1])) {
-					nmax[1] = tmax[1];
+				if (tmax[1] < nmax[1]) {
+					if (diff[1] > s->impact_loc[1]) {
+						nmax[1] = tmax[1] + diff[1];
+					}
+					else
+					{
+						nmax[1] = tmax[1] - diff[1];
+					}
 				}
 
-				if (fabsf(tmax[2]) < fabsf(nmax[2])) {
-					nmax[2] = tmax[2];
+				if (tmax[2] < nmax[2]) {
+					if (diff[2] > s->impact_loc[2]) {
+						nmax[2] = tmax[2] + diff[2];
+					}
+					else
+					{
+						nmax[2] = tmax[2] - diff[2];
+					}
 				}
 
 				copy_v3_v3(max, nmax);
 				copy_v3_v3(min, nmin);
+
+				print_v3("SMIN:", s->min);
+				print_v3("SMAX:", s->max);
+				print_v3("CENTR", s->centroid);
+				print_v3("POS", cent);
+				print_v3("MIN:", min);
+				print_v3("MAX:", max);
 			}
 		}
 
@@ -1259,9 +1295,6 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 				count *= 2;
 			}
 		}
-
-		//print_v3("MIN:", min);
-		//print_v3("MAX:", max);
 
 		BLI_srandom(emd->point_seed);
 		for (i = 0; i < count; ++i) {
