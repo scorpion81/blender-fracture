@@ -1182,12 +1182,12 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 			//shrink pointcloud container around impact point, to a size
 			s = BKE_shard_by_id(emd->frac_mesh, id, fracmesh);
 			if (s != NULL && s->impact_size[0] > 0.0f) {
-				float size[3], nmin[3], nmax[3], loc[3], tmin[3], tmax[3], rloc[3] = {0,0,0}, diff[3] = {0, 0, 0}, orn[4] = {1,0,0,0};
+				float size[3], nmin[3], nmax[3], loc[3], tmin[3], tmax[3], rloc[3] = {0,0,0};
 				MeshIslandSequence *msq = emd->current_mi_entry->prev ? emd->current_mi_entry->prev : emd->current_mi_entry;
 				MeshIsland *mi = NULL;
 				RigidBodyOb *rbo = NULL;
 
-				if (msq /*&& id == 0*/) {
+				if (msq) {
 					mi = find_meshisland(&msq->meshIslands, s->parent_id);
 					if (!mi) {
 						mi = find_meshisland(&msq->meshIslands, id);
@@ -1196,7 +1196,6 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 					if (mi) {
 						rbo = mi->rigidbody;
 						copy_v3_v3(rloc, rbo->pos);
-						copy_qt_qt(orn, rbo->orn);
 					}
 				}
 
@@ -1205,56 +1204,50 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 
 				copy_v3_v3(loc, s->impact_loc);
 
-				if (id == 0) {
-					sub_v3_v3(loc, rloc);
-					mul_qt_v3(loc, orn);
-					copy_v3_v3(diff, s->centroid);
-				}
-				else {
-					copy_v3_v3(diff, rloc);
-				}
+				sub_v3_v3(loc, rloc);
+				add_v3_v3(loc, s->centroid);
 
 				copy_v3_v3(tmax, s->max);
 				copy_v3_v3(tmin, s->min);
 
-				mul_v3_v3fl(size, s->impact_size, 1.25f);
+				mul_v3_v3fl(size, s->impact_size, 0.75f);
 				sub_v3_v3v3(nmin, loc, size);
 				add_v3_v3v3(nmax, loc, size);
 
 				//clamp
-				if (tmin[0] > nmin[0] ) {
-					nmin[0] = tmin[0] + diff[0];
+				if (tmin[0] > nmin[0]) {
+					nmin[0] = tmin[0];
 				}
 
 				if (tmin[1] > nmin[1]) {
-					nmin[1] = tmin[1] + diff[1];
+					nmin[1] = tmin[1];
 				}
 
 				if (tmin[2] > nmin[2]) {
-					nmin[2] = tmin[2] + diff[2];
+					nmin[2] = tmin[2];
 				}
 
 				if (tmax[0] < nmax[0]) {
-					nmax[0] = tmax[0] - diff[0];
+					nmax[0] = tmax[0];
 				}
 
 				if (tmax[1] < nmax[1]) {
-					nmax[1] = tmax[1] - diff[1];
+					nmax[1] = tmax[1];
 				}
 
 				if (tmax[2] < nmax[2]) {
-					nmax[2] = tmax[2] - diff[2];
+					nmax[2] = tmax[2];
 				}
 
 				copy_v3_v3(max, nmax);
 				copy_v3_v3(min, nmin);
 
-				print_v3("SMIN:", s->min);
+				/*print_v3("SMIN:", s->min);
 				print_v3("SMAX:", s->max);
 				print_v3("CENTR", s->centroid);
 				print_v3("POS", cent);
 				print_v3("MIN:", min);
-				print_v3("MAX:", max);
+				print_v3("MAX:", max);*/
 			}
 		}
 
