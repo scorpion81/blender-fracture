@@ -5215,6 +5215,9 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 	fmd->fracture_ids.first = NULL;
 	fmd->fracture_ids.last = NULL;
 	fmd->update_dynamic = false;
+	fmd->visible_mesh = NULL;
+	fmd->dm = NULL;
+	fmd->visible_mesh_cached = NULL;
 
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
 	if (fd->fileversion < 275) {
@@ -5405,6 +5408,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			ShardSequence *ssq = NULL;
 			MeshIslandSequence *msq = NULL;
 			Shard *s;
+			bool temp = fmd->shards_to_islands;
 
 			fmd->dm = NULL;
 			fmd->refresh_constraints = true;
@@ -5435,7 +5439,9 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 
 				msq->is_new = false;
 				fmd->frac_mesh = fmd->current_shard_entry->frac_mesh;
+				fmd->shards_to_islands = false;
 				BKE_fracture_create_dm(fmd, true);
+				fmd->shards_to_islands = temp;
 				fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
 				msq->visible_dm = fmd->visible_mesh_cached;
 				mverts = CDDM_get_verts(fmd->visible_mesh_cached);

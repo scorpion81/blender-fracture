@@ -86,12 +86,12 @@
 #include "limits.h"
 
 static DerivedMesh* do_prefractured(FractureModifierData *fmd, Object *ob, DerivedMesh *derivedData);
-static void do_prehalving(FractureModifierData *fmd, Object* ob, DerivedMesh* derivedData);
 static Shard* copy_shard(Shard *s);
 static void arrange_shard(FractureModifierData *fmd, ShardID id, bool do_verts, float cent[]);
 static Shard* find_shard(ListBase *shards, ShardID id);
 static void cleanup_arrange_shard(FractureModifierData *fmd, Shard *s, float cent[]);
 static MeshIsland* find_meshisland(ListBase* meshIslands, int id);
+static void do_halving(FractureModifierData *fmd, Object* ob, DerivedMesh *dm, DerivedMesh *orig_dm, bool is_prehalving, ShardID id);
 
 //TODO XXX Make BKE
 static FracMesh* copy_fracmesh(FracMesh* fm)
@@ -1607,6 +1607,30 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 			return;
 		}
 
+#if 0
+		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->shards_to_islands) {
+			//find children of this shard and halve them (and remove them)
+			Shard *t = fmd->frac_mesh->shard_map.first;
+			while (t) {
+				if (t->parent_id == id && id > -1) {
+					DerivedMesh *sdm;
+					Shard* next;
+					next = t->next;
+
+					BLI_remlink(&fmd->frac_mesh->shard_map, t);
+					sdm = BKE_shard_create_dm(t, true);
+					BKE_shard_free(t, true);
+
+					do_halving(fmd, obj, sdm, dm, true, id);
+					t = next;
+				}
+				else {
+					t = t->next;
+				}
+			}
+		}
+#endif
+
 		/* here we REALLY need to fracture so deactivate the shards to islands flag and activate afterwards */
 		fmd->shards_to_islands = false;
 		BKE_fracture_create_dm(fmd, true);
@@ -1818,7 +1842,7 @@ static int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3], int tagged)
 }
 
 //XXX BKE
-static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new)
+static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new, ShardID par_id)
 {
 	DerivedMesh *dmtemp;
 	Shard *s;
@@ -1831,10 +1855,33 @@ static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new)
 		s = BKE_create_fracture_shard(dmtemp->getVertArray(dmtemp), dmtemp->getPolyArray(dmtemp), dmtemp->getLoopArray(dmtemp),
 		                              dmtemp->getNumVerts(dmtemp), dmtemp->getNumPolys(dmtemp), dmtemp->getNumLoops(dmtemp), true);
 		s = BKE_custom_data_to_shard(s, dmtemp);
-		id = BLI_listbase_count(&fmd->islandShards);
-		s->shard_id = id;
-		s->parent_id = -1;
-		BLI_addtail(&fmd->islandShards, s);
+
+		/*for dynamic mode, store this in the main shardmap instead of separately */
+		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) {
+#if 0
+			/*delete all with same parent id and replace*/
+			Shard *t;
+			for (t = fmd->frac_mesh->shard_map.first; t; t = t->next) {
+				if (t->shard_id == par_id) {
+					//delete...
+					BLI_remlink(&fmd->frac_mesh->shard_map, t);
+					BKE_shard_free(t, true);
+				}
+			}
+#endif
+			id = BLI_listbase_count(&fmd->frac_mesh->shard_map);
+			s->shard_id = id+1;
+			s->parent_id = par_id;
+			s->flag = SHARD_INTACT;
+			BLI_addtail(&fmd->frac_mesh->shard_map, s);
+			fmd->frac_mesh->shard_count = id + 1;
+		}
+		else {
+			id = BLI_listbase_count(&fmd->islandShards);
+			s->shard_id = id;
+			s->parent_id = -1;
+			BLI_addtail(&fmd->islandShards, s);
+		}
 
 		dmtemp->needsFree = 1;
 		dmtemp->release(dmtemp);
@@ -1988,7 +2035,7 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 }
 
 static float mesh_separate_tagged(FractureModifierData *fmd, Object *ob, BMVert **v_tag, int v_count,
-                                  float *startco, BMesh *bm_work, short *startno, DerivedMesh *orig_dm)
+                                  float *startco, BMesh *bm_work, short *startno, DerivedMesh *orig_dm, ShardID par_id)
 {
 	BMesh *bm_new;
 	BMesh *bm_old = bm_work;
@@ -2021,7 +2068,7 @@ static float mesh_separate_tagged(FractureModifierData *fmd, Object *ob, BMVert 
 	BM_calc_center_centroid(bm_new, centroid, false);
 	BM_mesh_elem_index_ensure(bm_new, BM_VERT | BM_EDGE | BM_FACE);
 
-	id = do_shard_to_island(fmd, bm_new);
+	id = do_shard_to_island(fmd, bm_new, par_id);
 
 	BM_ITER_MESH (v, &iter, bm_new, BM_VERTS_OF_MESH) {
 		/* eliminate centroid in vertex coords */
@@ -2080,7 +2127,7 @@ static void handle_vert(FractureModifierData *fmd, DerivedMesh *dm, BMVert* vert
 	(*tag_counter)++;
 }
 
-static void mesh_separate_loose_partition(FractureModifierData *fmd, Object *ob, BMesh *bm_work, BMVert **orig_work, DerivedMesh *dm)
+static void mesh_separate_loose_partition(FractureModifierData *fmd, Object *ob, BMesh *bm_work, BMVert **orig_work, DerivedMesh *dm, ShardID id)
 {
 	int i, tag_counter = 0;
 	BMEdge *e;
@@ -2148,7 +2195,7 @@ static void mesh_separate_loose_partition(FractureModifierData *fmd, Object *ob,
 		BKE_bm_mesh_hflag_flush_vert(bm_old, BM_ELEM_TAG);
 
 		/* Move selection into a separate object */
-		mesh_separate_tagged(fmd, ob, v_tag, tag_counter, startco, bm_old, startno, dm);
+		mesh_separate_tagged(fmd, ob, v_tag, tag_counter, startco, bm_old, startno, dm, id);
 
 		MEM_freeN(v_tag);
 		v_tag = NULL;
@@ -2257,7 +2304,7 @@ static void mesh_separate_selected(BMesh **bm_work, BMesh **bm_out, BMVert **ori
 	BM_mesh_normals_update(bm_new);
 }
 
-static void halve(FractureModifierData *rmd, Object *ob, int minsize, BMesh **bm_work, BMVert ***orig_work, bool separated, DerivedMesh *dm)
+static void halve(FractureModifierData *rmd, Object *ob, int minsize, BMesh **bm_work, BMVert ***orig_work, bool separated, DerivedMesh *dm, ShardID id)
 {
 
 	int half;
@@ -2298,21 +2345,21 @@ static void halve(FractureModifierData *rmd, Object *ob, int minsize, BMesh **bm
 
 	printf("Old New: %d %d\n", bm_old->totvert, bm_new->totvert);
 	if ((bm_old->totvert <= minsize && bm_old->totvert > 0) || (bm_new->totvert == 0)) {
-		mesh_separate_loose_partition(rmd, ob, bm_old, orig_mod, dm);
+		mesh_separate_loose_partition(rmd, ob, bm_old, orig_mod, dm, id);
 		separated = true;
 	}
 
 	if ((bm_new->totvert <= minsize && bm_new->totvert > 0) || (bm_old->totvert == 0)) {
-		mesh_separate_loose_partition(rmd, ob, bm_new, orig_new, dm);
+		mesh_separate_loose_partition(rmd, ob, bm_new, orig_new, dm, id);
 		separated = true;
 	}
 
 	if ((bm_old->totvert > minsize && bm_new->totvert > 0) || (bm_new->totvert == 0 && !separated)) {
-		halve(rmd, ob, minsize, &bm_old, &orig_mod, separated, dm);
+		halve(rmd, ob, minsize, &bm_old, &orig_mod, separated, dm, id);
 	}
 
 	if ((bm_new->totvert > minsize && bm_old->totvert > 0) || (bm_old->totvert == 0 && !separated)) {
-		halve(rmd, ob, minsize, &bm_new, &orig_new, separated, dm);
+		halve(rmd, ob, minsize, &bm_new, &orig_new, separated, dm, id);
 	}
 
 
@@ -2322,7 +2369,7 @@ static void halve(FractureModifierData *rmd, Object *ob, int minsize, BMesh **bm
 	bm_new = NULL;
 }
 
-static void mesh_separate_loose(FractureModifierData *rmd, Object *ob, DerivedMesh *dm)
+static void mesh_separate_loose(FractureModifierData *rmd, Object *ob, DerivedMesh *dm, ShardID id)
 {
 	int minsize = 100;
 	BMesh *bm_work;
@@ -2353,7 +2400,7 @@ static void mesh_separate_loose(FractureModifierData *rmd, Object *ob, DerivedMe
 	rmd->islandShards.first = NULL;
 	rmd->islandShards.last = NULL;
 
-	halve(rmd, ob, minsize, &bm_work, &orig_start, false, dm);
+	halve(rmd, ob, minsize, &bm_work, &orig_start, false, dm, id);
 
 	MEM_freeN(orig_start);
 	orig_start = NULL;
@@ -3386,7 +3433,6 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 				Shard *par_shard = prev_shards ? BKE_shard_by_id(prev_shards->frac_mesh, s->parent_id, NULL) : NULL;
 
 				if (par_shard) {
-
 					float size[3];
 					//mul_v3_v3fl(size, par_shard->impact_size, 0.5f);
 
@@ -3394,7 +3440,7 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 						mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
 						mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					}
-				}*/
+				} */
 
 				mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
 				mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
@@ -3617,21 +3663,23 @@ static void do_clear(FractureModifierData* fmd)
 	}
 }
 
-static void do_halving(FractureModifierData *fmd, Object* ob, DerivedMesh *dm, DerivedMesh *orig_dm, bool is_prehalving)
+static void do_halving(FractureModifierData *fmd, Object* ob, DerivedMesh *dm, DerivedMesh *orig_dm, bool is_prehalving, ShardID id)
 {
 	double start;
 
+	fmd->visible_mesh = BM_mesh_create(&bm_mesh_allocsize_default, &((struct BMeshCreateParams){.use_toolflags = true,}));
+
 	if (fmd->dm && fmd->shards_to_islands && !is_prehalving) {
-		fmd->visible_mesh = DM_to_bmesh(fmd->dm, true);
+		DM_to_bmesh_ex(fmd->dm, fmd->visible_mesh, true);
 	}
 	else {
 		/* split to meshislands now */
-		fmd->visible_mesh = DM_to_bmesh(dm, true); /* ensures indexes automatically*/
+		DM_to_bmesh_ex(dm, fmd->visible_mesh, true); /* ensures indexes automatically*/
 	}
 
 	start = PIL_check_seconds_timer();
 	//printf("Steps: %d \n", fmd->frac_mesh->progress_counter);
-	mesh_separate_loose(fmd, ob, orig_dm);
+	mesh_separate_loose(fmd, ob, orig_dm, id);
 	printf("Splitting to islands done, %g \n"/*  Steps: %d \n"*/, PIL_check_seconds_timer() - start);//, fmd->frac_mesh->progress_counter);
 }
 
@@ -3648,7 +3696,7 @@ static void do_refresh(FractureModifierData *fmd, Object *ob, DerivedMesh* dm, D
 		 * shards = fracture datastructure
 		 * meshisland = simulation datastructure */
 		if (fmd->frac_mesh && fmd->frac_mesh->shard_count > 0 && fmd->dm && fmd->dm->numVertData > 0 &&
-			!fmd->shards_to_islands /*&& !fmd->dm_group*/)
+			(!fmd->shards_to_islands || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) /*&& !fmd->dm_group*/)
 		{
 			if (fmd->fix_normals)
 			{
@@ -3668,7 +3716,7 @@ static void do_refresh(FractureModifierData *fmd, Object *ob, DerivedMesh* dm, D
 				BM_mesh_free(fmd->visible_mesh);
 				fmd->visible_mesh = NULL;
 			}
-			do_halving(fmd, ob, dm, orig_dm, false);
+			do_halving(fmd, ob, dm, orig_dm, false, -1);
 			fmd->explo_shared = false;
 		}
 	}
@@ -3890,23 +3938,30 @@ static void foreachObjectLink(
 	}
 }
 
-static ShardSequence* shard_sequence_add(FractureModifierData* fmd, float frame, DerivedMesh* dm)
+static ShardSequence* shard_sequence_add(FractureModifierData* fmd, float frame, DerivedMesh* dm, Object *ob)
 {
 	ShardSequence *ssq = MEM_mallocN(sizeof(ShardSequence), "shard_sequence_add");
+
 	/*copy last state, to be modified now */
 	if (fmd->frac_mesh == NULL) {
 		Shard *s = NULL;
 		bool temp = fmd->shards_to_islands;
-
 		fmd->frac_mesh = BKE_create_fracture_container();
-		/* create first shard covering the entire mesh */
-		s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
-		                                     dm->numVertData, dm->numPolyData, dm->numLoopData, true);
-		s = BKE_custom_data_to_shard(s, dm);
-		s->flag = SHARD_INTACT;
-		s->shard_id = 0;
-		BLI_addtail(&fmd->frac_mesh->shard_map, s);
-		fmd->frac_mesh->shard_count = 1;
+
+		/*fill with initial shards*/
+		if (fmd->shards_to_islands) {
+			do_halving(fmd, ob, dm, dm, true, -1);
+		}
+		else {
+			/* create first shard covering the entire mesh */
+			s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
+			                                     dm->numVertData, dm->numPolyData, dm->numLoopData, true);
+			s = BKE_custom_data_to_shard(s, dm);
+			s->flag = SHARD_INTACT;
+			s->shard_id = 0;
+			BLI_addtail(&fmd->frac_mesh->shard_map, s);
+			fmd->frac_mesh->shard_count = 1;
+		}
 
 		//build fmd->dm here !
 		fmd->shards_to_islands = false;
@@ -3968,7 +4023,7 @@ static void add_new_entries(FractureModifierData* fmd, DerivedMesh *dm, Object* 
 		fmd->current_shard_entry->is_new = false;
 		fmd->current_shard_entry->frame = frame;
 	}
-	fmd->current_shard_entry = shard_sequence_add(fmd, end, dm);
+	fmd->current_shard_entry = shard_sequence_add(fmd, end, dm, ob);
 	fmd->frac_mesh = fmd->current_shard_entry->frac_mesh;
 
 	if (fmd->current_mi_entry) {
