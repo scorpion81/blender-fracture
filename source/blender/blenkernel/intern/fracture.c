@@ -2085,7 +2085,7 @@ bool BKE_lookup_mesh_state(FractureModifierData *fmd, int frame, int do_lookup)
 	}
 }
 
-void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int frame, bool is_parent)
+void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int frame, bool is_parent, bool shards_to_islands)
 {
 	float loc[3] = {0.0f, 0.0f, 0.0f};
 	float rot[4] = {1.0f, 0.0f, 0.0f, 0.0f};
@@ -2096,6 +2096,8 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 	float mat[4][4];
 	float quat[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 	float qrot[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+
+	int val = shards_to_islands ? -1 : 0;
 
 	invert_m4_m4(mat, ob->obmat);
 
@@ -2112,7 +2114,7 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 	mat4_to_quat(quat, mat);
 
 
-	if (par->id > 0)
+	if (par->id > val)
 	{
 		mul_qt_qtqt(qrot, rot, par->rot);
 		mul_qt_qtqt(qrot, quat, qrot);

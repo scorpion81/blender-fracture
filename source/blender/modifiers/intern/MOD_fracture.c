@@ -3222,7 +3222,7 @@ static void do_verts_weights(FractureModifierData *fmd, Shard *s, MeshIsland *mi
 static void do_handle_parent_mi(FractureModifierData *fmd, MeshIsland *mi, MeshIsland *par, Object* ob, int frame, bool is_parent)
 {
 	frame -= par->start_frame;
-	BKE_match_vertex_coords(mi, par, ob, frame, is_parent);
+	BKE_match_vertex_coords(mi, par, ob, frame, is_parent, fmd->shards_to_islands);
 
 	BKE_rigidbody_remove_shard(fmd->modifier.scene, par);
 	fmd->modifier.scene->rigidbody_world->flag |= RBW_FLAG_OBJECT_CHANGED;
@@ -3374,13 +3374,14 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	{
 		/*take care of previous transformation, if any*/
 		MeshIslandSequence *prev = NULL;
+		int val = fmd->shards_to_islands ? -1 : 0;
 
 		if (fmd->current_mi_entry) {
 			prev = fmd->current_mi_entry->prev;
 		}
 
 		/*also take over the UNFRACTURED last shards transformation !!! */
-		if (s->parent_id == 0)
+		if (s->parent_id == val)
 		{
 			//float quat[4];
 
@@ -3433,12 +3434,13 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	{
 		if (par != NULL)
 		{
+			int val = fmd->shards_to_islands ? -1 : 0;
 			copy_v3_v3(mi->rigidbody->lin_vel, par->rigidbody->lin_vel);
 			copy_v3_v3(mi->rigidbody->ang_vel, par->rigidbody->ang_vel);
 			mi->rigidbody->flag = par->rigidbody->flag;
 
 			//keep 1st level shards kinematic if parent is triggered
-			if (par->id == 0 && (par->rigidbody->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION) && fmd->limit_impact) {
+			if (par->id == val && (par->rigidbody->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION) && fmd->limit_impact) {
 
 				/*ShardSequence *prev_shards = fmd->current_shard_entry ? fmd->current_shard_entry->prev : NULL;
 				Shard *par_shard = prev_shards ? BKE_shard_by_id(prev_shards->frac_mesh, s->parent_id, NULL) : NULL;
