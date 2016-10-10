@@ -92,7 +92,7 @@ struct DerivedMesh *BKE_shard_create_dm(struct Shard *s, bool doCustomData);
 void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct FracPointCloud *points, int algorithm,
                                   struct Object *obj, struct DerivedMesh *dm, short inner_material_index, float mat[4][4],
                                   int num_cuts, float fractal, bool smooth, int num_levels, int mode, bool reset, int active_setting,
-                                  int num_settings, char uv_layer[], bool threaded, int solver, float thresh);
+                                  int num_settings, char uv_layer[], bool threaded, int solver, float thresh, bool shards_to_islands);
 
 /* create shards from a base mesh and a set of other objects / cutter planes */
 void BKE_fracture_shard_by_planes(struct FractureModifierData *fmd, struct Object *obj, short inner_material_index, float mat[4][4]);

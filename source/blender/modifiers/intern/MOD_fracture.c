@@ -1264,7 +1264,14 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 			}
 		}
 
-		BLI_srandom(emd->point_seed);
+		//omg, vary the seed here
+		if (emd->shards_to_islands && emd->fracture_mode == MOD_FRACTURE_DYNAMIC) {
+			BLI_srandom(id);
+		}
+		else
+		{
+			BLI_srandom(emd->point_seed);
+		}
 		for (i = 0; i < count; ++i) {
 			if (BLI_frand() < thresh) {
 				float co[3];
@@ -1584,7 +1591,7 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 			BKE_fracture_shard_by_points(fmd->frac_mesh, id, &points, fmd->frac_algorithm, obj, dm, mat_index, mat,
 			                             fmd->fractal_cuts, fmd->fractal_amount, fmd->use_smooth, fmd->fractal_iterations,
 			                             fmd->fracture_mode, fmd->reset_shards, fmd->active_setting, num_settings, fmd->uvlayer_name,
-			                             fmd->execute_threaded, fmd->boolean_solver, fmd->boolean_double_threshold);
+			                             fmd->execute_threaded, fmd->boolean_solver, fmd->boolean_double_threshold, fmd->shards_to_islands);
 		}
 
 		/*TODO, limit this to settings shards !*/
@@ -1874,7 +1881,7 @@ static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new, ShardID 
 			}
 #endif
 			id = BLI_listbase_count(&fmd->frac_mesh->shard_map);
-			s->shard_id = id+1;
+			s->shard_id = id;
 			s->parent_id = par_id;
 			s->flag = SHARD_INTACT;
 			BLI_addtail(&fmd->frac_mesh->shard_map, s);

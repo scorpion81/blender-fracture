@@ -1599,7 +1599,8 @@ static FractureData segment_cells(cell *voro_cells, int startcell, int totcells,
 
 void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short
                                   inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
-                                  bool reset, int active_setting, int num_settings, char uv_layer[64], bool threaded, int solver, float thresh)
+                                  bool reset, int active_setting, int num_settings, char uv_layer[64], bool threaded, int solver, float thresh,
+                                  bool shards_to_islands)
 {
 	int n_size = 8;
 	
@@ -1623,7 +1624,8 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	
 	shard = BKE_shard_by_id(fmesh, id, dm);
 	if (!shard || (shard->flag & SHARD_FRACTURED && (mode == MOD_FRACTURE_DYNAMIC))) {
-		if (id == 0)
+		int val = shards_to_islands ? -1 : 0;
+		if (id == val)
 		{
 			//fallback to entire mesh
 			shard = BKE_shard_by_id(fmesh, -1 , dm);
