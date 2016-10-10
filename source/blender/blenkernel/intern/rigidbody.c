@@ -2069,7 +2069,7 @@ static Shard* findShard(FractureModifierData *fmd, int id)
 static bool check_shard_size(FractureModifierData *fmd, int id)
 {
 	FractureID *fid;
-	float size = 1.0f;
+	float size = 1.0f, diff[3];
 	Shard *s = NULL;
 
 	s = findShard(fmd, id);
@@ -2081,9 +2081,8 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 
 	BKE_shard_calc_minmax(s);
 
-	if ((fabsf(s->max[0] - s->min[0]) < size) &&
-	   (fabsf(s->max[1] - s->min[1]) < size) &&
-	   (fabsf(s->max[2] - s->min[2]) < size))
+	sub_v3_v3v3(diff, s->max, s->min);
+	if (diff[max_axis_v3(diff)] < size)
 	{
 		return false;
 	}

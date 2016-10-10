@@ -1178,10 +1178,14 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 		add_v3_v3v3(bmin, min, cent);
 
 		//first impact only, so shard has id 0
-		if (emd->fracture_mode == MOD_FRACTURE_DYNAMIC && emd->limit_impact) {
+		if (emd->fracture_mode == MOD_FRACTURE_DYNAMIC) {
 			//shrink pointcloud container around impact point, to a size
 			s = BKE_shard_by_id(emd->frac_mesh, id, fracmesh);
-			if (s != NULL && s->impact_size[0] > 0.0f) {
+
+			copy_v3_v3(max, bmax);
+			copy_v3_v3(min, bmin);
+
+			if (s != NULL && s->impact_size[0] > 0.0f && emd->limit_impact) {
 				float size[3], nmin[3], nmax[3], loc[3], tmin[3], tmax[3], rloc[3] = {0,0,0};
 				MeshIslandSequence *msq = emd->current_mi_entry->prev ? emd->current_mi_entry->prev : emd->current_mi_entry;
 				MeshIsland *mi = NULL;
