@@ -1186,10 +1186,13 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 			copy_v3_v3(min, bmin);
 
 			if (s != NULL && s->impact_size[0] > 0.0f && emd->limit_impact) {
-				float size[3], nmin[3], nmax[3], loc[3], tmin[3], tmax[3], rloc[3] = {0,0,0};
+				float size[3], nmin[3], nmax[3], loc[3], tmin[3], tmax[3], rloc[3] = {0,0,0}, quat[4] = {1,0,0,0};
 				MeshIslandSequence *msq = emd->current_mi_entry->prev ? emd->current_mi_entry->prev : emd->current_mi_entry;
 				MeshIsland *mi = NULL;
 				RigidBodyOb *rbo = NULL;
+
+				mat4_to_quat(quat, ob->obmat);
+				invert_qt(quat);
 
 				if (msq) {
 					mi = find_meshisland(&msq->meshIslands, s->parent_id);
@@ -1209,6 +1212,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 				copy_v3_v3(loc, s->impact_loc);
 
 				sub_v3_v3(loc, rloc);
+				mul_qt_v3(quat, loc);
 				add_v3_v3(loc, s->centroid);
 
 				copy_v3_v3(tmax, s->max);
