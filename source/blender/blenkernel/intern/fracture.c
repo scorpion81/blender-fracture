@@ -2096,6 +2096,7 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 	float mat[4][4];
 	float quat[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 	float qrot[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+	float iquat[4] =  {1.0f, 0.0f, 0.0f, 0.0f};
 
 	int val = shards_to_islands ? -1 : 0;
 
@@ -2111,24 +2112,25 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 	mi->rots[3] = rot[3] = par->rots[4*frame+3];
 
 	mul_m4_v3(mat, loc);
-	mat4_to_quat(quat, mat);
+	mat4_to_quat(quat, ob->obmat);
+	invert_qt_qt(iquat, quat);
 
-
-	if (par->id > val)
+	if (par->id == val)
 	{
-		mul_qt_qtqt(qrot, rot, par->rot);
+		invert_qt_qt(qrot, par->rot);
+		mul_qt_qtqt(qrot, rot, qrot);
 		mul_qt_qtqt(qrot, quat, qrot);
 	}
 	else
 	{
-		invert_qt_qt(qrot, par->rot);
-		mul_qt_qtqt(qrot, rot, qrot);
+		mul_qt_qtqt(qrot, rot, par->rot);
+		mul_qt_qtqt(qrot, iquat, qrot);
 	}
 
 	if (is_parent)
 	{
 		copy_v3_v3(centr, mi->centroid);
-		//mul_qt_v3(qrot, centr);
+		mul_qt_v3(qrot, centr);
 		add_v3_v3(centr, loc);
 	}
 	else
@@ -2144,7 +2146,7 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 		copy_v3_v3(co, mi->vertices_cached[j]->co);
 
 		sub_v3_v3(co, mi->centroid);
-		//mul_qt_v3(qrot, co);
+		mul_qt_v3(qrot, co);
 		add_v3_v3(co, centr);
 
 		copy_v3_v3(mi->vertices_cached[j]->co, co);
@@ -2153,7 +2155,7 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 		mi->vertco[3*j+1] = co[1];
 		mi->vertco[3*j+2] = co[2];
 	}
-#if 0
+
 	{
 		DerivedMesh *dm = mi->physics_mesh;
 		MVert* mv, *mvert = dm->getVertArray(dm);
@@ -2166,7 +2168,6 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 			mul_qt_v3(qrot, mv->co);
 		}
 	}
-#endif
 
 	//init rigidbody properly ?
 	copy_v3_v3(mi->centroid, centr);

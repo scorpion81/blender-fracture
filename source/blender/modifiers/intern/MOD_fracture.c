@@ -2024,8 +2024,9 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 	do_fix_normals(fmd, mi);
 
 	copy_v3_v3(mi->centroid, centroid);
-	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
-	copy_qt_qt(mi->rot, rot);
+	//mat4_to_loc_quat(dummyloc, rot, ob->obmat);
+	//copy_qt_qt(mi->rot, rot);
+	unit_qt(mi->rot);
 	mi->bb = BKE_boundbox_alloc_unit();
 	BKE_boundbox_init_from_minmax(mi->bb, min, max);
 	mi->participating_constraints = NULL;
@@ -3369,8 +3370,9 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	BKE_shard_calc_minmax(s);
 	copy_v3_v3(mi->centroid, s->centroid);
 
-	mat4_to_loc_quat(dummyloc, rot, ob->obmat);
-	copy_qt_qt(mi->rot, rot);
+	//mat4_to_loc_quat(dummyloc, rot, ob->obmat);
+	//copy_qt_qt(mi->rot, rot);
+	unit_qt(mi->rot);
 	mi->id = s->shard_id;
 	BLI_snprintf(mi->name, 64, "%d", mi->id);
 
