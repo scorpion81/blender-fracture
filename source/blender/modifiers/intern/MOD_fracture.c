@@ -224,7 +224,7 @@ static void initData(ModifierData *md)
 	fmd->boolean_solver = eBooleanModifierSolver_Carve;
 	fmd->boolean_double_threshold = 1e-6f;
 	fmd->dynamic_percentage = 0.0f;
-	fmd->dynamic_new_constraints = true;
+	fmd->dynamic_new_constraints = MOD_FRACTURE_ALL_DYNAMIC_CONSTRAINTS;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -2559,7 +2559,8 @@ static void search_tree_based(FractureModifierData *rmd, MeshIsland *mi, MeshIsl
 	dist = rmd->contact_dist;
 	factor = rmd->mass_threshold_factor;
 
-	if ((rmd->fracture_mode == MOD_FRACTURE_DYNAMIC) && !rmd->dynamic_new_constraints)
+	if ((rmd->fracture_mode == MOD_FRACTURE_DYNAMIC) &&
+	    (rmd->dynamic_new_constraints != MOD_FRACTURE_ALL_DYNAMIC_CONSTRAINTS))
 	{
 		Shard* s = find_shard(&rmd->frac_mesh->shard_map, mi->id);
 		if (s->parent_id > -1) {
@@ -2603,6 +2604,25 @@ static void search_tree_based(FractureModifierData *rmd, MeshIsland *mi, MeshIsl
 
 			if ((i >= limit) && (limit > 0)) {
 				break;
+			}
+
+			if ((rmd->fracture_mode == MOD_FRACTURE_DYNAMIC))
+			{
+				Shard* s1 = find_shard(&rmd->frac_mesh->shard_map, mi->id);
+				Shard* s2 = find_shard(&rmd->frac_mesh->shard_map, mi2->id);
+
+				if (rmd->dynamic_new_constraints == MOD_FRACTURE_MIXED_DYNAMIC_CONSTRAINTS) {
+					//only build between old and new
+					if (s1->parent_id > -1 && s2->parent_id > -1) {
+						continue;
+					}
+				}
+				else if (rmd->dynamic_new_constraints == MOD_FRACTURE_NO_DYNAMIC_CONSTRAINTS){
+					// dont build at all
+					if (s2->parent_id > -1) {
+						continue;
+					}
+				}
 			}
 
 			connect_meshislands(rmd, mi, mi2, con_type, thresh);

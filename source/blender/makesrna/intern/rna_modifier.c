@@ -5877,6 +5877,13 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	static EnumPropertyItem prop_dynamic_constraints[] = {
+		{MOD_FRACTURE_NO_DYNAMIC_CONSTRAINTS, "NO_CONSTRAINTS", 0, "None", "Build no new constraints"},
+		{MOD_FRACTURE_MIXED_DYNAMIC_CONSTRAINTS, "MIXED_CONSTRAINTS", 0, "Mixed", "Build constraints between new and old shards"},
+		{MOD_FRACTURE_ALL_DYNAMIC_CONSTRAINTS, "ALL_CONSTRAINTS", 0, "All", "Build all new constraints"},
+		{0, NULL, 0, NULL, NULL}
+	};
+
 	srna = RNA_def_struct(brna, "FractureModifier", "Modifier");
 	RNA_def_struct_ui_text(srna, "Fracture Modifier", "Add a fracture container to this object");
 	RNA_def_struct_sdna(srna, "FractureModifierData");
@@ -6400,9 +6407,10 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
-	prop = RNA_def_property(srna, "dynamic_new_constraints", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "dynamic_new_constraints", false);
-	RNA_def_property_ui_text(prop, "New Constraints", "Create new constraints while dynamically fracturing");
+	prop = RNA_def_property(srna, "dynamic_new_constraints", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, prop_dynamic_constraints);
+	RNA_def_property_enum_default(prop, MOD_FRACTURE_NO_DYNAMIC_CONSTRAINTS);
+	RNA_def_property_ui_text(prop, "New Constraints", "Which constraints are created while dynamically fracturing");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 

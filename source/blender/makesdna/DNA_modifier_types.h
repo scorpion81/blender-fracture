@@ -1551,6 +1551,12 @@ enum {
 	MOD_FRACTURE_KEEP_DIFFERENCE     = (1 << 2),
 };
 
+enum {
+	MOD_FRACTURE_NO_DYNAMIC_CONSTRAINTS     = (1 << 0),
+	MOD_FRACTURE_MIXED_DYNAMIC_CONSTRAINTS  = (1 << 1),
+	MOD_FRACTURE_ALL_DYNAMIC_CONSTRAINTS     = (1 << 2),
+};
+
 typedef struct ShardSequence {
 	struct ShardSequence *next, *prev;
 	struct FracMesh *frac_mesh;
