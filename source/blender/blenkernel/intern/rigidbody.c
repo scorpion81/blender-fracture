@@ -2121,6 +2121,11 @@ static bool check_constraints(FractureModifierData *fmd, MeshIsland *mi) {
 	RigidBodyShardCon *con;
 	int i = 0, broken = 0;
 	float percentage;
+
+	if (mi->participating_constraint_count == 0) {
+		return true;
+	}
+
 	for (i = 0; i < mi->participating_constraint_count; i++) {
 		con = mi->participating_constraints[i];
 		if (con->physics_constraint && !RB_constraint_is_enabled(con->physics_constraint)) {
