@@ -223,6 +223,8 @@ static void initData(ModifierData *md)
 
 	fmd->boolean_solver = eBooleanModifierSolver_Carve;
 	fmd->boolean_double_threshold = 1e-6f;
+	fmd->dynamic_percentage = 0.0f;
+	fmd->dynamic_new_constraints = true;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1767,6 +1769,12 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->use_compounds = rmd->use_compounds;
 
 	trmd->autohide_filter_group = rmd->autohide_filter_group;
+
+	trmd->boolean_solver = rmd->boolean_solver;
+	trmd->boolean_double_threshold = rmd->boolean_double_threshold;
+
+	trmd->dynamic_percentage = rmd->dynamic_percentage;
+	trmd->dynamic_new_constraints = rmd->dynamic_new_constraints;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
@@ -2530,6 +2538,14 @@ static void search_tree_based(FractureModifierData *rmd, MeshIsland *mi, MeshIsl
 	limit = rmd->constraint_limit;
 	dist = rmd->contact_dist;
 	factor = rmd->mass_threshold_factor;
+
+	if ((rmd->fracture_mode == MOD_FRACTURE_DYNAMIC) && !rmd->dynamic_new_constraints)
+	{
+		Shard* s = find_shard(&rmd->frac_mesh->shard_map, mi->id);
+		if (s->parent_id > -1) {
+			return;
+		}
+	}
 
 #if 0
 	if (factor > 0.0f && rmd->use_compounds) {

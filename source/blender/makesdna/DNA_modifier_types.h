@@ -1705,6 +1705,7 @@ typedef struct FractureModifierData {
 	int cluster_constraint_type;
 	int fracture_mode;
 	int boolean_solver;
+	int dynamic_percentage;
 
 	float breaking_angle;
 	float breaking_distance;
@@ -1755,6 +1756,7 @@ typedef struct FractureModifierData {
 	int constraint_target;
 	int limit_impact;
 	int fracture_all;
+	int dynamic_new_constraints;
 
 	/* internal flags */
 	int use_experimental;

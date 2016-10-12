@@ -677,7 +677,11 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.minimum_impulse",
         "fracture.mass_threshold_factor",
         "fracture.autohide_filter_group",
-        "fracture.uv_layer"
+        "fracture.uv_layer",
+        "fracture.boolean_solver",
+        "fracture.boolean_double_threshold",
+        "fracture.dynamic_percentage",
+        "fracture.dynamic_new_constraints"
     ]
 
     preset_subdir = "fracture"

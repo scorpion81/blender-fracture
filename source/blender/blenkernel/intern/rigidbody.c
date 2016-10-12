@@ -2066,6 +2066,22 @@ static Shard* findShard(FractureModifierData *fmd, int id)
 	return s;
 }
 
+static MeshIsland* findMeshIsland(FractureModifierData *fmd, int id)
+{
+	MeshIsland *mi = fmd->meshIslands.first;
+
+	while (mi)
+	{
+		if (mi->id == id)
+		{
+			return mi;
+		}
+		mi = mi->next;
+	}
+
+	return NULL;
+}
+
 static bool check_shard_size(FractureModifierData *fmd, int id)
 {
 	FractureID *fid;
@@ -2098,6 +2114,27 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 	printf("FRACTURE : %d\n", id);
 
 	return true;
+}
+
+static bool check_constraints(FractureModifierData *fmd, MeshIsland *mi) {
+	//count broken constraints
+	RigidBodyShardCon *con;
+	int i = 0, broken = 0;
+	float percentage;
+	for (i = 0; i < mi->participating_constraint_count; i++) {
+		con = mi->participating_constraints[i];
+		if (con->physics_constraint && !RB_constraint_is_enabled(con->physics_constraint)) {
+			broken++;
+		}
+	}
+
+	percentage = (float)broken / (float)mi->participating_constraint_count;
+
+	if ((percentage * 100) >= fmd->dynamic_percentage) {
+		return true;
+	}
+
+	return false;
 }
 
 static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
@@ -2140,11 +2177,12 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				RigidBodyOb *rbo = rbw->cache_index_map[linear_index1];
 				int id = rbo->meshisland_index;
 				Shard *s = findShard(fmd1, id);
+				MeshIsland* mi = findMeshIsland(fmd1, id);
 
 				//printf("FORCE1:%f\n",force);
 				bool canbreak = (force > fmd1->dynamic_force) || (fmd1->limit_impact && can_break(ob2, ob1, fmd1->limit_impact));
 
-				if (canbreak)
+				if (canbreak && check_constraints(fmd1, mi))
 				{
 					if (s) {
 						float size[3];
@@ -2187,11 +2225,12 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				RigidBodyOb *rbo = rbw->cache_index_map[linear_index2];
 				int id = rbo->meshisland_index;
 				Shard *s = findShard(fmd2, id);
+				MeshIsland* mi = findMeshIsland(fmd2, id);
 
 				//printf("FORCE2:%f\n",force);
 				bool canbreak = (force > fmd2->dynamic_force) || (fmd2->limit_impact && can_break(ob1, ob2, fmd2->limit_impact));
 
-				if (canbreak)
+				if (canbreak && check_constraints(fmd2, mi))
 				{
 					if (s) {
 						float size[3];

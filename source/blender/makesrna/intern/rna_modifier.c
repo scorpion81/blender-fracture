@@ -6392,6 +6392,22 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Overlap Threshold",  "Threshold for checking overlapping geometry");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
+	prop = RNA_def_property(srna, "dynamic_percentage", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "dynamic_percentage");
+	RNA_def_property_range(prop, 0, 100);
+	//RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyModifier_breaking_percentage_set", NULL);
+	RNA_def_property_ui_text(prop, "Constraint Percentage", "Percentage of broken constraints per island which leads to dynamic fracturing of this island");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "dynamic_new_constraints", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "dynamic_new_constraints", false);
+	RNA_def_property_ui_text(prop, "New Constraints", "Create new constraints while dynamically fracturing");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+
+
 	/*Fracture Modifiers own python / RNA API */
 	rna_def_mesh_island(brna);
 	prop = RNA_def_property(srna, "mesh_islands", PROP_COLLECTION, PROP_NONE);

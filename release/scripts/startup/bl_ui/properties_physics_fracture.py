@@ -92,8 +92,12 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             return
 
         if md.fracture_mode == 'DYNAMIC':
-            layout.prop(md, "dynamic_force")
-            layout.prop(md, "limit_impact")
+            row = layout.row(align=True)
+            row.prop(md, "dynamic_force")
+            row.prop(md, "dynamic_percentage")
+            row = layout.row()
+            row.prop(md, "limit_impact")
+            row.prop(md, "dynamic_new_constraints")
 
         layout.prop(md, "frac_algorithm")
         if md.frac_algorithm in {'BOOLEAN', 'BOOLEAN_FRACTAL'}:

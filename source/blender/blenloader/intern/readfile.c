@@ -5244,6 +5244,8 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 		fmd->boolean_solver = eBooleanModifierSolver_Carve;
 		fmd->boolean_double_threshold = 1e-6f;
 		fmd->keep_cutter_shards = MOD_FRACTURE_KEEP_BOTH;
+		fmd->dynamic_new_constraints = true;
+		fmd->dynamic_percentage = 0;
 	}
 
 	if (fm == NULL || fmd->dm_group) {
