@@ -249,7 +249,7 @@ static void free_meshislands(FractureModifierData* fmd, ListBase* meshIslands, b
 static void free_simulation(FractureModifierData *fmd, bool do_free_seq, bool do_free_rigidbody)
 {
 	/* what happens with this in dynamic fracture ? worst case, we need a sequence for this too*/
-	if (fmd->shards_to_islands) {
+	if (fmd->shards_to_islands && fmd->fracture_mode != MOD_FRACTURE_DYNAMIC) {
 		while (fmd->islandShards.first) {
 			Shard *s = fmd->islandShards.first;
 			BLI_remlink(&fmd->islandShards, s);
@@ -1205,6 +1205,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 					if (mi) {
 						rbo = mi->rigidbody;
 						copy_v3_v3(rloc, rbo->pos);
+						mul_qt_qtqt(quat, rbo->orn, quat);
 					}
 				}
 
@@ -2414,7 +2415,7 @@ static void mesh_separate_loose(FractureModifierData *rmd, Object *ob, DerivedMe
 	BM_mesh_elem_table_ensure(bm_work, BM_VERT);
 
 	/* free old islandshards first, if any */
-	while (rmd->islandShards.first) {
+	while (rmd->islandShards.first && rmd->fracture_mode != MOD_FRACTURE_DYNAMIC) {
 		Shard *s = rmd->islandShards.first;
 		BLI_remlink(&rmd->islandShards, s);
 		BKE_shard_free(s, true);
