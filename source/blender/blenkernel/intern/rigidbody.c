@@ -2136,6 +2136,13 @@ static bool check_constraints(FractureModifierData *fmd, MeshIsland *mi) {
 	percentage = (float)broken / (float)mi->participating_constraint_count;
 
 	if ((percentage * 100) >= fmd->dynamic_percentage) {
+		for (i = 0; i < mi->participating_constraint_count; i++) {
+			con = mi->participating_constraints[i];
+			if (con->physics_constraint) {
+				RB_constraint_set_enabled(con->physics_constraint, false);
+			}
+		}
+
 		return true;
 	}
 
@@ -4406,7 +4413,7 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 
 					if (!found)
 					{
-						if (mti->deformVerts)
+						if (mti->deformVerts && (md->mode & (eModifierMode_Realtime | eModifierMode_Render)))
 						{
 							float (*vertexCos)[3];
 							int totvert = dm->getNumVerts(dm);
@@ -4418,7 +4425,7 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 							MEM_freeN(vertexCos);
 						}
 
-						if (mti->applyModifier)
+						if (mti->applyModifier && (md->mode & (eModifierMode_Realtime | eModifierMode_Render)))
 						{
 							DerivedMesh *ndm;
 

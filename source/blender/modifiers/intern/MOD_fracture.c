@@ -528,16 +528,20 @@ static void freeData(ModifierData *md)
 }
 
 //XXX TODO move cluster handling to BKE too
-static void do_cluster_count(FractureModifierData *fmd)
+static void do_cluster_count(FractureModifierData *fmd, Object *obj)
 {
 	int k = 0;
 	KDTree *tree;
 	MeshIsland *mi, **seeds;
-	int seed_count;
+	int seed_count, group_count = 0;
+	float mat[4][4];
+	GroupObject *go = NULL;
 
 	int mi_count;
+	invert_m4_m4(mat, obj->obmat);
+
 	/* zero clusters or one mean no clusters, all shards keep free */
-	if (fmd->cluster_count < 2) {
+	if (fmd->cluster_count < 1 && !fmd->cluster_group) {
 		return;
 	}
 
@@ -548,20 +552,40 @@ static void do_cluster_count(FractureModifierData *fmd)
 
 	mi_count = BLI_listbase_count(&fmd->meshIslands);
 	seed_count = (fmd->cluster_count > mi_count ? mi_count : fmd->cluster_count);
-	seeds = MEM_mallocN(sizeof(MeshIsland *) * seed_count, "seeds");
-	tree = BLI_kdtree_new(seed_count);
+	//seed_count = fmd->cluster_count;
+
+	if (fmd->cluster_group)
+	{
+		 group_count = BLI_listbase_count(&fmd->cluster_group->gobject);
+	}
+
+	seeds = MEM_mallocN(sizeof(MeshIsland *) * (seed_count), "seeds");
+	tree = BLI_kdtree_new(seed_count + group_count);
 
 	/* pick n seed locations, randomly scattered over the object */
 	for (k = 0; k < seed_count; k++) {
 		int which_index = k * (int)(mi_count / seed_count);
 		MeshIsland *which = (MeshIsland *)BLI_findlink(&fmd->meshIslands, which_index);
 		which->particle_index = k;
+		print_v3("INSERT", which->centroid);
 		BLI_kdtree_insert(tree, k, which->centroid);
 		seeds[k] = which;
 	}
 
-	BLI_kdtree_balance(tree);
+	/*add the group here */
+	if (fmd->cluster_group) {
+		for (k = seed_count, go = fmd->cluster_group->gobject.first; go; k++, go = go->next)
+		{
+			float loc[3];
 
+			mul_v3_m4v3(loc, mat, go->ob->loc);
+
+			print_v3("INSERT", loc);
+			BLI_kdtree_insert(tree, k, loc);
+		}
+	}
+
+	BLI_kdtree_balance(tree);
 
 	/* assign each shard to its closest center */
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next ) {
@@ -569,13 +593,14 @@ static void do_cluster_count(FractureModifierData *fmd)
 		int index;
 
 		index = BLI_kdtree_find_nearest(tree, mi->centroid, &n);
-		mi->particle_index = seeds[index]->particle_index;
+		mi->particle_index = index < seed_count ? seeds[index]->particle_index : index;
 	}
 
 	BLI_kdtree_free(tree);
 	MEM_freeN(seeds);
 }
 
+#if 0
 static void do_cluster_group(FractureModifierData *fmd, Object* obj)
 {
 	KDTree *tree;
@@ -615,18 +640,12 @@ static void do_cluster_group(FractureModifierData *fmd, Object* obj)
 		BLI_kdtree_free(tree);
 	}
 }
+#endif
 
 static void do_clusters(FractureModifierData *fmd, Object* obj)
 {
 	/*grow clusters from all meshIslands */
-	if (fmd->cluster_group)
-	{
-		do_cluster_group(fmd, obj);
-	}
-	else
-	{
-		do_cluster_count(fmd);
-	}
+	do_cluster_count(fmd, obj);
 }
 
 //XXXX TODO same applies for autohide prep and normals fixing, latter could be a separate operator or so, called from refresh op
@@ -3463,23 +3482,33 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 			mi->rigidbody->flag = par->rigidbody->flag;
 
 			//keep 1st level shards kinematic if parent is triggered
-			if (par->id == val && (par->rigidbody->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION) && fmd->limit_impact) {
+			if ((par->rigidbody->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION) && fmd->limit_impact) {
 
-				/*ShardSequence *prev_shards = fmd->current_shard_entry ? fmd->current_shard_entry->prev : NULL;
-				Shard *par_shard = prev_shards ? BKE_shard_by_id(prev_shards->frac_mesh, s->parent_id, NULL) : NULL;
+				ShardSequence *prev_shards = fmd->current_shard_entry ? fmd->current_shard_entry->prev : NULL;
+				Shard *par_shard = prev_shards ? find_shard(&prev_shards->frac_mesh->shard_map, s->parent_id) : NULL;
+
+				if (!par_shard) {
+					par_shard = prev_shards ? find_shard(&prev_shards->frac_mesh->shard_map, s->shard_id) : NULL;
+				}
 
 				if (par_shard) {
 					float size[3];
-					//mul_v3_v3fl(size, par_shard->impact_size, 0.5f);
+					copy_v3_v3(size, par_shard->impact_size);
+					mul_v3_fl(size, 2.0f);
 
-					if (!contains(par_shard->impact_loc, size, s->centroid)) {
+					if (contains(par_shard->impact_loc, size, mi->rigidbody->pos)) {
+						mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC;
+						mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					}
+					else if (par->id == val) {
 						mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
 						mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					}
-				} */
-
-				mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
-				mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+				}
+				else if (par->id > val) {
+					mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC;
+					mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+				}
 			}
 		}
 
