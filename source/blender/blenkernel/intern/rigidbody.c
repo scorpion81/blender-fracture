@@ -2190,6 +2190,9 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				int id = rbo->meshisland_index;
 				Shard *s = findShard(fmd1, id);
 				MeshIsland* mi = findMeshIsland(fmd1, id);
+				if (mi->rigidbody->mass > 0) {
+					force = force / mi->rigidbody->mass;
+				}
 
 				//printf("FORCE1:%f\n",force);
 				bool canbreak = (force > fmd1->dynamic_force) || (fmd1->limit_impact && can_break(ob2, ob1, fmd1->limit_impact));
@@ -2238,6 +2241,10 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				int id = rbo->meshisland_index;
 				Shard *s = findShard(fmd2, id);
 				MeshIsland* mi = findMeshIsland(fmd2, id);
+
+				if (mi->rigidbody->mass > 0) {
+					force = force / mi->rigidbody->mass;
+				}
 
 				//printf("FORCE2:%f\n",force);
 				bool canbreak = (force > fmd2->dynamic_force) || (fmd2->limit_impact && can_break(ob1, ob2, fmd2->limit_impact));
