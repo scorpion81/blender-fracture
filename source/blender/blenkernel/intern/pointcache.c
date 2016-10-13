@@ -1320,9 +1320,9 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 	ob = rbw->objects[rbw->cache_offset_map[index]];
 	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 
-	if (rbo && rbo->type == RBO_TYPE_ACTIVE && rbo->physics_object)
+	if (rbo && rbo->physics_object)
 	{
-		if (!fmd || fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
+		if ((!fmd || fmd->fracture_mode != MOD_FRACTURE_DYNAMIC) && rbo->type == RBO_TYPE_ACTIVE)
 		{
 
 #ifdef WITH_BULLET
@@ -1389,7 +1389,7 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 
 	ob = rbw->objects[rbw->cache_offset_map[index]];
 	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
-	if (!fmd || fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
+	if (!fmd || (fmd && fmd->fracture_mode != MOD_FRACTURE_DYNAMIC))
 	{
 		if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
 			if (old_data) {
@@ -1404,7 +1404,7 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 	}
 	else if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 	{
-		if (rbo && rbo->type == RBO_TYPE_ACTIVE)
+		if (rbo /*&& rbo->type == RBO_TYPE_ACTIVE*/)
 		{
 			//damn, slow listbase based lookup
 			//TODO, need to speed this up.... array, hash ?
@@ -1455,7 +1455,7 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 	ob = rbw->objects[rbw->cache_offset_map[index]];
 	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 
-	if (rbo->type == RBO_TYPE_ACTIVE) {
+	if (rbo->type == RBO_TYPE_ACTIVE || (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)) {
 
 		copy_v3_v3(keys[1].co, rbo->pos);
 		copy_qt_qt(keys[1].rot, rbo->orn);
