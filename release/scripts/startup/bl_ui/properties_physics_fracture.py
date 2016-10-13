@@ -95,9 +95,11 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             row = layout.row(align=True)
             row.prop(md, "dynamic_force")
             row.prop(md, "dynamic_percentage")
-            col = layout.column()
+            col = layout.column(align=True)
             col.prop(md, "dynamic_new_constraints")
-            col.prop(md, "limit_impact")
+            row = col.row(align=True)
+            row.prop(md, "limit_impact")
+            row.prop(md, "dynamic_min_size")
 
         layout.prop(md, "frac_algorithm")
         if md.frac_algorithm in {'BOOLEAN', 'BOOLEAN_FRACTAL'}:

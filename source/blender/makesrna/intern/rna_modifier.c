@@ -6414,6 +6414,12 @@ static void rna_def_modifier_fracture(BlenderRNA *brna)
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
+	prop = RNA_def_property(srna, "dynamic_min_size", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "dynamic_min_size");
+	RNA_def_property_range(prop, 0.001f, 10000.0f);
+	RNA_def_property_float_default(prop, 1.0f);
+	RNA_def_property_ui_text(prop, "Minimum Size",  "Minimum shard size in blenderunits");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 
 	/*Fracture Modifiers own python / RNA API */

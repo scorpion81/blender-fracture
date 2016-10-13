@@ -2085,7 +2085,7 @@ static MeshIsland* findMeshIsland(FractureModifierData *fmd, int id)
 static bool check_shard_size(FractureModifierData *fmd, int id)
 {
 	FractureID *fid;
-	float size = 1.0f, diff[3];
+	float size = fmd->dynamic_min_size, diff[3];
 	Shard *s = NULL;
 
 	s = findShard(fmd, id);

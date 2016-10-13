@@ -681,7 +681,8 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.boolean_solver",
         "fracture.boolean_double_threshold",
         "fracture.dynamic_percentage",
-        "fracture.dynamic_new_constraints"
+        "fracture.dynamic_new_constraints",
+        "fracture.dynamic_min_size"
     ]
 
     preset_subdir = "fracture"

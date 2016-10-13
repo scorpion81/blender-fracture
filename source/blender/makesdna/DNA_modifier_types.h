@@ -1736,6 +1736,7 @@ typedef struct FractureModifierData {
 	float directional_factor;
 	float mass_threshold_factor;
 	float boolean_double_threshold;
+	float dynamic_min_size;
 
 	/* flags */
 	int refresh;
@@ -1781,7 +1782,7 @@ typedef struct FractureModifierData {
 
 	int keep_cutter_shards;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

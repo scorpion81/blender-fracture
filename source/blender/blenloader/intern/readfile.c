@@ -5246,6 +5246,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 		fmd->keep_cutter_shards = MOD_FRACTURE_KEEP_BOTH;
 		fmd->dynamic_new_constraints = MOD_FRACTURE_ALL_DYNAMIC_CONSTRAINTS;
 		fmd->dynamic_percentage = 0;
+		fmd->dynamic_min_size = 1.0f;
 	}
 
 	if (fm == NULL || fmd->dm_group) {
