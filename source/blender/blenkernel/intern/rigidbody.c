@@ -2483,14 +2483,34 @@ void BKE_rigidbody_world_groups_relink(RigidBodyWorld *rbw)
 
 void BKE_rigidbody_world_id_loop(RigidBodyWorld *rbw, RigidbodyWorldIDFunc func, void *userdata)
 {
+	GroupObject *go;
+
 	func(rbw, (ID **)&rbw->group, userdata, IDWALK_NOP);
 	func(rbw, (ID **)&rbw->constraints, userdata, IDWALK_NOP);
 	func(rbw, (ID **)&rbw->effector_weights->group, userdata, IDWALK_NOP);
 
+	/* in regular blender one rigidbody is equivalent to one object, but in FM build you can have more
+	 * rigidbodies in the world than objects in the object array... thats why loop over the group of objects
+	 * of the rigidbody world... the rbw->objects array would contain group objects only anyway, also dont forget
+	 * regular constraints if there are any */
+
+	/*
 	if (rbw->objects) {
 		int i;
 		for (i = 0; i < rbw->numbodies; i++) {
 			func(rbw, (ID **)&rbw->objects[i], userdata, IDWALK_NOP);
+		}
+	}*/
+
+	if (rbw->group) {
+		for (go = rbw->group->gobject.first; go; go = go->next) {
+			func(rbw, (ID **)&go->ob, userdata, IDWALK_NOP);
+		}
+	}
+
+	if (rbw->constraints) {
+		for (go = rbw->constraints->gobject.first; go; go = go->next) {
+			func(rbw, (ID **)&go->ob, userdata, IDWALK_NOP);
 		}
 	}
 }
