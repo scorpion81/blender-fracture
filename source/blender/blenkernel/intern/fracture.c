@@ -1417,7 +1417,7 @@ void BKE_fracture_shard_by_greasepencil(FractureModifierData *fmd, Object *obj, 
 		for (gpl = obj->gpd->layers.first; gpl; gpl = gpl->next) {
 			for (gpf = gpl->frames.first; gpf; gpf = gpf->next) {
 				for (gps = gpf->strokes.first; gps; gps = gps->next) {
-					BMesh *bm = BM_mesh_create(&bm_mesh_allocsize_default, &((struct BMeshCreateParams){.use_toolflags = false,}));
+					BMesh *bm = BM_mesh_create(&bm_mesh_allocsize_default, &((struct BMeshCreateParams){.use_toolflags = true,}));
 					DerivedMesh *dm = NULL;
 
 
@@ -1428,8 +1428,8 @@ void BKE_fracture_shard_by_greasepencil(FractureModifierData *fmd, Object *obj, 
 					{
 						/*create debug mesh*/
 						Object* o;
-						o = BKE_object_add(G.main, fmd->modifier.scene, OB_MESH);
-						BM_mesh_bm_to_me(bm, o->data, true);
+						o = BKE_object_add(G.main, fmd->modifier.scene, OB_MESH, "DUMMY");
+						BM_mesh_bm_to_me(bm, o->data, (&(struct BMeshToMeshParams){0}));
 					}
 #endif
 

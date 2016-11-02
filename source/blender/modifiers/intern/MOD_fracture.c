@@ -226,6 +226,7 @@ static void initData(ModifierData *md)
 	fmd->dynamic_percentage = 0.0f;
 	fmd->dynamic_new_constraints = MOD_FRACTURE_ALL_DYNAMIC_CONSTRAINTS;
 	fmd->dynamic_min_size = 1.0f;
+	fmd->keep_cutter_shards = MOD_FRACTURE_KEEP_BOTH;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1797,6 +1798,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->dynamic_percentage = rmd->dynamic_percentage;
 	trmd->dynamic_new_constraints = rmd->dynamic_new_constraints;
 	trmd->dynamic_min_size = rmd->dynamic_min_size;
+	trmd->keep_cutter_shards = rmd->keep_cutter_shards;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
