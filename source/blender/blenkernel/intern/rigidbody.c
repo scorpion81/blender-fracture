@@ -3844,8 +3844,9 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 	/* update world */
 	if (rebuild) {
 		BKE_rigidbody_validate_sim_world(scene, rbw, true);
-		rigidbody_update_sim_world(scene, rbw);
 	}
+
+	rigidbody_update_sim_world(scene, rbw);
 
 	/* update objects */
 	for (go = rbw->group->gobject.first; go; go = go->next) {
