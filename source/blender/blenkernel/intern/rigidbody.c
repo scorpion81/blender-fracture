@@ -79,8 +79,8 @@
 #ifdef WITH_BULLET
 
 static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always);
-static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed);
-static void rigidbody_passive_fake_parenting(FractureModifierData *fmd, Object *ob, RigidBodyOb *rbo);
+static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed, float size[3]);
+static void rigidbody_passive_fake_parenting(FractureModifierData *fmd, Object *ob, RigidBodyOb *rbo, float imat[4][4]);
 static void rigidbody_passive_hook(FractureModifierData *fmd, MeshIsland *mi, Object* ob);
 
 
@@ -476,7 +476,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		return;
 	}
 
-	invert_m4_m4(ob->imat, ob->obmat);
+	//invert_m4_m4(ob->imat, ob->obmat);
 	mat4_to_size(size, ob->obmat);
 
 	if (rmd->fracture_mode == MOD_FRACTURE_PREFRACTURED && frame > -1) {
@@ -1190,7 +1190,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 /* Create physics sim representation of shard given RigidBody settings
  * < rebuild: even if an instance already exists, replace it
  */
-void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, short rebuild, int transfer_speeds)
+void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, short rebuild, int transfer_speeds, float isize[3])
 {
 	FractureModifierData *fmd = NULL;
 	RigidBodyOb *rbo = (mi) ? mi->rigidbody : NULL;
@@ -1220,7 +1220,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 	}
 	if (!rbo->physics_object || rebuild) {
-		float locbb[3], size[3];
+		float size[3];
 
 		/* remove rigid body if it already exists before creating a new one */
 		if (rbo->physics_object) {
@@ -1240,15 +1240,16 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		}
 #endif
 
-		if (ob->derivedFinal)
+		/*if (ob->derivedFinal)
 		{
 			DM_mesh_boundbox(ob->derivedFinal, locbb, size);
 		}
 		else
 		{
 			BKE_mesh_boundbox_calc((Mesh*)ob->data, locbb, size);
-		}
+		}*/
 
+		copy_v3_v3(size, isize);
 		mul_v3_v3(size, ob->size);
 		rbo->physics_object = RB_body_new(rbo->physics_shape, loc, rot, fmd->use_compounds, fmd->impulse_dampening,
 		                                  fmd->directional_factor, fmd->minimum_impulse, fmd->mass_threshold_factor, size);
@@ -3108,7 +3109,7 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw)
 	}
 }
 
-static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw)
+static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw, bool rebuild)
 {
 	float adj_gravity[3];
 
@@ -3125,7 +3126,8 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw)
 	RB_dworld_set_gravity(rbw->physics_world, adj_gravity);
 
 	/* update object array in case there are changes */
-	if (!(rbw->flag & RBW_FLAG_REFRESH_MODIFIERS))
+	//if (!(rbw->flag & RBW_FLAG_REFRESH_MODIFIERS))
+	if (rebuild)
 	{
 		BKE_rigidbody_update_ob_array(rbw);
 	}
@@ -3204,7 +3206,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 					{
 						//fracture modifier case TODO, update mi->physicsmesh somehow and redraw
 						rbo->flag |= RBO_FLAG_NEEDS_RESHAPE;
-						validateShard(rbw, mi, ob, false, false);
+						validateShard(rbw, mi, ob, false, false, size);
 					}
 				}
 				else
@@ -3313,7 +3315,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 	 */
 }
 
-static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed)
+static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed, float size[3])
 {
 	if (mi == NULL || mi->rigidbody == NULL) {
 		return;
@@ -3321,10 +3323,10 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int r
 
 	if (rebuild || (mi->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD)) {
 		/* World has been rebuilt so rebuild object */
-		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true, transfer_speed);
+		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true, transfer_speed, size);
 	}
 	else if (mi->rigidbody->flag & RBO_FLAG_NEEDS_VALIDATE) {
-		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, false, transfer_speed);
+		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, false, transfer_speed, size);
 	}
 	/* refresh shape... */
 	if (mi->rigidbody->physics_object && (mi->rigidbody->flag & RBO_FLAG_NEEDS_RESHAPE)) {
@@ -3663,6 +3665,18 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		int count = 0, brokencount = 0, plastic = 0;
 		float frame = 0;
 		float size[3] = {1.0f, 1.0f, 1.0f};
+		float bbsize[3];
+		float locbb[3];
+
+		if (ob->derivedFinal)
+		{
+			DM_mesh_boundbox(ob->derivedFinal, locbb, bbsize);
+		}
+		else
+		{
+			BKE_mesh_boundbox_calc((Mesh*)ob->data, locbb, bbsize);
+		}
+
 
 		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
@@ -3716,7 +3730,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 					}
 				}
 
-				validateShard(rbw, is_empty ? NULL : mi, ob, do_rebuild, fmd->fracture_mode == MOD_FRACTURE_DYNAMIC);
+				validateShard(rbw, is_empty ? NULL : mi, ob, do_rebuild, fmd->fracture_mode == MOD_FRACTURE_DYNAMIC, bbsize);
 			}
 
 			/* update simulation object... */
@@ -3846,7 +3860,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 		BKE_rigidbody_validate_sim_world(scene, rbw, true);
 	}
 
-	rigidbody_update_sim_world(scene, rbw);
+	rigidbody_update_sim_world(scene, rbw, rebuild);
 
 	/* update objects */
 	for (go = rbw->group->gobject.first; go; go = go->next) {
@@ -4092,6 +4106,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 	RigidBodyOb *rbo;
 	float size[3] = {1, 1, 1};
 	float centr[3];
+	float imat[4][4];
 	
 
 	if (md->type == eModifierType_Fracture) {
@@ -4113,6 +4128,9 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 				}
 			}
 
+			invert_m4_m4(imat, fmd->passive_parent_mat);
+			invert_m4_m4(ob->imat, ob->obmat);
+
 			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 
 				rbo = mi->rigidbody;
@@ -4120,7 +4138,9 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 					continue;
 				}
 
-				rigidbody_passive_fake_parenting(fmd, ob, rbo);
+				if (ob->rigidbody_object->type == RBO_TYPE_ACTIVE) {
+					rigidbody_passive_fake_parenting(fmd, ob, rbo, imat);
+				}
 
 				/* use rigid body transform after cache start frame if objects is not being transformed */
 				if (BKE_rigidbody_check_sim_running(rbw, ctime) && !(ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
@@ -4155,7 +4175,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, fmd, (int)ctime);
 				}
 #endif
-				if (rbo->type == RBO_TYPE_ACTIVE || rbo->flag & RBO_FLAG_KINEMATIC) {
+				if ((ob->rigidbody_object->type == RBO_TYPE_ACTIVE) && (rbo->type == RBO_TYPE_ACTIVE || rbo->flag & RBO_FLAG_KINEMATIC)) {
 					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, fmd, (int)ctime);
 				}
 			}
@@ -4187,6 +4207,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 				if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
 				{
 					copy_m4_m4(ob->obmat, fmd->origmat);
+					zero_m4(fmd->origmat);
 				}
 			}
 
@@ -4295,16 +4316,16 @@ static void do_reset_rigidbody(RigidBodyOb *rbo, Object *ob, MeshIsland* mi, flo
 	}
 }
 
-void rigidbody_passive_fake_parenting(FractureModifierData *fmd, Object *ob, RigidBodyOb *rbo)
+void rigidbody_passive_fake_parenting(FractureModifierData *fmd, Object *ob, RigidBodyOb *rbo, float imat[4][4])
 {
 	if (rbo->type == RBO_TYPE_PASSIVE && rbo->physics_object)
 	{
 		//fake parenting, move all passive rbos together with original object in FM case
 		float quat[4];
-		float imat[4][4];
+		//float imat[4][4];
 
-		//first get rid of old obmat (=passive_parent_mat)
-		invert_m4_m4(imat, fmd->passive_parent_mat);
+		//first get rid of old obmat (=passive_parent_mat) -> do outside loop, expensive function due to profiler
+		//invert_m4_m4(imat, fmd->passive_parent_mat);
 		mat4_to_quat(quat, imat);
 		mul_m4_v3(imat, rbo->pos);
 		mul_qt_qtqt(rbo->orn, quat, rbo->orn);
@@ -4325,19 +4346,21 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 	RigidBodyOb *rbo;
 	ModifierData *md;
 	FractureModifierData *rmd;
+	float imat[4][4];
 	
 	md = modifiers_findByType(ob, eModifierType_Fracture);
 	if (md != NULL)
 	{
 		MeshIsland *mi;
 		rmd = (FractureModifierData *)md;
+		invert_m4_m4(imat, ob->obmat);
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next)
 		{
 			rbo = mi->rigidbody;
 			do_reset_rigidbody(rbo, ob, mi, loc, rot, quat, rotAxis, rotAngle);
 			if (rbo->flag & RBO_FLAG_KINEMATIC)
 			{
-				rigidbody_passive_fake_parenting(rmd, ob, rbo);
+				rigidbody_passive_fake_parenting(rmd, ob, rbo, imat);
 			}
 			else
 			{

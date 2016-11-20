@@ -84,7 +84,7 @@ void BKE_rigidbody_validate_sim_constraint(struct RigidBodyWorld *rbw, struct Ob
 void BKE_rigidbody_validate_sim_shard_constraint(struct RigidBodyWorld *rbw, struct FractureModifierData* fmd, struct Object*,
                                                  struct RigidBodyShardCon *rbsc, short rebuild);
 
-void BKE_rigidbody_validate_sim_shard(struct RigidBodyWorld *rbw, struct MeshIsland *mi, struct Object *ob, short rebuild, int transfer_speeds);
+void BKE_rigidbody_validate_sim_shard(struct RigidBodyWorld *rbw, struct MeshIsland *mi, struct Object *ob, short rebuild, int transfer_speeds, float size[3]);
 void BKE_rigidbody_validate_sim_shard_shape(struct MeshIsland *mi, struct Object *ob, short rebuild);
 
 /* move the islands of the visible mesh according to shard rigidbody movement */

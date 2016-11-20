@@ -227,6 +227,7 @@ static void initData(ModifierData *md)
 	fmd->dynamic_new_constraints = MOD_FRACTURE_ALL_DYNAMIC_CONSTRAINTS;
 	fmd->dynamic_min_size = 1.0f;
 	fmd->keep_cutter_shards = MOD_FRACTURE_KEEP_BOTH;
+	fmd->use_constraint_collision = false;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1799,6 +1800,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->dynamic_new_constraints = rmd->dynamic_new_constraints;
 	trmd->dynamic_min_size = rmd->dynamic_min_size;
 	trmd->keep_cutter_shards = rmd->keep_cutter_shards;
+	trmd->use_constraint_collision = rmd->use_constraint_collision;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
@@ -2470,7 +2472,12 @@ static void do_constraint(FractureModifierData* fmd, MeshIsland *mi1, MeshIsland
 		rbsc->flag &= ~RBC_FLAG_USE_BREAKING;
 	}
 
-	rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
+	if (!fmd->use_constraint_collision) {
+		rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
+	}
+	else {
+		rbsc->flag &= ~RBC_FLAG_DISABLE_COLLISIONS;
+	}
 
 	if ((mi1->particle_index != -1) && (mi2->particle_index != -1) &&
 		(mi1->particle_index == mi2->particle_index))

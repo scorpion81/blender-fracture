@@ -217,7 +217,7 @@ static int rigidbody_constraints_remove_exec(bContext *C, wmOperator *op)
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects)
 	{
 		if (ob->rigidbody_constraint) {
-			ED_rigidbody_constraint_remove(scene, ob, op->reports);
+			ED_rigidbody_constraint_remove(G.main, scene, ob);
 			change = true;
 		}
 	}

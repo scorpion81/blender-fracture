@@ -1751,6 +1751,7 @@ typedef struct FractureModifierData {
 	int use_breaking;
 	int use_smooth;
 	int use_greasepencil_edges;
+	int use_constraint_collision;
 
 	int shards_to_islands;
 	int execute_threaded;
@@ -1782,7 +1783,7 @@ typedef struct FractureModifierData {
 
 	int keep_cutter_shards;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {
