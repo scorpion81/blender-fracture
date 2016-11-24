@@ -554,7 +554,7 @@ static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, Deri
 	/* and we need both halves, so twice again */
 	Shard *s2 = NULL;
 	int index = 0;
-	int max_retries = 20;
+	int max_retries = 3;
 
 	/*continue with "halves", randomly*/
 	if ((*i) == 0) {
@@ -972,13 +972,22 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		}
 
 		BLI_kdtree_balance(preselect_tree);
-#pragma omp parallel for if (algorithm == MOD_FRACTURE_BOOLEAN && !threaded)
-		for (i = 0; i < expected_shards; i++)	{
-			bool stop = handle_boolean_bisect(fm, obj, expected_shards, algorithm, parent_id, tempshards, dm_parent,
-			                      bm_parent, obmat, inner_material_index, num_cuts, num_levels, fractal,
-			                      &i, smooth, &tempresults, &dm_p, uv_layer, preselect_tree, solver, thresh);
-			//if (stop)
-			//	break;
+
+		if ((algorithm == MOD_FRACTURE_BOOLEAN) && !threaded)
+		{
+			#pragma omp parallel for
+			for (i = 0; i < expected_shards; i++)	{
+				handle_boolean_bisect(fm, obj, expected_shards, algorithm, parent_id, tempshards, dm_parent,
+										bm_parent, obmat, inner_material_index, num_cuts, num_levels, fractal,
+										&i, smooth, &tempresults, &dm_p, uv_layer, preselect_tree, solver, thresh);
+			}
+		}
+		else {
+			for (i = 0; i < expected_shards; i++)	{
+				handle_boolean_bisect(fm, obj, expected_shards, algorithm, parent_id, tempshards, dm_parent,
+										bm_parent, obmat, inner_material_index, num_cuts, num_levels, fractal,
+										&i, smooth, &tempresults, &dm_p, uv_layer, preselect_tree, solver, thresh);
+			}
 		}
 
 		BLI_kdtree_free(preselect_tree);
