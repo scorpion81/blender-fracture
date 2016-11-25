@@ -558,7 +558,7 @@ static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, Deri
 
 	/*continue with "halves", randomly*/
 	if ((*i) == 0) {
-		*dm_p = dm_parent;
+		*dm_p = CDDM_copy(dm_parent);
 	}
 
 	while (s == NULL || s2 == NULL) {
@@ -623,7 +623,7 @@ static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, Deri
 
 			Shard *p = (*tempresults)[j];
 
-			if (*dm_p != dm_parent && *dm_p != NULL) {
+			if (*dm_p != NULL) {
 				(*dm_p)->needsFree = 1;
 				(*dm_p)->release(*dm_p);
 			}
@@ -700,12 +700,12 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 
 	if ((algorithm == MOD_FRACTURE_BOOLEAN) || (algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL)) {
 		MPoly *mpoly, *mp;
-		int totpoly, i;
+		int totpoly, po;
 
 		*dm_parent = BKE_shard_create_dm(p, true);
 		mpoly = (*dm_parent)->getPolyArray(*dm_parent);
 		totpoly = (*dm_parent)->getNumPolys(*dm_parent);
-		for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
+		for (po = 0, mp = mpoly; po < totpoly; po++, mp++) {
 			mp->flag &= ~ME_FACE_SEL;
 		}
 	}
@@ -893,7 +893,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		if (!fm->last_shard_tree /*&& (fm->shard_count > 0)*/ && mode == MOD_FRACTURE_PREFRACTURED)
 		{
 			Shard *t;
-			int i = 0;
+			int ti = 0;
 			count = BLI_listbase_count(&fm->shard_map);
 			fm->shard_count = count;
 			if (do_tree)
@@ -913,7 +913,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 					BLI_kdtree_insert(fm->last_shard_tree, i, t->raw_centroid);
 				}
 				fm->last_shards[i] = t;
-				i++;
+				ti++;
 			}
 
 			if (do_tree)
@@ -1025,8 +1025,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		dm_p = NULL;
 	}
 
-	//if (p->shard_id == -2)
-	if (p && (parent_id == -2 /*|| parent_id == -1*/))
+	if (p && (parent_id == -2))// || p->shard_id == -2))
 	{
 		BLI_remlink_safe(&fm->shard_map, p);
 		BKE_shard_free(p, true);
@@ -1063,11 +1062,11 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 			//printf("ADDED: %d %d %d\n", i, j, s->shard_id);
 			if (parent_id > -1)
 			{
-				int i = 0;
+				int si = 0;
 				MVert *v;
 
 				sub_v3_v3(s->centroid, pcentroid);
-				for (i = 0, v = s->mvert; i < s->totvert; i++, v++)
+				for (si = 0, v = s->mvert; si < s->totvert; si++, v++)
 				{
 					sub_v3_v3(v->co, pcentroid);
 				}
@@ -2025,7 +2024,7 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 	CDDM_calc_normals_mapping(dm);
 
 	if (doCustomData) {
-		if (s->totvert > 1) {
+		if (s->totvert > 0) {
 			BKE_copy_customdata_layers(&dm->vertData, &s->vertData, CD_MDEFORMVERT, s->totvert);
 		}
 		if (s->totloop > 0) {

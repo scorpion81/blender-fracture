@@ -402,13 +402,14 @@ static Shard *do_output_shard_dm(DerivedMesh** output_dm, Shard *child, int num_
 	return output_s;
 }
 
-static BMesh* do_fractal(float radius, float mat[4][4], bool use_smooth_inner, short inner_material_index,
-                         int num_levels, int num_cuts, float fractal, DerivedMesh** left_dm)
+static DerivedMesh* do_fractal(float radius, float mat[4][4], bool use_smooth_inner, short inner_material_index,
+                         int num_levels, int num_cuts, float fractal)
 {
 	BMFace* f;
 	BMIter iter;
 	BMesh *bm;
 	int i;
+	DerivedMesh *ret = NULL;
 
 	/*create a grid plane */
 	bm = BM_mesh_create(&bm_mesh_allocsize_default,  &((struct BMeshCreateParams){.use_toolflags = true,}));
@@ -454,9 +455,10 @@ static BMesh* do_fractal(float radius, float mat[4][4], bool use_smooth_inner, s
 	}
 
 	/*convert back*/
-	*left_dm = CDDM_from_bmesh(bm, true);
+	ret = CDDM_from_bmesh(bm, false);
+	BM_mesh_free(bm);
 
-	return bm;
+	return ret;
 }
 
 static bool do_check_watertight_other(DerivedMesh **other_dm, DerivedMesh **output_dm, Shard **other, DerivedMesh *right_dm,
@@ -494,7 +496,7 @@ static bool do_check_watertight_other(DerivedMesh **other_dm, DerivedMesh **outp
 	return do_return;
 }
 
-static bool do_check_watertight(DerivedMesh **output_dm, BMesh** bm, DerivedMesh** left_dm, DerivedMesh *right_dm, Shard **other, float mat[4][4])
+static bool do_check_watertight(DerivedMesh **output_dm, DerivedMesh** left_dm, DerivedMesh *right_dm, Shard **other, float mat[4][4])
 {
 	bool do_return = false;
 
@@ -503,10 +505,6 @@ static bool do_check_watertight(DerivedMesh **output_dm, BMesh** bm, DerivedMesh
 		{
 			if (other != NULL)
 				*other = NULL;
-			if (*bm != NULL) {
-				BM_mesh_free(*bm);
-				*bm = NULL;
-			}
 
 			if (*left_dm != NULL) {
 				(*left_dm)->needsFree = 1;
@@ -556,11 +554,9 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
                                   bool use_smooth_inner, int num_levels, char uv_layer[64], int solver, float thresh)
 {
 	DerivedMesh *left_dm = NULL, *right_dm, *output_dm, *other_dm;
-	BMesh* bm = NULL;
-
 	if (other != NULL && mat != NULL)
 	{
-		bm = do_fractal(radius, mat, use_smooth_inner, inner_material_index, num_levels, num_cuts, fractal, &left_dm);
+		left_dm = do_fractal(radius, mat, use_smooth_inner, inner_material_index, num_levels, num_cuts, fractal);
 	}
 	else
 	{
@@ -583,16 +579,13 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 	}
 
 	/*check for watertightness, but for fractal only*/
-	if (other != NULL && do_check_watertight(&output_dm, &bm, &left_dm, right_dm, other, mat))
+	if (other != NULL && do_check_watertight(&output_dm, &left_dm, right_dm, other, mat))
 	{
 		return NULL;
 	}
 
 	if (other != NULL)
 	{
-		if (bm != NULL)
-			BM_mesh_free(bm);
-
 		if (solver == eBooleanModifierSolver_Carve)
 		{
 			other_dm = NewBooleanDerivedMesh(left_dm, obj, right_dm, obj, 3);
