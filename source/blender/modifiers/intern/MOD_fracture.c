@@ -1906,7 +1906,7 @@ static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new, ShardID 
 		s = BKE_custom_data_to_shard(s, dmtemp);
 
 		/*for dynamic mode, store this in the main shardmap instead of separately */
-		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) {
+		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && (&fmd->frac_mesh->shard_map != NULL)) {
 #if 0
 			/*delete all with same parent id and replace*/
 			Shard *t;
@@ -1925,11 +1925,14 @@ static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new, ShardID 
 			BLI_addtail(&fmd->frac_mesh->shard_map, s);
 			fmd->frac_mesh->shard_count = id + 1;
 		}
-		else {
+		else if (!BLI_listbase_is_empty(&fmd->islandShards)){
 			id = BLI_listbase_count(&fmd->islandShards);
 			s->shard_id = id;
 			s->parent_id = -1;
 			BLI_addtail(&fmd->islandShards, s);
+		}
+		else {
+			id = -1;
 		}
 
 		dmtemp->needsFree = 1;
@@ -3232,6 +3235,9 @@ static void do_fix_normals_physics_mesh(FractureModifierData *fmd, Shard* s, Mes
 		/* either take orignormals or take ones from fractured mesh */
 		if (fmd->fix_normals) {
 			find_normal(orig_dm, fmd->nor_tree, mv->co, mv->no, no, fmd->nor_range);
+		}
+		else {
+			copy_v3_v3_short(no, mv->no);
 		}
 
 		mi->vertno[j * 3] = no[0];

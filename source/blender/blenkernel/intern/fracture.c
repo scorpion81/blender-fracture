@@ -626,12 +626,14 @@ static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, Deri
 			if (*dm_p != NULL) {
 				(*dm_p)->needsFree = 1;
 				(*dm_p)->release(*dm_p);
+				*dm_p = NULL;
 			}
 
-			*dm_p = BKE_shard_create_dm(p, true);
-
-			BKE_shard_free((*tempresults)[j], true);
-			(*tempresults)[j] = NULL;
+			if (p != NULL) {
+				*dm_p = BKE_shard_create_dm(p, true);
+				BKE_shard_free((*tempresults)[j], true);
+				(*tempresults)[j] = NULL;
+			}
 		}
 		(*i)++; //XXX remember to "double" the shard amount....
 	}
@@ -783,13 +785,9 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 	//skipping /deletion pass
 	for (i = 0; i < expected_shards; i++)
 	{
-		Shard *t = NULL;
 		if (fm->cancel == 1) {
 			break;
 		}
-
-		if (fm->last_shards && i < fm->shard_count)
-			t = fm->last_shards[i];
 
 		if (skipmap[i])
 		{
@@ -1221,7 +1219,7 @@ static void stroke_to_faces(FractureModifierData *fmd, BMesh** bm, bGPDstroke *g
 			if (lastv1)
 			{
 				BMFace* f;
-				float nvec[3], co1[3], co2[3];
+				float nvec[3] = {0.0f, 0.0f, 0.0f}, co1[3], co2[3];
 
 				/*also "extrude" this along the normal, no...use global axises instead*/
 				if (fmd->cutter_axis == MOD_FRACTURE_CUTTER_X)
@@ -1348,7 +1346,7 @@ static void do_intersect(FractureModifierData *fmd, Object* ob, Shard *t, short 
 
 	(*shard_counts)[k] = shards;
 	//printf("k, shards: %d %d \n", k, shards);
-	shards = 0;
+	//shards = 0;
 }
 
 
@@ -2007,7 +2005,7 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 	MLoop *mloops;
 	MPoly *mpolys;
 	
-	dm  = CDDM_new(s->totvert, 0, 0, s->totloop, s->totpoly);
+	dm = CDDM_new(s->totvert, 0, 0, s->totloop, s->totpoly);
 
 	mverts = CDDM_get_verts(dm);
 	mloops = CDDM_get_loops(dm);
@@ -2552,6 +2550,8 @@ static MeshIsland* fracture_shard_to_island(FractureModifierData *fmd, Shard *s,
 		mi->vertco[j * 3] = mv->co[0];
 		mi->vertco[j * 3 + 1] = mv->co[1];
 		mi->vertco[j * 3 + 2] = mv->co[2];
+
+		copy_v3_v3_short(no, mv->no);
 
 		mi->vertno[j * 3] = no[0];
 		mi->vertno[j * 3 + 1] = no[1];

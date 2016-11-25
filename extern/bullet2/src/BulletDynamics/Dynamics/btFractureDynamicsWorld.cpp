@@ -763,7 +763,7 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 	}
 
 	unionFind.reset(index);
-	int numElem = unionFind.getNumElements();
+	//int numElem = unionFind.getNumElements();
 	for (i=0;i<fracObj->m_connections.size();i++)
 	{
 		btConnection connection = fracObj->m_connections[i];
@@ -783,7 +783,7 @@ void	btFractureDynamicsWorld::breakDisconnectedParts( btFractureBody* fracObj)
 			unionFind.unite(tag0, tag1);
 		}
 	}
-	numElem = unionFind.getNumElements();
+	int numElem = unionFind.getNumElements();
 
 	index=0;
 	for (int ai=0;ai<numChildren;ai++)
