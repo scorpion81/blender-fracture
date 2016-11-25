@@ -607,7 +607,7 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 
 				if (output_dm) {
 					output_dm->needsFree = 1;
-					output_dm->release(left_dm);
+					output_dm->release(output_dm);
 					output_dm = NULL;
 				}
 			}
