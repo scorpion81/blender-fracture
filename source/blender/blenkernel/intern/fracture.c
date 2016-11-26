@@ -546,13 +546,14 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 	}
 }
 
-static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, DerivedMesh* dm_parent, Object *obj, short inner_material_index,
+static void handle_boolean_fractal(Shard* p, Shard* t, int expected_shards, DerivedMesh* dm_parent, Object *obj, short inner_material_index,
                                    int num_cuts, float fractal, int num_levels, bool smooth,int parent_id, int* i, Shard ***tempresults,
                                    DerivedMesh **dm_p, char uv_layer[64], int solver, int thresh)
 {
 	/* physics shard and fractalized shard, so we need to booleanize twice */
 	/* and we need both halves, so twice again */
 	Shard *s2 = NULL;
+	Shard *s = NULL;
 	int index = 0;
 	int max_retries = 3;
 
@@ -574,9 +575,10 @@ static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, Deri
 		BKE_object_dimensions_get(obj, size);
 		radius = MAX3(size[0], size[1], size[2]);
 
-		loc[0] = (BLI_frand() - 0.5f) * size[0];
+		/*loc[0] = (BLI_frand() - 0.5f) * size[0];
 		loc[1] = (BLI_frand() - 0.5f) * size[1];
-		loc[2] = (BLI_frand() - 0.5f) * size[2];
+		loc[2] = (BLI_frand() - 0.5f) * size[2];*/
+		copy_v3_v3(loc, p->centroid);
 
 		eul[0] = BLI_frand() * M_PI;
 		eul[1] = BLI_frand() * M_PI;
@@ -642,7 +644,7 @@ static void handle_boolean_fractal(Shard* s, Shard* t, int expected_shards, Deri
 static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards, int algorithm, int parent_id, Shard **tempshards,
                                   DerivedMesh *dm_parent, BMesh* bm_parent, float obmat[4][4], short inner_material_index, int num_cuts,
                                   int num_levels, float fractal, int *i, bool smooth, Shard*** tempresults, DerivedMesh **dm_p, char uv_layer[64],
-                                  KDTree *preselect_tree, int solver, int thresh)
+                                  KDTree *preselect_tree, int solver, int thresh, Shard* p)
 {
 	Shard *s = NULL, *t = NULL;
 	if (fm->cancel == 1)
@@ -667,7 +669,7 @@ static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards
 		s = BKE_fracture_shard_boolean(obj, dm_parent, t, inner_material_index, 0, 0.0f, NULL, NULL, 0.0f, false, 0, uv_layer, solver, thresh);
 	}
 	else if (algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL) {
-		handle_boolean_fractal(s, t, expected_shards, dm_parent, obj, inner_material_index, num_cuts, fractal,
+		handle_boolean_fractal(p, t, expected_shards, dm_parent, obj, inner_material_index, num_cuts, fractal,
 		                       num_levels, smooth, parent_id, i, tempresults, dm_p, uv_layer, solver, thresh);
 	}
 	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL) {
@@ -977,14 +979,14 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 			for (i = 0; i < expected_shards; i++)	{
 				handle_boolean_bisect(fm, obj, expected_shards, algorithm, parent_id, tempshards, dm_parent,
 										bm_parent, obmat, inner_material_index, num_cuts, num_levels, fractal,
-										&i, smooth, &tempresults, &dm_p, uv_layer, preselect_tree, solver, thresh);
+										&i, smooth, &tempresults, &dm_p, uv_layer, preselect_tree, solver, thresh, p);
 			}
 		}
 		else {
 			for (i = 0; i < expected_shards; i++)	{
 				handle_boolean_bisect(fm, obj, expected_shards, algorithm, parent_id, tempshards, dm_parent,
 										bm_parent, obmat, inner_material_index, num_cuts, num_levels, fractal,
-										&i, smooth, &tempresults, &dm_p, uv_layer, preselect_tree, solver, thresh);
+										&i, smooth, &tempresults, &dm_p, uv_layer, preselect_tree, solver, thresh, p);
 			}
 		}
 

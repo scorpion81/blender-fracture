@@ -415,7 +415,7 @@ static DerivedMesh* do_fractal(float radius, float mat[4][4], bool use_smooth_in
 	bm = BM_mesh_create(&bm_mesh_allocsize_default,  &((struct BMeshCreateParams){.use_toolflags = true,}));
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 	        "create_grid x_segments=%i y_segments=%i size=%f matrix=%m4",
-	        1, 1, radius*1.4, mat);
+	        1, 1, radius*1.4f, mat);
 
 	/*subdivide the plane fractally*/
 	for (i = 0; i < num_levels; i++)
@@ -437,6 +437,9 @@ static DerivedMesh* do_fractal(float radius, float mat[4][4], bool use_smooth_in
 					 true,
 					 0);
 	}
+
+	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+	        "triangulate faces=af quad_method=%i ngon_method=%i", MOD_TRIANGULATE_QUAD_BEAUTY, MOD_TRIANGULATE_NGON_BEAUTY);
 
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 	        "recalc_face_normals faces=af");
