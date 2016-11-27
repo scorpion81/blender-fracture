@@ -1906,7 +1906,7 @@ static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new, ShardID 
 		s = BKE_custom_data_to_shard(s, dmtemp);
 
 		/*for dynamic mode, store this in the main shardmap instead of separately */
-		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && (&fmd->frac_mesh->shard_map != NULL)) {
+		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) {
 #if 0
 			/*delete all with same parent id and replace*/
 			Shard *t;
@@ -1925,14 +1925,11 @@ static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new, ShardID 
 			BLI_addtail(&fmd->frac_mesh->shard_map, s);
 			fmd->frac_mesh->shard_count = id + 1;
 		}
-		else if (!BLI_listbase_is_empty(&fmd->islandShards)){
+		else {
 			id = BLI_listbase_count(&fmd->islandShards);
 			s->shard_id = id;
 			s->parent_id = -1;
 			BLI_addtail(&fmd->islandShards, s);
-		}
-		else {
-			id = -1;
 		}
 
 		dmtemp->needsFree = 1;
