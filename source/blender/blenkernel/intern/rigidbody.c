@@ -2613,6 +2613,11 @@ RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type, M
 		return rbo;
 	}
 
+	/* free a possible bake... else you can get all kind of trouble with stale data */
+	if (rbw) {
+		rbw->pointcache->flag &= ~PTCACHE_BAKED;
+	}
+
 	/* flag cache as outdated */
 	BKE_rigidbody_cache_reset(rbw);
 
@@ -2975,6 +2980,11 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 	if (!rbw && rbo)
 		BKE_rigidbody_free_object(ob);
 
+	/* free a possible bake... else you can get all kind of trouble with stale data */
+	if (rbw) {
+		rbw->pointcache->flag &= ~PTCACHE_BAKED;
+	}
+
 	/* flag cache as outdated */
 	BKE_rigidbody_cache_reset(rbw);
 }
@@ -3038,7 +3048,7 @@ static int rigidbody_group_count_items(const ListBase *group, int *r_num_objects
 /* Simulation Interface - Bullet */
 
 /* Update object array and rigid body count so they're in sync with the rigid body group */
-void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw)
+void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw, bool do_bake_correction)
 {
 	GroupObject *go;
 	ModifierData *md;
@@ -3046,6 +3056,7 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw)
 	MeshIsland *mi;
 	int i, j = 0, l = 0, m = 0, n = 0, counter = 0;
 	bool ismapped = false;
+	Object** temp_obj = NULL;
 	
 	if (rbw->objects != NULL) {
 		MEM_freeN(rbw->objects);
@@ -3070,10 +3081,34 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw)
 	rbw->cache_offset_map = MEM_mallocN(sizeof(int) * rbw->numbodies, "cache_offset_map");
 	printf("RigidbodyCount changed: %d\n", rbw->numbodies);
 
+	//correct map if baked, it might be shifted
+	temp_obj = MEM_mallocN(sizeof(Object*) * l, "temp_obj");
 	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
 		Object *ob = go->ob;
-		if (ob->rigidbody_object)
-			rbw->objects[i] = ob;
+		if (ob->rigidbody_object) {
+			temp_obj[i] = ob;
+		}
+		else {
+			//should not happen... but just in case
+			temp_obj[i] = NULL;
+		}
+	}
+
+	for (i = 0; i < l; i++) {
+
+		Object *ob = temp_obj[i];
+		if (!ob) {
+			continue;
+		}
+
+		if (do_bake_correction && (ob->rigidbody_object->meshisland_index != i)) {
+			//pick the correct object in case it doesnt match (when we are baked
+			if (ob->rigidbody_object->meshisland_index < l && ob->rigidbody_object->meshisland_index > -1) {
+				ob = temp_obj[ob->rigidbody_object->meshisland_index];
+			}
+		}
+
+		rbw->objects[i] = ob;
 
 		for (md = ob->modifiers.first; md; md = md->next) {
 
@@ -3081,6 +3116,10 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw)
 				rmd = (FractureModifierData *)md;
 				if (isModifierActive(rmd)) {
 					for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
+						//store original position of the object in the object array, to be able to rearrange it later so it matches the baked cache
+						if ((mi == rmd->meshIslands.first) && !do_bake_correction) {
+							ob->rigidbody_object->meshisland_index = i;
+						}
 						rbw->cache_index_map[counter] = mi->rigidbody; /* map all shards of an object to this object index*/
 						rbw->cache_offset_map[counter] = i;
 						mi->linear_index = counter;
@@ -3100,13 +3139,15 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw)
 		if (!ismapped) {
 			rbw->cache_index_map[counter] = ob->rigidbody_object; /*1 object 1 index here (normal case)*/
 			rbw->cache_offset_map[counter] = i;
-			if (ob->rigidbody_object)
-				ob->rigidbody_object->meshisland_index = counter;
+			if (ob->rigidbody_object && !do_bake_correction)
+				ob->rigidbody_object->meshisland_index = i;
 			counter++;
 		}
 
 		ismapped = false;
 	}
+
+	MEM_freeN(temp_obj);
 }
 
 static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw, bool rebuild)
@@ -3129,7 +3170,7 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw, bool r
 	//if (!(rbw->flag & RBW_FLAG_REFRESH_MODIFIERS))
 	if (rebuild)
 	{
-		BKE_rigidbody_update_ob_array(rbw);
+		BKE_rigidbody_update_ob_array(rbw, rbw->pointcache->flag & PTCACHE_BAKED);
 	}
 }
 
@@ -3683,7 +3724,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			int fr = (int)BKE_scene_frame_get(scene);
 			if (BKE_lookup_mesh_state(fmd, fr, true))
 			{
-				BKE_rigidbody_update_ob_array(rbw);
+				BKE_rigidbody_update_ob_array(rbw, false);
 			}
 		}
 		else
@@ -4124,7 +4165,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 
 				if (BKE_lookup_mesh_state(fmd, frame, true));
 				{
-					BKE_rigidbody_update_ob_array(rbw);
+					BKE_rigidbody_update_ob_array(rbw, false);
 				}
 			}
 
@@ -4640,7 +4681,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			BKE_ptcache_id_reset(scene, &pid, PTCACHE_RESET_OUTDATED);
 		}
 
-		BKE_rigidbody_update_ob_array(rbw);
+		BKE_rigidbody_update_ob_array(rbw, false);
 	}
 
 	/* try to read from cache */
