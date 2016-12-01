@@ -2722,7 +2722,7 @@ void view3d_draw_string(float loc[3], const char *str, const size_t len, float c
 {
 	// why is this char[] vs char* stuff necessary here ?
 	unsigned char col[3];
-	rgba_float_to_uchar(col , color);
+	rgb_float_to_uchar(col , color);
 	view3d_cached_text_draw_add(loc, str, len, 0, V3D_CACHE_TEXT_ASCII | V3D_CACHE_TEXT_GLOBALSPACE , col);
 }
 

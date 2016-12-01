@@ -190,7 +190,7 @@ class TickDiscreteDynamicsWorld : public btFractureDynamicsWorld
 		virtual void debugDrawWorld(draw_string str_callback);
 };
 
-btScalar connection_dist(btFractureBody *fbody, int index, btVector3 impact)
+static btScalar connection_dist(btFractureBody *fbody, int index, btVector3 impact)
 {
 	btConnection& con = fbody->m_connections[index];
 	btVector3 con_posA = con.m_parent->getWorldTransform().inverse() * con.m_obA->getWorldTransform().getOrigin();
@@ -201,7 +201,7 @@ btScalar connection_dist(btFractureBody *fbody, int index, btVector3 impact)
 }
 
 //KDTree needed here, we need a range search of which points are closer than distance x to the impact point
-int connection_binary_search(btFractureBody *fbody, btVector3 impact, btScalar range)
+static int connection_binary_search(btFractureBody *fbody, btVector3 impact, btScalar range)
 {
 	int mid, low = 0, high = fbody->m_connections.size();
 
@@ -230,7 +230,7 @@ int connection_binary_search(btFractureBody *fbody, btVector3 impact, btScalar r
 	return low;
 }
 
-bool weakenCompound(const btCollisionObject *body, btScalar force, btVector3 impact, btFractureDynamicsWorld *world)
+static bool weakenCompound(const btCollisionObject *body, btScalar force, btVector3 impact, btFractureDynamicsWorld *world)
 {
 	//just weaken strengths of this obA and obB according to force !
 	if (body->getInternalType() & CUSTOM_FRACTURE_TYPE && force > 0.0f)
@@ -293,7 +293,7 @@ bool weakenCompound(const btCollisionObject *body, btScalar force, btVector3 imp
 	return false;
 }
 
-void tickCallback(btDynamicsWorld *world, btScalar timeStep)
+static void tickCallback(btDynamicsWorld *world, btScalar timeStep)
 {
 	btFractureDynamicsWorld *fworld = (btFractureDynamicsWorld*)world;
 	fworld->updateBodies();
@@ -436,12 +436,13 @@ void TickDiscreteDynamicsWorld::debugDrawWorld(draw_string str_callback)
 	}
 }
 
-const char* val_to_str(rbConstraint* con, int precision, int *length)
+static const char* val_to_str(rbConstraint* con, int precision, int *length)
 {
 	std::ostringstream oss;
 	oss << std::fixed << std::setprecision(precision) << con->id << ":" << con->con->getAppliedImpulse() << ":" << con->con->getBreakingImpulseThreshold();
 	*length = oss.str().length();
-	return oss.str().c_str();
+	const char *ret = strdup(oss.str().c_str());
+	return ret;
 }
 
 void TickDiscreteDynamicsWorld::debugDrawConstraints(rbConstraint* con , draw_string str_callback, float loc[3])
@@ -2052,7 +2053,9 @@ void RB_constraint_set_target_velocity_motor(rbConstraint *con, float velocity_l
 
 void RB_constraint_set_id(rbConstraint *con, char id[64])
 {
-	strncpy(con->id, id, strlen(id));
+	int len = strlen(id);
+	memset(con->id, '\0', 64);
+	strncpy(con->id, id, len);
 }
 
 /* ********************************** */
