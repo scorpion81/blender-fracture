@@ -910,9 +910,9 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 				if (do_tree)
 				{
-					BLI_kdtree_insert(fm->last_shard_tree, i, t->raw_centroid);
+					BLI_kdtree_insert(fm->last_shard_tree, ti, t->raw_centroid);
 				}
-				fm->last_shards[i] = t;
+				fm->last_shards[ti] = t;
 				ti++;
 			}
 
