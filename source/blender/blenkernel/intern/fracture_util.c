@@ -62,7 +62,7 @@ void uv_bbox(float uv[][2], int num_uv, float minv[2], float maxv[2]);
 void uv_translate(float uv[][2], int num_uv, float trans[2]);
 void uv_scale(float uv[][2], int num_uv, float scale);
 void uv_transform(float uv[][2], int num_uv, float mat[2][2]);
-void unwrap_shard_dm(DerivedMesh *dm, char uv_layer[]);
+void unwrap_shard_dm(DerivedMesh *dm, char uv_layer[], bool do_boxpack);
 
 /* UV Helpers */
 void uv_bbox(float uv[][2], int num_uv, float minv[2], float maxv[2])
@@ -182,7 +182,7 @@ static void do_unwrap(MPoly *mp, MVert *mvert, MLoop* mloop, int i, MLoopUV **ml
 	MEM_freeN(verts);
 }
 
-void unwrap_shard_dm(DerivedMesh *dm, char uv_layer[64])
+void unwrap_shard_dm(DerivedMesh *dm, char uv_layer[64], bool do_boxpack)
 {
 	MVert *mvert;
 	MLoop *mloop;
@@ -201,27 +201,30 @@ void unwrap_shard_dm(DerivedMesh *dm, char uv_layer[64])
 		do_unwrap(mp, mvert, mloop, i, &mluv, &boxpack);
 	}
 
-	/* do box packing and match uvs according to it */
-	BLI_box_pack_2d(boxpack, totpoly, &tot_width, &tot_height);
+	if (do_boxpack)
+	{
+		/* do box packing and match uvs according to it */
+		BLI_box_pack_2d(boxpack, totpoly, &tot_width, &tot_height);
 
-	if (tot_height > tot_width)
-		scale = 1.0f / tot_height;
-	else
-		scale = 1.0f / tot_width;
+		if (tot_height > tot_width)
+			scale = 1.0f / tot_height;
+		else
+			scale = 1.0f / tot_width;
 
-	for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
-		float trans[2];
-		BoxPack *box;
-		int j;
+		for (i = 0, mp = mpoly; i < totpoly; i++, mp++) {
+			float trans[2];
+			BoxPack *box;
+			int j;
 
-		box = boxpack + i;
-		trans[0] = box->x;
-		trans[1] = box->y;
+			box = boxpack + i;
+			trans[0] = box->x;
+			trans[1] = box->y;
 
-		for (j = 0; j < mp->totloop; j++)
-		{
-			uv_translate((float (*)[2])mluv[j + mp->loopstart].uv, 1, trans);
-			uv_scale((float (*)[2])mluv[j + mp->loopstart].uv, 1, scale);
+			for (j = 0; j < mp->totloop; j++)
+			{
+				uv_translate((float (*)[2])mluv[j + mp->loopstart].uv, 1, trans);
+				uv_scale((float (*)[2])mluv[j + mp->loopstart].uv, 1, scale);
+			}
 		}
 	}
 
@@ -560,14 +563,13 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 	if (other != NULL && mat != NULL)
 	{
 		left_dm = do_fractal(radius, mat, use_smooth_inner, inner_material_index, num_levels, num_cuts, fractal);
+		unwrap_shard_dm(left_dm, uv_layer, false);
 	}
 	else
 	{
 		left_dm = BKE_shard_create_dm(child, false);
-		//unwrap_shard_dm(left_dm);
+		unwrap_shard_dm(left_dm, uv_layer, true);
 	}
-
-	unwrap_shard_dm(left_dm, uv_layer);
 
 	do_set_inner_material(other, mat, left_dm, inner_material_index, child);
 
@@ -893,7 +895,7 @@ Shard *BKE_fracture_shard_bisect(BMesh *bm_orig, Shard *child, float obmat[4][4]
 	BMesh *bm_parent;
 	BMesh *bm_child;
 
-	unwrap_shard_dm(dm_child, uv_layer);
+	unwrap_shard_dm(dm_child, uv_layer, true);
 
 	bm_child = BM_mesh_create(&bm_mesh_allocsize_default,  &((struct BMeshCreateParams){.use_toolflags = true,}));
 	DM_to_bmesh_ex(dm_child, bm_child, true);
