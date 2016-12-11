@@ -83,6 +83,7 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int r
 static void rigidbody_passive_fake_parenting(FractureModifierData *fmd, Object *ob, RigidBodyOb *rbo, float imat[4][4]);
 static void rigidbody_passive_hook(FractureModifierData *fmd, MeshIsland *mi, Object* ob);
 static void check_fracture(rbContactPoint *cp, RigidBodyWorld *rbw, Object *obA, Object *obB);
+static MeshIsland* findMeshIsland(FractureModifierData *fmd, int id);
 
 
 static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *mi, Object *ob)
@@ -1413,6 +1414,36 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 
 /* --------------------- */
 
+static MeshIsland* find_closest_meshisland_to_point(FractureModifierData* fmd, Object *ob, Object *ob2) {
+
+	MeshIsland *mi, **mi_array = NULL;
+	KDTree *tree;
+	KDTreeNearest n;
+	int count = BLI_listbase_count(&fmd->meshIslands);
+	int index = 0;
+	float loc[3];
+
+	tree = BLI_kdtree_new(count);
+	mi_array = MEM_mallocN(sizeof(MeshIsland*) * count, "mi_array find_closest_meshisland");
+
+	int i = 0;
+	for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
+		mul_v3_m4v3(loc, ob->obmat, mi->centroid);
+		BLI_kdtree_insert(tree, i, loc);
+		mi_array[i] = mi;
+		i++;
+	}
+
+	BLI_kdtree_balance(tree);
+	index = BLI_kdtree_find_nearest(tree, ob2->loc, &n);
+
+	mi = mi_array[index];
+	MEM_freeN(mi_array);
+	BLI_kdtree_free(tree);
+
+	return mi;
+}
+
 /**
  * Create physics sim representation of constraint given rigid body constraint settings
  *
@@ -1449,8 +1480,43 @@ static void rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, b
 		RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
 	}
 	if (rbc->physics_constraint == NULL || rebuild) {
-		rbRigidBody *rb1 = rbc->ob1->rigidbody_object->physics_object;
-		rbRigidBody *rb2 = rbc->ob2->rigidbody_object->physics_object;
+		rbRigidBody *rb1 = NULL, *rb2 = NULL;
+		FractureModifierData *fmd1 = NULL, *fmd2 = NULL;
+		MeshIsland *mi1, *mi2;
+
+		/*add logic to find closest shards of 2 FM objects, or to attach one shard to one regular */
+		/*for now, just take the first meshislands... later find the closest ones or the closest to center*/
+		fmd1 = (FractureModifierData*)modifiers_findByType(rbc->ob1, eModifierType_Fracture);
+		fmd2 = (FractureModifierData*)modifiers_findByType(rbc->ob2, eModifierType_Fracture);
+
+		if (fmd1 && fmd2) {
+			mi1 = find_closest_meshisland_to_point(fmd1, rbc->ob1, rbc->ob2);
+			mi2 = find_closest_meshisland_to_point(fmd2, rbc->ob2, rbc->ob1);
+
+			if (mi1 && mi2) {
+				rb1 = mi1->rigidbody->physics_object;
+				rb2 = mi2->rigidbody->physics_object;
+			}
+		}
+		else if (fmd1) {
+			mi1 = find_closest_meshisland_to_point(fmd1, rbc->ob1, rbc->ob2);
+			if (mi1) {
+				rb1 = mi1->rigidbody->physics_object;
+				rb2 = rbc->ob2->rigidbody_object->physics_object;
+			}
+		}
+		else if (fmd2) {
+			mi2 = find_closest_meshisland_to_point(fmd2, rbc->ob2, rbc->ob1);
+			if (mi2)
+			{
+				rb2 = mi2->rigidbody->physics_object;
+				rb1 = rbc->ob1->rigidbody_object->physics_object;
+			}
+		}
+		else {
+			rb1 = rbc->ob1->rigidbody_object->physics_object;
+			rb2 = rbc->ob2->rigidbody_object->physics_object;
+		}
 
 		/* remove constraint if it already exists before creating a new one */
 		if (rbc->physics_constraint) {
