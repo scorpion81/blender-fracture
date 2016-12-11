@@ -1087,6 +1087,21 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_IS_TRIGGER);
 	RNA_def_property_ui_text(prop, "Trigger", "Can trigger activation of other animated objects, which are set up to be triggered");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+
+	prop = RNA_def_property(srna, "propagate_trigger", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_PROPAGATE_TRIGGER);
+	RNA_def_property_ui_text(prop, "Propagate Trigger", "Can propagate a trigger activation impulse received from a trigger ACROSS triggerable objects, use clusters for INNER object propagation!");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+
+	prop = RNA_def_property(srna, "constraint_dissolve", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_CONSTRAINT_DISSOLVE);
+	RNA_def_property_ui_text(prop, "Dissolve Constraints", "Dissolves constraints on shards of this trigger TARGET");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+
+	prop = RNA_def_property(srna, "dynamic_trigger", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_DYNAMIC_TRIGGER);
+	RNA_def_property_ui_text(prop, "Dynamic Trigger", "Triggers a dynamic fracture independently of force threshold");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
 	
 	/* Physics Parameters */
 	prop = RNA_def_property(srna, "mass", PROP_FLOAT, PROP_UNIT_MASS);

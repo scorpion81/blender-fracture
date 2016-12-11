@@ -82,14 +82,33 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always);
 static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed, float size[3]);
 static void rigidbody_passive_fake_parenting(FractureModifierData *fmd, Object *ob, RigidBodyOb *rbo, float imat[4][4]);
 static void rigidbody_passive_hook(FractureModifierData *fmd, MeshIsland *mi, Object* ob);
+static void check_fracture(rbContactPoint *cp, RigidBodyWorld *rbw, Object *obA, Object *obB);
 
 
-static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *UNUSED(mi), Object *UNUSED(ob))
+static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *mi, Object *ob)
 {
 	if (rbo->flag & RBO_FLAG_KINEMATIC && rbo->type == RBO_TYPE_ACTIVE)
 	{
+		RigidBodyShardCon *con;
+		int i;
+
 		rbo->flag &= ~RBO_FLAG_KINEMATIC;
 		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+		//propagate trigger on impact / activation
+		if (ob->rigidbody_object->flag & RBO_FLAG_PROPAGATE_TRIGGER) {
+			rbo->flag |= RBO_FLAG_PROPAGATE_TRIGGER;
+		}
+
+		if (mi && ob->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) {
+			for (i = 0; i < mi->participating_constraint_count; i++) {
+				con = mi->participating_constraints[i];
+				if (con->physics_constraint) {
+					RB_constraint_set_enabled(con->physics_constraint, false);
+				}
+			}
+		}
+
 		//RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
 		RB_body_set_kinematic_state(rbo->physics_object, false);
@@ -1886,7 +1905,7 @@ static bool colgroup_check(int group1, int group2)
 	return false;
 }
 
-static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBodyWorld *rbw)
+static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBodyWorld *rbw, MeshIsland *mi_trigger)
 {
 	FractureModifierData *fmd;
 	bool valid = true;
@@ -1895,7 +1914,8 @@ static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 	valid = valid && (fmd != NULL);
 	valid = valid && (ob->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
-	valid = valid && (ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER);
+	valid = valid && ((ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER) || ((ob2->rigidbody_object->flag & RBO_FLAG_PROPAGATE_TRIGGER) &&
+	        ((mi_trigger) && (mi_trigger->rigidbody->flag & RBO_FLAG_PROPAGATE_TRIGGER))));
 
 	if (valid)
 	{
@@ -1930,6 +1950,40 @@ static int check_colgroup_ghost(Object* ob1, Object *ob2)
 	int ret = 0;
 	ret = colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups);
 	return ret && (!(ob1->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && !(ob2->rigidbody_object->flag & RBO_FLAG_IS_GHOST));
+}
+
+static void fake_dynamic_collide(Object *ob1, Object *ob2, MeshIsland *mi1, MeshIsland *mi2, RigidBodyWorld *rbw)
+{
+	if (((ob1->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && (ob1->rigidbody_object->flag & RBO_FLAG_DYNAMIC_TRIGGER)) ||
+		((ob1->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && (ob2->rigidbody_object->flag & RBO_FLAG_DYNAMIC_TRIGGER)) ||
+		((ob2->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && (ob1->rigidbody_object->flag & RBO_FLAG_DYNAMIC_TRIGGER)) ||
+		((ob2->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && (ob2->rigidbody_object->flag & RBO_FLAG_DYNAMIC_TRIGGER)))
+	{
+		rbContactPoint point;
+		point.contact_force = 0;
+
+		if (mi1 || mi2) {
+			if (mi1) {
+				copy_v3_v3(point.contact_pos_world_onA, mi1->centroid);
+				point.contact_body_indexA = mi1->linear_index;
+			}
+			else {
+				copy_v3_v3(point.contact_pos_world_onA, ob1->loc);
+				point.contact_body_indexA = -1;
+			}
+
+			if (mi2) {
+				copy_v3_v3(point.contact_pos_world_onB, mi2->centroid);
+				point.contact_body_indexB = mi2->linear_index;
+			}
+			else {
+				copy_v3_v3(point.contact_pos_world_onB, ob2->loc);
+				point.contact_body_indexB = -1;
+			}
+
+			check_fracture(&point, rbw, ob1, ob2);
+		}
+	}
 }
 
 /* this allows partial object activation, only some shards will be activated, called from bullet(!) */
@@ -2016,14 +2070,18 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	{
 		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			do_activate(ob1, ob2, mi1, rbw);
+			do_activate(ob1, ob2, mi1, rbw, mi2);
 		}
 
 		if (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			do_activate(ob2, ob1, mi2, rbw);
+			do_activate(ob2, ob1, mi2, rbw, mi1);
 		}
 	}
+
+	//if ghost is involved, and dynafrac trigger is enabled, try to call check_fracture manually here, without forces and with centroid as contact point
+	fake_dynamic_collide(ob1, ob2, mi1, mi2, rbw);
+	fake_dynamic_collide(ob2, ob1, mi2, mi1, rbw);
 
 	return check_colgroup_ghost(ob1, ob2);
 }
@@ -2031,7 +2089,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 static bool can_break(Object* collider, Object* ob, bool limit)
 {
 	//allow limit impact only on initial shard and 1st level shards ?
-	if (collider && collider->rigidbody_object && (collider->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER))
+	if (collider && collider->rigidbody_object && (collider->rigidbody_object->flag & RBO_FLAG_DYNAMIC_TRIGGER))
 	{
 		if (limit && (collider == ob)) {
 			return false;
@@ -2150,13 +2208,15 @@ static bool check_constraints(FractureModifierData *fmd, MeshIsland *mi) {
 	return false;
 }
 
-static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
+static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA, Object *obB)
 {
 	int linear_index1, linear_index2;
 	Object* ob1 = NULL, *ob2 = NULL;
 	int ob_index1, ob_index2;
 	FractureModifierData *fmd1, *fmd2;
 	float force;
+
+	//printf("checkfracture\n");
 
 	if (cp == NULL)
 		return;
@@ -2175,6 +2235,9 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 	{
 		ob_index2 = rbw->cache_offset_map[linear_index2];
 		ob2 = rbw->objects[ob_index2];
+	}
+	else if (obB) {
+		ob2 = obB;
 	}
 
 	if (linear_index1 > -1 && linear_index1 < rbw->numbodies)
@@ -2196,7 +2259,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				}
 
 				//printf("FORCE1:%f\n",force);
-				bool canbreak = (force > fmd1->dynamic_force) || (fmd1->limit_impact && can_break(ob2, ob1, fmd1->limit_impact));
+				bool canbreak = (force > fmd1->dynamic_force) || ((fmd1->limit_impact || obB) && can_break(ob2, ob1, fmd1->limit_impact));
 
 				if (canbreak && check_constraints(fmd1, mi))
 				{
@@ -2227,6 +2290,9 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 			}
 		}
 	}
+	else if (obA) {
+		ob1 = obA;
+	}
 
 	if (linear_index2 > -1 && linear_index2 < rbw->numbodies)
 	{
@@ -2248,7 +2314,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 				}
 
 				//printf("FORCE2:%f\n",force);
-				bool canbreak = (force > fmd2->dynamic_force) || (fmd2->limit_impact && can_break(ob1, ob2, fmd2->limit_impact));
+				bool canbreak = (force > fmd2->dynamic_force) || ((fmd2->limit_impact || obA) && can_break(ob1, ob2, fmd2->limit_impact));
 
 				if (canbreak && check_constraints(fmd2, mi))
 				{
@@ -2283,7 +2349,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw)
 static void contactCallback(rbContactPoint* cp, void* world)
 {
 	RigidBodyWorld *rbw = (RigidBodyWorld*)world;
-	check_fracture(cp, rbw);
+	check_fracture(cp, rbw, NULL, NULL);
 }
 
 static void idCallback(void *world, void* island, int* objectId, int* islandId)
@@ -3757,6 +3823,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 					zero_v3(mi->rigidbody->lin_vel);
 					zero_v3(mi->rigidbody->ang_vel);
 					mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					mi->rigidbody->flag &= ~RBO_FLAG_PROPAGATE_TRIGGER;
 				}
 
 				rigidbody_passive_hook(fmd, mi, ob);
@@ -4445,7 +4512,7 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 					}
 				}
 			}
-			else if (go->ob->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
+			else if (!fmd && (go->ob->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION))
 			{	/* restore regular triggered objects back to kinematic at all, they very likely were kinematic before...
 				 * user has to disable triggered if behavior is not desired */
 				go->ob->rigidbody_object->flag |= RBO_FLAG_KINEMATIC;

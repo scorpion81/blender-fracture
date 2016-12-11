@@ -179,6 +179,12 @@ typedef enum eRigidBodyOb_Flag {
 	RBO_FLAG_IS_GHOST = (1 << 10),
 	/* trigger flag, trigger kinematic state change on other objects */
 	RBO_FLAG_IS_TRIGGER = (1 << 11),
+	/* propagate trigger flag, pass the trigger impulse through to other objects nearby / touched */
+	RBO_FLAG_PROPAGATE_TRIGGER = (1 << 12),
+	/* dissolve constraints on activated shards */
+	RBO_FLAG_CONSTRAINT_DISSOLVE = (1 << 13),
+	/* trigger a dynamic fracture with this type */
+	RBO_FLAG_DYNAMIC_TRIGGER = (1 << 14),
 } eRigidBodyOb_Flag;
 
 /* RigidBody Collision Shape */
