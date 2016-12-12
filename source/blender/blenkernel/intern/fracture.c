@@ -572,13 +572,11 @@ static void handle_boolean_fractal(Shard* p, Shard* t, int expected_shards, Deri
 		float matrix[4][4];
 
 		/*make a plane as cutter*/
-		BKE_object_dimensions_get(obj, size);
-		radius = MAX3(size[0], size[1], size[2]);
-
-		/*loc[0] = (BLI_frand() - 0.5f) * size[0];
-		loc[1] = (BLI_frand() - 0.5f) * size[1];
-		loc[2] = (BLI_frand() - 0.5f) * size[2];*/
-		copy_v3_v3(loc, p->centroid);
+		//BKE_object_dimensions_get(obj, size);
+		shard_boundbox(p, loc, size);
+		//radius = MAX3(size[0], size[1], size[2]);
+		radius = sqrt(size[0]*size[0] + size[1]*size[1] + size[2]*size[2]);
+		//copy_v3_v3(loc, p->centroid);
 
 		eul[0] = BLI_frand() * M_PI;
 		eul[1] = BLI_frand() * M_PI;

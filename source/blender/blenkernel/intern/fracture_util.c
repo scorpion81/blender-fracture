@@ -418,7 +418,7 @@ static DerivedMesh* do_fractal(float radius, float mat[4][4], bool use_smooth_in
 	bm = BM_mesh_create(&bm_mesh_allocsize_default,  &((struct BMeshCreateParams){.use_toolflags = true,}));
 	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 	        "create_grid x_segments=%i y_segments=%i size=%f matrix=%m4",
-	        1, 1, radius*1.4f, mat);
+	        1, 1, radius, mat);
 
 	/*subdivide the plane fractally*/
 	for (i = 0; i < num_levels; i++)
