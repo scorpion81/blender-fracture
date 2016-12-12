@@ -1448,17 +1448,14 @@ static MeshIsland* find_closest_meshisland_to_point(FractureModifierData* fmd, O
 	KDTreeNearest *n;
 	int count = 0;
 	int con_count = 0;
-	int index = 0, con_index = 0;
+	int index = 0;
 	float loc[3];
 	int i = 0, j = 0;
 	RigidBodyCon **cons = NULL;
 
 	count = BLI_listbase_count(&fmd->meshIslands);
-	n = MEM_mallocN(sizeof(KDTreeNearest) * con_count, "n nearest find_closest_meshisland");
-
 	tree = BLI_kdtree_new(count);
 	mi_array = MEM_mallocN(sizeof(MeshIsland*) * count, "mi_array find_closest_meshisland");
-
 
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 		mul_v3_m4v3(loc, ob->obmat, mi->centroid);
@@ -1470,6 +1467,8 @@ static MeshIsland* find_closest_meshisland_to_point(FractureModifierData* fmd, O
 	BLI_kdtree_balance(tree);
 
 	con_count = connected_island_cons(rbw, ob, &cons);
+	n = MEM_mallocN(sizeof(KDTreeNearest) * con_count, "n nearest find_closest_meshisland");
+
 	BLI_kdtree_find_nearest_n(tree, ob2->loc, n, con_count);
 
 	for (j = 0; j < con_count; j++) {
