@@ -88,11 +88,11 @@ static MeshIsland* findMeshIsland(FractureModifierData *fmd, int id);
 
 static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *mi, Object *ob)
 {
+	RigidBodyShardCon *con;
+	int i;
+
 	if (rbo->flag & RBO_FLAG_KINEMATIC && rbo->type == RBO_TYPE_ACTIVE)
 	{
-		RigidBodyShardCon *con;
-		int i;
-
 		rbo->flag &= ~RBO_FLAG_KINEMATIC;
 		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
@@ -101,20 +101,20 @@ static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), Mes
 			rbo->flag |= RBO_FLAG_PROPAGATE_TRIGGER;
 		}
 
-		if (mi && ob->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) {
-			for (i = 0; i < mi->participating_constraint_count; i++) {
-				con = mi->participating_constraints[i];
-				if (con->physics_constraint) {
-					RB_constraint_set_enabled(con->physics_constraint, false);
-				}
-			}
-		}
-
 		//RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 		RB_body_set_mass(rbo->physics_object, RBO_GET_MASS(rbo));
 		RB_body_set_kinematic_state(rbo->physics_object, false);
 		//RB_dworld_add_body(rbw->physics_world, rbo->physics_object, rbo->col_groups, mi, ob);
 		RB_body_activate(rbo->physics_object);
+	}
+
+	if (mi && ob->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) {
+		for (i = 0; i < mi->participating_constraint_count; i++) {
+			con = mi->participating_constraints[i];
+			if (con->physics_constraint) {
+				RB_constraint_set_enabled(con->physics_constraint, false);
+			}
+		}
 	}
 }
 
@@ -1414,19 +1414,52 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 
 /* --------------------- */
 
-static MeshIsland* find_closest_meshisland_to_point(FractureModifierData* fmd, Object *ob, Object *ob2) {
+static int connected_island_cons(RigidBodyWorld *rbw, Object* ob, RigidBodyCon*** cons)
+{
+	GroupObject* go;
+	int count = 0, i = 0;
+
+	for (go = rbw->constraints->gobject.first; go; go = go->next ) {
+		RigidBodyCon *con = go->ob->rigidbody_constraint;
+		if ((con->ob1 == ob) || (con->ob2 == ob))
+		{
+			count++;
+		}
+	}
+
+	*cons = MEM_mallocN(sizeof(RigidBodyCon*) * count, "connected_island_cons");
+
+	for (go = rbw->constraints->gobject.first; go; go = go->next ) {
+		RigidBodyCon *con = go->ob->rigidbody_constraint;
+		if ((con->ob1 == ob) || (con->ob2 == ob))
+		{
+			(*cons)[i] = con;
+			i++;
+		}
+	}
+
+	return count;
+}
+
+static MeshIsland* find_closest_meshisland_to_point(FractureModifierData* fmd, Object *ob, Object *ob2, RigidBodyWorld* rbw, RigidBodyCon *con) {
 
 	MeshIsland *mi, **mi_array = NULL;
 	KDTree *tree;
-	KDTreeNearest n;
-	int count = BLI_listbase_count(&fmd->meshIslands);
-	int index = 0;
+	KDTreeNearest *n;
+	int count = 0;
+	int con_count = 0;
+	int index = 0, con_index = 0;
 	float loc[3];
+	int i = 0, j = 0;
+	RigidBodyCon **cons = NULL;
+
+	count = BLI_listbase_count(&fmd->meshIslands);
+	n = MEM_mallocN(sizeof(KDTreeNearest) * con_count, "n nearest find_closest_meshisland");
 
 	tree = BLI_kdtree_new(count);
 	mi_array = MEM_mallocN(sizeof(MeshIsland*) * count, "mi_array find_closest_meshisland");
 
-	int i = 0;
+
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 		mul_v3_m4v3(loc, ob->obmat, mi->centroid);
 		BLI_kdtree_insert(tree, i, loc);
@@ -1435,10 +1468,30 @@ static MeshIsland* find_closest_meshisland_to_point(FractureModifierData* fmd, O
 	}
 
 	BLI_kdtree_balance(tree);
-	index = BLI_kdtree_find_nearest(tree, ob2->loc, &n);
+
+	con_count = connected_island_cons(rbw, ob, &cons);
+	BLI_kdtree_find_nearest_n(tree, ob2->loc, n, con_count);
+
+	for (j = 0; j < con_count; j++) {
+		if (cons[j] == con) {
+			index = n[j].index;
+			break;
+		}
+	}
+
+	if (index == -1) {
+		MEM_freeN(mi_array);
+		MEM_freeN(n);
+		MEM_freeN(cons);
+		BLI_kdtree_free(tree);
+		return NULL;
+	}
 
 	mi = mi_array[index];
+
 	MEM_freeN(mi_array);
+	MEM_freeN(n);
+	MEM_freeN(cons);
 	BLI_kdtree_free(tree);
 
 	return mi;
@@ -1490,8 +1543,8 @@ static void rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, b
 		fmd2 = (FractureModifierData*)modifiers_findByType(rbc->ob2, eModifierType_Fracture);
 
 		if (fmd1 && fmd2) {
-			mi1 = find_closest_meshisland_to_point(fmd1, rbc->ob1, rbc->ob2);
-			mi2 = find_closest_meshisland_to_point(fmd2, rbc->ob2, rbc->ob1);
+			mi1 = find_closest_meshisland_to_point(fmd1, rbc->ob1, rbc->ob2, rbw, rbc);
+			mi2 = find_closest_meshisland_to_point(fmd2, rbc->ob2, rbc->ob1, rbw, rbc);
 
 			if (mi1 && mi2) {
 				rb1 = mi1->rigidbody->physics_object;
@@ -1499,14 +1552,14 @@ static void rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, b
 			}
 		}
 		else if (fmd1) {
-			mi1 = find_closest_meshisland_to_point(fmd1, rbc->ob1, rbc->ob2);
+			mi1 = find_closest_meshisland_to_point(fmd1, rbc->ob1, rbc->ob2, rbw, rbc);
 			if (mi1) {
 				rb1 = mi1->rigidbody->physics_object;
 				rb2 = rbc->ob2->rigidbody_object->physics_object;
 			}
 		}
 		else if (fmd2) {
-			mi2 = find_closest_meshisland_to_point(fmd2, rbc->ob2, rbc->ob1);
+			mi2 = find_closest_meshisland_to_point(fmd2, rbc->ob2, rbc->ob1, rbw, rbc);
 			if (mi2)
 			{
 				rb2 = mi2->rigidbody->physics_object;
@@ -1991,7 +2044,8 @@ static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 			                    (mi->particle_index == mi_compare->particle_index);
 
 			RigidBodyOb* rbo = mi->rigidbody;
-			if ((rbo->flag & RBO_FLAG_KINEMATIC) && ((mi_compare == mi) || same_cluster))
+			if (((rbo->flag & RBO_FLAG_KINEMATIC) || (ob->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE)) &&
+			     ((mi_compare == mi) || same_cluster))
 			{
 				if (rbo->physics_object) {
 					activateRigidbody(rbo, rbw, mi, ob);
@@ -2132,7 +2186,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		          ((ob1->rigidbody_object->type == RBO_TYPE_ACTIVE) && (ob2->rigidbody_object->type == RBO_TYPE_ACTIVE)));
 	}
 
-	if (validOb)
+	if (validOb || (ob1->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) || (ob2->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE))
 	{
 		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
