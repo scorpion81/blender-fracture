@@ -1486,6 +1486,10 @@ static MeshIsland* find_closest_meshisland_to_point(FractureModifierData* fmd, O
 		return NULL;
 	}
 
+	if (index >= count) {
+		index = count-1;
+	}
+
 	mi = mi_array[index];
 
 	MEM_freeN(mi_array);
