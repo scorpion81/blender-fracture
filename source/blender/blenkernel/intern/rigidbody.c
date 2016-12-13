@@ -2112,7 +2112,15 @@ static void fake_dynamic_collide(Object *ob1, Object *ob2, MeshIsland *mi1, Mesh
 static bool check_constraint_island(MeshIsland *mi1, MeshIsland *mi2)
 {
 	if (mi1 && mi2) {
-		return mi1->constraint_index != mi2->constraint_index;
+		RigidBodyShardCon *con;
+		int i;
+		for (i = 0; i < mi1->participating_constraint_count; i++)
+		{
+			con = mi1->participating_constraints[i];
+			if ((con->mi1 == mi2 || con->mi2 == mi2) && (con->flag & RBC_FLAG_DISABLE_COLLISIONS)) {
+				return mi1->constraint_index != mi2->constraint_index;
+			}
+		}
 	}
 
 	return true;
@@ -2215,7 +2223,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	fake_dynamic_collide(ob1, ob2, mi1, mi2, rbw);
 	fake_dynamic_collide(ob2, ob1, mi2, mi1, rbw);
 
-	return check_colgroup_ghost(ob1, ob2) && check_constraint_island(mi1, mi2);
+	return check_colgroup_ghost(ob1, ob2) && check_constraint_island(mi1, mi2) && check_constraint_island(mi2, mi1);
 }
 
 static bool can_break(Object* collider, Object* ob, bool limit)
@@ -3600,49 +3608,23 @@ static void activateCluster(MeshIsland *mi, int particle_index, RigidBodyWorld *
 	}
 }
 
-static void propagate_constraint_index(MeshIsland* mi)
-{
-	int i;
-
-	for (i = 0; i < mi->participating_constraint_count; i++)
-	{
-		RigidBodyShardCon *rbsc = mi->participating_constraints[i];
-		if (rbsc && rbsc->physics_constraint && RB_constraint_is_enabled(rbsc->physics_constraint)) {
-			if (rbsc->mi1 != mi) {
-				rbsc->mi1->constraint_index = mi->constraint_index;
-			}
-			else if (rbsc->mi2 != mi) {
-				rbsc->mi2->constraint_index = mi->constraint_index;
-			}
-		}
-	}
-}
-
 static void set_constraint_index(FractureModifierData *fmd, RigidBodyShardCon *con)
 {
 	if (con->physics_constraint)
 	{
 		if (!RB_constraint_is_enabled(con->physics_constraint))
 		{
-			if (con->mi1->constraint_index == 0)
-			{
-				fmd->constraint_island_count++;
-				con->mi1->constraint_index = fmd->constraint_island_count;
-			}
+			fmd->constraint_island_count++;
+			con->mi1->constraint_index = fmd->constraint_island_count;
 
-			if (con->mi2->constraint_index == 0)
-			{
-				fmd->constraint_island_count++;
-				con->mi2->constraint_index = fmd->constraint_island_count;
-			}
+			fmd->constraint_island_count++;
+			con->mi2->constraint_index = fmd->constraint_island_count;
 		}
-		else {
-			if ((con->mi1->constraint_index == 0) && (con->mi2->constraint_index == 0))
-			{
-				fmd->constraint_island_count++;
-				con->mi1->constraint_index = fmd->constraint_island_count;
-				con->mi2->constraint_index = fmd->constraint_island_count;
-			}
+		else
+		{
+			fmd->constraint_island_count++;
+			con->mi1->constraint_index = fmd->constraint_island_count;
+			con->mi2->constraint_index = fmd->constraint_island_count;
 		}
 	}
 }
@@ -3985,7 +3967,9 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		}
 
 		BKE_object_where_is_calc(scene, ob);
-		fmd->constraint_island_count = 0;
+		if (rebuild) {
+			fmd->constraint_island_count = 0;
+		}
 
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 			if (mi->rigidbody == NULL) {
@@ -4019,7 +4003,9 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				}
 
 				validateShard(rbw, is_empty ? NULL : mi, ob, do_rebuild, fmd->fracture_mode == MOD_FRACTURE_DYNAMIC, bbsize);
-				mi->constraint_index = 0;
+				if (rebuild) {
+					mi->constraint_index = 0;
+				}
 			}
 
 			/* update simulation object... */
