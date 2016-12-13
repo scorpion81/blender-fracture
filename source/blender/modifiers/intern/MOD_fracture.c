@@ -1593,10 +1593,10 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		Shard *s = NULL;
 		float cent[3];
 
+		arrange_shard(fmd, id, true, cent);
+
 		/*splinters... just global axises and a length, for rotation rotate the object */
 		s = do_splinters(fmd, points, &mat, id, dm);
-
-		arrange_shard(fmd, id, true, cent);
 
 		mat_index = do_materials(fmd, obj);
 		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
@@ -1676,10 +1676,7 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		BKE_fracture_create_dm(fmd, true);
 		fmd->shards_to_islands = temp;
 
-		if (!s)
-		{
-			cleanup_splinters(fmd, mat, s, dm);
-		}
+		cleanup_splinters(fmd, mat, s, dm);
 
 		if (!fmd->auto_execute && fmd->execute_threaded) {
 			fmd->reset_shards = false;

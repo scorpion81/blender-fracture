@@ -2160,7 +2160,7 @@ void BKE_match_vertex_coords(MeshIsland* mi, MeshIsland *par, Object *ob, int fr
 	{
 		invert_qt_qt(qrot, par->rot);
 		mul_qt_qtqt(qrot, rot, qrot);
-		mul_qt_qtqt(qrot, quat, qrot);
+		mul_qt_qtqt(qrot, iquat, qrot);
 	}
 	else
 	{
