@@ -1456,9 +1456,10 @@ typedef struct MeshIsland {
 	float thresh_weight, ground_weight;
 	int linear_index;  /* index in rigidbody world */
 	int particle_index;
+	int constraint_index;
 	int totcol; /*store number of used materials here, from the original object*/
 	int totdef; /*store number of used vertexgroups here, from the original object*/
-	char pad[4];
+	//char pad[4];
 } MeshIsland;
 
 
@@ -1775,6 +1776,7 @@ typedef struct FractureModifierData {
 	/* internal values */
 	float max_vol;
 	int last_frame;
+	int constraint_island_count;
 
 	/*DANGER... what happens if the new compound object has more materials than fit into 1 short ? shouldnt happen but can...*/
 	/*so reserve an int here better */
@@ -1783,7 +1785,7 @@ typedef struct FractureModifierData {
 
 	int keep_cutter_shards;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

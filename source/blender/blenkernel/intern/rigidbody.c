@@ -1230,6 +1230,11 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 
 	fmd = (FractureModifierData*) modifiers_findByType(ob, eModifierType_Fracture);
 
+	//re-initialize constraint island indices
+	if (rebuild) {
+		mi->constraint_index = 0;
+	}
+
 	/* make sure collision shape exists */
 	/* FIXME we shouldn't always have to rebuild collision shapes when rebuilding objects, but it's needed for constraints to update correctly */
 	if (rbo->physics_shape == NULL || rebuild)
@@ -2109,18 +2114,10 @@ static void fake_dynamic_collide(Object *ob1, Object *ob2, MeshIsland *mi1, Mesh
 	}
 }
 
-static bool check_constraint_state(MeshIsland *mi1, MeshIsland *mi2) {
-
+static bool check_constraint_island(MeshIsland *mi1, MeshIsland *mi2)
+{
 	if (mi1 && mi2) {
-		RigidBodyShardCon *con;
-		int i;
-		for (i = 0; i < mi1->participating_constraint_count; i++) {
-			con = mi1->participating_constraints[i];
-			//con is between mi1 and mi2;
-			if ((con->physics_constraint) && (con->mi1 == mi2 || con->mi2 == mi2)) {
-				return !RB_constraint_is_enabled(con->physics_constraint) || ((con->flag & RBC_FLAG_DISABLE_COLLISIONS) == 0);
-			}
-		}
+		return mi1->constraint_index != mi2->constraint_index;
 	}
 
 	return true;
@@ -2223,7 +2220,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	fake_dynamic_collide(ob1, ob2, mi1, mi2, rbw);
 	fake_dynamic_collide(ob2, ob1, mi2, mi1, rbw);
 
-	return check_colgroup_ghost(ob1, ob2) && check_constraint_state(mi1, mi2) && check_constraint_state(mi2, mi1);
+	return check_colgroup_ghost(ob1, ob2) && check_constraint_island(mi1, mi2);
 }
 
 static bool can_break(Object* collider, Object* ob, bool limit)
@@ -3608,6 +3605,61 @@ static void activateCluster(MeshIsland *mi, int particle_index, RigidBodyWorld *
 	}
 }
 
+static int participating_constraint_index(MeshIsland* mi)
+{
+	int index = 0, i = 0;
+
+	for (i = 0; i < mi->participating_constraint_count; i++)
+	{
+		RigidBodyShardCon *rbsc = mi->participating_constraints[i];
+		if (rbsc->mi1 != mi) {
+			if (rbsc->mi1->constraint_index > 0) {
+				index = rbsc->mi1->constraint_index;
+				break;
+			}
+		}
+		else if (rbsc->mi2 != mi) {
+			if (rbsc->mi2->constraint_index > 0) {
+				index = rbsc->mi2->constraint_index;
+				break;
+			}
+		}
+	}
+
+	return index;
+}
+
+static void split_constraint_index(FractureModifierData *fmd, RigidBodyShardCon *con)
+{
+	int index = 0;
+
+	index = participating_constraint_index(con->mi1);
+
+	//if (con->mi1->constraint_index == 0)
+	{
+		if (index == 0) {
+			con->mi1->constraint_index = fmd->constraint_island_count;
+			fmd->constraint_island_count++;
+		}
+		else {
+			con->mi1->constraint_index = index;
+		}
+	}
+
+	//if (con->mi2->constraint_index == 0)
+	{
+		index = participating_constraint_index(con->mi2);
+
+		if (index == 0) {
+			con->mi2->constraint_index = fmd->constraint_island_count;
+			fmd->constraint_island_count++;
+		}
+		else {
+			con->mi2->constraint_index = index;
+		}
+	}
+}
+
 static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, MeshIsland *mi, RigidBodyWorld *rbw, int breaking_percentage)
 {
 	int broken_cons = 0, cons = 0, i = 0, cluster_cons = 0, broken_cluster_cons = 0;
@@ -4073,6 +4125,11 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && (rbsc->flag & RBC_FLAG_USE_BREAKING) && !rebuild)
 			{
 				handle_plastic_breaking(rbsc, rbw, laststeps, lastscale);
+			}
+
+			//assign 2 different indexes here to broken constraint members
+			if (rbsc && rbsc->physics_constraint && !RB_constraint_is_enabled(rbsc->physics_constraint)) {
+				split_constraint_index(fmd, rbsc);
 			}
 
 			rbsc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
