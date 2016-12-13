@@ -2109,6 +2109,23 @@ static void fake_dynamic_collide(Object *ob1, Object *ob2, MeshIsland *mi1, Mesh
 	}
 }
 
+static bool check_constraint_state(MeshIsland *mi1, MeshIsland *mi2) {
+
+	if (mi1 && mi2) {
+		RigidBodyShardCon *con;
+		int i;
+		for (i = 0; i < mi1->participating_constraint_count; i++) {
+			con = mi1->participating_constraints[i];
+			//con is between mi1 and mi2;
+			if ((con->physics_constraint) && (con->mi1 == mi2 || con->mi2 == mi2)) {
+				return !RB_constraint_is_enabled(con->physics_constraint) || ((con->flag & RBC_FLAG_DISABLE_COLLISIONS) == 0);
+			}
+		}
+	}
+
+	return true;
+}
+
 /* this allows partial object activation, only some shards will be activated, called from bullet(!) */
 static int filterCallback(void* world, void* island1, void* island2, void *blenderOb1, void* blenderOb2) {
 	MeshIsland* mi1, *mi2;
@@ -2206,7 +2223,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	fake_dynamic_collide(ob1, ob2, mi1, mi2, rbw);
 	fake_dynamic_collide(ob2, ob1, mi2, mi1, rbw);
 
-	return check_colgroup_ghost(ob1, ob2);
+	return check_colgroup_ghost(ob1, ob2) && check_constraint_state(mi1, mi2) && check_constraint_state(mi2, mi1);
 }
 
 static bool can_break(Object* collider, Object* ob, bool limit)
