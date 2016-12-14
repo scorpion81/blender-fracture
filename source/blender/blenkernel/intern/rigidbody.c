@@ -2112,15 +2112,7 @@ static void fake_dynamic_collide(Object *ob1, Object *ob2, MeshIsland *mi1, Mesh
 static bool check_constraint_island(MeshIsland *mi1, MeshIsland *mi2)
 {
 	if (mi1 && mi2) {
-		RigidBodyShardCon *con;
-		int i;
-		for (i = 0; i < mi1->participating_constraint_count; i++)
-		{
-			con = mi1->participating_constraints[i];
-			if ((con->mi1 == mi2 || con->mi2 == mi2) && (con->flag & RBC_FLAG_DISABLE_COLLISIONS)) {
-				return mi1->constraint_index != mi2->constraint_index;
-			}
-		}
+		return mi1->constraint_index != mi2->constraint_index;
 	}
 
 	return true;
@@ -2223,7 +2215,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	fake_dynamic_collide(ob1, ob2, mi1, mi2, rbw);
 	fake_dynamic_collide(ob2, ob1, mi2, mi1, rbw);
 
-	return check_colgroup_ghost(ob1, ob2) && check_constraint_island(mi1, mi2) && check_constraint_island(mi2, mi1);
+	return check_colgroup_ghost(ob1, ob2) && (check_constraint_island(mi1, mi2) && check_constraint_island(mi2, mi1) || (ob1 != ob2));
 }
 
 static bool can_break(Object* collider, Object* ob, bool limit)
@@ -3622,7 +3614,6 @@ static void set_constraint_index(FractureModifierData *fmd, RigidBodyShardCon *c
 		}
 		else
 		{
-			fmd->constraint_island_count++;
 			con->mi1->constraint_index = fmd->constraint_island_count;
 			con->mi2->constraint_index = fmd->constraint_island_count;
 		}
@@ -3967,9 +3958,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		}
 
 		BKE_object_where_is_calc(scene, ob);
-		if (rebuild) {
-			fmd->constraint_island_count = 0;
-		}
+		fmd->constraint_island_count = 1;
 
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 			if (mi->rigidbody == NULL) {
@@ -4003,9 +3992,9 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				}
 
 				validateShard(rbw, is_empty ? NULL : mi, ob, do_rebuild, fmd->fracture_mode == MOD_FRACTURE_DYNAMIC, bbsize);
-				if (rebuild) {
-					mi->constraint_index = 0;
-				}
+
+				mi->constraint_index = mi->id;
+
 			}
 
 			/* update simulation object... */
