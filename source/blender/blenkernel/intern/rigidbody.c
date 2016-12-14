@@ -2109,9 +2109,9 @@ static void fake_dynamic_collide(Object *ob1, Object *ob2, MeshIsland *mi1, Mesh
 	}
 }
 
-static bool check_constraint_island(MeshIsland *mi1, MeshIsland *mi2)
+static bool check_constraint_island(FractureModifierData* fmd, MeshIsland *mi1, MeshIsland *mi2)
 {
-	if (mi1 && mi2) {
+	if (mi1 && mi2 && !fmd->use_compounds) {
 		return mi1->constraint_index != mi2->constraint_index;
 	}
 
@@ -2215,7 +2215,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	fake_dynamic_collide(ob1, ob2, mi1, mi2, rbw);
 	fake_dynamic_collide(ob2, ob1, mi2, mi1, rbw);
 
-	return check_colgroup_ghost(ob1, ob2) && (check_constraint_island(mi1, mi2) && check_constraint_island(mi2, mi1) || (ob1 != ob2));
+	return check_colgroup_ghost(ob1, ob2) && (check_constraint_island(fmd1, mi1, mi2) && check_constraint_island(fmd2, mi2, mi1) || (ob1 != ob2));
 }
 
 static bool can_break(Object* collider, Object* ob, bool limit)
