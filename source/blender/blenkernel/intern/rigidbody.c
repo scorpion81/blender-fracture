@@ -1414,44 +1414,15 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 
 /* --------------------- */
 
-static int connected_island_cons(RigidBodyWorld *rbw, Object* ob, RigidBodyCon*** cons)
-{
-	GroupObject* go;
-	int count = 0, i = 0;
-
-	for (go = rbw->constraints->gobject.first; go; go = go->next ) {
-		RigidBodyCon *con = go->ob->rigidbody_constraint;
-		if ((con->ob1 == ob) || (con->ob2 == ob))
-		{
-			count++;
-		}
-	}
-
-	*cons = MEM_mallocN(sizeof(RigidBodyCon*) * count, "connected_island_cons");
-
-	for (go = rbw->constraints->gobject.first; go; go = go->next ) {
-		RigidBodyCon *con = go->ob->rigidbody_constraint;
-		if ((con->ob1 == ob) || (con->ob2 == ob))
-		{
-			(*cons)[i] = con;
-			i++;
-		}
-	}
-
-	return count;
-}
-
 static MeshIsland* find_closest_meshisland_to_point(FractureModifierData* fmd, Object *ob, Object *ob2, RigidBodyWorld* rbw, RigidBodyCon *con) {
 
 	MeshIsland *mi, **mi_array = NULL;
 	KDTree *tree;
-	KDTreeNearest *n;
+	KDTreeNearest *n = NULL;
 	int count = 0;
-	int con_count = 0;
 	int index = 0;
-	float loc[3];
-	int i = 0, j = 0;
-	RigidBodyCon **cons = NULL;
+	float loc[3], min[3], max[3], vec[3] = {1, 1, 1};
+	int i = 0, r = 0;
 
 	count = BLI_listbase_count(&fmd->meshIslands);
 	tree = BLI_kdtree_new(count);
@@ -1466,22 +1437,15 @@ static MeshIsland* find_closest_meshisland_to_point(FractureModifierData* fmd, O
 
 	BLI_kdtree_balance(tree);
 
-	con_count = connected_island_cons(rbw, ob, &cons);
-	n = MEM_mallocN(sizeof(KDTreeNearest) * con_count, "n nearest find_closest_meshisland");
+	index = BLI_kdtree_find_nearest(tree, ob2->loc, n);
 
-	BLI_kdtree_find_nearest_n(tree, ob2->loc, n, con_count);
-
-	for (j = 0; j < con_count; j++) {
-		if (cons[j] == con) {
-			index = n[j].index;
-			break;
-		}
-	}
+	//create "aabb"
+	mul_v3_v3(vec, ob2->size);
+	sub_v3_v3v3(min, ob2->loc, vec);
+	add_v3_v3v3(max, ob2->loc, vec);
 
 	if (index == -1) {
 		MEM_freeN(mi_array);
-		MEM_freeN(n);
-		MEM_freeN(cons);
 		BLI_kdtree_free(tree);
 		return NULL;
 	}
@@ -1492,9 +1456,36 @@ static MeshIsland* find_closest_meshisland_to_point(FractureModifierData* fmd, O
 
 	mi = mi_array[index];
 
+	//do a range search and clip against "aabb" of empty scale for additional inner constraint
+	r = BLI_kdtree_range_search(tree, ob2->loc, &n, max_fff(UNPACK3(ob2->size)));
+	for (i = 0; i < r; i++)
+	{
+		float co[3];
+		copy_v3_v3(co, n[i].co);
+
+		if ((co[0] > min[0] && co[0] < max[0]) &&
+		    (co[1] > min[1] && co[1] < max[1]) &&
+		    (co[2] > min[2] && co[2] < max[2]))
+		{
+			MeshIsland* mi2;
+			int ind = n[i].index;
+
+			if (ind >= count) {
+				ind = count-1;
+			}
+
+			mi2 = mi_array[ind];
+
+			//connect ?
+			BKE_meshisland_constraint_create(fmd, mi, mi2, RBC_TYPE_FIXED, fmd->breaking_threshold);
+		}
+	}
+
+	if (n) {
+		MEM_freeN(n);
+	}
+
 	MEM_freeN(mi_array);
-	MEM_freeN(n);
-	MEM_freeN(cons);
 	BLI_kdtree_free(tree);
 
 	return mi;
@@ -1546,8 +1537,8 @@ static void rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, b
 		fmd2 = (FractureModifierData*)modifiers_findByType(rbc->ob2, eModifierType_Fracture);
 
 		if (fmd1 && fmd2) {
-			mi1 = find_closest_meshisland_to_point(fmd1, rbc->ob1, rbc->ob2, rbw, rbc);
-			mi2 = find_closest_meshisland_to_point(fmd2, rbc->ob2, rbc->ob1, rbw, rbc);
+			mi1 = find_closest_meshisland_to_point(fmd1, rbc->ob1, ob, rbw, rbc);
+			mi2 = find_closest_meshisland_to_point(fmd2, rbc->ob2, ob, rbw, rbc);
 
 			if (mi1 && mi2) {
 				rb1 = mi1->rigidbody->physics_object;
@@ -1555,14 +1546,14 @@ static void rigidbody_validate_sim_constraint(RigidBodyWorld *rbw, Object *ob, b
 			}
 		}
 		else if (fmd1) {
-			mi1 = find_closest_meshisland_to_point(fmd1, rbc->ob1, rbc->ob2, rbw, rbc);
+			mi1 = find_closest_meshisland_to_point(fmd1, rbc->ob1, ob, rbw, rbc);
 			if (mi1) {
 				rb1 = mi1->rigidbody->physics_object;
 				rb2 = rbc->ob2->rigidbody_object->physics_object;
 			}
 		}
 		else if (fmd2) {
-			mi2 = find_closest_meshisland_to_point(fmd2, rbc->ob2, rbc->ob1, rbw, rbc);
+			mi2 = find_closest_meshisland_to_point(fmd2, rbc->ob2, ob, rbw, rbc);
 			if (mi2)
 			{
 				rb2 = mi2->rigidbody->physics_object;

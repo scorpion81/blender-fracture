@@ -121,5 +121,6 @@ int BKE_fracture_update_visual_mesh(struct FractureModifierData *fmd, struct Obj
 short BKE_fracture_collect_materials(struct Object* o, struct Object* ob, short matstart, struct GHash** mat_index_map);
 
 void BKE_bm_mesh_hflag_flush_vert(struct BMesh *bm, const char hflag);
+void BKE_meshisland_constraint_create(struct FractureModifierData* fmd, struct MeshIsland *mi1, struct MeshIsland *mi2, int con_type, float thresh);
 
 #endif /* BKE_FRACTURE_H */

@@ -2456,72 +2456,6 @@ static void mesh_separate_loose(FractureModifierData *rmd, Object *ob, DerivedMe
 
 }
 
-static void do_constraint(FractureModifierData* fmd, MeshIsland *mi1, MeshIsland *mi2, int con_type, float thresh)
-{
-	RigidBodyShardCon *rbsc;
-	rbsc = BKE_rigidbody_create_shard_constraint(fmd->modifier.scene, con_type, fmd->fracture_mode != MOD_FRACTURE_DYNAMIC);
-	rbsc->mi1 = mi1;
-	rbsc->mi2 = mi2;
-
-	BLI_snprintf(rbsc->name, 64, "%s-%s", rbsc->mi1->name, rbsc->mi2->name);
-
-	if (thresh == 0 || fmd->use_breaking == false) {
-		rbsc->flag &= ~RBC_FLAG_USE_BREAKING;
-	}
-
-	if (!fmd->use_constraint_collision) {
-		rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
-	}
-	else {
-		rbsc->flag &= ~RBC_FLAG_DISABLE_COLLISIONS;
-	}
-
-	if ((mi1->particle_index != -1) && (mi2->particle_index != -1) &&
-		(mi1->particle_index == mi2->particle_index))
-	{
-		if (fmd->cluster_count > 1) {
-			rbsc->breaking_threshold = fmd->cluster_breaking_threshold;
-		}
-		else {
-			rbsc->breaking_threshold = thresh;
-		}
-	}
-	else
-	{
-		if ((mi1->particle_index != -1) && (mi2->particle_index != -1) &&
-			(mi1->particle_index != mi2->particle_index))
-		{
-			/* set a different type of constraint between clusters */
-			rbsc->type = fmd->cluster_constraint_type;
-		}
-		rbsc->breaking_threshold = thresh;
-	}
-
-	if (fmd->thresh_defgrp_name[0]) {
-		/* modify maximum threshold by minimum weight */
-		rbsc->breaking_threshold = thresh * MIN2(mi1->thresh_weight, mi2->thresh_weight);
-	}
-
-	BLI_addtail(&fmd->meshConstraints, rbsc);
-
-	/* store constraints per meshisland too, to allow breaking percentage */
-	if (mi1->participating_constraints == NULL) {
-		mi1->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon *), "part_constraints_mi1");
-		mi1->participating_constraint_count = 0;
-	}
-	mi1->participating_constraints = MEM_reallocN(mi1->participating_constraints, sizeof(RigidBodyShardCon *) * (mi1->participating_constraint_count + 1));
-	mi1->participating_constraints[mi1->participating_constraint_count] = rbsc;
-	mi1->participating_constraint_count++;
-
-	if (mi2->participating_constraints == NULL) {
-		mi2->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon *), "part_constraints_mi2");
-		mi2->participating_constraint_count = 0;
-	}
-	mi2->participating_constraints = MEM_reallocN(mi2->participating_constraints, sizeof(RigidBodyShardCon *) * (mi2->participating_constraint_count + 1));
-	mi2->participating_constraints[mi2->participating_constraint_count] = rbsc;
-	mi2->participating_constraint_count++;
-}
-
 static void connect_meshislands(FractureModifierData *fmd, MeshIsland *mi1, MeshIsland *mi2, int con_type, float thresh)
 {
 	int con_found = false;
@@ -2553,7 +2487,7 @@ static void connect_meshislands(FractureModifierData *fmd, MeshIsland *mi1, Mesh
 	}
 
 	if (!con_found && ok) {
-		do_constraint(fmd, mi1, mi2, con_type, thresh);
+		BKE_meshisland_constraint_create(fmd, mi1, mi2, con_type, thresh);
 	}
 }
 
