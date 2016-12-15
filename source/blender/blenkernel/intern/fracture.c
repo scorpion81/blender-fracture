@@ -48,6 +48,7 @@
 #include "BKE_pointcache.h"
 #include "BKE_rigidbody.h"
 
+#include "BLI_edgehash.h"
 #include "BLI_kdtree.h"
 #include "BLI_listbase.h"
 #include "BLI_math_vector.h"
@@ -206,6 +207,7 @@ Shard *BKE_custom_data_to_shard(Shard *s, DerivedMesh *dm)
 	CustomData_reset(&s->vertData);
 	CustomData_reset(&s->loopData);
 	CustomData_reset(&s->polyData);
+	CustomData_reset(&s->edgeData);
 
 	CustomData_copy(&dm->vertData, &s->vertData, CD_MASK_MDEFORMVERT, CD_DUPLICATE, s->totvert);
 	CustomData_copy(&dm->loopData, &s->loopData, CD_MASK_MLOOPUV, CD_DUPLICATE, s->totloop);
@@ -309,6 +311,9 @@ void BKE_shard_free(Shard *s, bool doCustomData)
 	if (s->mpoly) {
 		MEM_freeN(s->mpoly);
 	}
+	if (s->medge) {
+		MEM_freeN(s->medge);
+	}
 	if (s->neighbor_ids) {
 		MEM_freeN(s->neighbor_ids);
 	}
@@ -320,6 +325,7 @@ void BKE_shard_free(Shard *s, bool doCustomData)
 		CustomData_free(&s->vertData, s->totvert);
 		CustomData_free(&s->loopData, s->totloop);
 		CustomData_free(&s->polyData, s->totpoly);
+		CustomData_free(&s->edgeData, s->totedge);
 	}
 
 	MEM_freeN(s);
@@ -345,8 +351,8 @@ float BKE_shard_calc_minmax(Shard *shard)
 Shard* BKE_create_initial_shard(DerivedMesh *dm)
 {
 	/* create temporary shard covering the entire mesh */
-	Shard *s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
-	                                     dm->numVertData, dm->numPolyData, dm->numLoopData, true);
+	Shard *s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm), dm->getEdgeArray(dm),
+	                                     dm->numVertData, dm->numPolyData, dm->numLoopData, dm->numEdgeData, true);
 	s = BKE_custom_data_to_shard(s, dm);
 	s->flag = SHARD_INTACT;
 	s->shard_id = -2;
@@ -398,12 +404,13 @@ bool BKE_get_shard_minmax(FracMesh *mesh, ShardID id, float min_r[3], float max_
 	return false;
 }
 
-Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int totvert, int totpoly, int totloop, bool copy)
+Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, MEdge* medge,  int totvert, int totpoly, int totloop, int totedge, bool copy)
 {
 	Shard *shard = MEM_mallocN(sizeof(Shard), __func__);
 	shard->totvert = totvert;
 	shard->totpoly = totpoly;
 	shard->totloop = totloop;
+	shard->totedge = totedge;
 	shard->cluster_colors = NULL;
 	shard->neighbor_ids = NULL;
 	shard->neighbor_count = 0;
@@ -412,14 +419,17 @@ Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, int t
 		shard->mvert = MEM_mallocN(sizeof(MVert) * totvert, "shard vertices");
 		shard->mpoly = MEM_mallocN(sizeof(MPoly) * totpoly, "shard polys");
 		shard->mloop = MEM_mallocN(sizeof(MLoop) * totloop, "shard loops");
+		shard->medge = MEM_mallocN(sizeof(MEdge) * totedge, "shard edges");
 		memcpy(shard->mvert, mvert, sizeof(MVert) * totvert);
 		memcpy(shard->mpoly, mpoly, sizeof(MPoly) * totpoly);
 		memcpy(shard->mloop, mloop, sizeof(MLoop) * totloop);
+		memcpy(shard->medge, medge, sizeof(MEdge) * totedge);
 	}
 	else {
 		shard->mvert = mvert;
 		shard->mpoly = mpoly;
 		shard->mloop = mloop;
+		shard->medge = medge;
 	}
 
 	shard->shard_id = -1;
@@ -1123,7 +1133,7 @@ static Shard *parse_cell(cell c)
 
 	copy_v3_v3(centr, c.centroid);
 
-	s = BKE_create_fracture_shard(mvert, mpoly, mloop, totvert, totpoly, totloop, false);
+	s = BKE_create_fracture_shard(mvert, mpoly, mloop, NULL, totvert, totpoly, totloop, 0, false);
 
 	//s->flag &= ~(SHARD_SKIP | SHARD_DELETE);
 	s->neighbor_ids = neighbors;
@@ -1362,8 +1372,8 @@ static void intersect_shards_by_dm(FractureModifierData *fmd, DerivedMesh *d, Ob
 	MVert *mv;
 	DerivedMesh *dm_parent = NULL;
 
-	t = BKE_create_fracture_shard(d->getVertArray(d), d->getPolyArray(d), d->getLoopArray(d),
-	                              d->getNumVerts(d), d->getNumPolys(d), d->getNumLoops(d), true);
+	t = BKE_create_fracture_shard(d->getVertArray(d), d->getPolyArray(d), d->getLoopArray(d), d->getEdgeArray(d),
+	                              d->getNumVerts(d), d->getNumPolys(d), d->getNumLoops(d), d->getNumEdges(d), true);
 	t = BKE_custom_data_to_shard(t, d);
 
 
@@ -1827,22 +1837,27 @@ static void do_marking(FractureModifierData *fmd, DerivedMesh *result)
 	}
 }
 
-static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_loops, int num_polys, bool doCustomData)
+static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_loops, int num_polys, int num_edges, bool doCustomData)
 {
 	int shard_count = fmd->shards_to_islands ? BLI_listbase_count(&fmd->islandShards) : fmd->frac_mesh->shard_count;
 	ListBase *shardlist;
 	Shard *shard;
 
-	int vertstart, polystart, loopstart;
+	int vertstart, polystart, loopstart, edgestart;
 
 	MVert *mverts;
 	MPoly *mpolys;
 	MLoop *mloops;
+	MEdge *medges;
 
-	DerivedMesh *result = CDDM_new(num_verts, 0, 0, num_loops, num_polys);
+	DerivedMesh *result = CDDM_new(num_verts, num_edges, 0, num_loops, num_polys);
 	mverts = CDDM_get_verts(result);
 	mloops = CDDM_get_loops(result);
 	mpolys = CDDM_get_polys(result);
+
+	if (num_edges > 0) {
+		medges = CDDM_get_edges(result);
+	}
 
 	if (doCustomData && shard_count > 0) {
 		Shard *s;
@@ -1869,7 +1884,7 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 		}
 	}
 
-	vertstart = polystart = loopstart = 0;
+	vertstart = polystart = loopstart = edgestart = 0;
 	if (fmd->shards_to_islands) {
 		shardlist = &fmd->islandShards;
 	}
@@ -1881,6 +1896,7 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 	{
 		MPoly *mp;
 		MLoop *ml;
+		MEdge *me;
 		int i;
 
 		memcpy(mverts + vertstart, shard->mvert, shard->totvert * sizeof(MVert));
@@ -1908,6 +1924,17 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 		for (i = 0, ml = mloops + loopstart; i < shard->totloop; ++i, ++ml) {
 			/* adjust vertex index */
 			ml->v += vertstart;
+			ml->e += edgestart;
+		}
+
+		if (num_edges > 0) {
+			memcpy(medges + edgestart, shard->medge, shard->totedge * sizeof(MEdge));
+
+			for (i = 0, me = medges + edgestart; i < shard->totedge; ++i, ++me) {
+				/* adjust vertex indices */
+				me->v1 += vertstart;
+				me->v2 += vertstart;
+			}
 		}
 
 		if (doCustomData) {
@@ -1927,6 +1954,7 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 		vertstart += shard->totvert;
 		polystart += shard->totpoly;
 		loopstart += shard->totloop;
+		edgestart += shard->totedge;
 	}
 
 	return result;
@@ -1936,16 +1964,17 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
 {
 	Shard *s;
-	int num_verts, num_polys, num_loops;
+	int num_verts, num_polys, num_loops, num_edges;
 	DerivedMesh *result;
 	
-	num_verts = num_polys = num_loops = 0;
+	num_verts = num_polys = num_loops = num_edges = 0;
 
 	if (fmd->shards_to_islands) {
 		for (s = fmd->islandShards.first; s; s = s->next) {
 			num_verts += s->totvert;
 			num_polys += s->totpoly;
 			num_loops += s->totloop;
+			num_edges += s->totedge;
 		}
 	}
 	else {
@@ -1957,13 +1986,16 @@ static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
 			num_verts += s->totvert;
 			num_polys += s->totpoly;
 			num_loops += s->totloop;
+			num_edges += s->totedge;
 		}
 	}
 	
-	result = do_create(fmd, num_verts, num_loops, num_polys, doCustomData);
+	result = do_create(fmd, num_verts, num_loops, num_polys, num_edges, doCustomData);
 
-	CustomData_free(&result->edgeData, 0);
-	CDDM_calc_edges(result);
+	if (num_edges == 0) {
+		CustomData_free(&result->edgeData, 0);
+		CDDM_calc_edges(result);
+	}
 
 	do_marking(fmd, result);
 	
@@ -2005,7 +2037,7 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 	MLoop *mloops;
 	MPoly *mpolys;
 	
-	dm = CDDM_new(s->totvert, 0, 0, s->totloop, s->totpoly);
+	dm = CDDM_new(s->totvert, s->totedge, 0, s->totloop, s->totpoly);
 
 	mverts = CDDM_get_verts(dm);
 	mloops = CDDM_get_loops(dm);
@@ -2015,8 +2047,14 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 	memcpy(mloops, s->mloop, s->totloop * sizeof(MLoop));
 	memcpy(mpolys, s->mpoly, s->totpoly * sizeof(MPoly));
 
-	CustomData_free(&dm->edgeData, 0);
-	CDDM_calc_edges(dm);
+	if (s->totedge > 0) {
+		MEdge *medges = CDDM_get_edges(dm);
+		memcpy(medges, s->medge, s->totedge * sizeof(MEdge));
+	}
+	else {
+		CustomData_free(&dm->edgeData, 0);
+		CDDM_calc_edges(dm);
+	}
 
 	dm->dirty |= DM_DIRTY_NORMALS;
 	CDDM_calc_normals_mapping(dm);
@@ -2410,10 +2448,11 @@ static Shard* fracture_object_to_shard( Object *own, Object* target)
 	MVert* mvert, *mv;
 	MPoly* mpoly;
 	MLoop* mloop;
+	MEdge* medge;
 	SpaceTransform trans;
 	float mat[4][4], size[3] = {1.0f, 1.0f, 1.0f};
 
-	int totvert, totpoly, totloop, v;
+	int totvert, totpoly, totloop, totedge, v;
 	bool do_free = false;
 
 	dm = target->derivedFinal;
@@ -2431,12 +2470,14 @@ static Shard* fracture_object_to_shard( Object *own, Object* target)
 	mvert = dm->getVertArray(dm);
 	mpoly = dm->getPolyArray(dm);
 	mloop = dm->getLoopArray(dm);
+	medge = dm->getEdgeArray(dm);
 	totvert = dm->getNumVerts(dm);
 	totpoly = dm->getNumPolys(dm);
 	totloop = dm->getNumLoops(dm);
+	totedge = dm->getNumEdges(dm);
 
 	// create temp shard -> that necessary at all ?
-	s = BKE_create_fracture_shard(mvert, mpoly, mloop, totvert, totpoly, totloop, true);
+	s = BKE_create_fracture_shard(mvert, mpoly, mloop, medge, totvert, totpoly, totloop, totedge, true);
 
 	//use this as size holder, and rawcentroid is the old ob location
 	copy_v3_v3(s->impact_size, size);

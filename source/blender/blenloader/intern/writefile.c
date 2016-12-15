@@ -1692,19 +1692,23 @@ static void write_shard(WriteData* wd, Shard* s)
 	CustomDataLayer *vlayers = NULL, vlayers_buff[CD_TEMP_CHUNK_SIZE];
 	CustomDataLayer *llayers = NULL, llayers_buff[CD_TEMP_CHUNK_SIZE];
 	CustomDataLayer *players = NULL, players_buff[CD_TEMP_CHUNK_SIZE];
+	CustomDataLayer *elayers = NULL, elayers_buff[CD_TEMP_CHUNK_SIZE];
 
 	writestruct(wd, DATA, Shard, 1, s);
 	writestruct(wd, DATA, MVert, s->totvert, s->mvert);
 	writestruct(wd, DATA, MPoly, s->totpoly, s->mpoly);
 	writestruct(wd, DATA, MLoop, s->totloop, s->mloop);
+	writestruct(wd, DATA, MEdge, s->totedge, s->medge);
 
 	CustomData_file_write_prepare(&s->vertData, &vlayers, vlayers_buff, ARRAY_SIZE(vlayers_buff));
 	CustomData_file_write_prepare(&s->loopData, &llayers, llayers_buff, ARRAY_SIZE(llayers_buff));
 	CustomData_file_write_prepare(&s->polyData, &players, players_buff, ARRAY_SIZE(players_buff));
+	CustomData_file_write_prepare(&s->edgeData, &elayers, elayers_buff, ARRAY_SIZE(elayers_buff));
 
 	write_customdata(wd, NULL, s->totvert, &s->vertData, vlayers, -1, s->totvert);
 	write_customdata(wd, NULL, s->totloop, &s->loopData, llayers, -1, s->totloop);
 	write_customdata(wd, NULL, s->totpoly, &s->polyData, players, -1, s->totpoly);
+	write_customdata(wd, NULL, s->totedge, &s->edgeData, elayers, -1, s->totedge);
 
 	writedata(wd, DATA, sizeof(int)*s->neighbor_count, s->neighbor_ids);
 	writedata(wd, DATA, sizeof(int), s->cluster_colors);
@@ -1719,6 +1723,10 @@ static void write_shard(WriteData* wd, Shard* s)
 
 	if (players && players != players_buff) {
 		MEM_freeN(players);
+	}
+
+	if (elayers && elayers != elayers_buff) {
+		MEM_freeN(elayers);
 	}
 }
 

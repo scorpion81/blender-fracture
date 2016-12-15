@@ -322,9 +322,11 @@ static bool do_other_output(DerivedMesh** other_dm, Shard** other, DerivedMesh**
 		*other = BKE_create_fracture_shard((*other_dm)->getVertArray(*other_dm),
 											(*other_dm)->getPolyArray(*other_dm),
 											(*other_dm)->getLoopArray(*other_dm),
+											(*other_dm)->getEdgeArray(*other_dm),
 											(*other_dm)->getNumVerts(*other_dm),
 											(*other_dm)->getNumPolys(*other_dm),
 											(*other_dm)->getNumLoops(*other_dm),
+											(*other_dm)->getNumEdges(*other_dm),
 											 true);
 
 		*other = BKE_custom_data_to_shard(*other, *other_dm);
@@ -378,9 +380,11 @@ static Shard *do_output_shard_dm(DerivedMesh** output_dm, Shard *child, int num_
 	Shard* output_s = BKE_create_fracture_shard((*output_dm)->getVertArray(*output_dm),
 	                                     (*output_dm)->getPolyArray(*output_dm),
 	                                     (*output_dm)->getLoopArray(*output_dm),
+	                                     (*output_dm)->getEdgeArray(*output_dm),
 	                                     (*output_dm)->getNumVerts(*output_dm),
 	                                     (*output_dm)->getNumPolys(*output_dm),
 	                                     (*output_dm)->getNumLoops(*output_dm),
+	                                     (*output_dm)->getNumEdges(*output_dm),
 	                                     true);
 
 	output_s = BKE_custom_data_to_shard(output_s, *output_dm);
@@ -658,9 +662,11 @@ static Shard *do_output_shard(BMesh* bm_parent, Shard *child, char uv_layer[64])
 		output_s = BKE_create_fracture_shard(dm_out->getVertArray(dm_out),
 											 dm_out->getPolyArray(dm_out),
 											 dm_out->getLoopArray(dm_out),
+		                                     dm_out->getEdgeArray(dm_out),
 											 dm_out->getNumVerts(dm_out),
 											 dm_out->getNumPolys(dm_out),
-											 dm_out->getNumLoops(dm_out), true);
+											 dm_out->getNumLoops(dm_out),
+											 dm_out->getNumEdges(dm_out), true);
 
 		output_s = BKE_custom_data_to_shard(output_s, dm_out);
 

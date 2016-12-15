@@ -72,7 +72,8 @@ bool BKE_get_shard_minmax(struct FracMesh *mesh, ShardID id, float min_r[3], flo
 
 /* container object handling functions */
 struct FracMesh *BKE_create_fracture_container(void);
-struct Shard *BKE_create_fracture_shard(struct MVert *mvert, struct MPoly *mpoly, struct MLoop *mloop, int totvert, int totpoly, int totloop, bool copy);
+struct Shard *BKE_create_fracture_shard(struct MVert *mvert, struct MPoly *mpoly, struct MLoop *mloop, struct MEdge *medge,
+                                        int totvert, int totpoly, int totloop, int totedge, bool copy);
 struct Shard *BKE_custom_data_to_shard(struct Shard *s, struct DerivedMesh *dm);
 
 /* utility functions */

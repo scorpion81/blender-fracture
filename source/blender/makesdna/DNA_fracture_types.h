@@ -55,13 +55,15 @@ typedef struct Shard {
 	struct MVert *mvert;
 	struct MPoly *mpoly;
 	struct MLoop *mloop;
+	struct MEdge *medge;
 
 	struct CustomData vertData;
 	struct CustomData polyData;
 	struct CustomData loopData;
+	struct CustomData edgeData;
 
-	int totvert, totpoly, totloop;
-	int pad;
+	int totvert, totpoly, totloop, totedge;
+	int pad[2];
 	
 	int *cluster_colors;
 	float min[3], max[3];

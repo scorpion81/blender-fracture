@@ -1898,8 +1898,9 @@ static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new, ShardID 
 		int id = 0;
 
 		dmtemp = CDDM_from_bmesh(bm_new, true);
-		s = BKE_create_fracture_shard(dmtemp->getVertArray(dmtemp), dmtemp->getPolyArray(dmtemp), dmtemp->getLoopArray(dmtemp),
-		                              dmtemp->getNumVerts(dmtemp), dmtemp->getNumPolys(dmtemp), dmtemp->getNumLoops(dmtemp), true);
+		s = BKE_create_fracture_shard(dmtemp->getVertArray(dmtemp), dmtemp->getPolyArray(dmtemp), dmtemp->getLoopArray(dmtemp), dmtemp->getEdgeArray(dmtemp),
+		                              dmtemp->getNumVerts(dmtemp), dmtemp->getNumPolys(dmtemp), dmtemp->getNumLoops(dmtemp), dmtemp->getNumEdges(dmtemp),
+		                              true);
 		s = BKE_custom_data_to_shard(s, dmtemp);
 
 		/*for dynamic mode, store this in the main shardmap instead of separately */
@@ -3984,8 +3985,8 @@ static ShardSequence* shard_sequence_add(FractureModifierData* fmd, float frame,
 		}
 		else {
 			/* create first shard covering the entire mesh */
-			s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm),
-			                                     dm->numVertData, dm->numPolyData, dm->numLoopData, true);
+			s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm), dm->getEdgeArray(dm),
+			                                     dm->numVertData, dm->numPolyData, dm->numLoopData, dm->numEdgeData, true);
 			s = BKE_custom_data_to_shard(s, dm);
 			s->flag = SHARD_INTACT;
 			s->shard_id = 0;
@@ -4306,11 +4307,12 @@ static DerivedMesh *do_dynamic(FractureModifierData *fmd, Object *ob, DerivedMes
 
 static Shard* copy_shard(Shard *s)
 {
-	Shard *t = BKE_create_fracture_shard(s->mvert, s->mpoly, s->mloop, s->totvert, s->totpoly, s->totloop, true);
+	Shard *t = BKE_create_fracture_shard(s->mvert, s->mpoly, s->mloop, s->medge, s->totvert, s->totpoly, s->totloop, s->totedge, true);
 
 	CustomData_reset(&t->vertData);
 	CustomData_reset(&t->loopData);
 	CustomData_reset(&t->polyData);
+	CustomData_reset(&t->edgeData);
 
 	CustomData_copy(&s->vertData, &t->vertData, CD_MASK_MDEFORMVERT, CD_DUPLICATE, s->totvert);
 	CustomData_copy(&s->loopData, &t->loopData, CD_MASK_MLOOPUV, CD_DUPLICATE, s->totloop);

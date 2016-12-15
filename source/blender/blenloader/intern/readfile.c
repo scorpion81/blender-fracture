@@ -5108,10 +5108,12 @@ static void read_shard(FileData *fd, Shard **address )
 	s->mvert = newdataadr(fd, s->mvert);
 	s->mpoly = newdataadr(fd, s->mpoly);
 	s->mloop = newdataadr(fd, s->mloop);
+	s->medge = newdataadr(fd, s->medge);
 
 	direct_link_customdata_fracture(fd, &s->vertData, s->totvert);
 	direct_link_customdata_fracture(fd, &s->loopData, s->totloop);
 	direct_link_customdata_fracture(fd, &s->polyData, s->totpoly);
+	direct_link_customdata_fracture(fd, &s->edgeData, s->totedge);
 
 	s->neighbor_ids = newdataadr(fd, s->neighbor_ids);
 	s->cluster_colors = newdataadr(fd, s->cluster_colors);
