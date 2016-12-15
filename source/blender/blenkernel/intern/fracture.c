@@ -477,6 +477,7 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 		Shard *s = NULL;
 		Shard *s2 = NULL;
 		Shard *t;
+		float quat[4];
 
 		if (fm->cancel == 1) {
 			break;
@@ -501,13 +502,20 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 			index = 0;
 		}
 
+		//add some random rotation
+		quat[0] = BLI_frand() * 2 - 1;
+		quat[1] = BLI_frand() * 2 - 1;
+		quat[2] = BLI_frand() * 2 - 1;
+		quat[3] = BLI_frand() * 2 - 1;
+		normalize_qt(quat);
+
 		printf("Bisecting cell %d...\n", i);
 		printf("Bisecting cell %d...\n", i + 1);
 
 		s = BKE_fracture_shard_bisect(*bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL,
-		                              false, true, index, centroid, inner_material_index, uv_layer, NULL);
+		                              false, true, index, centroid, inner_material_index, uv_layer, NULL, quat);
 		s2 = BKE_fracture_shard_bisect(*bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL,
-		                               true, false, index, centroid, inner_material_index, uv_layer, NULL);
+		                               true, false, index, centroid, inner_material_index, uv_layer, NULL, quat);
 
 		index++;
 
@@ -681,10 +689,10 @@ static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards
 		                       num_levels, smooth, parent_id, i, tempresults, dm_p, uv_layer, solver, thresh);
 	}
 	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL) {
-		float co[3] = {0, 0, 0};
+		float co[3] = {0, 0, 0}, quat[4] =  {1, 0, 0, 0};
 		printf("Bisecting cell %d...\n", *i);
 		s = BKE_fracture_shard_bisect(bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FILL, false, true, -1, co, inner_material_index, uv_layer,
-		                              preselect_tree);
+		                              preselect_tree, quat);
 	}
 	else {
 		/* do not fracture case */

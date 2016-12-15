@@ -737,7 +737,7 @@ static void do_fill(float plane_no[3], bool clear_outer, bool clear_inner, BMOpe
 }
 
 static void do_bisect(BMesh* bm_parent, BMesh* bm_child, float obmat[4][4], bool use_fill, bool clear_inner,
-               bool clear_outer, int cutlimit, float centroid[3], short inner_mat_index)
+               bool clear_outer, int cutlimit, float centroid[3], short inner_mat_index, float quat[4])
 {
 	BMIter iter;
 	BMFace *f;
@@ -764,6 +764,8 @@ static void do_bisect(BMesh* bm_parent, BMesh* bm_child, float obmat[4][4], bool
 			copy_v3_v3(plane_co, centroid);
 			copy_v3_v3(plane_no, f->no /*normal*/);
 			do_break = true;
+
+			mul_qt_v3(quat, plane_no);
 		}
 		else {
 			copy_v3_v3(plane_co, f->l_first->v->co);
@@ -892,7 +894,7 @@ static BMesh *do_preselection(BMesh* bm_orig, Shard *child, KDTree *preselect_tr
 
 Shard *BKE_fracture_shard_bisect(BMesh *bm_orig, Shard *child, float obmat[4][4], bool use_fill, bool clear_inner,
                                  bool clear_outer, int cutlimit, float centroid[3], short inner_mat_index, char uv_layer[64],
-                                 KDTree *preselect_tree)
+                                 KDTree *preselect_tree, float quat[4])
 {
 
 	Shard *output_s;
@@ -916,7 +918,7 @@ Shard *BKE_fracture_shard_bisect(BMesh *bm_orig, Shard *child, float obmat[4][4]
 
 	if (bm_parent != NULL) {
 		BM_mesh_elem_hflag_enable_all(bm_parent, BM_VERT | BM_EDGE | BM_FACE, BM_ELEM_TAG, false);
-		do_bisect(bm_parent, bm_child, obmat, use_fill, clear_inner, clear_outer, cutlimit, centroid, inner_mat_index);
+		do_bisect(bm_parent, bm_child, obmat, use_fill, clear_inner, clear_outer, cutlimit, centroid, inner_mat_index, quat);
 		output_s = do_output_shard(bm_parent, child, uv_layer);
 		BM_mesh_free(bm_parent);
 	}
