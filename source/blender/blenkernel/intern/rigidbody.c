@@ -3510,7 +3510,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 			pdDoEffectors(effectors, NULL, effector_weights, &epoint, eff_force, NULL);
 			if ((rbo->flag & RBO_FLAG_KINEMATIC) && (thresh < len_squared_v3(eff_force)))
 			{
-				activateRigidbody(rbo, NULL, NULL, NULL);
+				activateRigidbody(rbo, rbw, mi, ob);
 				RB_body_apply_central_force(rbo->physics_object, eff_force);
 			}
 			else if (rbo->flag & RBO_FLAG_KINEMATIC)
