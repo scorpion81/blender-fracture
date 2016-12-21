@@ -3859,7 +3859,9 @@ static int emit_particles(ParticleSimulationData *sim, PTCacheID *pid, float UNU
 	if (totpart != oldtotpart)
 		realloc_particles(sim, totpart);
 
-	return totpart - oldtotpart;
+	//always allow redistribution of particles !
+	//return totpart - oldtotpart;
+	return 1;
 }
 
 /* Calculates the next state for all particles of the system
@@ -3876,7 +3878,7 @@ static void system_step(ParticleSimulationData *sim, float cfra, const bool use_
 	PTCacheID ptcacheid, *pid = NULL;
 	PARTICLE_P;
 	float disp, cache_cfra = cfra; /*, *vg_vel= 0, *vg_tan= 0, *vg_rot= 0, *vg_size= 0; */
-	int startframe = 0, endframe = 100, oldtotpart = 0;
+	int startframe = 0, endframe = 100, oldtotpart = 0, emitcount = 0;
 
 	/* cache shouldn't be used for hair or "continue physics" */
 	if (part->type != PART_HAIR) {
@@ -3903,11 +3905,21 @@ static void system_step(ParticleSimulationData *sim, float cfra, const bool use_
 
 /* 1. emit particles and redo particles if needed */
 	oldtotpart = psys->totpart;
-	if (emit_particles(sim, pid, cfra) || psys->recalc & PSYS_RECALC_RESET) {
-		distribute_particles(sim, part->from);
-		initialize_all_particles(sim);
-		/* reset only just created particles (on startframe all particles are recreated) */
-		reset_all_particles(sim, 0.0, cfra, oldtotpart);
+	emitcount = emit_particles(sim, pid, cfra);
+	if (emitcount || psys->recalc & PSYS_RECALC_RESET) {
+		if (distribute_particles(sim, part->from)) {
+			initialize_all_particles(sim);
+			/* reset only just created particles (on startframe all particles are recreated) */
+			reset_all_particles(sim, 0.0, cfra, oldtotpart);
+		}
+		else {
+			//throw away...
+			int i;
+			for (i = 0; i < sim->psys->totpart; i++)
+			{
+				sim->psys->particles[i].flag |= PARS_UNEXIST;
+			}
+		}
 		free_unexisting_particles(sim);
 
 		if (psys->fluid_springs) {
@@ -3920,7 +3932,9 @@ static void system_step(ParticleSimulationData *sim, float cfra, const bool use_
 		/* flag for possible explode modifiers after this system */
 		sim->psmd->flag |= eParticleSystemFlag_Pars;
 
-		BKE_ptcache_id_clear(pid, PTCACHE_CLEAR_AFTER, cfra);
+		if (psys->recalc & PSYS_RECALC_RESET) {
+			BKE_ptcache_id_clear(pid, PTCACHE_CLEAR_AFTER, cfra);
+		}
 	}
 
 /* 2. try to read from the cache */
@@ -4265,8 +4279,18 @@ void particle_system_update(Scene *scene, Object *ob, ParticleSystem *psys, cons
 
 					if (emit_particles(&sim, NULL, cfra) || (psys->recalc & PSYS_RECALC_RESET)) {
 						free_keyed_keys(psys);
-						distribute_particles(&sim, part->from);
-						initialize_all_particles(&sim);
+						if (distribute_particles(&sim, part->from)) {
+							initialize_all_particles(&sim);
+						}
+						else {
+							//throw away...
+							int i;
+							for (i = 0; i < sim.psys->totpart; i++)
+							{
+								sim.psys->particles[i].flag |= PARS_UNEXIST;
+							}
+						}
+
 						free_unexisting = true;
 
 						/* flag for possible explode modifiers after this system */

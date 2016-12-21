@@ -423,7 +423,7 @@ void psys_particle_on_dm(struct DerivedMesh *dm_final, int from, int index, int 
                          float orco[3], float ornor[3]);
 
 /* particle_system.c */
-void distribute_particles(struct ParticleSimulationData *sim, int from);
+int distribute_particles(struct ParticleSimulationData *sim, int from);
 void initialize_particle(struct ParticleSimulationData *sim, struct ParticleData *pa);
 void psys_calc_dmcache(struct Object *ob, struct DerivedMesh *dm_final, struct DerivedMesh *dm_deformed, struct ParticleSystem *psys);
 int psys_particle_dm_face_lookup(struct DerivedMesh *dm_final, struct DerivedMesh *dm_deformed, int findex, const float fw[4], struct LinkNode **poly_nodes);
