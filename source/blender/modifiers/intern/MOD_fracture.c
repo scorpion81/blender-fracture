@@ -2674,8 +2674,9 @@ static void fill_vgroup(FractureModifierData *rmd, DerivedMesh *dm, MDeformVert 
 {
 	/* use fallback over inner material (no more, now directly via tagged verts) */
 	if (rmd->inner_defgrp_name[0]) {
-		int ind = 0;
-		MPoly *mp = dm->getPolyArray(dm);
+		int ind = 0, mat_index = BKE_object_material_slot_find_index(ob, rmd->inner_material);
+		bool fallback = false;
+		MPoly *mp = dm->getPolyArray(dm), *p;
 		MLoop *ml = dm->getLoopArray(dm);
 		MVert *mv = dm->getVertArray(dm);
 		int count = dm->getNumPolys(dm);
@@ -2690,17 +2691,22 @@ static void fill_vgroup(FractureModifierData *rmd, DerivedMesh *dm, MDeformVert 
 		dvert = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC,
 		                             NULL, totvert);
 
-		for (ind = 0; ind < count; ind++) {
-			int j = 0;
-			for (j = 0; j < (mp + ind)->totloop; j++) {
+		fallback = rmd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL;
+
+		for (ind = 0, p = mp; ind < count; ind++, p++) {
+			int j;
+			for (j = 0; j < p->totloop; j++) {
 				MLoop *l;
 				MVert *v;
-				int l_index = (mp + ind)->loopstart + j;
+				int l_index = p->loopstart + j;
 				l = ml + l_index;
 				v = mv + l->v;
-				if (v->flag & ME_VERT_TMP_TAG) {
+				if ((v->flag & ME_VERT_TMP_TAG) && !fallback) {
 					defvert_add_index_notest(dvert + l->v, inner_defgrp_index, 1.0f);
 					//v->flag &= ~ME_VERT_TMP_TAG;
+				}
+				else if ((p->mat_nr == mat_index-1) && fallback) {
+					defvert_add_index_notest(dvert + l->v, inner_defgrp_index, 1.0f);
 				}
 			}
 		}
