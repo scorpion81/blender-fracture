@@ -2837,7 +2837,12 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 	if (target->type != OB_MESH || !target->data)
 		return NULL;
 
+	//lets see whether we need to add loc here too XXX TODO
+	mat4_to_loc_quat(loc, quat, target->obmat);
+
 	s = fracture_object_to_shard(own, target);
+	copy_v3_v3(s->centroid, loc);
+
 	fracture_update_shards(fmd, s);
 
 	vertstart = fmd->frac_mesh->progress_counter;
@@ -2845,9 +2850,6 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 
 	//hrm need to rebuild ALL islands since vertex refs are bonkers now after mesh has changed
 	mi = fracture_shard_to_island(fmd, s, vertstart);
-
-	//lets see whether we need to add loc here too XXX TODO
-	mat4_to_loc_quat(loc, quat, target->obmat);
 
 	copy_qt_qt(mi->rot, quat);
 	copy_v3_v3(mi->centroid, loc);
