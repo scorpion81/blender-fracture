@@ -31,10 +31,12 @@
  */
 
 #include "BKE_cdderivedmesh.h"
+#include "BKE_deform.h"
 #include "BKE_editmesh.h"
 #include "BKE_fracture.h"
 #include "BKE_fracture_util.h"
 #include "BKE_material.h"
+#include "BKE_modifier.h"
 #include "BKE_object.h"
 
 #include "BLI_alloca.h"
@@ -538,10 +540,13 @@ static bool do_check_watertight(DerivedMesh **output_dm, DerivedMesh** left_dm, 
 	return do_return;
 }
 
-static void do_set_inner_material(Shard **other, float mat[4][4], DerivedMesh* left_dm, short inner_material_index, Shard* s)
+static void do_set_inner_material(Shard **other, float mat[4][4], DerivedMesh* left_dm, short inner_material_index, Shard* s, Object *ob)
 {
 	MPoly *mpoly, *mp;
 	int totpoly, i = 0;
+	MDeformVert *dvert;
+	int totvert = left_dm->getNumVerts(left_dm);
+	FractureModifierData *fmd = modifiers_findByType(ob, eModifierType_Fracture);
 
 	/* set inner material on child shard */
 	if (other == NULL || mat == NULL)
@@ -555,6 +560,14 @@ static void do_set_inner_material(Shard **other, float mat[4][4], DerivedMesh* l
 			mp->flag |= ME_FACE_SEL;
 			//set flag on shard too to have it available on load
 			s->mpoly[i].flag |= ME_FACE_SEL;
+		}
+	}
+
+	if (fmd && fmd->inner_defgrp_name[0]) {
+		int defgrp = defgroup_name_index(ob, fmd->inner_defgrp_name);
+		dvert = CustomData_add_layer(&left_dm->vertData, CD_MDEFORMVERT, CD_CALLOC, NULL, totvert);
+		for (i = 0; i < totvert; i++) {
+			defvert_add_index_notest(dvert + i, defgrp, 1.0f);
 		}
 	}
 }
@@ -575,7 +588,7 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 		unwrap_shard_dm(left_dm, uv_layer, true);
 	}
 
-	do_set_inner_material(other, mat, left_dm, inner_material_index, child);
+	do_set_inner_material(other, mat, left_dm, inner_material_index, child, obj);
 
 	right_dm = dm_parent;
 

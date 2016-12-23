@@ -2670,28 +2670,44 @@ static void create_constraints(FractureModifierData *rmd, Object *ob)
 	MEM_freeN(mesh_islands);
 }
 
-static void fill_vgroup(FractureModifierData *rmd, DerivedMesh *dm, MDeformVert *dvert, Object *ob)
+static void fill_vgroup(FractureModifierData *rmd, DerivedMesh *dm, MDeformVert *dvert, Object *ob, DerivedMesh *old_cached)
 {
 	/* use fallback over inner material (no more, now directly via tagged verts) */
 	if (rmd->inner_defgrp_name[0]) {
 		int ind = 0, mat_index = BKE_object_material_slot_find_index(ob, rmd->inner_material);
-		bool fallback = false;
+		bool fallback = false, dynamic = false;
 		MPoly *mp = dm->getPolyArray(dm), *p;
 		MLoop *ml = dm->getLoopArray(dm);
 		MVert *mv = dm->getVertArray(dm);
 		int count = dm->getNumPolys(dm);
 		int totvert = dm->getNumVerts(dm);
 		const int inner_defgrp_index = defgroup_name_index(ob, rmd->inner_defgrp_name);
+		MDeformVert *old_dvert = NULL;
+		int old_totvert = 0;
+		ShardSequence *ssq = NULL;
 
-		if (dvert != NULL) {
+		dynamic = rmd->fracture_mode == MOD_FRACTURE_DYNAMIC;
+		fallback = rmd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL;
+
+		//keep old behavior for non-dynamic...
+		if (dvert != NULL && !dynamic) {
 			CustomData_free_layers(&dm->vertData, CD_MDEFORMVERT, totvert);
 			dvert = NULL;
 		}
+		else {
+			dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
+		}
 
-		dvert = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC,
+		if (dvert == NULL)
+		{
+			dvert = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC,
 		                             NULL, totvert);
+		}
 
-		fallback = rmd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL;
+		if (old_cached) {
+			old_dvert = old_cached->getVertDataArray(old_cached, CD_MDEFORMVERT);
+			old_totvert = old_cached->getNumVerts(old_cached);
+		}
 
 		for (ind = 0, p = mp; ind < count; ind++, p++) {
 			int j;
@@ -2701,13 +2717,59 @@ static void fill_vgroup(FractureModifierData *rmd, DerivedMesh *dm, MDeformVert 
 				int l_index = p->loopstart + j;
 				l = ml + l_index;
 				v = mv + l->v;
-				if ((v->flag & ME_VERT_TMP_TAG) && !fallback) {
-					defvert_add_index_notest(dvert + l->v, inner_defgrp_index, 1.0f);
-					//v->flag &= ~ME_VERT_TMP_TAG;
+
+				if ((dvert+l->v)->dw == NULL)
+				{
+					if ((v->flag & ME_VERT_TMP_TAG) && !fallback) {
+						defvert_add_index_notest(dvert + l->v, inner_defgrp_index, 1.0f);
+					}
+					else if ((p->mat_nr == mat_index-1) && fallback) {
+						defvert_add_index_notest(dvert + l->v, inner_defgrp_index, 1.0f);
+					}
+					else {
+						defvert_add_index_notest(dvert + l->v, inner_defgrp_index, 0.0f);
+					}
 				}
-				else if ((p->mat_nr == mat_index-1) && fallback) {
-					defvert_add_index_notest(dvert + l->v, inner_defgrp_index, 1.0f);
+			}
+		}
+
+		if (dynamic) {
+			ssq = rmd->current_shard_entry->prev;
+		}
+
+		if (old_cached && ssq) {
+			Shard *s;
+			int last_id = -1;
+			int offset = 0;
+			int vertstart = 0;
+
+			for (s = rmd->frac_mesh->shard_map.first; s; s = s->next) {
+				MDeformVert *old_dv, *dv;
+				int i = 0;
+
+				if (s->shard_id != last_id + 1) {
+					Shard *t = find_shard(&ssq->frac_mesh->shard_map, last_id + 1);
+					if (t) {
+						offset += t->totvert;
+						printf("Shard offset %d %d\n", t->shard_id, offset);
+					}
 				}
+
+				for (i = 0; i < s->totvert; i++) {
+					if ((vertstart + i + offset) < old_totvert)
+					{
+						old_dv = old_dvert + vertstart + i + offset;
+						dv = dvert + vertstart + i;
+						if (old_dv->dw && old_dv->dw->def_nr == inner_defgrp_index) {
+							if (dv->dw && dv->dw->def_nr == inner_defgrp_index) {
+								dv->dw->weight = old_dv->dw->weight;
+							}
+						}
+					}
+				}
+
+				last_id = s->shard_id;
+				vertstart += s->totvert;
 			}
 		}
 	}
@@ -2846,7 +2908,7 @@ static DerivedMesh *createCache(FractureModifierData *fmd, Object *ob, DerivedMe
 		}
 
 		/* use fallback over inner material*/
-		fill_vgroup(fmd, dm, dvert, ob);
+		fill_vgroup(fmd, dm, dvert, ob, NULL);
 	}
 
 	return dm;
@@ -3543,6 +3605,19 @@ static DerivedMesh *output_dm(FractureModifierData* fmd, DerivedMesh *dm, Object
 	if ((fmd->visible_mesh_cached != NULL) && exploOK) {
 		DerivedMesh *dm_final;
 
+		MDeformVert *dvert = fmd->visible_mesh_cached->getVertDataArray(fmd->visible_mesh_cached, CD_MDEFORMVERT);
+
+		//fade out weights in dynamic mode
+		if (dvert && (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)) {
+			int i;
+			int defgrp = defgroup_name_index(ob, fmd->inner_defgrp_name);
+			for (i = 0; i < fmd->visible_mesh_cached->numVertData; i++) {
+				if (dvert[i].dw && dvert[i].dw->def_nr == defgrp && dvert[i].dw->weight >= 0.0f) {
+					dvert[i].dw->weight -= 0.1f;
+				}
+			}
+		}
+
 		if (fmd->autohide_dist > 0 && fmd->face_pairs) {
 			//printf("Autohide \n");
 			dm_final = do_autoHide(fmd, fmd->visible_mesh_cached, ob);
@@ -3598,7 +3673,7 @@ static void do_post_island_creation(FractureModifierData *fmd, Object *ob, Deriv
 		MDeformVert* dvert = NULL;
 		if (fmd->visible_mesh_cached) {
 			dvert = fmd->visible_mesh_cached->getVertDataArray(fmd->visible_mesh_cached, CD_MDEFORMVERT);
-			fill_vgroup(fmd, fmd->visible_mesh_cached, dvert, ob);
+			fill_vgroup(fmd, fmd->visible_mesh_cached, dvert, ob, NULL);
 		}
 	}
 
@@ -3720,7 +3795,7 @@ static void do_halving(FractureModifierData *fmd, Object* ob, DerivedMesh *dm, D
 	printf("Splitting to islands done, %g \n"/*  Steps: %d \n"*/, PIL_check_seconds_timer() - start);//, fmd->frac_mesh->progress_counter);
 }
 
-static void do_refresh(FractureModifierData *fmd, Object *ob, DerivedMesh* dm, DerivedMesh *orig_dm)
+static void do_refresh(FractureModifierData *fmd, Object *ob, DerivedMesh* dm, DerivedMesh *orig_dm, DerivedMesh *old_cached)
 {
 	double start = 0.0;
 	MDeformVert *ivert = NULL;
@@ -3746,7 +3821,7 @@ static void do_refresh(FractureModifierData *fmd, Object *ob, DerivedMesh* dm, D
 				printf("Fixing normals done, %g\n", PIL_check_seconds_timer() - start);
 			}
 
-			fill_vgroup(fmd, fmd->visible_mesh_cached, ivert, ob);
+			fill_vgroup(fmd, fmd->visible_mesh_cached, ivert, ob, old_cached);
 		}
 		else if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC){
 			if (fmd->visible_mesh != NULL) {
@@ -3807,12 +3882,20 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		if ((fmd->refresh) || (fmd->refresh_constraints /*&& !fmd->execute_threaded*/)) // ||
 			//(fmd->refresh_constraints && fmd->execute_threaded && fmd->frac_mesh && fmd->frac_mesh->running == 0))
 		{
+			DerivedMesh *old_cached = NULL;
+
+			if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) {
+				//keep a copy around for fade value setting
+				old_cached = CDDM_copy(fmd->visible_mesh_cached);
+			}
+
 			/* if we changed the fracture parameters */
 			freeData_internal(fmd, fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED, true);
 
 			/* 2 cases, we can have a visible mesh or a cached visible mesh, the latter primarily when loading blend from file or using halving */
 			/* free cached mesh in case of "normal refracture here if we have a visible mesh, does that mean REfracture ?*/
 			if (fmd->visible_mesh != NULL && !fmd->shards_to_islands && fmd->frac_mesh->shard_count > 0 && fmd->refresh) {
+
 				if (fmd->visible_mesh_cached) {
 					fmd->visible_mesh_cached->needsFree = 1;
 					fmd->visible_mesh_cached->release(fmd->visible_mesh_cached);
@@ -3821,7 +3904,13 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 			}
 
 			if (fmd->refresh) {
-				do_refresh(fmd, ob, dm, orig_dm);
+				do_refresh(fmd, ob, dm, orig_dm, old_cached);
+			}
+
+			if (old_cached) {
+				old_cached->needsFree = 1;
+				old_cached->release(old_cached);
+				old_cached = NULL;
 			}
 
 			do_post_island_creation(fmd, ob, dm);
