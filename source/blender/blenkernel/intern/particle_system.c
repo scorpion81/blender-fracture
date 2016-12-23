@@ -3917,7 +3917,9 @@ static void system_step(ParticleSimulationData *sim, float cfra, const bool use_
 			int i;
 			for (i = 0; i < sim->psys->totpart; i++)
 			{
-				sim->psys->particles[i].flag |= PARS_UNEXIST;
+				if (sim->psys->particles[i].alive == PARS_UNBORN) {
+					sim->psys->particles[i].flag |= PARS_UNEXIST;
+				}
 			}
 		}
 		free_unexisting_particles(sim);
@@ -4287,7 +4289,9 @@ void particle_system_update(Scene *scene, Object *ob, ParticleSystem *psys, cons
 							int i;
 							for (i = 0; i < sim.psys->totpart; i++)
 							{
-								sim.psys->particles[i].flag |= PARS_UNEXIST;
+								if (sim.psys->particles[i].alive == PARS_UNBORN) {
+									sim.psys->particles[i].flag |= PARS_UNEXIST;
+								}
 							}
 						}
 
