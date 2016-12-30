@@ -3325,6 +3325,7 @@ static RNAProcessItem PROCESS_ITEMS[] = {
 	{"rna_mesh.c", "rna_mesh_api.c", RNA_def_mesh},
 	{"rna_meta.c", "rna_meta_api.c", RNA_def_meta},
 	{"rna_modifier.c", NULL, RNA_def_modifier},
+	{"rna_fracture.c", "rna_fracture_api.c", RNA_def_fracture},
 	{"rna_nla.c", NULL, RNA_def_nla},
 	{"rna_nodetree.c", NULL, RNA_def_nodetree},
 	{"rna_object.c", "rna_object_api.c", RNA_def_object},

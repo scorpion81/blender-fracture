@@ -49,6 +49,7 @@ set(DEFSRC
 	rna_depsgraph.c
 	rna_dynamicpaint.c
 	rna_fcurve.c
+	rna_fracture.c
 	rna_fluidsim.c
 	rna_gpencil.c
 	rna_group.c
@@ -106,6 +107,7 @@ set(APISRC
 	rna_controller_api.c
 	rna_curve_api.c
 	rna_fcurve_api.c
+	rna_fracture_api.c
 	rna_image_api.c
 	rna_lattice_api.c
 	rna_main_api.c
