@@ -3224,7 +3224,7 @@ static int rigidbody_group_count_items(const ListBase *group, int *r_num_objects
 				}
 			}
 		}
-		if (found_modifiers == false) {
+		if (found_modifiers == false && gob->ob->rigidbody_object) {
 			(*r_num_objects)++;
 		}
 		num_gobjects++;
@@ -3243,7 +3243,7 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw, bool do_bake_correction)
 	ModifierData *md;
 	FractureModifierData *rmd;
 	MeshIsland *mi;
-	int i, j = 0, l = 0, m = 0, n = 0, counter = 0;
+	int i, j = 0, l = 0, m = 0, n = 0, counter = 0, k = 0;
 	bool ismapped = false;
 	Object** temp_obj = NULL;
 	
@@ -3274,19 +3274,15 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw, bool do_bake_correction)
 	temp_obj = MEM_mallocN(sizeof(Object*) * l, "temp_obj");
 	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
 		Object *ob = go->ob;
-		if (ob->rigidbody_object) {
-			temp_obj[i] = ob;
-		}
-		else {
-			//should not happen... but just in case
-			temp_obj[i] = NULL;
-		}
+		temp_obj[i] = ob;
 	}
 
-	for (i = 0; i < l; i++) {
+	i = 0;
+	for (k = 0; k < l; k++) {
 
-		Object *ob = temp_obj[i];
-		if (!ob) {
+		Object *ob = temp_obj[k];
+		if (!ob->rigidbody_object) {
+			//sort out non-rigidbodies which might be accidentally in the group...
 			continue;
 		}
 
@@ -3334,6 +3330,7 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw, bool do_bake_correction)
 		}
 
 		ismapped = false;
+		i++;
 	}
 
 	MEM_freeN(temp_obj);
@@ -4271,7 +4268,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 		BLI_mutex_unlock(&post_step_lock);
 
 		/* handle regular rigidbodies */
-		if (ob && !modFound) {
+		if (ob && ob->rigidbody_object && !modFound) {
 			RigidBodyOb *rbo = ob->rigidbody_object;
 			/* reset kinematic state for transformed objects */
 			if (rbo && (ob->flag & SELECT) && (G.moving & G_TRANSFORM_OBJ)) {
