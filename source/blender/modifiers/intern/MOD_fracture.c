@@ -2688,15 +2688,7 @@ static void fill_vgroup(FractureModifierData *rmd, DerivedMesh *dm, MDeformVert 
 
 		dynamic = rmd->fracture_mode == MOD_FRACTURE_DYNAMIC;
 		fallback = rmd->frac_algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL;
-
-		//keep old behavior for non-dynamic...
-		if (dvert != NULL && !dynamic) {
-			CustomData_free_layers(&dm->vertData, CD_MDEFORMVERT, totvert);
-			dvert = NULL;
-		}
-		else {
-			dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
-		}
+		dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
 
 		if (dvert == NULL)
 		{
@@ -2714,20 +2706,42 @@ static void fill_vgroup(FractureModifierData *rmd, DerivedMesh *dm, MDeformVert 
 			for (j = 0; j < p->totloop; j++) {
 				MLoop *l;
 				MVert *v;
+				MDeformVert *dv;
 				int l_index = p->loopstart + j;
 				l = ml + l_index;
 				v = mv + l->v;
+				dv = dvert + l->v;
 
-				if ((dvert+l->v)->dw == NULL)
+				if (dv->dw == NULL)
 				{
 					if ((v->flag & ME_VERT_TMP_TAG) && !fallback) {
-						defvert_add_index_notest(dvert + l->v, inner_defgrp_index, 1.0f);
+						defvert_add_index_notest(dv, inner_defgrp_index, 1.0f);
 					}
 					else if ((p->mat_nr == mat_index-1) && fallback) {
-						defvert_add_index_notest(dvert + l->v, inner_defgrp_index, 1.0f);
+						defvert_add_index_notest(dv, inner_defgrp_index, 1.0f);
 					}
 					else {
-						defvert_add_index_notest(dvert + l->v, inner_defgrp_index, 0.0f);
+						defvert_add_index_notest(dv, inner_defgrp_index, 0.0f);
+					}
+				}
+				else
+				{
+					MDeformWeight *dw;
+					int w;
+
+					for (dw = dv->dw, w = 0; w < dv->totweight; dw++, w++)
+					{
+						if (dw->def_nr == inner_defgrp_index) {
+							if ((v->flag & ME_VERT_TMP_TAG) && !fallback) {
+								dw->weight = 1.0f;
+							}
+							else if ((p->mat_nr == mat_index-1) && fallback) {
+								dw->weight = 1.0f;
+							}
+							else {
+								dw->weight = 0.0f;
+							}
+						}
 					}
 				}
 			}
