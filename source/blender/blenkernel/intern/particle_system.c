@@ -3850,7 +3850,8 @@ static void particles_fluid_step(ParticleSimulationData *sim, int UNUSED(cfra), 
 #endif // WITH_MOD_FLUID
 }
 
-static int emit_particles(ParticleSimulationData *sim, PTCacheID *pid, float UNUSED(cfra))
+static int emit_particles(ParticleSimulationData *sim, PTCacheID *pid, float UNUSED(cfra),
+                          ParticleSettings *part)
 {
 	ParticleSystem *psys = sim->psys;
 	int oldtotpart = psys->totpart;
@@ -3859,8 +3860,11 @@ static int emit_particles(ParticleSimulationData *sim, PTCacheID *pid, float UNU
 	if (totpart != oldtotpart)
 		realloc_particles(sim, totpart);
 
-	//always allow redistribution of particles !
-	//return totpart - oldtotpart;
+	//always allow redistribution of particles, except on grid !
+	if (part->distr == PART_DISTR_GRID) {
+		return totpart - oldtotpart;
+	}
+
 	return 1;
 }
 
@@ -3905,9 +3909,9 @@ static void system_step(ParticleSimulationData *sim, float cfra, const bool use_
 
 /* 1. emit particles and redo particles if needed */
 	oldtotpart = psys->totpart;
-	emitcount = emit_particles(sim, pid, cfra);
+	emitcount = emit_particles(sim, pid, cfra, part);
 	if (emitcount || psys->recalc & PSYS_RECALC_RESET) {
-		if (distribute_particles(sim, part->from)) {
+		if (distribute_particles(sim, part->from) || part->distr == PART_DISTR_GRID) {
 			initialize_all_particles(sim);
 			/* reset only just created particles (on startframe all particles are recreated) */
 			reset_all_particles(sim, 0.0, cfra, oldtotpart);
@@ -4279,9 +4283,9 @@ void particle_system_update(Scene *scene, Object *ob, ParticleSystem *psys, cons
 					if (psys->recalc & PSYS_RECALC_RESET)
 						psys_reset(psys, PSYS_RESET_ALL);
 
-					if (emit_particles(&sim, NULL, cfra) || (psys->recalc & PSYS_RECALC_RESET)) {
+					if (emit_particles(&sim, NULL, cfra, part) || (psys->recalc & PSYS_RECALC_RESET)) {
 						free_keyed_keys(psys);
-						if (distribute_particles(&sim, part->from)) {
+						if (distribute_particles(&sim, part->from) || part->distr == PART_DISTR_GRID) {
 							initialize_all_particles(&sim);
 						}
 						else {
