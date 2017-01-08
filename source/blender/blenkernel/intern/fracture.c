@@ -212,6 +212,7 @@ Shard *BKE_custom_data_to_shard(Shard *s, DerivedMesh *dm)
 	CustomData_copy(&dm->vertData, &s->vertData, CD_MASK_MDEFORMVERT, CD_DUPLICATE, s->totvert);
 	CustomData_copy(&dm->loopData, &s->loopData, CD_MASK_MLOOPUV, CD_DUPLICATE, s->totloop);
 	CustomData_copy(&dm->polyData, &s->polyData, CD_MASK_MTEXPOLY, CD_DUPLICATE, s->totpoly);
+	CustomData_copy(&dm->edgeData, &s->edgeData, CD_MASK_CREASE | CD_MASK_BWEIGHT | CD_MASK_MEDGE, CD_DUPLICATE, s->totedge);
 
 	return s;
 }
@@ -1825,6 +1826,7 @@ static void do_marking(FractureModifierData *fmd, DerivedMesh *result)
 				MLoop ml;
 				ml = mloop[mp->loopstart + j];
 				medge[ml.e].flag |= ME_SHARP;
+				medge[ml.e].crease = fmd->inner_crease * 255.0f;
 				mvert[ml.v].flag |= ME_VERT_TMP_TAG;
 			}
 
@@ -1882,6 +1884,7 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 			CustomData_merge(&s->vertData, &result->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, num_verts);
 			CustomData_merge(&s->polyData, &result->polyData, CD_MASK_MTEXPOLY, CD_CALLOC, num_polys);
 			CustomData_merge(&s->loopData, &result->loopData, CD_MASK_MLOOPUV, CD_CALLOC, num_loops);
+			CustomData_merge(&s->edgeData, &result->edgeData, CD_MASK_CREASE | CD_MASK_BWEIGHT | CD_MASK_MEDGE, CD_CALLOC, num_edges);
 		}
 		else
 		{
@@ -1889,6 +1892,8 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 			CustomData_add_layer(&result->vertData, CD_MDEFORMVERT, CD_CALLOC, NULL, num_verts);
 			CustomData_add_layer(&result->polyData, CD_MTEXPOLY, CD_CALLOC, NULL, num_polys);
 			CustomData_add_layer(&result->loopData, CD_MLOOPUV, CD_CALLOC, NULL, num_loops);
+			CustomData_add_layer(&result->edgeData, CD_CREASE, CD_CALLOC, NULL, num_edges);
+			CustomData_add_layer(&result->edgeData, CD_BWEIGHT, CD_CALLOC, NULL, num_edges);
 		}
 	}
 

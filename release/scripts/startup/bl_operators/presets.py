@@ -683,7 +683,8 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.dynamic_percentage",
         "fracture.dynamic_new_constraints",
         "fracture.dynamic_min_size",
-        "fracture.use_constraint_collision"
+        "fracture.use_constraint_collision",
+        "fracture.inner_crease"
     ]
 
     preset_subdir = "fracture"

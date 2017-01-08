@@ -228,6 +228,7 @@ static void initData(ModifierData *md)
 	fmd->dynamic_min_size = 1.0f;
 	fmd->keep_cutter_shards = MOD_FRACTURE_KEEP_BOTH;
 	fmd->use_constraint_collision = false;
+	fmd->inner_crease = 0.0f;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1798,6 +1799,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->dynamic_min_size = rmd->dynamic_min_size;
 	trmd->keep_cutter_shards = rmd->keep_cutter_shards;
 	trmd->use_constraint_collision = rmd->use_constraint_collision;
+	trmd->inner_crease = rmd->inner_crease;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
@@ -3985,7 +3987,7 @@ static void foreachIDLink(ModifierData *md, Object *ob,
 static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(md))
 {
 	CustomDataMask dataMask = 0;
-	dataMask |= CD_MASK_MDEFORMVERT;
+	dataMask |= CD_MASK_MDEFORMVERT | CD_MASK_MLOOPUV | CD_MASK_MTEXPOLY | CD_MASK_CREASE | CD_MASK_BWEIGHT | CD_MASK_MEDGE;
 	return dataMask;
 }
 
@@ -4426,6 +4428,7 @@ static Shard* copy_shard(Shard *s)
 	CustomData_copy(&s->vertData, &t->vertData, CD_MASK_MDEFORMVERT, CD_DUPLICATE, s->totvert);
 	CustomData_copy(&s->loopData, &t->loopData, CD_MASK_MLOOPUV, CD_DUPLICATE, s->totloop);
 	CustomData_copy(&s->polyData, &t->polyData, CD_MASK_MTEXPOLY, CD_DUPLICATE, s->totpoly);
+	CustomData_copy(&s->edgeData, &t->edgeData, CD_MASK_CREASE | CD_MASK_BWEIGHT | CD_MASK_MEDGE, CD_DUPLICATE, s->totedge);
 
 	t->neighbor_count = t->neighbor_count;
 	t->neighbor_ids = MEM_mallocN(sizeof(int) * s->neighbor_count, __func__);
@@ -4482,6 +4485,12 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 		if (fmd->visible_mesh_cached)
 			return CDDM_copy(fmd->visible_mesh_cached);
+	}
+
+	if (final_dm != derivedData)
+	{
+		//dont forget to create customdatalayers for crease and bevel weights (else they wont be drawn in editmode)
+		final_dm->cd_flag |= (ME_CDFLAG_EDGE_CREASE | ME_CDFLAG_VERT_BWEIGHT | ME_CDFLAG_EDGE_BWEIGHT);
 	}
 
 	return final_dm;

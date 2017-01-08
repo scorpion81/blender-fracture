@@ -1215,5 +1215,12 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
+	prop = RNA_def_property(srna, "inner_crease", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "inner_crease");
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_float_default(prop, 0.0f);
+	RNA_def_property_ui_text(prop, "Inner Crease",  "Crease at edges of inner faces");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
 	RNA_api_fracture(brna, srna);
 }

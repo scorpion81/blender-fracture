@@ -66,9 +66,13 @@ static void DM_loop_interp_from_poly(DerivedMesh *source_dm,
 	float (*cos_3d)[3] = BLI_array_alloca(cos_3d, source_poly->totloop);
 	int *source_indices = BLI_array_alloca(source_indices, source_poly->totloop);
 	int *source_vert_indices = BLI_array_alloca(source_vert_indices, source_poly->totloop);
+	int *source_edge_indices = BLI_array_alloca(source_edge_indices, source_poly->totloop);
 	float *weights = BLI_array_alloca(weights, source_poly->totloop);
+	EdgeVertWeight *vweights = BLI_array_alloca(vweights, source_poly->totloop);
+
 	int i;
 	int target_vert_index = target_mloop[target_loop_index].v;
+	int target_edge_index = target_mloop[target_loop_index].e;
 	float coord[3];
 
 	for (i = 0; i < source_poly->totloop; ++i) {
@@ -93,6 +97,9 @@ static void DM_loop_interp_from_poly(DerivedMesh *source_dm,
 	/* interpolate vertex data as well, for painted weights interpolation on fracture modifier */
 	DM_interp_vert_data(source_dm, target_dm, source_vert_indices ,weights,
 	                    source_poly->totloop, target_vert_index);
+
+	/*interpolate edge data as well, to keep creases and bweights hopefully */
+	DM_interp_edge_data(source_dm, target_dm, source_edge_indices, weights, vweights, source_poly->totloop, target_edge_index);
 }
 
 typedef struct DMArrays {
