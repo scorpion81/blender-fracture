@@ -3882,7 +3882,7 @@ static void system_step(ParticleSimulationData *sim, float cfra, const bool use_
 	PTCacheID ptcacheid, *pid = NULL;
 	PARTICLE_P;
 	float disp, cache_cfra = cfra; /*, *vg_vel= 0, *vg_tan= 0, *vg_rot= 0, *vg_size= 0; */
-	int startframe = 0, endframe = 100, oldtotpart = 0, emitcount = 0;
+	int startframe = 0, endframe = 100, oldtotpart = 0, emitcount = 0, cache_check = 0;
 
 	/* cache shouldn't be used for hair or "continue physics" */
 	if (part->type != PART_HAIR) {
@@ -3910,7 +3910,12 @@ static void system_step(ParticleSimulationData *sim, float cfra, const bool use_
 /* 1. emit particles and redo particles if needed */
 	oldtotpart = psys->totpart;
 	emitcount = emit_particles(sim, pid, cfra, part);
-	if (emitcount || psys->recalc & PSYS_RECALC_RESET) {
+	if (pid) {
+		cache_check = BKE_ptcache_read(pid, cache_cfra, true);
+	}
+	if ((emitcount && !ELEM(cache_check, PTCACHE_READ_EXACT, PTCACHE_READ_INTERPOLATED)) ||
+	    psys->recalc & PSYS_RECALC_RESET)
+	{
 		if (distribute_particles(sim, part->from) || part->distr == PART_DISTR_GRID) {
 			initialize_all_particles(sim);
 			/* reset only just created particles (on startframe all particles are recreated) */
