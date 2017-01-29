@@ -5349,7 +5349,8 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 
 			DM_ensure_tessface(fmd->visible_mesh_cached);
 			DM_ensure_normals(fmd->visible_mesh_cached);
-			DM_update_tessface_data(fmd->visible_mesh_cached);
+			//DM_update_tessface_data(fmd->visible_mesh_cached);
+
 
 			/* re-init cached verts here... */
 			mverts = CDDM_get_verts(fmd->visible_mesh_cached);
