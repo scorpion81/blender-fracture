@@ -52,6 +52,7 @@
 #include "BKE_DerivedMesh.h"
 #include "BKE_cdderivedmesh.h"
 #include "BKE_object.h"
+#include "BKE_pointcache.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
@@ -91,7 +92,7 @@ static int ED_operator_rigidbody_add_poll(bContext *C)
 
 /* ----------------- */
 
-bool ED_rigidbody_object_add(Main *bmain, Scene *scene, Object *ob, int type, ReportList *reports)
+bool ED_rigidbody_object_add(Main *bmain, Scene *scene, Object *ob, int type, ReportList *reports, bool keep_bake)
 {
 	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
 
@@ -116,6 +117,11 @@ bool ED_rigidbody_object_add(Main *bmain, Scene *scene, Object *ob, int type, Re
 
 	/* make rigidbody object settings */
 	if (ob->rigidbody_object == NULL) {
+		/* free a possible bake... else you can get all kind of trouble with stale data in FM */
+		if (rbw->pointcache && !keep_bake)
+		{
+			rbw->pointcache->flag &= ~PTCACHE_BAKED;
+		}
 		ob->rigidbody_object = BKE_rigidbody_create_object(scene, ob, type, NULL);
 	}
 	ob->rigidbody_object->type = type;
@@ -135,8 +141,13 @@ void ED_rigidbody_object_remove(Main *bmain, Scene *scene, Object *ob)
 	RigidBodyWorld *rbw = BKE_rigidbody_get_world(scene);
 
 	BKE_rigidbody_remove_object(scene, ob);
-	if (rbw)
+	if (rbw) {
+		if (rbw->pointcache) {
+			rbw->pointcache->flag &= ~PTCACHE_BAKED;
+		}
+
 		BKE_group_object_unlink(rbw->group, ob, scene, NULL);
+	}
 
 	DAG_relations_tag_update(bmain);
 	DAG_id_tag_update(&ob->id, OB_RECALC_OB);
@@ -156,7 +167,7 @@ static int rigidbody_object_add_exec(bContext *C, wmOperator *op)
 	bool changed;
 
 	/* apply to active object */
-	changed = ED_rigidbody_object_add(bmain, scene, ob, type, op->reports);
+	changed = ED_rigidbody_object_add(bmain, scene, ob, type, op->reports, false);
 
 	if (changed) {
 		/* send updates */
@@ -247,7 +258,7 @@ static int rigidbody_objects_add_exec(bContext *C, wmOperator *op)
 
 	/* create rigid body objects and add them to the world's group */
 	CTX_DATA_BEGIN(C, Object *, ob, selected_objects) {
-		changed |= ED_rigidbody_object_add(bmain, scene, ob, type, op->reports);
+		changed |= ED_rigidbody_object_add(bmain, scene, ob, type, op->reports, false);
 	}
 	CTX_DATA_END;
 
@@ -301,6 +312,14 @@ static int rigidbody_objects_remove_exec(bContext *C, wmOperator *UNUSED(op))
 	CTX_DATA_END;
 
 	if (changed) {
+		/* free a possible bake... when deleting rigidbodies too, else the shard order and mesh of FM rigidbodies
+		 * gets messed up */
+		RigidBodyWorld *rbw = scene->rigidbody_world;
+
+		if (rbw && rbw->pointcache) {
+			rbw->pointcache->flag &= ~PTCACHE_BAKED;
+		}
+
 		/* send updates */
 		WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
 		WM_event_add_notifier(C, NC_OBJECT | ND_POINTCACHE, NULL);

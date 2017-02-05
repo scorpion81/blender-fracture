@@ -3241,7 +3241,8 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 
 	DM_to_mesh(mi->physics_mesh, me, ob_new, CD_MASK_MESH, false);
 
-	ED_rigidbody_object_add(G.main, scene, ob_new, RBO_TYPE_ACTIVE, reports);
+	//last parameter here means deferring removing the bake after all has been converted.
+	ED_rigidbody_object_add(G.main, scene, ob_new, RBO_TYPE_ACTIVE, reports, true);
 	ob_new->rigidbody_object->flag |= RBO_FLAG_KINEMATIC;
 	ob_new->rigidbody_object->mass = mi->rigidbody->mass;
 
@@ -3386,7 +3387,7 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 		start = cache->startframe;
 		end = cache->endframe;
 		/* need to "fill" the rigidbody world by doing 1 sim step, else bake cant be read properly */
-		BKE_rigidbody_do_simulation(scene, (float)(start+1));
+		//BKE_rigidbody_do_simulation(scene, (float)(start+1));
 		BKE_ptcache_id_from_rigidbody(&pid, NULL, scene->rigidbody_world);
 		is_baked = true;
 	}
@@ -3534,6 +3535,12 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 		}
 
 		CTX_DATA_END;
+
+		//free a possible bake... because we added new rigidbodies, and this would mess up the mesh
+		if (scene->rigidbody_world && scene->rigidbody_world->pointcache) {
+			scene->rigidbody_world->pointcache->flag &= ~PTCACHE_BAKED;
+		}
+
 		DAG_relations_tag_update(G.main);
 		WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
 		WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
@@ -3571,7 +3578,7 @@ void OBJECT_OT_rigidbody_convert_to_keyframes(wmOperatorType *ot)
 	RNA_def_int(ot->srna, "start_frame", 1,  0, 100000, "Start Frame", "", 0, 100000);
 	RNA_def_int(ot->srna, "end_frame", 250, 0, 100000, "End Frame", "", 0, 100000);
 
-	RNA_def_float(ot->srna, "threshold", 0.05f, 0.0f, FLT_MAX, "Threshold", "", 0.0f, 1000.0f);
+	RNA_def_float(ot->srna, "threshold", 0.005f, 0.0f, FLT_MAX, "Threshold", "", 0.0f, 1000.0f);
 	RNA_def_boolean(ot->srna, "channels", false, "Channels", "");
 
 	/* flags */

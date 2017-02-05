@@ -2802,11 +2802,6 @@ RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type, M
 		return rbo;
 	}
 
-	/* free a possible bake... else you can get all kind of trouble with stale data */
-	if (rbw) {
-		rbw->pointcache->flag &= ~PTCACHE_BAKED;
-	}
-
 	/* flag cache as outdated */
 	BKE_rigidbody_cache_reset(rbw);
 
@@ -3168,11 +3163,6 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 	/* force removal of object settings even if world may be invalid e.g. after link/append */
 	if (!rbw && rbo)
 		BKE_rigidbody_free_object(ob);
-
-	/* free a possible bake... else you can get all kind of trouble with stale data */
-	if (rbw) {
-		rbw->pointcache->flag &= ~PTCACHE_BAKED;
-	}
 
 	/* flag cache as outdated */
 	BKE_rigidbody_cache_reset(rbw);
