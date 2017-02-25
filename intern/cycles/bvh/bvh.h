@@ -68,6 +68,8 @@ struct PackedBVH {
 	array<int> prim_index;
 	/* mapping from BVH primitive index, to the object id of that primitive. */
 	array<int> prim_object;
+	/* Time range of BVH primitive. */
+	array<float2> prim_time;
 
 	/* index of the root node. */
 	int root_index;
@@ -171,9 +173,25 @@ protected:
 	void pack_aligned_inner(const BVHStackEntry& e,
 	                        const BVHStackEntry *en,
 	                        int num);
+	void pack_aligned_node(int idx,
+	                       const BoundBox *bounds,
+	                       const int *child,
+	                       const uint visibility,
+	                       const float time_from,
+	                       const float time_to,
+	                       const int num);
+
 	void pack_unaligned_inner(const BVHStackEntry& e,
 	                          const BVHStackEntry *en,
 	                          int num);
+	void pack_unaligned_node(int idx,
+	                         const Transform *aligned_space,
+	                         const BoundBox *bounds,
+	                         const int *child,
+	                         const uint visibility,
+	                         const float time_from,
+	                         const float time_to,
+	                         const int num);
 
 	/* refit */
 	void refit_nodes();

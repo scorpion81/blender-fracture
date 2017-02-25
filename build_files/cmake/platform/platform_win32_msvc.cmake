@@ -236,14 +236,14 @@ if(WITH_CODEC_FFMPEG)
 	windows_find_package(FFMPEG)
 	if(NOT FFMPEG_FOUND)
 		warn_hardcoded_paths(ffmpeg)
-		set(FFMPEG_LIBRARY_VERSION 55)
-		set(FFMPEG_LIBRARY_VERSION_AVU 52)
+		set(FFMPEG_LIBRARY_VERSION 57)
+		set(FFMPEG_LIBRARY_VERSION_AVU 55)
 		set(FFMPEG_LIBRARIES
-			${LIBDIR}/ffmpeg/lib/avcodec-${FFMPEG_LIBRARY_VERSION}.lib
-			${LIBDIR}/ffmpeg/lib/avformat-${FFMPEG_LIBRARY_VERSION}.lib
-			${LIBDIR}/ffmpeg/lib/avdevice-${FFMPEG_LIBRARY_VERSION}.lib
-			${LIBDIR}/ffmpeg/lib/avutil-${FFMPEG_LIBRARY_VERSION_AVU}.lib
-			${LIBDIR}/ffmpeg/lib/swscale-2.lib
+			${LIBDIR}/ffmpeg/lib/avcodec.lib
+			${LIBDIR}/ffmpeg/lib/avformat.lib
+			${LIBDIR}/ffmpeg/lib/avdevice.lib
+			${LIBDIR}/ffmpeg/lib/avutil.lib
+			${LIBDIR}/ffmpeg/lib/swscale.lib
 			)
 	endif()
 endif()
@@ -378,6 +378,7 @@ if(WITH_OPENIMAGEIO)
 	set(OPENCOLORIO_DEFINITIONS "-DOCIO_STATIC_BUILD")
 	set(OPENIMAGEIO_IDIFF "${OPENIMAGEIO}/bin/idiff.exe")
 	add_definitions(-DOIIO_STATIC_BUILD)
+	add_definitions(-DOIIO_NO_SSE=1)
 endif()
 
 if(WITH_LLVM)
@@ -443,10 +444,20 @@ if(WITH_MOD_CLOTH_ELTOPO)
 endif()
 
 if(WITH_OPENSUBDIV OR WITH_CYCLES_OPENSUBDIV)
-	set(OPENSUBDIV_INCLUDE_DIR ${LIBDIR}/opensubdiv/include)
-	set(OPENSUBDIV_LIBPATH ${LIBDIR}/opensubdiv/lib)
-	set(OPENSUBDIV_LIBRARIES ${OPENSUBDIV_LIBPATH}/osdCPU.lib ${OPENSUBDIV_LIBPATH}/osdGPU.lib)
-	find_package(OpenSubdiv)
+    set(OPENSUBDIV_INCLUDE_DIR ${LIBDIR}/opensubdiv/include)
+    set(OPENSUBDIV_LIBPATH ${LIBDIR}/opensubdiv/lib)
+    set(OPENSUBDIV_LIBRARIES    optimized ${OPENSUBDIV_LIBPATH}/osdCPU.lib 
+                                optimized ${OPENSUBDIV_LIBPATH}/osdGPU.lib
+                                debug ${OPENSUBDIV_LIBPATH}/osdCPU_d.lib 
+                                debug ${OPENSUBDIV_LIBPATH}/osdGPU_d.lib
+                                )
+    set(OPENSUBDIV_HAS_OPENMP TRUE)
+	set(OPENSUBDIV_HAS_TBB FALSE)
+	set(OPENSUBDIV_HAS_OPENCL TRUE)
+	set(OPENSUBDIV_HAS_CUDA FALSE)
+	set(OPENSUBDIV_HAS_GLSL_TRANSFORM_FEEDBACK TRUE)
+	set(OPENSUBDIV_HAS_GLSL_COMPUTE TRUE)
+    windows_find_package(OpenSubdiv)
 endif()
 
 if(WITH_SDL)

@@ -37,11 +37,12 @@ CCL_NAMESPACE_BEGIN
 /* constants */
 #define OBJECT_SIZE 		12
 #define OBJECT_VECTOR_SIZE	6
-#define LIGHT_SIZE			5
+#define LIGHT_SIZE		11
 #define FILTER_TABLE_SIZE	1024
 #define RAMP_TABLE_SIZE		256
 #define SHUTTER_TABLE_SIZE		256
 #define PARTICLE_SIZE 		5
+#define SHADER_SIZE		5
 
 #define BSSRDF_MIN_RADIUS			1e-8f
 #define BSSRDF_MAX_HITS				4
@@ -191,6 +192,9 @@ CCL_NAMESPACE_BEGIN
 #ifdef __NO_PATCH_EVAL__
 #  undef __PATCH_EVAL__
 #endif
+#ifdef __NO_TRANSPARENT__
+#  undef __TRANSPARENT_SHADOWS__
+#endif
 
 /* Random Numbers */
 
@@ -249,7 +253,7 @@ enum PathTraceDimension {
 	PRNG_LIGHT = 3,
 	PRNG_LIGHT_U = 4,
 	PRNG_LIGHT_V = 5,
-	PRNG_UNUSED_3 = 6,
+	PRNG_LIGHT_TERMINATE = 6,
 	PRNG_TERMINATE = 7,
 
 #ifdef __VOLUME__
@@ -341,9 +345,10 @@ typedef enum PassType {
 	PASS_SUBSURFACE_COLOR = (1 << 24),
 	PASS_LIGHT = (1 << 25), /* no real pass, used to force use_light_pass */
 #ifdef __KERNEL_DEBUG__
-	PASS_BVH_TRAVERSAL_STEPS = (1 << 26),
+	PASS_BVH_TRAVERSED_NODES = (1 << 26),
 	PASS_BVH_TRAVERSED_INSTANCES = (1 << 27),
-	PASS_RAY_BOUNCES = (1 << 28),
+	PASS_BVH_INTERSECTIONS = (1 << 28),
+	PASS_RAY_BOUNCES = (1 << 29),
 #endif
 } PassType;
 
@@ -538,33 +543,38 @@ typedef ccl_addr_space struct Intersection {
 	int type;
 
 #ifdef __KERNEL_DEBUG__
-	int num_traversal_steps;
+	int num_traversed_nodes;
 	int num_traversed_instances;
+	int num_intersections;
 #endif
 } Intersection;
 
 /* Primitives */
 
 typedef enum PrimitiveType {
-	PRIMITIVE_NONE = 0,
-	PRIMITIVE_TRIANGLE = 1,
-	PRIMITIVE_MOTION_TRIANGLE = 2,
-	PRIMITIVE_CURVE = 4,
-	PRIMITIVE_MOTION_CURVE = 8,
+	PRIMITIVE_NONE            = 0,
+	PRIMITIVE_TRIANGLE        = (1 << 0),
+	PRIMITIVE_MOTION_TRIANGLE = (1 << 1),
+	PRIMITIVE_CURVE           = (1 << 2),
+	PRIMITIVE_MOTION_CURVE    = (1 << 3),
+	/* Lamp primitive is not included below on purpose,
+	 * since it is no real traceable primitive.
+	 */
+	PRIMITIVE_LAMP            = (1 << 4),
 
 	PRIMITIVE_ALL_TRIANGLE = (PRIMITIVE_TRIANGLE|PRIMITIVE_MOTION_TRIANGLE),
 	PRIMITIVE_ALL_CURVE = (PRIMITIVE_CURVE|PRIMITIVE_MOTION_CURVE),
 	PRIMITIVE_ALL_MOTION = (PRIMITIVE_MOTION_TRIANGLE|PRIMITIVE_MOTION_CURVE),
 	PRIMITIVE_ALL = (PRIMITIVE_ALL_TRIANGLE|PRIMITIVE_ALL_CURVE),
 
-	/* Total number of different primitives.
+	/* Total number of different traceable primitives.
 	 * NOTE: This is an actual value, not a bitflag.
 	 */
 	PRIMITIVE_NUM_TOTAL = 4,
 } PrimitiveType;
 
-#define PRIMITIVE_PACK_SEGMENT(type, segment) ((segment << 16) | type)
-#define PRIMITIVE_UNPACK_SEGMENT(type) (type >> 16)
+#define PRIMITIVE_PACK_SEGMENT(type, segment) ((segment << PRIMITIVE_NUM_TOTAL) | (type))
+#define PRIMITIVE_UNPACK_SEGMENT(type) (type >> PRIMITIVE_NUM_TOTAL)
 
 /* Attributes */
 
@@ -714,20 +724,21 @@ enum ShaderDataFlag {
 	SD_VOLUME_CUBIC           = (1 << 20),  /* use cubic interpolation for voxels */
 	SD_HAS_BUMP               = (1 << 21),  /* has data connected to the displacement input */
 	SD_HAS_DISPLACEMENT       = (1 << 22),  /* has true displacement */
+	SD_HAS_CONSTANT_EMISSION  = (1 << 23),  /* has constant emission (value stored in __shader_flag) */
 
 	SD_SHADER_FLAGS = (SD_USE_MIS|SD_HAS_TRANSPARENT_SHADOW|SD_HAS_VOLUME|
 	                   SD_HAS_ONLY_VOLUME|SD_HETEROGENEOUS_VOLUME|
 	                   SD_HAS_BSSRDF_BUMP|SD_VOLUME_EQUIANGULAR|SD_VOLUME_MIS|
-	                   SD_VOLUME_CUBIC|SD_HAS_BUMP|SD_HAS_DISPLACEMENT),
+	                   SD_VOLUME_CUBIC|SD_HAS_BUMP|SD_HAS_DISPLACEMENT|SD_HAS_CONSTANT_EMISSION),
 
 	/* object flags */
-	SD_HOLDOUT_MASK             = (1 << 23),  /* holdout for camera rays */
-	SD_OBJECT_MOTION            = (1 << 24),  /* has object motion blur */
-	SD_TRANSFORM_APPLIED        = (1 << 25),  /* vertices have transform applied */
-	SD_NEGATIVE_SCALE_APPLIED   = (1 << 26),  /* vertices have negative scale applied */
-	SD_OBJECT_HAS_VOLUME        = (1 << 27),  /* object has a volume shader */
-	SD_OBJECT_INTERSECTS_VOLUME = (1 << 28),  /* object intersects AABB of an object with volume shader */
-	SD_OBJECT_HAS_VERTEX_MOTION = (1 << 29),  /* has position for motion vertices */
+	SD_HOLDOUT_MASK             = (1 << 24),  /* holdout for camera rays */
+	SD_OBJECT_MOTION            = (1 << 25),  /* has object motion blur */
+	SD_TRANSFORM_APPLIED        = (1 << 26),  /* vertices have transform applied */
+	SD_NEGATIVE_SCALE_APPLIED   = (1 << 27),  /* vertices have negative scale applied */
+	SD_OBJECT_HAS_VOLUME        = (1 << 28),  /* object has a volume shader */
+	SD_OBJECT_INTERSECTS_VOLUME = (1 << 29),  /* object intersects AABB of an object with volume shader */
+	SD_OBJECT_HAS_VERTEX_MOTION = (1 << 30),  /* has position for motion vertices */
 
 	SD_OBJECT_FLAGS = (SD_HOLDOUT_MASK|SD_OBJECT_MOTION|SD_TRANSFORM_APPLIED|
 	                   SD_NEGATIVE_SCALE_APPLIED|SD_OBJECT_HAS_VOLUME|
@@ -827,7 +838,7 @@ typedef ccl_addr_space struct ShaderData {
 	ccl_soa_member(differential3, ray_dP);
 
 #ifdef __OSL__
-	struct KernelGlobals * osl_globals;
+	struct KernelGlobals *osl_globals;
 	struct PathState *osl_path_state;
 #endif
 } ShaderData;
@@ -1031,10 +1042,10 @@ typedef struct KernelFilm {
 	float mist_falloff;
 
 #ifdef __KERNEL_DEBUG__
-	int pass_bvh_traversal_steps;
+	int pass_bvh_traversed_nodes;
 	int pass_bvh_traversed_instances;
+	int pass_bvh_intersections;
 	int pass_ray_bounces;
-	int pass_pad3;
 #endif
 } KernelFilm;
 static_assert_align(KernelFilm, 16);
@@ -1119,8 +1130,9 @@ typedef struct KernelIntegrator {
 	float volume_step_size;
 	int volume_samples;
 
-	int pad1;
-	int pad2;
+	float light_inv_rr_threshold;
+
+	int start_sample;
 } KernelIntegrator;
 static_assert_align(KernelIntegrator, 16);
 
@@ -1132,7 +1144,8 @@ typedef struct KernelBVH {
 	int have_curves;
 	int have_instancing;
 	int use_qbvh;
-	int pad1, pad2;
+	int use_bvh_steps;
+	int pad1;
 } KernelBVH;
 static_assert_align(KernelBVH, 16);
 
@@ -1178,10 +1191,9 @@ static_assert_align(KernelData, 16);
  * really important here.
  */
 typedef ccl_addr_space struct DebugData {
-	// Total number of BVH node traversal steps and primitives intersections
-	// for the camera rays.
-	int num_bvh_traversal_steps;
+	int num_bvh_traversed_nodes;
 	int num_bvh_traversed_instances;
+	int num_bvh_intersections;
 	int num_ray_bounces;
 } DebugData;
 #endif

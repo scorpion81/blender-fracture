@@ -29,6 +29,8 @@ ccl_device_noinline float3 direct_emissive_eval(KernelGlobals *kg,
 	/* setup shading at emitter */
 	float3 eval;
 
+	int shader_flag = kernel_tex_fetch(__shader_flag, (ls->shader & SHADER_MASK)*SHADER_SIZE);
+
 #ifdef __BACKGROUND_MIS__
 	if(ls->type == LIGHT_BACKGROUND) {
 		Ray ray;
@@ -49,11 +51,21 @@ ccl_device_noinline float3 direct_emissive_eval(KernelGlobals *kg,
 	}
 	else
 #endif
+	if(shader_flag & SD_HAS_CONSTANT_EMISSION)
+	{
+		eval.x = __int_as_float(kernel_tex_fetch(__shader_flag, (ls->shader & SHADER_MASK)*SHADER_SIZE + 2));
+		eval.y = __int_as_float(kernel_tex_fetch(__shader_flag, (ls->shader & SHADER_MASK)*SHADER_SIZE + 3));
+		eval.z = __int_as_float(kernel_tex_fetch(__shader_flag, (ls->shader & SHADER_MASK)*SHADER_SIZE + 4));
+		if((ls->prim != PRIM_NONE) && dot(ls->Ng, I) < 0.0f) {
+			ls->Ng = -ls->Ng;
+		}
+	}
+	else
 	{
 		shader_setup_from_sample(kg, emission_sd,
 		                         ls->P, ls->Ng, I,
 		                         ls->shader, ls->object, ls->prim,
-		                         ls->u, ls->v, t, time, false);
+		                         ls->u, ls->v, t, time, false, ls->lamp);
 
 		ls->Ng = ccl_fetch(emission_sd, Ng);
 
@@ -82,7 +94,8 @@ ccl_device_noinline bool direct_emission(KernelGlobals *kg,
                                          ccl_addr_space PathState *state,
                                          Ray *ray,
                                          BsdfEval *eval,
-                                         bool *is_lamp)
+                                         bool *is_lamp,
+                                         float rand_terminate)
 {
 	if(ls->pdf == 0.0f)
 		return false;
@@ -122,7 +135,7 @@ ccl_device_noinline bool direct_emission(KernelGlobals *kg,
 	shader_bsdf_eval(kg, sd, ls->D, eval, ls->pdf, ls->shader & SHADER_USE_MIS);
 #endif
 
-	bsdf_eval_mul(eval, light_eval/ls->pdf);
+	bsdf_eval_mul3(eval, light_eval/ls->pdf);
 
 #ifdef __PASSES__
 	/* use visibility flag to skip lights */
@@ -142,6 +155,16 @@ ccl_device_noinline bool direct_emission(KernelGlobals *kg,
 
 	if(bsdf_eval_is_zero(eval))
 		return false;
+
+	if(kernel_data.integrator.light_inv_rr_threshold > 0.0f) {
+		float probability = max3(bsdf_eval_sum(eval)) * kernel_data.integrator.light_inv_rr_threshold;
+		if(probability < 1.0f) {
+			if(rand_terminate >= probability) {
+				return false;
+			}
+			bsdf_eval_mul(eval, 1.0f / probability);
+		}
+	}
 
 	if(ls->shader & SHADER_CAST_SHADOW) {
 		/* setup ray */
