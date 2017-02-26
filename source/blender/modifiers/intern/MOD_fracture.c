@@ -1758,6 +1758,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 
 	trmd->use_particle_birth_coordinates = rmd->use_particle_birth_coordinates;
 	trmd->splinter_length = rmd->splinter_length;
+	trmd->splinter_axis = rmd->splinter_axis;
 	trmd->cluster_solver_iterations_override = rmd->cluster_solver_iterations_override;
 
 	trmd->cluster_breaking_angle = rmd->cluster_breaking_angle;
