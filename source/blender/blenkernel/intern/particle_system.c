@@ -3860,8 +3860,8 @@ static int emit_particles(ParticleSimulationData *sim, PTCacheID *pid, float UNU
 	if (totpart != oldtotpart)
 		realloc_particles(sim, totpart);
 
-	//always allow redistribution of particles, except on grid !
-	if (part->distr == PART_DISTR_GRID) {
+	//always allow redistribution of particles, except on grid and hair systems !
+	if (part->distr == PART_DISTR_GRID || part->type == PART_HAIR) {
 		return totpart - oldtotpart;
 	}
 
