@@ -32,6 +32,7 @@
 //#include "BLI_string_utf8.h"
 #include "MEM_guardedalloc.h"
 
+#include "BLI_callbacks.h"
 #include "BLI_edgehash.h"
 #include "BLI_ghash.h"
 #include "BLI_kdtree.h"
@@ -3733,7 +3734,17 @@ static void do_refresh_constraints(FractureModifierData *fmd, Object *ob)
 	start = PIL_check_seconds_timer();
 
 	if (fmd->use_constraints) {
-		create_constraints(fmd, ob); /* check for actually creating the constraints inside*/
+		int count = 0;
+
+		/* fire a callback which can then load external constraint data right NOW */
+		BLI_callback_exec(G.main, &ob->id, BLI_CB_EVT_FRACTURE_CONSTRAINT_REFRESH);
+
+		/*if we loaded constraints, dont create other ones now */
+		count = BLI_listbase_count(&fmd->meshConstraints);
+
+		if (count == 0 || fmd->dynamic_new_constraints != MOD_FRACTURE_NO_DYNAMIC_CONSTRAINTS) {
+			create_constraints(fmd, ob); /* check for actually creating the constraints inside*/
+		}
 	}
 	fmd->refresh_constraints = false;
 
@@ -3888,7 +3899,7 @@ static void do_island_index_map(FractureModifierData *fmd)
 }
 
 
-static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm)
+static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm, char names [][66], int count)
 {
 	bool exploOK = false; /* doFracture */
 
@@ -3900,8 +3911,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 			//(fmd->refresh_constraints && fmd->execute_threaded && fmd->frac_mesh && fmd->frac_mesh->running == 0))
 		{
 			DerivedMesh *old_cached = NULL;
-
-			if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) {
+			if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->visible_mesh_cached) {
 				//keep a copy around for fade value setting
 				old_cached = CDDM_copy(fmd->visible_mesh_cached);
 			}
@@ -3922,6 +3932,18 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 
 			if (fmd->refresh) {
 				do_refresh(fmd, ob, dm, orig_dm, old_cached);
+
+				if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && names)
+				{
+					MeshIsland *mi;
+					int i = 0;
+					for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
+						if (i < count) {
+							BLI_snprintf(mi->name, sizeof(names[i]), "%s", names[i]);
+						}
+						i++;
+					}
+				}
 			}
 
 			if (old_cached) {
@@ -4177,14 +4199,15 @@ static void add_new_entries(FractureModifierData* fmd, DerivedMesh *dm, Object* 
 	fmd->meshIslands = fmd->current_mi_entry->meshIslands;
 }
 
-static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
+static int do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, char (**names)[66])
 {
 	/*TODO_1 refresh, move to BKE and just call from operator for prefractured case*/
+	int mi_count = 0;
 
 	if (fmd->refresh)
 	{
 		printf("ADD NEW 1: %s \n", ob->id.name);
-		if (fmd->last_frame == INT_MAX && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		if ((fmd->last_frame == INT_MAX) && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			if (fmd->reset_shards)
 			{
@@ -4196,6 +4219,40 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 			{
 				free_simulation(fmd, false, true);
 				fmd->last_frame = 1;
+			}
+
+			//try to exec handlers only ONCE
+			if (fmd->frac_mesh == NULL) {
+				// fire a callback which can then load external data right NOW
+				BLI_callback_exec(G.main, &ob->id, BLI_CB_EVT_FRACTURE_REFRESH);
+				if (fmd->frac_mesh != NULL) {
+					if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) {
+						bool tmp = fmd->shards_to_islands;
+
+						fmd->shards_to_islands = false;
+						BKE_fracture_create_dm(fmd, true);
+						fmd->shards_to_islands = tmp;
+
+						BKE_fracture_update_visual_mesh(fmd, ob, true);
+
+						//store names here... gahhhh that is so clumsy
+						if (names) {
+							MeshIsland *mi;
+							int i = 0, count = 0;
+							count = BLI_listbase_count(&fmd->meshIslands);
+
+							(*names) = MEM_callocN(sizeof(char*) * 66 * count, "names");
+							for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
+								//names[i] = MEM_callocN(sizeof(char*) * 66, "names");
+								BLI_snprintf((*names)[i], sizeof(mi->name), "%s", mi->name);
+								i++;
+							}
+							mi_count = i;
+						}
+
+						add_new_entries(fmd, dm, ob);
+					}
+				}
 			}
 		}
 
@@ -4321,6 +4378,8 @@ static void do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm)
 
 		fmd->last_frame = frame;
 	}
+
+	return mi_count;
 }
 
 static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, DerivedMesh *derivedData)
@@ -4360,7 +4419,7 @@ static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, Deriv
 
 	if (fmd->refresh)
 	{
-		do_modifier(fmd, ob, clean_dm);
+		do_modifier(fmd, ob, clean_dm, NULL);
 
 		if (!fmd->refresh) { /* might have been changed from outside, job cancel*/
 			return derivedData;
@@ -4370,10 +4429,10 @@ static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, Deriv
 	/* TODO_5, get rid of fmd->dm and perhaps of fmd->visible_mesh (BMESH!) too, the latter should be runtime data for creating islands ONLY */
 	/* we should ideally only have one cached derivedmesh */
 	if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0)) {
-		final_dm = doSimulate(fmd, ob, fmd->dm, clean_dm);
+		final_dm = doSimulate(fmd, ob, fmd->dm, clean_dm, NULL, 0);
 	}
 	else {
-		final_dm = doSimulate(fmd, ob, clean_dm, clean_dm);
+		final_dm = doSimulate(fmd, ob, clean_dm, clean_dm, NULL, 0);
 	}
 
 	/* free newly created derivedmeshes only, but keep derivedData and final_dm*/
@@ -4396,20 +4455,26 @@ static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, Deriv
 static DerivedMesh *do_dynamic(FractureModifierData *fmd, Object *ob, DerivedMesh *derivedData)
 {
 	DerivedMesh *final_dm = derivedData;
+	char (*names)[66] = NULL;
+	int count = 0;
 
 	/* group_dm, clean_dm not necessary here as we dont support non-mesh objects and subobject_groups here */
 	//if (fmd->refresh)
 	{
 		/*in there we have to decide WHICH shards we fracture*/
-		do_modifier(fmd, ob, derivedData);
+		count = do_modifier(fmd, ob, derivedData, &names);
 	}
 
 	/* here we should deal as usual with the current set of shards and meshislands */
 	if (fmd->dm && fmd->frac_mesh && (fmd->dm->getNumPolys(fmd->dm) > 0)) {
-		final_dm = doSimulate(fmd, ob, fmd->dm, derivedData);
+		final_dm = doSimulate(fmd, ob, fmd->dm, derivedData, names, count);
 	}
 	else {
-		final_dm = doSimulate(fmd, ob, derivedData, derivedData);
+		final_dm = doSimulate(fmd, ob, derivedData, derivedData, names, count);
+	}
+
+	if (names) {
+		MEM_freeN(names);
 	}
 
 	//fmd->last_frame = (int)BKE_scene_frame_get(fmd->modifier.scene);

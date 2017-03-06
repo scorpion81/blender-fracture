@@ -80,6 +80,11 @@ class btUnionFind
 
 		void unite(int p, int q)
 		{
+			if (p == -1 && q == -1) {
+				//error case... should not happen but happens ?
+				return;
+			}
+
 			int i = find(p), j = find(q);
 			if (i == j) 
 				return;

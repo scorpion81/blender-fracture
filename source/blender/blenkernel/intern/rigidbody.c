@@ -1774,7 +1774,7 @@ static void rigidbody_create_shard_physics_constraint(FractureModifierData* fmd,
 		return;
 	}
 
-	if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+	if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 	{
 		mul_v3_m4v3(loc, ob->obmat, rbc->pos);
 		mat4_to_quat(rot, ob->obmat);
@@ -1845,7 +1845,7 @@ static void rigidbody_create_shard_physics_constraint(FractureModifierData* fmd,
 			case RBC_TYPE_6DOF_SPRING:
 				rbc->physics_constraint = RB_constraint_new_6dof_spring(loc, rot, rb1, rb2);
 
-				if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
+				if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 				{
 					if ((rbc->plastic_angle < 0.0f) && (rbc->plastic_dist < 0.0f))
 					{
@@ -1967,6 +1967,11 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, FractureMo
 			RB_constraint_delete(rbc->physics_constraint);
 			rbc->physics_constraint = NULL;
 		}
+		return;
+	}
+
+	if (rbc->mi1 == rbc->mi2) {
+		//owch, this happened... better check for sanity  here
 		return;
 	}
 
@@ -2298,11 +2303,27 @@ static bool check_shard_size(FractureModifierData *fmd, int id)
 	return true;
 }
 
-static bool check_constraints(FractureModifierData *fmd, MeshIsland *mi) {
+static bool check_constraints(FractureModifierData *fmd, MeshIsland *mi, RigidBodyWorld *rbw) {
 	//count broken constraints
 	RigidBodyShardCon *con;
+	GroupObject* go;
 	int i = 0, broken = 0;
 	float percentage;
+
+	if (rbw && rbw->constraints) {
+		//delete outer constraints here, to be sure
+		for (go = rbw->constraints->gobject.first; go; go = go->next) {
+			RigidBodyCon *rbc = go->ob->rigidbody_constraint;
+			FractureModifierData *fmd1 = (FractureModifierData*)modifiers_findByType(rbc->ob1, eModifierType_Fracture);
+			FractureModifierData *fmd2 = (FractureModifierData*)modifiers_findByType(rbc->ob2, eModifierType_Fracture);
+
+			if ((rbc && rbc->physics_constraint && rbw && rbw->physics_world) && ((fmd1 == fmd) || (fmd2 == fmd))) {
+				RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
+				RB_constraint_delete(rbc->physics_constraint);
+				rbc->physics_constraint = NULL;
+			}
+		}
+	}
 
 	if (mi->participating_constraint_count == 0) {
 		return true;
@@ -2384,16 +2405,16 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 				//printf("FORCE1:%f\n",force);
 				bool canbreak = (force > fmd1->dynamic_force) || ((fmd1->limit_impact || obB) && can_break(ob2, ob1, fmd1->limit_impact));
 
-				if (canbreak && check_constraints(fmd1, mi))
+				if (canbreak && check_constraints(fmd1, mi, rbw))
 				{
 					if (s) {
-						float size[3];
+						float size[3] =  {1.0f, 1.0f, 1.0f};
 
-						if (ob1 == ob2 || (ob2->rigidbody_object && ob1->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
+						if (ob1 == ob2 || (ob2 && ob2->rigidbody_object && ob1->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
 							//todo calculate shard...
 							size[0] = size[1] = size[2] = -1.0f;
 						}
-						else {
+						else if (ob2) {
 							BKE_object_dimensions_get(ob2, size);
 						}
 
@@ -2439,15 +2460,15 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 				//printf("FORCE2:%f\n",force);
 				bool canbreak = (force > fmd2->dynamic_force) || ((fmd2->limit_impact || obA) && can_break(ob1, ob2, fmd2->limit_impact));
 
-				if (canbreak && check_constraints(fmd2, mi))
+				if (canbreak && check_constraints(fmd2, mi, rbw))
 				{
 					if (s) {
-						float size[3];
+						float size[3] = {1.0f, 1.0f, 1.0f};
 
-						if (ob1 == ob2 || (ob1->rigidbody_object && ob1->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
+						if (ob1 == ob2 || (ob1 && ob1->rigidbody_object && ob1->rigidbody_object->type == RBO_TYPE_PASSIVE)) {
 							size[0] = size[1] = size[2] = -1.0f;
 						}
-						else {
+						else if (ob1) {
 							BKE_object_dimensions_get(ob1, size);
 						}
 						copy_v3_v3(s->impact_loc, cp->contact_pos_world_onB);
@@ -4022,7 +4043,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				RB_constraint_set_enabled(rbsc->physics_constraint, rbsc->flag & RBC_FLAG_ENABLED);
 				rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
 
-				if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && rbsc->type == RBC_TYPE_6DOF_SPRING)
+				if ((fmd->fracture_mode == MOD_FRACTURE_EXTERNAL || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) && rbsc->type == RBC_TYPE_6DOF_SPRING)
 				{
 					if (rbsc->plastic_angle >= 0.0f || rbsc->plastic_dist >= 0.0f)
 					{
@@ -4049,7 +4070,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				rbsc->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD) {
 				/* World has been rebuilt so rebuild constraint */
 				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
-				BKE_rigidbody_start_dist_angle(rbsc, fmd->fracture_mode == MOD_FRACTURE_EXTERNAL);
+				BKE_rigidbody_start_dist_angle(rbsc, fmd->fracture_mode == MOD_FRACTURE_EXTERNAL || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC);
 				//TODO ensure evaluation on transform change too
 			}
 
@@ -4064,7 +4085,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				handle_regular_breaking(fmd, ob, rbw, rbsc, max_con_mass, rebuild);
 			}
 
-			if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL && (rbsc->flag & RBC_FLAG_USE_BREAKING) && !rebuild)
+			if ((fmd->fracture_mode == MOD_FRACTURE_EXTERNAL || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) && (rbsc->flag & RBC_FLAG_USE_BREAKING) && !rebuild)
 			{
 				handle_plastic_breaking(rbsc, rbw, laststeps, lastscale);
 			}
@@ -4366,7 +4387,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 			{
 				int frame = (int)ctime;
 
-				if (BKE_lookup_mesh_state(fmd, frame, true));
+				if (BKE_lookup_mesh_state(fmd, frame, true))
 				{
 					BKE_rigidbody_update_ob_array(rbw, false);
 				}
@@ -4707,6 +4728,13 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 				for (md = ob->modifiers.first; md; md = md->next)
 				{
 					const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+
+					/*if (md == (ModifierData*)fmd)
+					{
+						BLI_mutex_unlock(&reset_lock);
+						found = true;
+						break;
+					}*/
 
 					if (!found)
 					{
