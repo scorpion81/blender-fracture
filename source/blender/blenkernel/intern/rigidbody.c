@@ -4049,10 +4049,13 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 
 			if (rbsc->physics_constraint && rbw && (rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS) && !rebuild) {
 				//printf("Rebuilding constraints\n");
-				RB_constraint_set_enabled(rbsc->physics_constraint, rbsc->flag & RBC_FLAG_ENABLED);
-				rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+				if (!fmd->is_dynamic_external) {
+					RB_constraint_set_enabled(rbsc->physics_constraint, rbsc->flag & RBC_FLAG_ENABLED);
+					rbsc->flag |= RBC_FLAG_NEEDS_VALIDATE;
+				}
 
-				if ((fmd->fracture_mode == MOD_FRACTURE_EXTERNAL || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) && rbsc->type == RBC_TYPE_6DOF_SPRING)
+				if (((fmd->fracture_mode == MOD_FRACTURE_EXTERNAL) || ((fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) && fmd->is_dynamic_external))
+				    && (rbsc->type == RBC_TYPE_6DOF_SPRING))
 				{
 					if (rbsc->plastic_angle >= 0.0f || rbsc->plastic_dist >= 0.0f)
 					{
@@ -4095,7 +4098,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				handle_regular_breaking(fmd, ob, rbw, rbsc, max_con_mass, rebuild);
 			}
 
-			if ((fmd->fracture_mode == MOD_FRACTURE_EXTERNAL || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->is_dynamic_external) &&
+			if (((fmd->fracture_mode == MOD_FRACTURE_EXTERNAL) || (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->is_dynamic_external)) &&
 			    (rbsc->flag & RBC_FLAG_USE_BREAKING) && !rebuild)
 			{
 				handle_plastic_breaking(rbsc, rbw, laststeps, lastscale);

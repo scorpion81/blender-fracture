@@ -516,7 +516,7 @@ static void freeData_internal(FractureModifierData *fmd, bool do_free_seq, bool 
 		if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 			free_simulation(fmd, false, do_free_rigidbody); // in this case keep the meshisland sequence!
 	}
-	else if (fmd->refresh_constraints) {
+	else if (fmd->refresh_constraints && !fmd->is_dynamic_external) {
 		/* refresh constraints only */
 		BKE_free_constraints(fmd);
 	}
@@ -4353,7 +4353,11 @@ static int do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, c
 			{
 				if (fmd->update_dynamic)
 				{
-					BKE_free_constraints(fmd);
+					if (!fmd->is_dynamic_external)
+					{
+						BKE_free_constraints(fmd);
+					}
+
 					printf("ADD NEW 2: %s \n", ob->id.name);
 					fmd->update_dynamic = false;
 					add_new_entries(fmd, dm, ob);
