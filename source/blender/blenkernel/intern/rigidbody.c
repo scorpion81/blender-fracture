@@ -110,8 +110,13 @@ static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), Mes
 
 	if (mi && ob->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) {
 		for (i = 0; i < mi->participating_constraint_count; i++) {
+			bool different_cluster = false;
 			con = mi->participating_constraints[i];
-			if (con->physics_constraint) {
+
+			different_cluster = ((con->mi1->particle_index != con->mi2->particle_index) ||
+			                    ((con->mi1->particle_index == -1) && (con->mi2->particle_index == -1)));
+
+			if (con->physics_constraint && different_cluster) {
 				RB_constraint_set_enabled(con->physics_constraint, false);
 			}
 		}
@@ -1774,7 +1779,7 @@ static void rigidbody_create_shard_physics_constraint(FractureModifierData* fmd,
 		return;
 	}
 
-	if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+	if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL || (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->is_dynamic_external))
 	{
 		mul_v3_m4v3(loc, ob->obmat, rbc->pos);
 		mat4_to_quat(rot, ob->obmat);
@@ -1845,7 +1850,7 @@ static void rigidbody_create_shard_physics_constraint(FractureModifierData* fmd,
 			case RBC_TYPE_6DOF_SPRING:
 				rbc->physics_constraint = RB_constraint_new_6dof_spring(loc, rot, rb1, rb2);
 
-				if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+				if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL || (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->is_dynamic_external))
 				{
 					if ((rbc->plastic_angle < 0.0f) && (rbc->plastic_dist < 0.0f))
 					{
@@ -2039,12 +2044,16 @@ static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 	{
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 		{
-			bool same_cluster = (mi->particle_index != -1) &&
-			                    (mi->particle_index == mi_compare->particle_index);
+			bool dissolve = ob->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE;
+
+			bool same_cluster = ((mi->particle_index != -1) &&
+			                    (mi->particle_index == mi_compare->particle_index));
+
+			bool different_cluster = !same_cluster && dissolve;
 
 			RigidBodyOb* rbo = mi->rigidbody;
-			if (((rbo->flag & RBO_FLAG_KINEMATIC) || (ob->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE)) &&
-			     ((mi_compare == mi) || same_cluster))
+			if (((rbo->flag & RBO_FLAG_KINEMATIC) || different_cluster) &&
+			     ((mi_compare == mi) || (same_cluster && !dissolve)))
 			{
 				if (rbo->physics_object) {
 					activateRigidbody(rbo, rbw, mi, ob);
@@ -4070,7 +4079,8 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				rbsc->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD) {
 				/* World has been rebuilt so rebuild constraint */
 				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
-				BKE_rigidbody_start_dist_angle(rbsc, fmd->fracture_mode == MOD_FRACTURE_EXTERNAL || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC);
+				BKE_rigidbody_start_dist_angle(rbsc, fmd->fracture_mode == MOD_FRACTURE_EXTERNAL ||
+				                               (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->is_dynamic_external));
 				//TODO ensure evaluation on transform change too
 			}
 
@@ -4085,7 +4095,8 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				handle_regular_breaking(fmd, ob, rbw, rbsc, max_con_mass, rebuild);
 			}
 
-			if ((fmd->fracture_mode == MOD_FRACTURE_EXTERNAL || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC) && (rbsc->flag & RBC_FLAG_USE_BREAKING) && !rebuild)
+			if ((fmd->fracture_mode == MOD_FRACTURE_EXTERNAL || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->is_dynamic_external) &&
+			    (rbsc->flag & RBC_FLAG_USE_BREAKING) && !rebuild)
 			{
 				handle_plastic_breaking(rbsc, rbw, laststeps, lastscale);
 			}

@@ -1222,5 +1222,11 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Inner Crease",  "Crease at edges of inner faces");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
+	prop = RNA_def_property(srna, "is_dynamic_external", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "is_dynamic_external", false);
+	RNA_def_property_ui_text(prop, "Dynamic External", "Indicator whether the data for dynamic fracture was loaded externally");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
 	RNA_api_fracture(brna, srna);
 }

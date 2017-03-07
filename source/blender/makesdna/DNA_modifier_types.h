@@ -1767,6 +1767,7 @@ typedef struct FractureModifierData {
 	int limit_impact;
 	int fracture_all;
 	int dynamic_new_constraints;
+	int is_dynamic_external;
 
 	/* internal flags */
 	int use_experimental;
@@ -1786,7 +1787,7 @@ typedef struct FractureModifierData {
 
 	int keep_cutter_shards;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

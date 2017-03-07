@@ -230,6 +230,7 @@ static void initData(ModifierData *md)
 	fmd->keep_cutter_shards = MOD_FRACTURE_KEEP_BOTH;
 	fmd->use_constraint_collision = false;
 	fmd->inner_crease = 0.0f;
+	fmd->is_dynamic_external = false;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1802,6 +1803,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->keep_cutter_shards = rmd->keep_cutter_shards;
 	trmd->use_constraint_collision = rmd->use_constraint_collision;
 	trmd->inner_crease = rmd->inner_crease;
+	trmd->is_dynamic_external = rmd->is_dynamic_external;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
