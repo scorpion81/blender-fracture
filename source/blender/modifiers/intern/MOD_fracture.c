@@ -1580,8 +1580,7 @@ static void cleanup_arrange_shard(FractureModifierData *fmd, Shard* sh, float ce
 	}
 }
 
-//this is the main fracture function, outsource to BKE, so op or rb system can call it
-static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, DerivedMesh *dm)
+static void do_fracture_points(FractureModifierData *fmd, Object* obj, DerivedMesh *dm, ShardID id, int override_count)
 {
 	/* dummy point cloud, random */
 	FracPointCloud points;
@@ -1601,38 +1600,22 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		/*splinters... just global axises and a length, for rotation rotate the object */
 		s = do_splinters(fmd, points, &mat, id, dm);
 
-		mat_index = do_materials(fmd, obj);
-		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
-
-#if 0
-		if (fmd->uvlayer_name[0] && obj->type == OB_MESH)
-		{
-			//const char *name = "InnerUV";
-			//create default uv layer (both on mesh and DM ?) and use it
-			//ED_mesh_uv_texture_ensure((Mesh*)ob->data, name);
-			int index = CustomData_get_named_layer_index(&dm->loopData, CD_MLOOPUV, fmd->uvlayer_name);
-			if (index > -1)
-				CustomData_free_layer(&dm->loopData, CD_MLOOPUV, dm->numLoopData,index);
-
-			CustomData_add_layer_named(&dm->loopData, CD_MLOOPUV, CD_CALLOC, NULL, dm->numLoopData, fmd->uvlayer_name);
-			//BLI_strncpy(fmd->uvlayer_name, name, sizeof(name));
-		}
-#endif
+		//if (fmd->cutter_group == NULL) {
+			mat_index = do_materials(fmd, obj);
+			mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
+		//}
 
 		if (points.totpoints > 0) {
 			BKE_fracture_shard_by_points(fmd->frac_mesh, id, &points, fmd->frac_algorithm, obj, dm, mat_index, mat,
 			                             fmd->fractal_cuts, fmd->fractal_amount, fmd->use_smooth, fmd->fractal_iterations,
 			                             fmd->fracture_mode, fmd->reset_shards, fmd->active_setting, num_settings, fmd->uvlayer_name,
-			                             fmd->execute_threaded, fmd->boolean_solver, fmd->boolean_double_threshold, fmd->shards_to_islands);
+			                             fmd->execute_threaded, fmd->boolean_solver, fmd->boolean_double_threshold, fmd->shards_to_islands,
+			                             override_count);
 		}
 
 		/*TODO, limit this to settings shards !*/
 		if (fmd->point_source & MOD_FRACTURE_GREASEPENCIL && fmd->use_greasepencil_edges) {
 			BKE_fracture_shard_by_greasepencil(fmd, obj, mat_index, mat);
-		}
-
-		if (fmd->frac_algorithm == MOD_FRACTURE_BOOLEAN && fmd->cutter_group != NULL) {
-			BKE_fracture_shard_by_planes(fmd, obj, mat_index, mat);
 		}
 
 		cleanup_arrange_shard(fmd, s, cent);
@@ -1650,30 +1633,6 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 			return;
 		}
 
-#if 0
-		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->shards_to_islands) {
-			//find children of this shard and halve them (and remove them)
-			Shard *t = fmd->frac_mesh->shard_map.first;
-			while (t) {
-				if (t->parent_id == id && id > -1) {
-					DerivedMesh *sdm;
-					Shard* next;
-					next = t->next;
-
-					BLI_remlink(&fmd->frac_mesh->shard_map, t);
-					sdm = BKE_shard_create_dm(t, true);
-					BKE_shard_free(t, true);
-
-					do_halving(fmd, obj, sdm, dm, true, id);
-					t = next;
-				}
-				else {
-					t = t->next;
-				}
-			}
-		}
-#endif
-
 		/* here we REALLY need to fracture so deactivate the shards to islands flag and activate afterwards */
 		fmd->shards_to_islands = false;
 		BKE_fracture_create_dm(fmd, true);
@@ -1686,6 +1645,55 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		}
 	}
 	MEM_freeN(points.points);
+}
+
+//this is the main fracture function, outsource to BKE, so op or rb system can call it
+static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, DerivedMesh *dm)
+{
+	short mat_index = 0;
+	ShardID* ids = NULL;
+
+	if (fmd->frac_algorithm == MOD_FRACTURE_BOOLEAN && fmd->cutter_group != NULL) {
+		//attempt to combine fracture by cutter group with regular fracture
+		float mat[4][4];
+		Shard* s = NULL;
+		int count = 0, i = 0;
+		bool reset = fmd->reset_shards;
+
+		unit_m4(mat);
+		mat_index = do_materials(fmd, obj);
+		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
+
+		BKE_fracture_shard_by_planes(fmd, obj, mat_index, mat);
+
+		ids = (ShardID*)MEM_callocN(sizeof(ShardID), "iDs");
+		for (s = fmd->frac_mesh->shard_map.first; s; s = s->next)
+		{
+			printf("Adding Shard ID: %d %d\n", count, s->shard_id);
+			if (count > 0) {
+				ids = MEM_reallocN_id(ids, sizeof(ShardID) * (count+1), "iDs");
+			}
+
+			ids[count] = s->shard_id;
+			count++;
+		}
+
+		fmd->reset_shards = false;
+
+		for (i = 0; i < count; i++)
+		{
+			//int cnt = BLI_listbase_count(&fmd->frac_mesh->shard_map);
+			printf("Fracturing Shard ID: %d %d\n", i, ids[i]);
+			do_fracture_points(fmd, obj, dm, ids[i], count == 1 ? -1 : i);
+		}
+
+		fmd->reset_shards = reset;
+
+		MEM_freeN(ids);
+	}
+	else {
+		do_fracture_points(fmd, obj, dm, id, -1);
+	}
 }
 
 //XXX todo, simplify to copy generic stuff, maybe take shards over even, but re-init the meshisland verts as in packing system
@@ -1956,9 +1964,9 @@ static void do_rigidbody(FractureModifierData *fmd, MeshIsland* mi, Object* ob, 
 	BKE_rigidbody_calc_shard_mass(ob, mi, orig_dm);
 }
 
-static short do_vert_index_map(FractureModifierData *fmd, MeshIsland *mi)
+static short do_vert_index_map(FractureModifierData *fmd, MeshIsland *mi, MeshIsland *par)
 {
-	short rb_type = mi->ground_weight > 0.01f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
+	short rb_type = mi->ground_weight > 0.01f ?  RBO_TYPE_PASSIVE : (par && par->rigidbody ? par->rigidbody->type : RBO_TYPE_ACTIVE);
 
 	if (fmd->vert_index_map && fmd->dm_group && fmd->cluster_count == 0 && mi->vertex_indices)
 	{
@@ -2077,7 +2085,7 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 
 	mi->vertices_cached = NULL;
 
-	rb_type = do_vert_index_map(fmd, mi);
+	rb_type = do_vert_index_map(fmd, mi, NULL);
 	i = BLI_listbase_count(&fmd->meshIslands);
 	do_rigidbody(fmd, mi, ob, orig_dm, rb_type, i);
 
@@ -2923,7 +2931,7 @@ static DerivedMesh *createCache(FractureModifierData *fmd, Object *ob, DerivedMe
 		}
 
 		/*disable for dm_group, cannot paint onto this mesh at all */
-		if (mi->rigidbody != NULL && fmd->dm_group == NULL) {
+		if (mi->rigidbody != NULL && fmd->dm_group == NULL && !fmd->is_dynamic_external) {
 			mi->rigidbody->type = mi->ground_weight > 0.01f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
 		}
 
@@ -3318,6 +3326,10 @@ static void do_handle_parent_mi(FractureModifierData *fmd, MeshIsland *mi, MeshI
 {
 	frame -= par->start_frame;
 	BKE_match_vertex_coords(mi, par, ob, frame, is_parent, fmd->shards_to_islands);
+	if (!is_parent && fmd->is_dynamic_external) {
+		//keep the damn names...
+		BLI_snprintf(mi->name, sizeof(par->name), "%s", par->name);
+	}
 
 	BKE_rigidbody_remove_shard(fmd->modifier.scene, par);
 	fmd->modifier.scene->rigidbody_world->flag |= RBW_FLAG_OBJECT_CHANGED;
@@ -3523,7 +3535,7 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	mi->neighbor_ids = s->neighbor_ids;
 	mi->neighbor_count = s->neighbor_count;
 
-	rb_type = do_vert_index_map(fmd, mi);
+	rb_type = do_vert_index_map(fmd, mi, par);
 	do_rigidbody(fmd, mi, ob, orig_dm, rb_type, i);
 
 	if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
@@ -3536,7 +3548,7 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 			mi->rigidbody->flag = par->rigidbody->flag;
 
 			//keep 1st level shards kinematic if parent is triggered
-			if ((par->rigidbody->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION) && fmd->limit_impact) {
+			if ((par->rigidbody->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION) && fmd->limit_impact && !fmd->is_dynamic_external) {
 
 				ShardSequence *prev_shards = fmd->current_shard_entry ? fmd->current_shard_entry->prev : NULL;
 				Shard *par_shard = prev_shards ? find_shard(&prev_shards->frac_mesh->shard_map, s->parent_id) : NULL;

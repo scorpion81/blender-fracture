@@ -3953,11 +3953,12 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				BKE_rigidbody_update_ob_array(rbw, false);
 			}
 		}
-		else
+		//else
 		{
 			if (rebuild || is_zero_m4(fmd->passive_parent_mat))
 			{
 				copy_m4_m4(fmd->passive_parent_mat, ob->obmat);
+				print_m4("Passivemat: \n", fmd->passive_parent_mat);
 			}
 
 			//print_m4("Obmat: \n", ob->obmat);
@@ -4392,7 +4393,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 		fmd = (FractureModifierData *)md;
 		bool mode = fmd->fracture_mode == MOD_FRACTURE_EXTERNAL;
 
-		exploOK = !fmd->explo_shared || (fmd->explo_shared && fmd->frac_mesh && fmd->dm) || mode;
+		exploOK = !fmd->explo_shared || (fmd->explo_shared && fmd->frac_mesh && fmd->dm) || mode || fmd->is_dynamic_external;
 
 		if (isModifierActive(fmd) && exploOK) {
 			modFound = true;
@@ -4418,6 +4419,13 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 				}
 
 				if (ob->rigidbody_object->type == RBO_TYPE_ACTIVE) {
+					if (rbo->type == RBO_TYPE_PASSIVE)
+					{
+						printf("PASSIVE: %s\n", mi->name);
+						if (rbo->flag & RBO_FLAG_KINEMATIC) {
+							printf("KINEMATIC: %s\n", mi->name);
+						}
+					}
 					rigidbody_passive_fake_parenting(fmd, ob, rbo, imat);
 				}
 
@@ -4460,6 +4468,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 			}
 
 			copy_m4_m4(fmd->passive_parent_mat, ob->obmat);
+			//print_m4("Passivemat2: \n", fmd->passive_parent_mat);
 
 			if ((ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ) /* || (mode && rbw) */||
 				((ob->rigidbody_object) && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)))
@@ -4483,7 +4492,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 
 			if (!is_zero_m4(fmd->origmat) && rbw && !(rbw->flag & RBW_FLAG_OBJECT_CHANGED))
 			{
-				if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+				if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL /*&& !fmd->is_dynamic_external*/)
 				{
 					copy_m4_m4(ob->obmat, fmd->origmat);
 					zero_m4(fmd->origmat);
