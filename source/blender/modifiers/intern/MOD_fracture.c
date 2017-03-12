@@ -231,6 +231,9 @@ static void initData(ModifierData *md)
 	fmd->use_constraint_collision = false;
 	fmd->inner_crease = 0.0f;
 	fmd->is_dynamic_external = false;
+
+	fmd->mat_ofs_difference = 0;
+	fmd->mat_ofs_intersect = 0;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1661,8 +1664,9 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		bool reset = fmd->reset_shards;
 
 		unit_m4(mat);
-		mat_index = do_materials(fmd, obj);
-		mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
+		//mat_index = do_materials(fmd, obj);
+		//mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
+
 
 		BKE_fracture_shard_by_planes(fmd, obj, mat_index, mat);
 
@@ -1812,6 +1816,9 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->use_constraint_collision = rmd->use_constraint_collision;
 	trmd->inner_crease = rmd->inner_crease;
 	trmd->is_dynamic_external = rmd->is_dynamic_external;
+
+	trmd->mat_ofs_difference = rmd->mat_ofs_difference;
+	trmd->mat_ofs_intersect = rmd->mat_ofs_intersect;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?

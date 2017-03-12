@@ -151,6 +151,10 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
                 col.prop(md, "cutter_group")
                 if (md.cutter_group):
                    col.prop(md, "keep_cutter_shards")
+                   col.label("Material Index Offset")
+                   row = col.row(align=True)
+                   row.prop(md, "material_offset_intersect", text="Intersect")
+                   row.prop(md, "material_offset_difference", text="Difference")
             col.prop(md, "use_particle_birth_coordinates")
 
             box.prop(md, "percentage")

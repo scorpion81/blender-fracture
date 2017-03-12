@@ -1786,8 +1786,10 @@ typedef struct FractureModifierData {
 	int defstart;
 
 	int keep_cutter_shards;
+	short mat_ofs_intersect;
+	short mat_ofs_difference;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

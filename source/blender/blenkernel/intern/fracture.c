@@ -1313,6 +1313,47 @@ static void stroke_to_faces(FractureModifierData *fmd, BMesh** bm, bGPDstroke *g
 	}
 }
 
+static void add_vgroup(Shard *s, Object *ob, const char* name)
+{
+	int index = 0, i = 0;
+	MDeformVert *dvert;
+	if (!defgroup_find_name(ob, name)) {
+		BKE_defgroup_new(ob, name);
+	}
+	index = defgroup_name_index(ob, name);
+	dvert = CustomData_get_layer(&s->vertData, CD_MDEFORMVERT);
+	if (dvert == NULL) {
+		dvert = CustomData_add_layer(&s->vertData, CD_MDEFORMVERT, CD_CALLOC, NULL, s->totvert);
+	}
+	for (i = 0; i < s->totvert; i++) {
+		MDeformVert* dv = dvert + i;
+		defvert_add_index_notest(dv, index, 1.0f);
+	}
+}
+
+static void add_material(Shard* s, Object *ob, short mat_ofs) {
+
+	/* only use material offsets if we have 3 or more materials; since FM material handling still is a bit odd  */
+	/* todo, use index for inner material too, then this hack here isnt necessary any more */
+
+	const short mat_nr_max = ob->totcol > 1 ? ob->totcol - 1 : 0;
+	mat_ofs = mat_nr_max ? mat_ofs : 0;
+
+	if (mat_ofs) {
+		MPoly *mp;
+		int i = 0;
+
+		for (i = 0; i < s->totpoly; i++)
+		{
+			mp = s->mpoly + i;
+			mp->mat_nr = mat_ofs;
+
+			//hrm first material and second (inner) should be untouched...
+			CLAMP(mp->mat_nr, 0, mat_nr_max);
+		}
+	}
+}
+
 static void do_intersect(FractureModifierData *fmd, Object* ob, Shard *t, short inner_mat_index,
                          bool is_zero, float mat[4][4], int **shard_counts, int* count,
                          int k, DerivedMesh **dm_parent, bool keep_other_shard, int solver, float thresh)
@@ -1349,6 +1390,8 @@ static void do_intersect(FractureModifierData *fmd, Object* ob, Shard *t, short 
 
 	if (ELEM(fmd->keep_cutter_shards, MOD_FRACTURE_KEEP_BOTH, MOD_FRACTURE_KEEP_INTERSECT)) {
 		if (s != NULL) {
+			add_vgroup(s, ob, "Intersect");
+			add_material(s, ob, fmd->mat_ofs_intersect);
 			add_shard(fmd->frac_mesh, s, mat);
 			shards++;
 			s = NULL;
@@ -1357,6 +1400,8 @@ static void do_intersect(FractureModifierData *fmd, Object* ob, Shard *t, short 
 
 	if (ELEM(fmd->keep_cutter_shards, MOD_FRACTURE_KEEP_BOTH, MOD_FRACTURE_KEEP_DIFFERENCE)) {
 		if (s2 != NULL) {
+			add_vgroup(s2, ob, "Difference");
+			add_material(s2, ob, fmd->mat_ofs_difference);
 			add_shard(fmd->frac_mesh, s2, mat);
 			shards++;
 			s2 = NULL;
