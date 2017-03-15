@@ -1656,7 +1656,7 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 	short mat_index = 0;
 	ShardID* ids = NULL;
 
-	if (fmd->frac_algorithm == MOD_FRACTURE_BOOLEAN && fmd->cutter_group != NULL) {
+	if (/*fmd->frac_algorithm == MOD_FRACTURE_BOOLEAN && */fmd->cutter_group != NULL) {
 		//attempt to combine fracture by cutter group with regular fracture
 		float mat[4][4];
 		Shard* s = NULL;

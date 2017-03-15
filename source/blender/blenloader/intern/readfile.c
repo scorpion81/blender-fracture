@@ -5212,6 +5212,8 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 	bool autoexec = false;
 
 	fm = fmd->frac_mesh = newdataadr(fd, fmd->frac_mesh);
+	fm->last_expected_shards = 0;
+	fm->progress_counter = 0;
 
 	autoexec = fmd->auto_execute;
 	fmd->auto_execute = false;
@@ -5306,7 +5308,8 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			link_list(fd, &fmd->frac_mesh->shard_map);
 			link_list(fd, &fmd->islandShards);
 			islandShardCount = BLI_listbase_count(&fmd->islandShards);
-			count = BLI_listbase_count(&fmd->frac_mesh->shard_map) + islandShardCount;
+			fm->shard_count = BLI_listbase_count(&fmd->frac_mesh->shard_map);
+			count = fm->shard_count + islandShardCount;
 
 			shards = MEM_callocN(sizeof(Shard*) * count, "readfile shard_lookup_array");
 			for (s = fmd->frac_mesh->shard_map.first; s; s = s->next) {

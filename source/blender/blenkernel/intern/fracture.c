@@ -1568,7 +1568,7 @@ void BKE_fracture_shard_by_greasepencil(FractureModifierData *fmd, Object *obj, 
 
 void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short inner_material_index, float mat[4][4])
 {
-	if (fmd->frac_algorithm == MOD_FRACTURE_BOOLEAN && fmd->cutter_group != NULL && obj->type == OB_MESH)
+	if (/*fmd->frac_algorithm == MOD_FRACTURE_BOOLEAN && */fmd->cutter_group != NULL && obj->type == OB_MESH)
 	{
 		GroupObject* go;
 		float imat[4][4];
