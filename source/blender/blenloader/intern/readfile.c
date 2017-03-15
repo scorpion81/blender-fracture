@@ -5212,8 +5212,10 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 	bool autoexec = false;
 
 	fm = fmd->frac_mesh = newdataadr(fd, fmd->frac_mesh);
-	fm->last_expected_shards = 0;
-	fm->progress_counter = 0;
+	if (fm) {
+		fm->last_expected_shards = 0;
+		fm->progress_counter = 0;
+	}
 
 	autoexec = fmd->auto_execute;
 	fmd->auto_execute = false;
