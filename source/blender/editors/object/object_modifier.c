@@ -2428,7 +2428,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 {
 	Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
-	//float cfra = BKE_scene_frame_get(scene);
+	float cfra = BKE_scene_frame_get(scene);
 	double start = 1.0;
 	FractureModifierData *rmd;
 //	FractureJob *fj;
@@ -2438,6 +2438,16 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
 	if (!rmd)
 		return OPERATOR_CANCELLED;
+
+	if (scene->rigidbody_world && scene->rigidbody_world->pointcache)
+	{
+		RigidBodyWorld *rbw = scene->rigidbody_world;
+		if (BKE_rigidbody_check_sim_running(rbw, cfra) &&
+		   (rbw->ltime > rbw->pointcache->startframe || rbw->ltime == rbw->pointcache->endframe))
+		{
+			return OPERATOR_CANCELLED;
+		}
+	}
 
 	rmd->reset_shards = RNA_boolean_get(op->ptr, "reset");
 
