@@ -206,7 +206,7 @@ static void initData(ModifierData *md)
 	fmd->meshConstraints.last = NULL;
 
 	fmd->fracture_mode = MOD_FRACTURE_PREFRACTURED;
-	fmd->last_frame = FLT_MIN;
+	fmd->last_frame = INT_MIN;
 	fmd->dynamic_force = 10.0f;
 	fmd->update_dynamic = false;
 	fmd->limit_impact = false;
@@ -1314,7 +1314,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 				co[1] = min[1] + (max[1] - min[1]) * BLI_frand();
 				co[2] = min[2] + (max[2] - min[2]) * BLI_frand();
 
-				if (id > 0)
+				if (id > 0 && emd->cutter_group == NULL)
 				{
 					if (in_bbox(co, bmin, bmax))
 					{

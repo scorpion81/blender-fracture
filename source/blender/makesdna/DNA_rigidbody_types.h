@@ -46,7 +46,7 @@ struct EffectorWeights;
  *
  * Represents a "simulation scene" existing within the parent scene.
  */
-typedef struct RigidBodyOb RigidBodyOb;
+struct RigidBodyOb;
 
 typedef struct RigidBodyWorld {
 	/* Sim World Settings ------------------------------------------------------------- */
@@ -73,7 +73,7 @@ typedef struct RigidBodyWorld {
 	
 	/* References to Physics Sim objects. Exist at runtime only ---------------------- */
 	void *physics_world;		/* Physics sim world (i.e. btDiscreteDynamicsWorld) */
-	RigidBodyOb **cache_index_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) Index, at runtime*/
+	struct RigidBodyOb **cache_index_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) Index, at runtime*/
 	int *cache_offset_map;		/* Maps the linear RigidbodyOb index to the nested Object(Modifier) cell offset, at runtime, so it does not need to be calced in cache*/
 	float internal_tick;		/* this is the current ? internal bullet time step, clumsy to put here but cannot expose custom callback parameters */
 	char pad2[4];
