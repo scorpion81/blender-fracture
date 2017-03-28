@@ -2220,7 +2220,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	fake_dynamic_collide(ob1, ob2, mi1, mi2, rbw);
 	fake_dynamic_collide(ob2, ob1, mi2, mi1, rbw);
 
-	return check_colgroup_ghost(ob1, ob2) && (check_constraint_island(fmd1, mi1, mi2) && check_constraint_island(fmd2, mi2, mi1) || (ob1 != ob2));
+	return check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) && check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2));
 }
 
 static bool can_break(Object* collider, Object* ob, bool limit)

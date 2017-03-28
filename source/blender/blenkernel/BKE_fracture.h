@@ -50,6 +50,7 @@ struct BoundBox;
 struct MVert;
 struct MPoly;
 struct MLoop;
+struct MEdge;
 
 struct BMesh;
 

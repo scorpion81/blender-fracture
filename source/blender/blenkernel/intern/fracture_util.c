@@ -546,7 +546,7 @@ static void do_set_inner_material(Shard **other, float mat[4][4], DerivedMesh* l
 	int totpoly, i = 0;
 	MDeformVert *dvert;
 	int totvert = left_dm->getNumVerts(left_dm);
-	FractureModifierData *fmd = modifiers_findByType(ob, eModifierType_Fracture);
+	FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 
 	/* set inner material on child shard */
 	if (other == NULL || mat == NULL)

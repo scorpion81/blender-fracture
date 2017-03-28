@@ -1656,7 +1656,7 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 	short mat_index = 0;
 	ShardID* ids = NULL;
 
-	if (/*fmd->frac_algorithm == MOD_FRACTURE_BOOLEAN && */fmd->cutter_group != NULL) {
+	if (fmd->cutter_group != NULL) {
 		//attempt to combine fracture by cutter group with regular fracture
 		float mat[4][4];
 		Shard* s = NULL;
@@ -1666,7 +1666,6 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		unit_m4(mat);
 		//mat_index = do_materials(fmd, obj);
 		//mat_index = mat_index > 0 ? mat_index - 1 : mat_index;
-
 
 		BKE_fracture_shard_by_planes(fmd, obj, mat_index, mat);
 
@@ -1688,7 +1687,7 @@ static void do_fracture(FractureModifierData *fmd, ShardID id, Object *obj, Deri
 		{
 			//int cnt = BLI_listbase_count(&fmd->frac_mesh->shard_map);
 			printf("Fracturing Shard ID: %d %d\n", i, ids[i]);
-			do_fracture_points(fmd, obj, dm, ids[i], count == 1 ? -1 : i);
+			do_fracture_points(fmd, obj, dm, ids[i], 0); //(count == 1) ? 0 : i);
 		}
 
 		fmd->reset_shards = reset;

@@ -837,6 +837,7 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 			if (!t)
 				continue;
 
+			//seems this override count was a totally wrong thought, just passing -1 or 0 here... hmm
 			if ((override_count == -1) || ((override_count > 0) && (i < override_count+1)))
 			{
 				printf("Deleting shard: %d %d %d\n", i, t->shard_id, t->setting_id);
@@ -854,9 +855,11 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 	if (override_count > -1) {
 		printf("Deleting island shards!\n");
 		while (fmd->islandShards.first) {
-			Shard *s = fmd->islandShards.first;
-			BLI_remlink_safe(&fmd->islandShards, s);
-			BKE_shard_free(s, false);
+			Shard *sh = fmd->islandShards.first;
+			if (sh) {
+				BLI_remlink_safe(&fmd->islandShards, sh);
+				BKE_shard_free(sh, false);
+			}
 		}
 	}
 	//BLI_unlock_thread(LOCK_CUSTOM1);
@@ -920,12 +923,13 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 	if (mode == MOD_FRACTURE_PREFRACTURED && !reset)
 	{
+		count = BLI_listbase_count(&fm->shard_map)-1;
 		//rebuild tree
-		if (!fm->last_shard_tree /*&& (fm->shard_count > 0)*/ && mode == MOD_FRACTURE_PREFRACTURED)
+		if (!fm->last_shard_tree && (count > 0) && mode == MOD_FRACTURE_PREFRACTURED)
 		{
 			Shard *t;
 			int ti = 0;
-			count = BLI_listbase_count(&fm->shard_map);
+			//count = BLI_listbase_count(&fm->shard_map);
 			fm->shard_count = count;
 			if (do_tree)
 			{
@@ -939,12 +943,15 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 			{
 				t->flag &=~ (SHARD_SKIP | SHARD_DELETE);
 
-				if (do_tree)
+				if (do_tree && t != p)
 				{
 					BLI_kdtree_insert(fm->last_shard_tree, ti, t->raw_centroid);
 				}
-				fm->last_shards[ti] = t;
-				ti++;
+
+				if (t != p) {
+					fm->last_shards[ti] = t;
+					ti++;
+				}
 			}
 
 			if (do_tree)
@@ -1006,7 +1013,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 		if ((algorithm == MOD_FRACTURE_BOOLEAN) && !threaded)
 		{
-			#pragma omp parallel for
+			#pragma omp parallel for schedule(static)
 			for (i = 0; i < expected_shards; i++)	{
 				handle_boolean_bisect(fm, obj, expected_shards, algorithm, parent_id, tempshards, dm_parent,
 										bm_parent, obmat, inner_material_index, num_cuts, num_levels, fractal,
@@ -1056,7 +1063,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		dm_p = NULL;
 	}
 
-	if (p && (parent_id == -2))// || p->shard_id == -2))
+	if (p) // && (parent_id == -2))// || p->shard_id == -2))
 	{
 		BLI_remlink_safe(&fm->shard_map, p);
 		BKE_shard_free(p, true);
@@ -1365,7 +1372,7 @@ static void do_intersect(FractureModifierData *fmd, Object* ob, Shard *t, short 
 	Shard *s = NULL, *s2 = NULL;
 	int shards = 0, j = 0;
 
-	if (is_zero == false) {
+	if (is_zero == false && *dm_parent == NULL) {
 		parent = BLI_findlink(&fmd->frac_mesh->shard_map, k);
 		*dm_parent = BKE_shard_create_dm(parent, true);
 	}
@@ -1408,7 +1415,8 @@ static void do_intersect(FractureModifierData *fmd, Object* ob, Shard *t, short 
 		}
 	}
 
-	if ((is_zero && ob->derivedFinal == NULL) || !is_zero) {
+	//if ((is_zero && ob->derivedFinal == NULL) || !is_zero) {
+	{
 		if (is_zero) {
 			*count = 0;
 		}
@@ -1568,7 +1576,7 @@ void BKE_fracture_shard_by_greasepencil(FractureModifierData *fmd, Object *obj, 
 
 void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short inner_material_index, float mat[4][4])
 {
-	if (/*fmd->frac_algorithm == MOD_FRACTURE_BOOLEAN && */fmd->cutter_group != NULL && obj->type == OB_MESH)
+	if (fmd->cutter_group != NULL && obj->type == OB_MESH)
 	{
 		GroupObject* go;
 		float imat[4][4];
@@ -1628,14 +1636,18 @@ void BKE_fracture_shard_by_planes(FractureModifierData *fmd, Object *obj, short 
 				{
 
 					DerivedMesh *d;
-					d = ob->derivedFinal;
-					if (d == NULL) {
+					bool copied = false;
+					if (ob->derivedFinal == NULL) {
 						d = CDDM_from_mesh(ob->data);
+						copied = true;
+					}
+					else {
+						d = ob->derivedFinal;
 					}
 
 					intersect_shards_by_dm(fmd, d, obj, ob, inner_material_index, mat, true, fmd->boolean_solver, fmd->boolean_double_threshold);
 
-					if (ob->derivedFinal == NULL)
+					if (copied)
 					{	/*was copied before */
 						d->needsFree = 1;
 						d->release(d);
@@ -1829,9 +1841,10 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 		MEM_freeN(fdata);
 	}
 	else {
-	/*Evaluate result*/
-	parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index, mat,
-	            num_cuts, fractal, smooth, num_levels, mode, reset, active_setting, num_settings, uv_layer, false, solver, thresh, override_count);
+		/*Evaluate result*/
+		parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index, mat,
+					num_cuts, fractal, smooth, num_levels, mode, reset, active_setting, num_settings, uv_layer,
+					false, solver, thresh, override_count);
 	}
 
 	/*Free structs in C++ area of memory */
