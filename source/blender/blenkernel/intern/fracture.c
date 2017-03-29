@@ -923,13 +923,12 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 	if (mode == MOD_FRACTURE_PREFRACTURED && !reset)
 	{
-		count = BLI_listbase_count(&fm->shard_map)-1;
 		//rebuild tree
-		if (!fm->last_shard_tree && (count > 0) && mode == MOD_FRACTURE_PREFRACTURED)
+		if (!fm->last_shard_tree && mode == MOD_FRACTURE_PREFRACTURED)
 		{
 			Shard *t;
 			int ti = 0;
-			//count = BLI_listbase_count(&fm->shard_map);
+			count = BLI_listbase_count(&fm->shard_map);
 			fm->shard_count = count;
 			if (do_tree)
 			{
@@ -943,15 +942,13 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 			{
 				t->flag &=~ (SHARD_SKIP | SHARD_DELETE);
 
-				if (do_tree && t != p)
+				if (do_tree)
 				{
 					BLI_kdtree_insert(fm->last_shard_tree, ti, t->raw_centroid);
 				}
 
-				if (t != p) {
-					fm->last_shards[ti] = t;
-					ti++;
-				}
+				fm->last_shards[ti] = t;
+				ti++;
 			}
 
 			if (do_tree)
@@ -1013,7 +1010,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 		if ((algorithm == MOD_FRACTURE_BOOLEAN) && !threaded)
 		{
-			#pragma omp parallel for schedule(static)
+			#pragma omp parallel for
 			for (i = 0; i < expected_shards; i++)	{
 				handle_boolean_bisect(fm, obj, expected_shards, algorithm, parent_id, tempshards, dm_parent,
 										bm_parent, obmat, inner_material_index, num_cuts, num_levels, fractal,
@@ -1063,7 +1060,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		dm_p = NULL;
 	}
 
-	if (p) // && (parent_id == -2))// || p->shard_id == -2))
+	if (p)
 	{
 		BLI_remlink_safe(&fm->shard_map, p);
 		BKE_shard_free(p, true);
