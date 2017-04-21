@@ -3278,8 +3278,6 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 			float size[3];
 			copy_v3_v3(size, ob->size);
 
-			/*move object (loc, rot)*/
-			if (i > start)
 			{
 				float loc[3] = {0.0f, 0.0f, 0.0f}, rot[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 				float mat[4][4];
@@ -3317,16 +3315,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 
 				copy_v3_v3(ob_new->loc, loc);
 				copy_qt_qt(ob_new->quat, rot);
-				quat_to_eul(ob_new->rot, rot);
-			}
-			else
-			{
-				mul_m4_v3(ob->obmat, ob_new->loc);
-				sub_v3_v3(ob_new->loc, obloc);
-				add_v3_v3(ob_new->loc, diff);
-
-				copy_qt_qt(ob_new->quat, ob->quat);
-				copy_v3_v3(ob_new->rot, ob->rot);
+				quat_to_compatible_eul(ob_new->rot, ob_new->rot, rot);
 				copy_v3_v3(ob_new->size, size);
 			}
 
