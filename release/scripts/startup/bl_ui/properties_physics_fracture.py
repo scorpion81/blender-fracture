@@ -164,6 +164,8 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             box.label("Inner Vertex Group:")
             box.prop_search(md, "inner_vertex_group", ob, "vertex_groups", text = "")
             box.prop(md, "inner_crease")
+            if (md.frac_algorithm in {'BISECT_FAST', 'BISECT_FAST_FILL'}):
+                box.prop(md, "orthogonality_factor", text="Rectangular Alignment")
 
         layout.context_pointer_set("modifier", md)
         row = layout.row()

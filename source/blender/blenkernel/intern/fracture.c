@@ -193,8 +193,9 @@ static int shard_sortsize(const void *s1, const void *s2, void* UNUSED(context))
 	shard_boundbox(*sh1, loc, size1);
 	shard_boundbox(*sh2, loc, size2);
 
-	val_a = size1[0] * size1[1] * size1[2];
-	val_b = size2[0] * size2[1] * size2[2];
+	//squared diameter
+	val_a = size1[0]*size1[0] + size1[1]*size1[1] + size1[2]*size1[2];
+	val_b = size2[0]*size2[0] + size2[1]*size2[1] + size2[2]*size2[2];
 
 	/* sort descending */
 	if      (val_a < val_b) return 1;
@@ -470,15 +471,20 @@ FracMesh *BKE_create_fracture_container(void)
 
 static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm, BMesh** bm_parent, float obmat[4][4],
                                float centroid[3], short inner_material_index, int parent_id, Shard **tempshards, Shard ***tempresults,
-                               char uv_layer[64], cell* cells)
+                               char uv_layer[64], cell* cells, float fac, Shard* parent)
 {
 	int i = 0, index = 0;
+	float factor = 1 - fac;
+
+	float dim[3];
+	sub_v3_v3v3(dim, parent->max, parent->min);
 
 	for (i = 0; i < expected_shards; i++) {
 		Shard *s = NULL;
 		Shard *s2 = NULL;
 		Shard *t;
-		float quat[4];
+		float vec[3];
+		int max_axis;
 
 		if (fm->cancel == 1) {
 			break;
@@ -503,20 +509,35 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 			index = 0;
 		}
 
-		//add some random rotation
-		quat[0] = BLI_frand() * 2 - 1;
-		quat[1] = BLI_frand() * 2 - 1;
-		quat[2] = BLI_frand() * 2 - 1;
-		quat[3] = BLI_frand() * 2 - 1;
-		normalize_qt(quat);
+		//make a random vector (interpret as cutter plane)
+		vec[0] = BLI_frand() * 2 - 1;
+		vec[1] = BLI_frand() * 2 - 1;
+		vec[2] = BLI_frand() * 2 - 1;
+
+		//multiply two minor dimensions with a factor to emphasize the max dimension
+		max_axis = axis_dominant_v3_single(dim);
+		switch (max_axis) {
+			case 0:
+				vec[1] *= factor;
+				vec[2] *= factor;
+				break;
+			case 1:
+				vec[0] *= factor;
+				vec[2] *= factor;
+				break;
+			case 2:
+				vec[0] *= factor;
+				vec[1] *= factor;
+				break;
+		}
 
 		printf("Bisecting cell %d...\n", i);
 		printf("Bisecting cell %d...\n", i + 1);
 
 		s = BKE_fracture_shard_bisect(*bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL,
-		                              false, true, index, centroid, inner_material_index, uv_layer, NULL, quat);
+		                              false, true, index, centroid, inner_material_index, uv_layer, NULL, vec);
 		s2 = BKE_fracture_shard_bisect(*bm_parent, t, obmat, algorithm == MOD_FRACTURE_BISECT_FAST_FILL,
-		                               true, false, index, centroid, inner_material_index, uv_layer, NULL, quat);
+		                               true, false, index, centroid, inner_material_index, uv_layer, NULL, vec);
 
 		index++;
 
@@ -556,6 +577,7 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 			if ((i + 2) < expected_shards) {
 				*bm_parent = shard_to_bmesh((*tempresults)[j]);
 				copy_v3_v3(centroid, (*tempresults)[j]->centroid);
+				sub_v3_v3v3(dim, (*tempresults)[j]->max, (*tempresults)[j]->min);
 
 				BKE_shard_free((*tempresults)[j], true);
 				(*tempresults)[j] = NULL;
@@ -875,7 +897,8 @@ static void do_prepare_cells(FracMesh *fm, cell *cells, int expected_shards, int
 //static ThreadMutex prep_lock = BLI_MUTEX_INITIALIZER;
 static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, FracMesh *fm, int algorithm, Object *obj, DerivedMesh *dm,
                         short inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
-                        bool reset, int active_setting, int num_settings, char uv_layer[64], bool threaded, int solver, float thresh, int override_count)
+                        bool reset, int active_setting, int num_settings, char uv_layer[64], bool threaded, int solver, float thresh, int override_count,
+                        float factor)
 {
 	/*Parse voronoi raw data*/
 	int i = 0, j = 0, count = 0;
@@ -1038,7 +1061,7 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 		else
 		{
 			handle_fast_bisect(fm, expected_shards, algorithm, &bm_parent, obmat, centroid, inner_material_index, parent_id,
-			                   tempshards, &tempresults, uv_layer, cells);
+			                   tempshards, &tempresults, uv_layer, cells, factor, p);
 		}
 	}
 
@@ -1678,6 +1701,7 @@ typedef struct FractureData {
 	int solver;
 	float thresh;
 	int override_count;
+	float factor;
 } FractureData;
 
 
@@ -1689,7 +1713,7 @@ static void compute_fracture(TaskPool *UNUSED(pool), void *taskdata, int UNUSED(
 	if (fd->totpoints > 0) {
 		parse_cells(fd->voro_cells, fd->totpoints, fd->id, fd->fmesh, fd->algorithm, fd->obj, fd->dm, fd->inner_material_index, fd->mat,
 	                fd->num_cuts, fd->fractal, fd->smooth, fd->num_levels,fd->mode, fd->reset, fd->active_setting, fd->num_settings, fd->uv_layer,
-		            true, fd->solver, fd->thresh, fd->override_count);
+		            true, fd->solver, fd->thresh, fd->override_count, fd->factor);
 	}
 }
 
@@ -1697,7 +1721,8 @@ static void compute_fracture(TaskPool *UNUSED(pool), void *taskdata, int UNUSED(
 static FractureData segment_cells(cell *voro_cells, int startcell, int totcells, FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud,
                     int algorithm, Object *obj, DerivedMesh *dm, short
                     inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
-                    bool reset, int active_setting, int num_settings, char uv_layer[64], int solver, float thresh, int override_count)
+                    bool reset, int active_setting, int num_settings, char uv_layer[64], int solver, float thresh, int override_count,
+                    float factor)
 {
 	FractureData fd;
 	fd.fmesh = fmesh;
@@ -1720,6 +1745,7 @@ static FractureData segment_cells(cell *voro_cells, int startcell, int totcells,
 	fd.solver = solver;
 	fd.thresh = thresh;
 	fd.override_count = override_count;
+	fd.factor = factor;
 
 	//cell start pointer, only take fd.totpoints cells out
 	fd.voro_cells = voro_cells + startcell;
@@ -1730,7 +1756,7 @@ static FractureData segment_cells(cell *voro_cells, int startcell, int totcells,
 void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short
                                   inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
                                   bool reset, int active_setting, int num_settings, char uv_layer[64], bool threaded, int solver, float thresh,
-                                  bool shards_to_islands, int override_count)
+                                  bool shards_to_islands, int override_count, float factor)
 {
 	int n_size = 8;
 	
@@ -1814,7 +1840,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 			int startcell = i * totcell;
 			FractureData fd = segment_cells(voro_cells, startcell, totcell, fmesh, id, pointcloud, algorithm, obj, dm, inner_material_index,
 											mat, num_cuts, fractal,smooth, num_levels, mode, reset, active_setting, num_settings, uv_layer,
-											solver, thresh, override_count);
+											solver, thresh, override_count, factor);
 			fdata[i] = fd;
 		}
 
@@ -1826,7 +1852,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 			printf("REMAINDER %d %d\n", startcell, remainder);
 			fdata[num] = segment_cells(voro_cells, startcell, remainder, fmesh, id, pointcloud, algorithm, obj, dm, inner_material_index,
 										mat, num_cuts, fractal,smooth, num_levels, mode, reset, active_setting, num_settings, uv_layer,
-										solver, thresh, override_count);
+										solver, thresh, override_count, factor);
 		}
 
 		for (i = 0; i < num+1; i++) {
@@ -1841,7 +1867,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 		/*Evaluate result*/
 		parse_cells(voro_cells, pointcloud->totpoints, id, fmesh, algorithm, obj, dm, inner_material_index, mat,
 					num_cuts, fractal, smooth, num_levels, mode, reset, active_setting, num_settings, uv_layer,
-					false, solver, thresh, override_count);
+					false, solver, thresh, override_count, factor);
 	}
 
 	/*Free structs in C++ area of memory */

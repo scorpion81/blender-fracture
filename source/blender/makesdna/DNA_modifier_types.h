@@ -1739,6 +1739,7 @@ typedef struct FractureModifierData {
 	float boolean_double_threshold;
 	float dynamic_min_size;
 	float inner_crease;
+	float orthogonality_factor;
 
 	/* flags */
 	int refresh;
@@ -1789,7 +1790,7 @@ typedef struct FractureModifierData {
 	short mat_ofs_intersect;
 	short mat_ofs_difference;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

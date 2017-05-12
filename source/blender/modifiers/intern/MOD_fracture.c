@@ -1613,7 +1613,7 @@ static void do_fracture_points(FractureModifierData *fmd, Object* obj, DerivedMe
 			                             fmd->fractal_cuts, fmd->fractal_amount, fmd->use_smooth, fmd->fractal_iterations,
 			                             fmd->fracture_mode, fmd->reset_shards, fmd->active_setting, num_settings, fmd->uvlayer_name,
 			                             fmd->execute_threaded, fmd->boolean_solver, fmd->boolean_double_threshold, fmd->shards_to_islands,
-			                             override_count);
+			                             override_count, fmd->orthogonality_factor);
 		}
 
 		/*TODO, limit this to settings shards !*/
