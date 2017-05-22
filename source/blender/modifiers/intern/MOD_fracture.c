@@ -2411,7 +2411,7 @@ static void halve(FractureModifierData *rmd, Object *ob, int minsize, BMesh **bm
 	orig_mod = MEM_callocN(sizeof(BMVert *) * bm_old->totvert - new_count, "orig_mod");
 	mesh_separate_selected(&bm_old, &bm_new, orig_old, &orig_new, &orig_mod);
 
-	printf("Old New: %d %d\n", bm_old->totvert, bm_new->totvert);
+	//printf("Old New: %d %d\n", bm_old->totvert, bm_new->totvert);
 	if ((bm_old->totvert <= minsize && bm_old->totvert > 0) || (bm_new->totvert == 0)) {
 		mesh_separate_loose_partition(rmd, ob, bm_old, orig_mod, dm, id);
 		separated = true;
@@ -2439,7 +2439,7 @@ static void halve(FractureModifierData *rmd, Object *ob, int minsize, BMesh **bm
 
 static void mesh_separate_loose(FractureModifierData *rmd, Object *ob, DerivedMesh *dm, ShardID id)
 {
-	int minsize = 100;
+	int minsize = 500;
 	BMesh *bm_work;
 	BMVert *vert, **orig_start;
 	BMIter iter;

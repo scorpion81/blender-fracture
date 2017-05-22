@@ -344,6 +344,8 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo)
 		 * NOTE: this may overestimate the volume, but other methods are overkill
 		 */
 		case RB_SHAPE_BOX:
+		case RB_SHAPE_CONVEXH:
+		case RB_SHAPE_TRIMESH:
 			volume = size[0] * size[1] * size[2];
 			if (size[0] == 0) {
 				volume = size[1] * size[2];
@@ -356,7 +358,7 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo)
 			}
 			break;
 
-		case RB_SHAPE_CONVEXH:
+		/*case RB_SHAPE_CONVEXH:
 		case RB_SHAPE_TRIMESH:
 		{
 			MVert *mvert = dm->getVertArray(dm);
@@ -369,8 +371,8 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo)
 
 			if (volume == 0.0f)
 				volume = 0.00001f;
-			break;
-		}
+			break;*/
+		//}
 
 #if 0 // XXX: not defined yet
 		case RB_SHAPE_COMPOUND:
@@ -3306,7 +3308,7 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw, bool do_bake_correction)
 			continue;
 		}
 
-		if (do_bake_correction && (ob->rigidbody_object->meshisland_index != i)) {
+		if (do_bake_correction && (ob->rigidbody_object->meshisland_index != i) && n > 0) {
 			//pick the correct object in case it doesnt match (when we are baked
 			if (ob->rigidbody_object->meshisland_index < l && ob->rigidbody_object->meshisland_index > -1) {
 				ob = temp_obj[ob->rigidbody_object->meshisland_index];
@@ -3958,7 +3960,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			if (rebuild || is_zero_m4(fmd->passive_parent_mat))
 			{
 				copy_m4_m4(fmd->passive_parent_mat, ob->obmat);
-				print_m4("Passivemat: \n", fmd->passive_parent_mat);
+				//print_m4("Passivemat: \n", fmd->passive_parent_mat);
 			}
 
 			//print_m4("Obmat: \n", ob->obmat);
@@ -4419,6 +4421,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 				}
 
 				if (ob->rigidbody_object->type == RBO_TYPE_ACTIVE) {
+#if 0
 					if (rbo->type == RBO_TYPE_PASSIVE)
 					{
 						printf("PASSIVE: %s\n", mi->name);
@@ -4426,6 +4429,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 							printf("KINEMATIC: %s\n", mi->name);
 						}
 					}
+#endif
 					rigidbody_passive_fake_parenting(fmd, ob, rbo, imat);
 				}
 
