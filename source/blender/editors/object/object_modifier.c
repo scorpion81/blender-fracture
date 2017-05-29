@@ -100,6 +100,8 @@
 #include "ED_keyframing.h"
 #include "ED_anim_api.h" //clean keyframes
 
+#include "UI_interface.h"
+
 #include "WM_api.h"
 #include "WM_types.h"
 
@@ -2342,83 +2344,6 @@ void OBJECT_OT_laplaciandeform_bind(wmOperatorType *ot)
 
 /****************** rigidbody modifier refresh operator *********************/
 
-typedef struct FractureJob {
-	/* from wmJob */
-	void *owner;
-	short *stop, *do_update;
-	float *progress;
-	int current_frame, total_progress;
-	int start, end;
-	struct FractureModifierData *fmd;
-	struct Object *ob;
-	struct Scene *scene;
-	struct Group *gr;
-} FractureJob;
-
-
-static void fracture_free(void *customdata)
-{
-	FractureJob *fj = customdata;
-	MEM_freeN(fj);
-}
-
-static int fracture_breakjob(void *UNUSED(customdata))
-{
-	/* FractureJob *fj = (FractureJob *)customdata;
-	 * return *(fj->stop); */
-	return G.is_break; /* a workaround solution */
-}
-
-static void fracture_update(void *customdata)
-{
-	FractureJob *fj = customdata;
-	float progress;
-
-	if (fj->fmd->frac_mesh == NULL)
-		(*fj->progress) = 0.0f;
-
-	if (fracture_breakjob(fj) && fj->fmd->frac_mesh)
-		fj->fmd->frac_mesh->cancel = 1;
-
-	/*(fj->do_update) = true;  useless here... because in wm_jobs.c its set to false again, preventing update*/
-	if (fj->fmd->frac_mesh)
-	{
-		progress = (float)(fj->fmd->frac_mesh->progress_counter) / (float)(fj->total_progress);
-		(*fj->progress) = progress;
-	}
-}
-
-static void fracture_startjob(void *customdata, short *stop, short *do_update, float *progress)
-{
-	FractureJob *fj = customdata;
-	FractureModifierData *fmd = fj->fmd;
-	Object *ob = fj->ob;
-	Scene* scene = fj->scene;
-
-	fj->stop = stop;
-	fj->do_update = do_update;
-	fj->progress = progress;
-	*(fj->stop) = 0; /*false*/
-
-	G.is_break = false;   /* XXX shared with render - replace with job 'stop' switch */
-
-	/* arm the modifier... */
-	fmd->refresh = true;
-	*(fj->do_update) = true;
-	*do_update = true;
-	*stop = 0;
-
-	/*...and trigger modifier execution HERE*/
-	makeDerivedMesh(scene, ob, NULL, scene->customdata_mask | CD_MASK_BAREMESH, 0);
-}
-
-static void fracture_endjob(void *customdata)
-{
-	FractureJob *fj = customdata;
-	FractureModifierData *fmd = fj->fmd;
-	fmd->refresh = false;
-}
-
 static int fracture_poll(bContext *C)
 {
 	return edit_modifier_poll_generic(C, &RNA_FractureModifier, 0);
@@ -2431,9 +2356,6 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 	float cfra = BKE_scene_frame_get(scene);
 	double start = 1.0;
 	FractureModifierData *rmd;
-//	FractureJob *fj;
-//	wmJob* wm_job;
-	//RegionView3D *rv3d = CTX_wm_region_view3d(C);
 
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
 	if (!rmd)
@@ -2607,54 +2529,6 @@ void OBJECT_OT_fracture_refresh(wmOperatorType *ot)
 
 	RNA_def_boolean(ot->srna, "reset", false, "Reset Shards", "Reset all shards in next refracture, instead of keeping similar ones");
 }
-
-/****************** rigidbody constraint refresh operator *********************/
-
-#if 0
-static int rigidbody_refresh_constraints_exec(bContext *C, wmOperator *UNUSED(op))
-{
-	Object *obact = ED_object_active_context(C);
-	FractureModifierData *rmd;
-	Scene *scene = CTX_data_scene(C);
-	float cfra = BKE_scene_frame_get(scene);
-	
-	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
-
-	if (!rmd || (rmd && rmd->refresh) || (scene->rigidbody_world && cfra != scene->rigidbody_world->pointcache->startframe))
-		return OPERATOR_CANCELLED;
-
-	rmd->refresh_constraints = true;
-
-	DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
-	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
-
-	return OPERATOR_FINISHED;
-}
-
-static int rigidbody_refresh_constraints_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
-{
-	if (edit_modifier_invoke_properties(C, op) || true)
-		return rigidbody_refresh_constraints_exec(C, op);
-	else
-		return OPERATOR_CANCELLED;
-}
-
-
-void OBJECT_OT_rigidbody_constraints_refresh(wmOperatorType *ot)
-{
-	ot->name = "RigidBody Constraints Refresh";
-	ot->description = "Refresh constraints in the Rigid Body modifier";
-	ot->idname = "OBJECT_OT_rigidbody_constraints_refresh";
-
-	ot->poll = fracture_poll;
-	ot->invoke = rigidbody_refresh_constraints_invoke;
-	ot->exec = rigidbody_refresh_constraints_exec;
-
-	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
-	edit_modifier_properties(ot);
-}
-#endif
 
 static void do_add_group_unchecked(Group* group, Object *ob, Base *bas)
 {
@@ -3213,7 +3087,7 @@ static bAnimContext* make_anim_context(Scene* scene, Object* ob)
 static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, Group* gr, Object* ob, Scene* scene,
                                   int start, int end, int count, Object* parent, bool is_baked,
                                   PTCacheID* pid, PointCache *cache, float obloc[3], float diff[3], int *j, Base **base,
-                                  float threshold, bool clean_chan, ReportList* reports)
+                                  float threshold, int step, ReportList* reports)
 {
 	int i = 0;
 	Object* ob_new = NULL;
@@ -3261,19 +3135,21 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 	mul_m4_v3(ob_new->obmat, cent);
 	copy_v3_v3(ob_new->loc, cent);
 
-	if (start < mi->start_frame) {
-		start = mi->start_frame;
-	}
+	if (mi->frame_count > 0) {
+		if (start < mi->start_frame) {
+			start = mi->start_frame;
+		}
 
-	if (end != mi->start_frame + mi->frame_count) {
-		end = mi->start_frame + mi->frame_count;
+		if (end != mi->start_frame + mi->frame_count) {
+			end = mi->start_frame + mi->frame_count;
+		}
 	}
 
 	if (mi->rigidbody->type == RBO_TYPE_ACTIVE)
 	{
 		bAnimContext *ac;
-		short flag = INSERTKEY_NEEDED | INSERTKEY_XYZ2RGB;
-		for (i = start; i < end; i++)
+		short flag = INSERTKEY_FAST | INSERTKEY_NEEDED | INSERTKEY_NO_USERPREF;
+		for (i = start; i < end; i += step)
 		{
 			float size[3];
 			copy_v3_v3(size, ob->size);
@@ -3293,7 +3169,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 						copy_qt_qt(rot, mi->rigidbody->orn);
 					}
 				}
-				else
+				else //should not happen anymore, because baking is required now
 				{
 					loc[0] = mi->locs[i*3];
 					loc[1] = mi->locs[i*3+1];
@@ -3319,23 +3195,23 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 				copy_v3_v3(ob_new->size, size);
 			}
 
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 0, i, flag, BEZT_KEYTYPE_KEYFRAME);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 1, i, flag, BEZT_KEYTYPE_KEYFRAME);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 2, i, flag, BEZT_KEYTYPE_KEYFRAME);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
 
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 0, i, flag, BEZT_KEYTYPE_KEYFRAME);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 1, i, flag, BEZT_KEYTYPE_KEYFRAME);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 2, i, flag, BEZT_KEYTYPE_KEYFRAME);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
 
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 0, i, flag, BEZT_KEYTYPE_KEYFRAME);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 1, i, flag, BEZT_KEYTYPE_KEYFRAME);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 2, i, flag, BEZT_KEYTYPE_KEYFRAME);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
 		}
 
-		if (i == end)
+		if (i + step > end || i == end)
 		{
 			ac = make_anim_context(scene, ob_new);
-			clean_action_keys(ac, threshold, clean_chan);
+			clean_action_keys(ac, threshold, false);
 			MEM_freeN(ac);
 		}
 	}
@@ -3359,7 +3235,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 }
 
 static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, Object* ob, Scene* scene, int start, int end,
-                                          float threshold, bool clean_chan, ReportList *reports)
+                                          float threshold, int step, ReportList *reports)
 {
 	bool is_baked = false;
 	PointCache* cache = NULL;
@@ -3376,7 +3252,7 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 	Base** basarray_old = MEM_mallocN(sizeof(Base*) * count, "conversion_tempbases_old");
 	double starttime;
 
-	if (scene->rigidbody_world && scene->rigidbody_world)
+	if (scene && scene->rigidbody_world)
 	{
 		cache = scene->rigidbody_world->pointcache;
 	}
@@ -3390,6 +3266,9 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 		BKE_ptcache_id_from_rigidbody(&pid, NULL, scene->rigidbody_world);
 		is_baked = true;
 	}
+	else {
+		return false;
+	}
 
 	parent = BKE_object_add(G.main, scene, OB_EMPTY, name);
 	BKE_mesh_center_centroid(ob->data, obloc);
@@ -3402,7 +3281,7 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 	{
 		Object *obj = do_convert_meshIsland(fmd, mi, gr, ob, scene, start, end, count,
 		                                    parent, is_baked, &pid, cache, obloc, diff, &k, &basarray_old[i],
-		                                    threshold, clean_chan, reports);
+		                                    threshold, step, reports);
 		if (!obj) {
 			return false;
 		}
@@ -3426,55 +3305,6 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 	return true;
 }
 
-static void convert_free(void *customdata)
-{
-	FractureJob *fj = customdata;
-	MEM_freeN(fj);
-}
-
-static void convert_update(void *customdata)
-{
-	FractureJob *fj = customdata;
-	FractureModifierData *fmd = fj->fmd;
-	float progress;
-
-	if ((G.is_break) && (fmd->frac_mesh))
-		fmd->frac_mesh->cancel = 1;
-
-	progress = (float)(BLI_listbase_count(&fj->gr->gobject)) / (float)(fj->total_progress);
-	(*fj->progress) = progress;
-}
-
-static void convert_startjob(void *customdata, short *stop, short *do_update, float *progress)
-{
-	FractureJob *fj = customdata;
-	FractureModifierData *fmd = fj->fmd;
-	Group* gr = fj->gr;
-	Object* ob = fj->ob;
-	Scene *scene = fj->scene;
-	int start = fj->start;
-	int end = fj->end;
-
-	fj->stop = stop;
-	fj->do_update = do_update;
-	fj->progress = progress;
-	*(fj->stop) = 0; /*false*/
-
-	G.is_break = false;   /* XXX shared with render - replace with job 'stop' switch */
-	*(fj->do_update) = true;
-	*do_update = true;
-	*stop = 0;
-
-	if (fmd->frac_mesh) {
-		fmd->frac_mesh->cancel = 0;
-		fmd->frac_mesh->running = 1;
-	}
-
-#if 0 //XXX: deactivated for now
-	convert_modifier_to_keyframes(fmd, gr, ob, scene, start, end);
-#endif
-}
-
 static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 {
 	//Object *obact = ED_object_active_context(C);
@@ -3487,11 +3317,11 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 
 	bool convertable = true;
 
-	if (scene->rigidbody_world && scene->rigidbody_world)
+	if (scene && scene->rigidbody_world)
 	{
 		PointCache* cache = NULL;
 		cache = scene->rigidbody_world->pointcache;
-		if (cache && (cache->flag & PTCACHE_OUTDATED) && !(cache->flag & PTCACHE_BAKED))
+		if (cache && !(cache->flag & PTCACHE_BAKED))
 		{
 			convertable = false;
 		}
@@ -3500,7 +3330,6 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 	if (convertable)
 	{
 		float threshold = RNA_float_get(op->ptr, "threshold");
-		bool clean_chan = RNA_boolean_get(op->ptr, "channels");
 
 		CTX_DATA_BEGIN(C, Object *, selob, selected_objects)
 		{
@@ -3513,6 +3342,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 				int count = BLI_listbase_count(&rmd->meshIslands);
 				int start = RNA_int_get(op->ptr, "start_frame");
 				int end = RNA_int_get(op->ptr, "end_frame");
+				int step = RNA_int_get(op->ptr, "step");
 
 				if (count == 0)
 				{
@@ -3529,7 +3359,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 				}
 
 				gr = BKE_group_add(G.main, "Converted");
-				convert_modifier_to_keyframes(rmd, gr, selob, scene, start, end, threshold, clean_chan, op->reports);
+				convert_modifier_to_keyframes(rmd, gr, selob, scene, start, end, threshold, step, op->reports);
 			}
 		}
 
@@ -3548,7 +3378,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 	}
 	else
 	{
-		BKE_report(op->reports, RPT_WARNING, "No valid cache data found, please run or bake simulation first");
+		BKE_report(op->reports, RPT_WARNING, "No valid cache data found, please bake simulation first");
 		return OPERATOR_CANCELLED;
 	}
 }
@@ -3557,7 +3387,7 @@ static int rigidbody_convert_keyframes_invoke(bContext *C, wmOperator *op, const
 {
 	if (edit_modifier_invoke_properties(C, op))
 	{
-		return rigidbody_convert_keyframes_exec(C, op);
+		return WM_operator_props_dialog_popup(C, op, 10 * UI_UNIT_X, 5 * UI_UNIT_Y);
 	}
 
 	return OPERATOR_CANCELLED;
@@ -3574,15 +3404,15 @@ void OBJECT_OT_rigidbody_convert_to_keyframes(wmOperatorType *ot)
 	ot->exec = rigidbody_convert_keyframes_exec;
 	ot->invoke = rigidbody_convert_keyframes_invoke;
 
-	RNA_def_int(ot->srna, "start_frame", 1,  0, 100000, "Start Frame", "", 0, 100000);
-	RNA_def_int(ot->srna, "end_frame", 250, 0, 100000, "End Frame", "", 0, 100000);
-
+	RNA_def_int(ot->srna, "start_frame", 1,  0, 300000, "Start Frame", "", 0, 300000);
+	RNA_def_int(ot->srna, "end_frame", 250, 0, 300000, "End Frame", "", 0, 300000);
+	RNA_def_int(ot->srna, "step", 1, 1, 10000, "Step", "", 1, 10000);
 	RNA_def_float(ot->srna, "threshold", 0.005f, 0.0f, FLT_MAX, "Threshold", "", 0.0f, 1000.0f);
-	RNA_def_boolean(ot->srna, "channels", false, "Channels", "");
+	//RNA_def_boolean(ot->srna, "channels", false, "Channels", "");
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
-	edit_modifier_properties(ot);
+	//edit_modifier_properties(ot);
 }
 
 
