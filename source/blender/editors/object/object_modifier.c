@@ -3084,6 +3084,31 @@ static bAnimContext* make_anim_context(Scene* scene, Object* ob)
 	return ac;
 }
 
+MINLINE void div_v3_v3(float r[3], const float a[3], const float b[3])
+{
+	if (b[0] != 0)
+		r[0] = a[0] / b[0];
+	else
+		r[0] = a[0];
+
+	if (b[1] != 0)
+		r[1] = a[1] / b[1];
+	else
+		r[1] = a[1];
+
+	if (b[2] != 0)
+		r[2] = a[2] / b[2];
+	else
+		r[2] = a[2];
+}
+
+MINLINE void compare_v3_fl(bool r[3], const float a[3], const float b)
+{
+	r[0] = fabsf(1.0f - a[0]) > b;
+	r[1] = fabsf(1.0f - a[1]) > b;
+	r[2] = fabsf(1.0f - a[2]) > b;
+}
+
 static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, Group* gr, Object* ob, Scene* scene,
                                   int start, int end, int count, Object* parent, bool is_baked,
                                   PTCacheID* pid, PointCache *cache, float obloc[3], float diff[3], int *j, Base **base,
@@ -3093,6 +3118,11 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 	Object* ob_new = NULL;
 	Mesh* me;
 	float cent[3];
+	float prevloc[3] = {0, 0, 0};
+	float prevploc[3] = {0, 0, 0};
+	float prevrot[3] = {0, 0, 0};
+	float prevprot[3] = {0, 0, 0};
+	bool adaptive = threshold > 0;
 
 	char *name = BLI_strdupcat(ob->id.name + 2, "_key");
 
@@ -3135,25 +3165,44 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 	mul_m4_v3(ob_new->obmat, cent);
 	copy_v3_v3(ob_new->loc, cent);
 
-	if (mi->frame_count > 0) {
+	/*if (mi->frame_count > 0)*/ {
 		if (start < mi->start_frame) {
 			start = mi->start_frame;
 		}
 
-		if (end != mi->start_frame + mi->frame_count) {
+		if (end > (mi->start_frame + mi->frame_count)) {
 			end = mi->start_frame + mi->frame_count;
 		}
 	}
 
 	if (mi->rigidbody->type == RBO_TYPE_ACTIVE)
 	{
-		bAnimContext *ac;
-		short flag = INSERTKEY_FAST | INSERTKEY_NEEDED | INSERTKEY_NO_USERPREF;
-		for (i = start; i < end; i += step)
+		//bAnimContext *ac;
+		int stepp = adaptive ? 1 : step;
+		short flag = INSERTKEY_FAST /*| INSERTKEY_NEEDED*/ | INSERTKEY_NO_USERPREF;
+		for (i = start; i < end; i += stepp)
 		{
-			float size[3];
+			bool dostep = adaptive ? (((i + start) % step == 0) || i == start || i == end) : true;
+			float size[3] = {1, 1, 1};
+			bool locset[3] = {true, true, true};
+			bool rotset[3] = {true, true, true};
+
+			//adaptive optimization, only try to insert necessary frames... but doesnt INSERT_NEEDED do the same ?!
+			if (adaptive || !dostep)
+			{
+				locset[0] = false;
+				locset[1] = false;
+				locset[2] = false;
+
+				rotset[0] = false;
+				rotset[1] = false;
+				rotset[2] = false;
+			}
+
 			copy_v3_v3(size, ob->size);
 
+			//BKE_scene_frame_set(scene, (double)i);
+			if (adaptive || dostep)
 			{
 				float loc[3] = {0.0f, 0.0f, 0.0f}, rot[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 				float mat[4][4];
@@ -3161,15 +3210,62 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 				//is there a bake, if yes... use that (disabled for now, odd probs...)
 				if (is_baked)
 				{
-					BKE_ptcache_id_time(pid, scene, (float)i, NULL, NULL, NULL);
-					if (BKE_ptcache_read(pid, (float)i, false))
+					//BKE_ptcache_id_time(pid, scene, (float)i, NULL, NULL, NULL);
+					//if (BKE_ptcache_read(pid, (float)i, false))
 					{
-						BKE_ptcache_validate(cache, i);
-						copy_v3_v3(loc, mi->rigidbody->pos);
-						copy_qt_qt(rot, mi->rigidbody->orn);
+						//BKE_ptcache_validate(cache, i);
+						//copy_v3_v3(loc, mi->rigidbody->pos);
+						//copy_qt_qt(rot, mi->rigidbody->orn);
+						int x = i - start;
+
+						loc[0] = mi->locs[x*3];
+						loc[1] = mi->locs[x*3+1];
+						loc[2] = mi->locs[x*3+2];
+
+						rot[0] = mi->rots[x*4];
+						rot[1] = mi->rots[x*4+1];
+						rot[2] = mi->rots[x*4+2];
+						rot[3] = mi->rots[x*4+3];
+
+						if (adaptive)
+						{
+							float diffloc[3], diffploc[3], diffrot[3], diffprot[3], difflq[3], diffrq[3];
+							if (i >= start + 2)
+							{
+								sub_v3_v3v3(diffploc, prevploc, prevloc);
+								sub_v3_v3v3(diffloc, prevloc, loc);
+								div_v3_v3(difflq, diffploc, diffloc);
+								compare_v3_fl(locset, difflq, threshold);
+
+								sub_v3_v3v3(diffprot, prevprot, prevrot);
+								sub_v3_v3v3(diffrot, prevrot, rot);
+								div_v3_v3(diffrq, diffprot, diffrot);
+								compare_v3_fl(rotset, diffrq, threshold);
+							}
+
+							if (i >= start + 1)
+							{
+								copy_v3_v3(prevploc, prevloc);
+								copy_v3_v3(prevprot, prevrot);
+							}
+
+							copy_v3_v3(prevloc, loc);
+							copy_v3_v3(prevrot, rot);
+						}
+
+						if (dostep)
+						{
+							locset[0] = true;
+							locset[1] = true;
+							locset[2] = true;
+
+							rotset[0] = true;
+							rotset[1] = true;
+							rotset[2] = true;
+						}
 					}
 				}
-				else //should not happen anymore, because baking is required now
+				/*else //should not happen anymore, because baking is required now
 				{
 					loc[0] = mi->locs[i*3];
 					loc[1] = mi->locs[i*3+1];
@@ -3179,13 +3275,15 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 					rot[1] = mi->rots[i*4+1];
 					rot[2] = mi->rots[i*4+2];
 					rot[3] = mi->rots[i*4+3];
-				}
+				}*/
 
 				sub_v3_v3(loc, obloc);
 				add_v3_v3(loc, diff);
 
 				loc_quat_size_to_mat4(mat, loc, rot, size);
-				BKE_scene_frame_set(scene, (double)i);
+
+				if (locset[0] || locset[1] || locset[2] || rotset[0] || rotset[1] || rotset[2])
+					BKE_scene_frame_set(scene, (double)i);
 
 				copy_m4_m4(ob_new->obmat, mat);
 
@@ -3195,25 +3293,35 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 				copy_v3_v3(ob_new->size, size);
 			}
 
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			if (locset[0])
+				insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
 
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			if (locset[1])
+				insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
 
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
-			insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			if (locset[2])
+				insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
+
+			if (rotset[0])
+				insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
+
+			if (rotset[1])
+				insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
+
+			if (rotset[2])
+				insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
+
+			//insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			//insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
+			//insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
 		}
 
-		if (i + step > end || i == end)
+		/*if (i + step > end || i == end)
 		{
 			ac = make_anim_context(scene, ob_new);
 			clean_action_keys(ac, threshold, false);
 			MEM_freeN(ac);
-		}
+		}*/
 	}
 	else
 	{
@@ -3252,15 +3360,18 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 	Base** basarray_old = MEM_mallocN(sizeof(Base*) * count, "conversion_tempbases_old");
 	double starttime;
 
+	is_baked = true;
+
+#if 0
 	if (scene && scene->rigidbody_world)
 	{
 		cache = scene->rigidbody_world->pointcache;
 	}
 
-	if (cache && cache->flag & PTCACHE_BAKED)
+	if (cache && (!(cache->flag & PTCACHE_OUTDATED) || cache->flag & PTCACHE_BAKED))
 	{
-		start = cache->startframe;
-		end = cache->endframe;
+		//start = cache->startframe;
+		//end = cache->endframe;
 		/* need to "fill" the rigidbody world by doing 1 sim step, else bake cant be read properly */
 		//BKE_rigidbody_do_simulation(scene, (float)(start+1));
 		BKE_ptcache_id_from_rigidbody(&pid, NULL, scene->rigidbody_world);
@@ -3269,6 +3380,7 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 	else {
 		return false;
 	}
+#endif
 
 	parent = BKE_object_add(G.main, scene, OB_EMPTY, name);
 	BKE_mesh_center_centroid(ob->data, obloc);
@@ -3307,27 +3419,23 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 
 static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 {
-	//Object *obact = ED_object_active_context(C);
 	Scene *scene = CTX_data_scene(C);
-	//float cfra = BKE_scene_frame_get(scene);
-	Group *gr;
-	FractureModifierData *rmd;
-	//FractureJob *fj;
-	//wmJob* wm_job;
-
-	bool convertable = true;
+	Group *gr = NULL;
+	FractureModifierData* rmd = NULL;
+	bool convertable = false;
 
 	if (scene && scene->rigidbody_world)
 	{
 		PointCache* cache = NULL;
 		cache = scene->rigidbody_world->pointcache;
-		if (cache && !(cache->flag & PTCACHE_BAKED))
+		if (cache /*&& (cache->flag & PTCACHE_OUTDATED)*/ && (!(cache->flag & PTCACHE_BAKED)))
 		{
-			convertable = false;
+			BKE_report(op->reports, RPT_WARNING, "No valid cache data found, please bake a simulation first");
+			return OPERATOR_CANCELLED;
 		}
 	}
 
-	if (convertable)
+	//if (convertable)
 	{
 		float threshold = RNA_float_get(op->ptr, "threshold");
 
@@ -3338,7 +3446,13 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 				return OPERATOR_CANCELLED;
 			}
 
-			if (rmd) {
+			if (rmd && (rmd->fracture_mode != MOD_FRACTURE_DYNAMIC) && rmd->meshIslands.first)
+			{
+				MeshIsland* mi = rmd->meshIslands.first;
+				convertable = mi->frame_count > 0;
+			}
+
+			if (rmd && convertable) {
 				int count = BLI_listbase_count(&rmd->meshIslands);
 				int start = RNA_int_get(op->ptr, "start_frame");
 				int end = RNA_int_get(op->ptr, "end_frame");
@@ -3376,11 +3490,14 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 		WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
 		return OPERATOR_FINISHED;
 	}
-	else
+
+#if 0
+	if (!convertable)
 	{
-		BKE_report(op->reports, RPT_WARNING, "No valid cache data found, please bake simulation first");
+		BKE_report(op->reports, RPT_WARNING, "No valid cache data found, please run a simulation first");
 		return OPERATOR_CANCELLED;
 	}
+#endif
 }
 
 static int rigidbody_convert_keyframes_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
@@ -3407,7 +3524,7 @@ void OBJECT_OT_rigidbody_convert_to_keyframes(wmOperatorType *ot)
 	RNA_def_int(ot->srna, "start_frame", 1,  0, 300000, "Start Frame", "", 0, 300000);
 	RNA_def_int(ot->srna, "end_frame", 250, 0, 300000, "End Frame", "", 0, 300000);
 	RNA_def_int(ot->srna, "step", 1, 1, 10000, "Step", "", 1, 10000);
-	RNA_def_float(ot->srna, "threshold", 0.005f, 0.0f, FLT_MAX, "Threshold", "", 0.0f, 1000.0f);
+	RNA_def_float(ot->srna, "threshold", 0.2f, 0.0f, FLT_MAX, "Threshold", "", 0.0f, 1000.0f);
 	//RNA_def_boolean(ot->srna, "channels", false, "Channels", "");
 
 	/* flags */
