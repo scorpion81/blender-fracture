@@ -511,6 +511,30 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		n = frame - mi->start_frame + 1;
 		x = frame - mi->start_frame;
 
+		if (mi->locs == NULL || mi->rots == NULL)
+		{
+			float loca[3], rota[4], quat[4];
+			mi->locs = MEM_mallocN(sizeof(float)*3, "mi->locs");
+			mi->rots = MEM_mallocN(sizeof(float)*4, "mi->rots");
+			mi->frame_count = 0;
+
+			copy_v3_v3(loca, mi->centroid);
+			mul_m4_v3(ob->obmat, loca);
+			mat4_to_quat(quat, ob->obmat);
+
+			copy_qt_qt(rota, mi->rot);
+			mul_qt_qtqt(rota, quat, rota);
+
+			mi->locs[0] = loca[0];
+			mi->locs[1] = loca[1];
+			mi->locs[2] = loca[2];
+
+			mi->rots[0] = rota[0];
+			mi->rots[1] = rota[1];
+			mi->rots[2] = rota[2];
+			mi->rots[3] = rota[3];
+		}
+
 		if (n > mi->frame_count) {
 			mi->locs = MEM_reallocN(mi->locs, sizeof(float) * 3 * n);
 			mi->rots = MEM_reallocN(mi->rots, sizeof(float) * 4 * n);

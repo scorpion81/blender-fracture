@@ -3316,6 +3316,21 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 			//insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
 		}
 
+		if (mi->locs)
+		{
+			MEM_freeN(mi->locs);
+			mi->locs = NULL;
+		}
+
+		if (mi->rots)
+		{
+			MEM_freeN(mi->rots);
+			mi->rots = NULL;
+		}
+
+		mi->frame_count = 0;
+		mi->start_frame = cache->startframe;
+
 		/*if (i + step > end || i == end)
 		{
 			ac = make_anim_context(scene, ob_new);
@@ -3362,12 +3377,12 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 
 	is_baked = true;
 
-#if 0
 	if (scene && scene->rigidbody_world)
 	{
 		cache = scene->rigidbody_world->pointcache;
 	}
 
+#if 0
 	if (cache && (!(cache->flag & PTCACHE_OUTDATED) || cache->flag & PTCACHE_BAKED))
 	{
 		//start = cache->startframe;
@@ -3423,29 +3438,60 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 	Group *gr = NULL;
 	FractureModifierData* rmd = NULL;
 	bool convertable = false;
+	PointCache* cache = NULL;
 
-#if 0
 	if (scene && scene->rigidbody_world)
 	{
-		PointCache* cache = NULL;
 		cache = scene->rigidbody_world->pointcache;
+		/*if (cache->flag & PTCACHE_BAKED)
+		{
+			//nudge the sim once, because the internal structures may still be not initialized after loading
+
+		}*/
+#if 0
 		if (cache /*&& (cache->flag & PTCACHE_OUTDATED)*/ && (!(cache->flag & PTCACHE_BAKED)))
 		{
 			BKE_report(op->reports, RPT_WARNING, "No valid cache data found, please bake a simulation first");
 			return OPERATOR_CANCELLED;
 		}
-	}
 #endif
+	}
 
 	//if (convertable)
+	if (cache)
 	{
 		float threshold = RNA_float_get(op->ptr, "threshold");
+		int start = RNA_int_get(op->ptr, "start_frame");
+		int end = RNA_int_get(op->ptr, "end_frame");
+		int step = RNA_int_get(op->ptr, "step");
+		int frame = 0;
+
+		//fill conversion array cache
+		if (cache->startframe > start)
+		{
+			start = cache->startframe;
+		}
+
+		if (cache->endframe < end)
+		{
+			end = cache->endframe;
+		}
 
 		CTX_DATA_BEGIN(C, Object *, selob, selected_objects)
 		{
 			rmd = (FractureModifierData *)modifiers_findByType(selob, eModifierType_Fracture);
 			if (rmd && rmd->refresh) {
 				return OPERATOR_CANCELLED;
+			}
+
+			//force a transform sync, gah
+			if (cache->flag & PTCACHE_BAKED || !(cache->flag & PTCACHE_OUTDATED))
+			{
+				for (frame = start; frame < end; frame++)
+				{
+					BKE_rigidbody_do_simulation(scene, (float)frame);
+					BKE_object_where_is_calc_time(scene, selob, (float)frame);
+				}
 			}
 
 			if (rmd && (rmd->fracture_mode != MOD_FRACTURE_DYNAMIC) && rmd->meshIslands.first)
@@ -3456,9 +3502,6 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 
 			if (rmd && convertable) {
 				int count = BLI_listbase_count(&rmd->meshIslands);
-				int start = RNA_int_get(op->ptr, "start_frame");
-				int end = RNA_int_get(op->ptr, "end_frame");
-				int step = RNA_int_get(op->ptr, "step");
 
 				if (count == 0)
 				{
@@ -3490,7 +3533,6 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 		WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
 		WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
 		WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
-		return OPERATOR_FINISHED;
 	}
 
 #if 0
@@ -3500,6 +3542,8 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 #endif
+
+	return OPERATOR_FINISHED;
 }
 
 static int rigidbody_convert_keyframes_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))

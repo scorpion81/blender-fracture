@@ -1730,7 +1730,7 @@ static void write_shard(WriteData* wd, Shard* s)
 	}
 }
 
-static void write_meshIsland(WriteData* wd, MeshIsland* mi)
+static void write_meshIsland(WriteData* wd, MeshIsland* mi, bool write_data)
 {
 	writestruct(wd, DATA, MeshIsland, 1, mi);
 	writedata(wd, DATA, sizeof(float) * 3 * mi->vertex_count, mi->vertco);
@@ -1741,8 +1741,14 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi)
 	writestruct(wd, DATA, BoundBox, 1, mi->bb);
 	writedata(wd, DATA, sizeof(int) * mi->vertex_count, mi->vertex_indices);
 
-	writedata(wd, DATA, sizeof(float) * 3 * mi->frame_count, mi->locs);
-	writedata(wd, DATA, sizeof(float) * 4 * mi->frame_count, mi->rots);
+	if (write_data) {
+		writedata(wd, DATA, sizeof(float) * 3 * mi->frame_count, mi->locs);
+		writedata(wd, DATA, sizeof(float) * 4 * mi->frame_count, mi->rots);
+	}
+	else {
+		mi->frame_count = 0;
+	}
+
 	writedata(wd, DATA, sizeof(RigidBodyShardCon*) * mi->participating_constraint_count, mi->participating_constraints);
 }
 
@@ -1908,7 +1914,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 						}
 
 						for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
-							write_meshIsland(wd, mi);
+							write_meshIsland(wd, mi, false);
 						}
 
 						for (con = fmd->meshConstraints.first; con; con = con->next)
@@ -1936,7 +1942,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 				{
 					writestruct(wd, DATA, MeshIslandSequence, 1, msq);
 					for (mi = msq->meshIslands.first; mi; mi = mi->next) {
-						write_meshIsland(wd, mi);
+						write_meshIsland(wd, mi, true);
 					}
 				}
 			}

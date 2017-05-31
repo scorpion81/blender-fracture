@@ -2023,27 +2023,18 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 
 	if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 	{
-		float loc[3], rot[4], quat[4];
-
-		mi->locs = MEM_mallocN(sizeof(float)*3, "mi->locs");
-		mi->rots = MEM_mallocN(sizeof(float)*4, "mi->rots");
+		mi->locs = NULL;
+		mi->rots = NULL;
 		mi->frame_count = 0;
 
-		copy_v3_v3(loc, centroid);
-		mul_m4_v3(ob->obmat, loc);
-		mat4_to_quat(quat, ob->obmat);
-
-		copy_qt_qt(rot, mi->rot);
-		mul_qt_qtqt(rot, quat, rot);
-
-		mi->locs[0] = loc[0];
-		mi->locs[1] = loc[1];
-		mi->locs[2] = loc[2];
-
-		mi->rots[0] = rot[0];
-		mi->rots[1] = rot[1];
-		mi->rots[2] = rot[2];
-		mi->rots[3] = rot[3];
+		if (fmd->modifier.scene->rigidbody_world)
+		{
+			mi->start_frame = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
+		}
+		else
+		{
+			mi->start_frame = 1;
+		}
 	}
 	else
 	{
@@ -2114,7 +2105,7 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 	i = BLI_listbase_count(&fmd->meshIslands);
 	do_rigidbody(fmd, mi, ob, orig_dm, rb_type, i);
 
-	mi->start_frame = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
+	//mi->start_frame = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
 
 	BLI_addtail(&fmd->meshIslands, mi);
 
@@ -3445,26 +3436,9 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 
 	if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 	{
-		float loc[3], rot[4], quat[4];
-		mi->locs = MEM_mallocN(sizeof(float)*3, "mi->locs");
-		mi->rots = MEM_mallocN(sizeof(float)*4, "mi->rots");
+		mi->locs = NULL;
+		mi->rots = NULL;
 		mi->frame_count = 0;
-
-		copy_v3_v3(loc, s->centroid);
-		mul_m4_v3(ob->obmat, loc);
-		mat4_to_quat(quat, ob->obmat);
-
-		copy_qt_qt(rot, mi->rot);
-		mul_qt_qtqt(rot, quat, rot);
-
-		mi->locs[0] = loc[0];
-		mi->locs[1] = loc[1];
-		mi->locs[2] = loc[2];
-
-		mi->rots[0] = rot[0];
-		mi->rots[1] = rot[1];
-		mi->rots[2] = rot[2];
-		mi->rots[3] = rot[3];
 
 		if (fmd->modifier.scene->rigidbody_world)
 		{
