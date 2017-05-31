@@ -2014,17 +2014,36 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 {
 	MeshIsland *mi;
 	DerivedMesh *dm;
-	float dummyloc[3], rot[4], min[3], max[3], vol = 0;
+	float min[3], max[3], vol = 0;
 	int i = 0;
 	short rb_type = RBO_TYPE_ACTIVE;
 
 	mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
+	unit_qt(mi->rot);
 
-	if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+	if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 	{
+		float loc[3], rot[4], quat[4];
+
 		mi->locs = MEM_mallocN(sizeof(float)*3, "mi->locs");
 		mi->rots = MEM_mallocN(sizeof(float)*4, "mi->rots");
 		mi->frame_count = 0;
+
+		copy_v3_v3(loc, centroid);
+		mul_m4_v3(ob->obmat, loc);
+		mat4_to_quat(quat, ob->obmat);
+
+		copy_qt_qt(rot, mi->rot);
+		mul_qt_qtqt(rot, quat, rot);
+
+		mi->locs[0] = loc[0];
+		mi->locs[1] = loc[1];
+		mi->locs[2] = loc[2];
+
+		mi->rots[0] = rot[0];
+		mi->rots[1] = rot[1];
+		mi->rots[2] = rot[2];
+		mi->rots[3] = rot[3];
 	}
 	else
 	{
@@ -2078,7 +2097,7 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 	copy_v3_v3(mi->centroid, centroid);
 	//mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 	//copy_qt_qt(mi->rot, rot);
-	unit_qt(mi->rot);
+	//unit_qt(mi->rot);
 	mi->bb = BKE_boundbox_alloc_unit();
 	BKE_boundbox_init_from_minmax(mi->bb, min, max);
 	mi->participating_constraints = NULL;
@@ -3412,7 +3431,7 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	MeshIsland *par = NULL;
 	bool is_parent = false;
 	short rb_type = RBO_TYPE_ACTIVE;
-	float dummyloc[3], rot[4];
+	//float dummyloc[3], rot[4];
 
 	if (s->totvert == 0) {
 		return;
@@ -3422,12 +3441,31 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 
 	mi = MEM_callocN(sizeof(MeshIsland), "meshIsland");
 	BLI_addtail(&fmd->meshIslands, mi);
+	unit_qt(mi->rot);
 
-	if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+	if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 	{
+		float loc[3], rot[4], quat[4];
 		mi->locs = MEM_mallocN(sizeof(float)*3, "mi->locs");
 		mi->rots = MEM_mallocN(sizeof(float)*4, "mi->rots");
 		mi->frame_count = 0;
+
+		copy_v3_v3(loc, s->centroid);
+		mul_m4_v3(ob->obmat, loc);
+		mat4_to_quat(quat, ob->obmat);
+
+		copy_qt_qt(rot, mi->rot);
+		mul_qt_qtqt(rot, quat, rot);
+
+		mi->locs[0] = loc[0];
+		mi->locs[1] = loc[1];
+		mi->locs[2] = loc[2];
+
+		mi->rots[0] = rot[0];
+		mi->rots[1] = rot[1];
+		mi->rots[2] = rot[2];
+		mi->rots[3] = rot[3];
+
 		if (fmd->modifier.scene->rigidbody_world)
 		{
 			mi->start_frame = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
@@ -3480,7 +3518,7 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 
 	//mat4_to_loc_quat(dummyloc, rot, ob->obmat);
 	//copy_qt_qt(mi->rot, rot);
-	unit_qt(mi->rot);
+	//unit_qt(mi->rot);
 	mi->id = s->shard_id;
 	BLI_snprintf(mi->name, 64, "%d", mi->id);
 

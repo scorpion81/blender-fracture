@@ -3424,6 +3424,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 	FractureModifierData* rmd = NULL;
 	bool convertable = false;
 
+#if 0
 	if (scene && scene->rigidbody_world)
 	{
 		PointCache* cache = NULL;
@@ -3434,6 +3435,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 			return OPERATOR_CANCELLED;
 		}
 	}
+#endif
 
 	//if (convertable)
 	{

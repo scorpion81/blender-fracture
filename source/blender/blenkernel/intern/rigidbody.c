@@ -506,7 +506,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 	//invert_m4_m4(ob->imat, ob->obmat);
 	mat4_to_size(size, ob->obmat);
 
-	if (rmd->fracture_mode != MOD_FRACTURE_DYNAMIC && frame > -1) {
+	if (rmd->fracture_mode != MOD_FRACTURE_DYNAMIC && frame >= mi->start_frame) {
 		/*record only in prefracture case here, when you want to convert to keyframes*/
 		n = frame - mi->start_frame + 1;
 		x = frame - mi->start_frame;
