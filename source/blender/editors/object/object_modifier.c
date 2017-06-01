@@ -3112,7 +3112,7 @@ MINLINE void compare_v3_fl(bool r[3], const float a[3], const float b)
 static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, Group* gr, Object* ob, Scene* scene,
                                   int start, int end, int count, Object* parent, bool is_baked,
                                   PTCacheID* pid, PointCache *cache, float obloc[3], float diff[3], int *j, Base **base,
-                                  float threshold, int step, ReportList* reports)
+                                  float threshold, int step, bool calc_handles, ReportList* reports)
 {
 	int i = 0;
 	Object* ob_new = NULL;
@@ -3179,13 +3179,24 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 	{
 		//bAnimContext *ac;
 		int stepp = adaptive ? 1 : step;
-		short flag = INSERTKEY_FAST /*| INSERTKEY_NEEDED*/ | INSERTKEY_NO_USERPREF;
+		short flag = calc_handles ? 0 : INSERTKEY_FAST | INSERTKEY_NO_USERPREF | INSERTKEY_NEEDED;
 		for (i = start; i < end; i += stepp)
 		{
+			char handle = U.keyhandles_new;
+			char interp = U.ipo_new;
 			bool dostep = adaptive ? (((i + start) % step == 0) || i == start || i == end) : true;
 			float size[3] = {1, 1, 1};
 			bool locset[3] = {true, true, true};
 			bool rotset[3] = {true, true, true};
+
+			if (dostep) {
+				U.keyhandles_new = HD_AUTO;
+				U.ipo_new = BEZT_IPO_BEZ;
+			}
+			else if (adaptive && !dostep) {
+				U.keyhandles_new = HD_VECT;
+				U.ipo_new = BEZT_IPO_BEZ;
+			}
 
 			//adaptive optimization, only try to insert necessary frames... but doesnt INSERT_NEEDED do the same ?!
 			if (adaptive || !dostep)
@@ -3282,8 +3293,9 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 
 				loc_quat_size_to_mat4(mat, loc, rot, size);
 
-				if (locset[0] || locset[1] || locset[2] || rotset[0] || rotset[1] || rotset[2])
+				if (locset[0] || locset[1] || locset[2] || rotset[0] || rotset[1] || rotset[2]) {
 					BKE_scene_frame_set(scene, (double)i);
+				}
 
 				copy_m4_m4(ob_new->obmat, mat);
 
@@ -3314,6 +3326,10 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 			//insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
 			//insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
 			//insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
+
+			//restore values
+			U.keyhandles_new = handle;
+			U.ipo_new = interp;
 		}
 
 		if (mi->locs)
@@ -3358,7 +3374,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 }
 
 static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, Object* ob, Scene* scene, int start, int end,
-                                          float threshold, int step, ReportList *reports)
+                                          float threshold, int step, bool calc_handles, ReportList *reports)
 {
 	bool is_baked = false;
 	PointCache* cache = NULL;
@@ -3408,7 +3424,7 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 	{
 		Object *obj = do_convert_meshIsland(fmd, mi, gr, ob, scene, start, end, count,
 		                                    parent, is_baked, &pid, cache, obloc, diff, &k, &basarray_old[i],
-		                                    threshold, step, reports);
+		                                    threshold, step, calc_handles, reports);
 		if (!obj) {
 			return false;
 		}
@@ -3464,6 +3480,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 		int start = RNA_int_get(op->ptr, "start_frame");
 		int end = RNA_int_get(op->ptr, "end_frame");
 		int step = RNA_int_get(op->ptr, "step");
+		bool calc_handles = RNA_boolean_get(op->ptr, "calc_handles");
 		int frame = 0;
 
 		//fill conversion array cache
@@ -3518,7 +3535,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 				}
 
 				gr = BKE_group_add(G.main, "Converted");
-				convert_modifier_to_keyframes(rmd, gr, selob, scene, start, end, threshold, step, op->reports);
+				convert_modifier_to_keyframes(rmd, gr, selob, scene, start, end, threshold, step, calc_handles, op->reports);
 			}
 		}
 
@@ -3548,12 +3565,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 
 static int rigidbody_convert_keyframes_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
 {
-	if (edit_modifier_invoke_properties(C, op))
-	{
-		return WM_operator_props_dialog_popup(C, op, 10 * UI_UNIT_X, 5 * UI_UNIT_Y);
-	}
-
-	return OPERATOR_CANCELLED;
+	return WM_operator_props_dialog_popup(C, op, 10 * UI_UNIT_X, 5 * UI_UNIT_Y);
 }
 
 void OBJECT_OT_rigidbody_convert_to_keyframes(wmOperatorType *ot)
@@ -3570,8 +3582,10 @@ void OBJECT_OT_rigidbody_convert_to_keyframes(wmOperatorType *ot)
 	RNA_def_int(ot->srna, "start_frame", 1,  0, 300000, "Start Frame", "", 0, 300000);
 	RNA_def_int(ot->srna, "end_frame", 250, 0, 300000, "End Frame", "", 0, 300000);
 	RNA_def_int(ot->srna, "step", 1, 1, 10000, "Step", "", 1, 10000);
-	RNA_def_float(ot->srna, "threshold", 0.2f, 0.0f, FLT_MAX, "Threshold", "", 0.0f, 1000.0f);
-	//RNA_def_boolean(ot->srna, "channels", false, "Channels", "");
+	RNA_def_float(ot->srna, "threshold", 0.2f, 0.0f, FLT_MAX, "Threshold", "Ratio of change in location or rotation which has to be exceeded to set a keyframe",
+	              0.0f, 1000.0f);
+	RNA_def_boolean(ot->srna, "calc_handles", false, "Handles",
+	                "Smoothes step handles and makes adaptive handles vector, useful in conjunction with large step size, very slow with small step size");
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
