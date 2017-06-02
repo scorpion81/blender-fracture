@@ -3699,12 +3699,12 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 							RB_constraint_set_enabled(con->physics_constraint, false);
 							if (con->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) {
 								activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
-								activateCluster(con->mi1, mi->particle_index, rbw, ob);
+								activateCluster(con->mi1, con->mi1->particle_index, rbw, ob);
 							}
 
 							if (con->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) {
 								activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
-								activateCluster(con->mi2, mi->particle_index, rbw, ob);
+								activateCluster(con->mi2, con->mi2->particle_index, rbw, ob);
 							}
 						}
 					}
@@ -3713,8 +3713,7 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 		}
 	}
 
-
-	if (cons > 0) {
+	if (cons > 0 && breaking_percentage > 0) {
 		if ((float)broken_cons / (float)cons * 100 >= breaking_percentage) {
 			/* break all cons if over percentage */
 			for (i = 0; i < cons; i++) {
@@ -4022,7 +4021,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 					float weight = mi->thresh_weight;
 					int breaking_percentage = fmd->breaking_percentage_weighted ? (fmd->breaking_percentage * weight) : fmd->breaking_percentage;
 
-					if (fmd->breaking_percentage > 0 || (fmd->breaking_percentage_weighted && weight > 0)) {
+					if (fmd->breaking_percentage > 0 || (fmd->breaking_percentage_weighted && weight > 0) || (fmd->cluster_breaking_percentage > 0)) {
 						handle_breaking_percentage(fmd, ob, mi, rbw, breaking_percentage);
 					}
 				}
