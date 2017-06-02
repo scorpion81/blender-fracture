@@ -3619,14 +3619,14 @@ static void activateCluster(MeshIsland *mi, int particle_index, RigidBodyWorld *
 	for (i = 0; i < mi->participating_constraint_count; i++)
 	{
 		con = mi->participating_constraints[i];
-		if (con->physics_constraint && con->mi1->particle_index == particle_index) {
+		if (con->physics_constraint && con->mi1->particle_index == particle_index || particle_index == -1) {
 			if (con->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) {
 				activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
 				activateCluster(con->mi1, particle_index, rbw, ob);
 			}
 		}
 
-		if (con->physics_constraint && con->mi2->particle_index == particle_index) {
+		if (con->physics_constraint && con->mi2->particle_index == particle_index || particle_index == -1) {
 			if (con->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) {
 				activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
 				activateCluster(con->mi2, particle_index, rbw, ob);
@@ -3696,15 +3696,15 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 					{
 						if (con->physics_constraint) {
 
-							RB_constraint_set_enabled(con->physics_constraint, false);
-							if (con->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) {
+							//RB_constraint_set_enabled(con->physics_constraint, false);
+							if (con->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC ||
+							    con->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC )
+							{
 								activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
-								activateCluster(con->mi1, con->mi1->particle_index, rbw, ob);
-							}
+								activateCluster(con->mi1, -1, rbw, ob);
 
-							if (con->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) {
 								activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
-								activateCluster(con->mi2, con->mi2->particle_index, rbw, ob);
+								activateCluster(con->mi2, -1, rbw, ob);
 							}
 						}
 					}
