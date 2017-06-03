@@ -1746,6 +1746,16 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi, bool write_data)
 		writedata(wd, DATA, sizeof(float) * 4 * mi->frame_count, mi->rots);
 	}
 	else {
+		if (mi->locs) {
+			MEM_freeN(mi->locs);
+			mi->locs = NULL;
+		}
+
+		if (mi->rots) {
+			MEM_freeN(mi->rots);
+			mi->rots = NULL;
+		}
+
 		mi->frame_count = 0;
 	}
 

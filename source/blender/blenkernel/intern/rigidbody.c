@@ -4176,7 +4176,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 			did_modifier = do_update_modifier(scene, ob, rbw, rebuild);
 		}
 
-		if (!did_modifier) {
+		if (!did_modifier && ob->type == OB_MESH) {
 			/* validate that we've got valid object set up here... */
 			RigidBodyOb *rbo = ob->rigidbody_object;
 			/* update transformation matrix of the object so we don't get a frame of lag for simple animations */
