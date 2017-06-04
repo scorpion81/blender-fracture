@@ -3190,7 +3190,8 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 			bool rotset[3] = {true, true, true};
 
 			if (dostep) {
-				U.keyhandles_new = HD_AUTO;
+				//if adaptive and step is on same frame, prefer adaptive vector handle
+				U.keyhandles_new = adaptive ? HD_VECT : HD_AUTO;
 				U.ipo_new = BEZT_IPO_BEZ;
 			}
 			else if (adaptive && !dostep) {
