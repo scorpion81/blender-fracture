@@ -3865,7 +3865,7 @@ static int emit_particles(ParticleSimulationData *sim, PTCacheID *pid, float UNU
 		return totpart - oldtotpart;
 	}
 
-	return 1;
+	return totpart;
 }
 
 /* Calculates the next state for all particles of the system
@@ -3882,7 +3882,8 @@ static void system_step(ParticleSimulationData *sim, float cfra, const bool use_
 	PTCacheID ptcacheid, *pid = NULL;
 	PARTICLE_P;
 	float disp, cache_cfra = cfra; /*, *vg_vel= 0, *vg_tan= 0, *vg_rot= 0, *vg_size= 0; */
-	int startframe = 0, endframe = 100, oldtotpart = 0, emitcount = 0, cache_check = 0;
+	int startframe = 0, endframe = 100, oldtotpart = 0, emitcount = 0;
+	bool suppressed = false;
 
 	/* cache shouldn't be used for hair or "continue physics" */
 	if (part->type != PART_HAIR) {
@@ -3910,28 +3911,28 @@ static void system_step(ParticleSimulationData *sim, float cfra, const bool use_
 /* 1. emit particles and redo particles if needed */
 	oldtotpart = psys->totpart;
 	emitcount = emit_particles(sim, pid, cfra, part);
-	if (pid) {
-		cache_check = BKE_ptcache_read(pid, cache_cfra, true);
-	}
-	if ((emitcount && !ELEM(cache_check, PTCACHE_READ_EXACT, PTCACHE_READ_INTERPOLATED)) ||
-	    psys->recalc & PSYS_RECALC_RESET)
+	if (emitcount || psys->recalc & PSYS_RECALC_RESET)
 	{
 		if (distribute_particles(sim, part->from) || part->distr == PART_DISTR_GRID) {
 			initialize_all_particles(sim);
 			/* reset only just created particles (on startframe all particles are recreated) */
 			reset_all_particles(sim, 0.0, cfra, oldtotpart);
 		}
-		else {
+		else if (emitcount == oldtotpart || oldtotpart == 0){
 			//throw away...
 			int i;
+			suppressed = true;
 			for (i = 0; i < sim->psys->totpart; i++)
 			{
-				if (sim->psys->particles[i].alive == PARS_UNBORN) {
+				if (sim->psys->particles[i].state.time <= 0)
+				{
 					sim->psys->particles[i].flag |= PARS_UNEXIST;
 				}
 			}
 		}
-		free_unexisting_particles(sim);
+
+		if (!suppressed)
+			free_unexisting_particles(sim);
 
 		if (psys->fluid_springs) {
 			MEM_freeN(psys->fluid_springs);
@@ -3949,7 +3950,7 @@ static void system_step(ParticleSimulationData *sim, float cfra, const bool use_
 	}
 
 /* 2. try to read from the cache */
-	if (pid) {
+	if (pid && !suppressed) {
 		int cache_result = BKE_ptcache_read(pid, cache_cfra, true);
 
 		if (ELEM(cache_result, PTCACHE_READ_EXACT, PTCACHE_READ_INTERPOLATED)) {
@@ -4045,6 +4046,11 @@ static void system_step(ParticleSimulationData *sim, float cfra, const bool use_
 	if (psys->lattice_deform_data) {
 		end_latt_deform(psys->lattice_deform_data);
 		psys->lattice_deform_data = NULL;
+	}
+
+	if (suppressed) {
+		//need dummy cache data, so free suppressed particles later
+		free_unexisting_particles(sim);
 	}
 }
 
