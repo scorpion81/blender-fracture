@@ -2733,7 +2733,7 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 	DerivedMesh *dm = fmd->visible_mesh_cached;
 	int vertstart = 0, totvert = 0, totpoly = 0, polystart = 0, matstart = 1, defstart = 0;
 	MVert *mv = NULL;
-	MPoly *mp = NULL, *mpoly = NULL, *ppoly = NULL, *pp = NULL;
+	MPoly *mp = NULL, *mpoly = NULL, *ppoly = NULL, *pp = NULL, *spoly = NULL, *sp = NULL;
 	int i = 0, j = 0;
 	MDeformVert *dvert = NULL;
 
@@ -2846,7 +2846,8 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 
 		totpoly = mi->physics_mesh->getNumPolys(mi->physics_mesh);
 		ppoly = mi->physics_mesh->getPolyArray(mi->physics_mesh);
-		for (j = 0, mp = mpoly + polystart, pp = ppoly; j < totpoly; j++, mp++, pp++)
+		spoly = s->mpoly;
+		for (j = 0, mp = mpoly + polystart, pp = ppoly, sp = spoly; j < totpoly; j++, mp++, pp++, sp++)
 		{
 			/* material index lookup and correction, avoid having the same material in different slots */
 			int index = GET_INT_FROM_POINTER(BLI_ghash_lookup(fmd->material_index_map,
@@ -2856,9 +2857,10 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 				index--;
 
 			mp->mat_nr = index;
-			//store this on physics mesh as well, so for being able to reload it from blend later (without
+			//store this on physics mesh as well, and on shard too so for being able to reload it from blend later (without
 			// having a materialmap then)
 			pp->mat_nr = index;
+			sp->mat_nr = index;
 		}
 
 		/* fortunately we know how many faces "belong" to this meshisland, too */
