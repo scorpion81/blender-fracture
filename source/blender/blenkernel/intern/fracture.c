@@ -2901,7 +2901,7 @@ short fracture_collect_defgrp(Object* o, Object* ob, short defstart, GHash** def
 	return k;
 }
 
-short BKE_fracture_collect_materials(Object* o, Object* ob, short matstart, GHash** mat_index_map)
+short BKE_fracture_collect_materials(Object* o, Object* ob, int matstart, GHash** mat_index_map)
 {
 	short *totcolp = NULL;
 	Material ***matarar = NULL;
@@ -2976,7 +2976,7 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 		fmd->matstart = 1;
 	}
 
-	totcol = BKE_fracture_collect_materials(target, own, (short)fmd->matstart, &fmd->material_index_map);
+	totcol = BKE_fracture_collect_materials(target, own, fmd->matstart, &fmd->material_index_map);
 	if (totcol < 0)
 	    totcol = 0;
 	fmd->matstart += totcol;

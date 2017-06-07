@@ -829,7 +829,7 @@ static void adjustVerts(MVert **mvert, FractureModifierData *fmd, Object *o, Der
 static void collect_derivedmeshes(FractureModifierData* fmd, Object *ob, MVert** mvert, MLoop** mloop, MPoly **mpoly, DerivedMesh* result, GHash** mat_index_map)
 {
 	int vertstart = 0, polystart = 0, loopstart = 0;
-	short matstart = 1;
+	int matstart = 1;
 	MVert *mverts = *mvert;
 	MLoop *mloops = *mloop;
 	MPoly *mpolys = *mpoly;

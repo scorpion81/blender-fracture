@@ -120,7 +120,7 @@ void BKE_fracture_mesh_constraint_remove_all(struct FractureModifierData *fmd);
 
 void BKE_fracture_free_mesh_island(struct FractureModifierData *rmd, struct MeshIsland *mi, bool remove_rigidbody);
 int BKE_fracture_update_visual_mesh(struct FractureModifierData *fmd, struct Object *ob, bool do_custom_data);
-short BKE_fracture_collect_materials(struct Object* o, struct Object* ob, short matstart, struct GHash** mat_index_map);
+short BKE_fracture_collect_materials(struct Object* o, struct Object* ob, int matstart, struct GHash** mat_index_map);
 
 void BKE_bm_mesh_hflag_flush_vert(struct BMesh *bm, const char hflag);
 void BKE_meshisland_constraint_create(struct FractureModifierData* fmd, struct MeshIsland *mi1, struct MeshIsland *mi2, int con_type, float thresh);
