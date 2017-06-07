@@ -2845,7 +2845,7 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 		defstart += mi->totdef;
 
 		totpoly = mi->physics_mesh->getNumPolys(mi->physics_mesh);
-		ppoly = s->mpoly;
+		ppoly = mi->physics_mesh->getPolyArray(mi->physics_mesh);
 		for (j = 0, mp = mpoly + polystart, pp = ppoly; j < totpoly; j++, mp++, pp++)
 		{
 			/* material index lookup and correction, avoid having the same material in different slots */
@@ -2931,9 +2931,10 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 {
 	MeshIsland *mi;
 	Shard *s;
-	int vertstart = 0;
+	int vertstart = 0, totpoly = 0, i = 0;
 	short totcol = 0, totdef = 0;
 	float loc[3], quat[4];
+	MPoly *mpoly, *mp;
 
 	if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL || own->type != OB_MESH || !own->data)
 		return NULL;
