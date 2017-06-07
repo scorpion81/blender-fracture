@@ -93,6 +93,18 @@ static Shard* find_shard(ListBase *shards, ShardID id);
 static void cleanup_arrange_shard(FractureModifierData *fmd, Shard *s, float cent[]);
 static MeshIsland* find_meshisland(ListBase* meshIslands, int id);
 static void do_halving(FractureModifierData *fmd, Object* ob, DerivedMesh *dm, DerivedMesh *orig_dm, bool is_prehalving, ShardID id);
+static void free_shared_verts(FractureModifierData* fmd);
+
+typedef struct SharedVertGroup {
+	struct SharedVertGroup* next, *prev;
+	int index;
+	ListBase verts;
+} SharedVertGroup;
+
+typedef struct SharedVert {
+	struct SharedVert* next, *prev;
+	int index;
+} SharedVert;
 
 //TODO XXX Make BKE
 static FracMesh* copy_fracmesh(FracMesh* fm)
@@ -458,6 +470,8 @@ static void free_modifier(FractureModifierData *fmd, bool do_free_seq, bool do_f
 		BLI_ghash_free(fmd->face_pairs, NULL, NULL);
 		fmd->face_pairs = NULL;
 	}
+
+	free_shared_verts(fmd);
 
 	//called on deleting modifier, object or quitting blender...
 	//why was this necessary again ?!
@@ -3185,6 +3199,50 @@ static void find_other_face(FractureModifierData *fmd, int i, BMesh* bm, Object*
 	}
 }
 
+static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
+{
+	SharedVert *sv;
+	SharedVertGroup *vg;
+
+	for (vg = fmd->shared_verts.first; vg; vg = vg->next) {
+		BMVert* v1, *v2;
+		float co[3];
+		int verts = 0;
+
+		v1 = bm->vtable[vg->index];
+		copy_v3_v3(co, v1->co);
+		verts = 1;
+
+		//printf("Index: %d %d\n", vg->index, verts);
+		for (sv = vg->verts.first; sv; sv = sv->next)
+		{
+			v2 = bm->vtable[sv->index];
+			add_v3_v3(co, v2->co);
+			verts++;
+			//printf("Index2: %d\n", sv->index);
+		}
+
+		mul_v3_fl(co, 1.0f/(float)verts);
+		//print_v3("co", co);
+
+		verts = 0;
+
+		for (sv = vg->verts.first; sv; sv = sv->next)
+		{
+			v2 = bm->vtable[sv->index];
+			if (len_squared_v3v3(co, v2->co) <= fmd->automerge_dist * fmd->automerge_dist)
+			{
+				copy_v3_v3(v2->co, co);
+			}
+		}
+
+		if (len_squared_v3v3(co, v1->co) <= fmd->automerge_dist * fmd->automerge_dist)
+		{
+			copy_v3_v3(v1->co, co);
+		}
+	}
+}
+
 static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Object *ob)
 {
 	int totpoly = dm->getNumPolys(dm);
@@ -3193,45 +3251,56 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 	DerivedMesh *result;
 	BMFace **faces = MEM_mallocN(sizeof(BMFace *), "faces");
 	int del_faces = 0;
+	bool do_merge = false;
 
 	DM_to_bmesh_ex(dm, bm, true);
 
-	BM_mesh_elem_index_ensure(bm, BM_FACE);
-	BM_mesh_elem_table_ensure(bm, BM_FACE);
+	BM_mesh_elem_index_ensure(bm, BM_FACE | BM_VERT);
+	BM_mesh_elem_table_ensure(bm, BM_FACE | BM_VERT);
 	BM_mesh_elem_toolflags_ensure(bm);
 
 	BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
 
-	for (i = 0; i < totpoly; i++) {
-		find_other_face(fmd, i, bm, ob,  &faces, &del_faces);
+	if (fmd->automerge_dist > 0)
+	{
+		//make vert groups together here, if vert is close enough
+		prepare_automerge(fmd, bm);
 	}
 
-	for (i = 0; i < del_faces; i++) {
-		BMFace *f = faces[i];
-		if (f->l_first->e != NULL) { /* a lame check.... */
-			BMIter iter;
-			BMVert *v;
-			BM_ITER_ELEM(v, &iter, f, BM_VERTS_OF_FACE)
-			{
-				BM_elem_flag_enable(v, BM_ELEM_SELECT);
-			}
+	if (fmd->autohide_dist > 0 && fmd->face_pairs)
+	{
+		for (i = 0; i < totpoly; i++) {
+			find_other_face(fmd, i, bm, ob,  &faces, &del_faces);
+		}
 
-			BM_elem_flag_enable(f, BM_ELEM_SELECT);
+		for (i = 0; i < del_faces; i++) {
+			BMFace *f = faces[i];
+			if (f->l_first->e != NULL) { /* a lame check.... */
+				BMIter iter;
+				BMVert *v;
+				BM_ITER_ELEM(v, &iter, f, BM_VERTS_OF_FACE)
+				{
+					BM_elem_flag_enable(v, BM_ELEM_SELECT);
+				}
+
+				BM_elem_flag_enable(f, BM_ELEM_SELECT);
+			}
+		}
+
+		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "delete_keep_normals geom=%hf context=%i", BM_ELEM_SELECT, DEL_FACES);
+
+		if (del_faces == 0) {
+			/*fallback if you want to merge verts but use no filling method, whose faces could be hidden (and you dont have any selection then) */
+			BM_mesh_elem_hflag_enable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
 		}
 	}
 
-	BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "delete_keep_normals geom=%hf context=%i", BM_ELEM_SELECT, DEL_FACES);
+	if (fmd->automerge_dist > 0 && do_merge) {
 
-	if (del_faces == 0) {
-		/*fallback if you want to merge verts but use no filling method, whose faces could be hidden (and you dont have any selection then) */
-		BM_mesh_elem_hflag_enable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
-	}
-
-	if (fmd->automerge_dist > 0) {
 		//separate this, because it costs performance and might not work so well with thin objects, but its useful for smooth objects
 		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 	             "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT,
-	             fmd->automerge_dist); /*need to merge larger cracks*/
+	             0.001f); /*need to merge larger cracks*/
 
 		if (fmd->fix_normals) {
 			/* dissolve sharp edges with limit dissolve
@@ -3668,13 +3737,14 @@ static DerivedMesh *output_dm(FractureModifierData* fmd, DerivedMesh *dm, Object
 			}
 		}
 
-		if (fmd->autohide_dist > 0 && fmd->face_pairs) {
+		if (fmd->autohide_dist > 0 || fmd->automerge_dist > 0) {
 			//printf("Autohide \n");
 			dm_final = do_autoHide(fmd, fmd->visible_mesh_cached, ob);
 		}
 		else {
 			dm_final = CDDM_copy(fmd->visible_mesh_cached);
 		}
+
 		return dm_final;
 	}
 	else {
@@ -3782,6 +3852,113 @@ static void do_refresh_constraints(FractureModifierData *fmd, Object *ob)
 
 	printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
 	printf("Constraints: %d\n", BLI_listbase_count(&fmd->meshConstraints));
+}
+
+static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm)
+{
+	/* make kdtree of all verts of dm, then find closest(rangesearch) verts for each vert*/
+	MVert* mvert = dm->getVertArray(dm), *mv = NULL;
+	int totvert = dm->getNumVerts(dm);
+	KDTree *tree = BLI_kdtree_new(totvert);
+	GHash* visit = BLI_ghash_int_new("visited_verts");
+	int i = 0;
+
+	//printf("Make Face Pairs\n");
+	int groups = 0;
+
+	for (i = 0, mv = mvert; i < totvert; mv++, i++) {
+		BLI_kdtree_insert(tree, i, mv->co);
+	}
+
+	BLI_kdtree_balance(tree);
+
+	/*now find groups of close verts*/
+
+	for (i = 0, mv = mvert; i < totvert; mv++, i++) {
+		int index = -1, j = 0, r = 0;
+		KDTreeNearest *n = NULL;
+
+		r = BLI_kdtree_range_search(tree, mv->co, &n, fmd->autohide_dist);
+		/*2nd nearest means not ourselves...*/
+
+		if (r > 1) {
+			SharedVertGroup *gvert = MEM_mallocN(sizeof(SharedVertGroup), "sharedVertGroup");
+			gvert->index = i;
+			gvert->verts.first = NULL;
+			gvert->verts.last = NULL;
+
+			for (j = 1; j < r; j++)
+			{
+				index = n[j].index;
+				if (!BLI_ghash_haskey(visit, SET_INT_IN_POINTER(i)))
+				{
+					BLI_ghash_insert(visit, SET_INT_IN_POINTER(index), SET_INT_IN_POINTER(i));
+
+					SharedVert *svert = MEM_mallocN(sizeof(SharedVert), "sharedVert");
+					svert->index = index;
+					BLI_addtail(&gvert->verts, svert);
+				}
+			}
+
+			if (gvert->verts.first != NULL)
+			{
+				BLI_addtail(&fmd->shared_verts, gvert);
+				groups++;
+			}
+			else {
+				MEM_freeN(gvert);
+			}
+		}
+
+		if (n != NULL) {
+			MEM_freeN(n);
+		}
+	}
+
+	printf("shared vert groups: %d\n", groups);
+	BLI_ghash_free(visit, NULL, NULL);
+	BLI_kdtree_free(tree);
+}
+
+static void free_shared_verts(FractureModifierData* fmd)
+{
+	SharedVertGroup *vg;
+	SharedVert *sv;
+
+	while (fmd->shared_verts.first)
+	{
+		vg = fmd->shared_verts.first;
+		BLI_remlink(&fmd->shared_verts, vg);
+		while (vg->verts.first) {
+			sv = vg->verts.first;
+			BLI_remlink(&vg->verts, sv);
+			MEM_freeN(sv);
+		}
+		MEM_freeN(vg);
+	}
+
+	fmd->shared_verts.first = NULL;
+	fmd->shared_verts.last = NULL;
+}
+
+static void do_refresh_automerge(FractureModifierData* fmd, Object *ob)
+{
+	free_shared_verts(fmd);
+
+	/* in case of re-using existing islands this one might become invalid for automerge, so force fallback */
+	if (fmd->dm && fmd->dm->getNumVerts(fmd->dm) > 0)
+	{
+		make_shared_vert_groups(fmd, fmd->dm);
+	}
+	else if (fmd->visible_mesh)
+	{
+		DerivedMesh *fdm = CDDM_from_bmesh(fmd->visible_mesh, true);
+		make_shared_vert_groups(fmd, fdm);
+
+		fdm->needsFree = 1;
+		fdm->release(fdm);
+		fdm = NULL;
+	}
 }
 
 static void do_refresh_autohide(FractureModifierData *fmd, Object *ob)
@@ -3976,6 +4153,8 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 						i++;
 					}
 				}
+
+				//do_refresh_automerge(fmd, ob);
 			}
 
 			if (old_cached) {
@@ -3990,6 +4169,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 
 	if (fmd->refresh_autohide) {
 		do_refresh_autohide(fmd, ob);
+		do_refresh_automerge(fmd, ob);
 	}
 
 	if (fmd->refresh_constraints) {

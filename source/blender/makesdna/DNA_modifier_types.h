@@ -1686,6 +1686,7 @@ typedef struct FractureModifierData {
 	MeshIslandSequence *current_mi_entry; /*analogous to current shard entry */
 	ListBase fracture_ids; /*volatile storage of shards being "hit" or fractured currently, needs to be cleaned up after usage! */
 	ListBase fracture_settings;
+	ListBase shared_verts;
 
 	int active_setting;
 

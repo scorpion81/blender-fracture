@@ -5233,6 +5233,8 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 	fmd->visible_mesh = NULL;
 	fmd->dm = NULL;
 	fmd->visible_mesh_cached = NULL;
+	fmd->shared_verts.first = NULL;
+	fmd->shared_verts.last = NULL;
 
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
 	if (fd->fileversion < 275) {
