@@ -3248,9 +3248,12 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 				verts++;
 			}
 
-			BM_ITER_ELEM(e, &iter2, v2, BM_EDGES_OF_VERT)
+			if (vg->exceeded)
 			{
-				BM_ELEM_CD_SET_FLOAT(e, cd_edge_crease_offset, fmd->inner_crease);
+				BM_ITER_ELEM(e, &iter2, v2, BM_EDGES_OF_VERT)
+				{
+					BM_ELEM_CD_SET_FLOAT(e, cd_edge_crease_offset, fmd->inner_crease);
+				}
 			}
 		}
 
@@ -3280,10 +3283,12 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 				copy_v3_v3(v1->co, co);
 			}
 		}
-
-		BM_ITER_ELEM(e, &iter, v1, BM_EDGES_OF_VERT)
+		else
 		{
-			BM_ELEM_CD_SET_FLOAT(e, cd_edge_crease_offset, fmd->inner_crease);
+			BM_ITER_ELEM(e, &iter, v1, BM_EDGES_OF_VERT)
+			{
+				BM_ELEM_CD_SET_FLOAT(e, cd_edge_crease_offset, fmd->inner_crease);
+			}
 		}
 	}
 }
