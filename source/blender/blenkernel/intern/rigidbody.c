@@ -3961,7 +3961,8 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		float bbsize[3];
 		float locbb[3];
 
-		if (ob->derivedFinal)
+		//hacky check for ob->derivedFinal validity
+		if (ob->derivedFinal && ob->derivedFinal->getNumLoopTri(ob->derivedFinal) > 0)
 		{
 			DM_mesh_boundbox(ob->derivedFinal, locbb, bbsize);
 		}
