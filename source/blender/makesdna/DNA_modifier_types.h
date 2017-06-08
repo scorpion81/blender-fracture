@@ -1770,6 +1770,8 @@ typedef struct FractureModifierData {
 	int fracture_all;
 	int dynamic_new_constraints;
 	int is_dynamic_external;
+	int keep_distort;
+	int do_merge;
 
 	/* internal flags */
 	int use_experimental;

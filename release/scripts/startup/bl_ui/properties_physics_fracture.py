@@ -256,6 +256,9 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
         col.prop(md, "autohide_dist")
         col.prop(md, "automerge_dist")
         row = layout.row()
+        row.prop(md, "keep_distort")
+        row.prop(md, "do_merge")
+        row = layout.row()
         row.prop(md, "fix_normals")
         row.prop(md, "nor_range")
 

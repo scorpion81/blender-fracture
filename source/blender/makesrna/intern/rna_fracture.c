@@ -595,7 +595,7 @@ static void rna_Modifier_update_and_keep(Main *UNUSED(bmain), Scene *UNUSED(scen
 	if (md && md->type == eModifierType_Fracture)
 	{
 		FractureModifierData *fmd = (FractureModifierData*)md;
-		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
+		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED || fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 		{
 			FractureSetting* fs = BLI_findlink(&fmd->fracture_settings, fmd->active_setting);
 			BKE_fracture_store_settings(fmd, fs);
@@ -605,10 +605,10 @@ static void rna_Modifier_update_and_keep(Main *UNUSED(bmain), Scene *UNUSED(scen
 				return;
 			}
 		}
-	}
 
-	DAG_id_tag_update(ptr->id.data, OB_RECALC_DATA);
-	WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, ptr->id.data);
+		DAG_id_tag_update(ptr->id.data, OB_RECALC_DATA);
+		WM_main_add_notifier(NC_OBJECT | ND_MODIFIER, ptr->id.data);
+	}
 }
 
 #endif
@@ -1246,6 +1246,16 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_float_default(prop, 0.0f);
 	RNA_def_property_ui_text(prop, "Orthogonality Factor",  "1 means only orthogonal cuts, move down to 0 to get more diagonal-ish cuts");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "keep_distort", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "keep_distort", false);
+	RNA_def_property_ui_text(prop, "Keep Distortion", "Whether or not to make the distortion on torn merged shards persistent.");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update_and_keep");
+
+	prop = RNA_def_property(srna, "do_merge", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "do_merge", false);
+	RNA_def_property_ui_text(prop, "Perform Merge", "Whether or not to actually weld the prepared automerge geometry.");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update_and_keep");
 
 	RNA_api_fracture(brna, srna);
 }

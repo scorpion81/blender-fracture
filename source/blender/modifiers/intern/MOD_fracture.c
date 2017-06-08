@@ -253,6 +253,10 @@ static void initData(ModifierData *md)
 
 	fmd->mat_ofs_difference = 0;
 	fmd->mat_ofs_intersect = 0;
+
+	fmd->orthogonality_factor = 0.0f;
+	fmd->keep_distort = false;
+	fmd->do_merge = false;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1839,6 +1843,9 @@ static void copyData(ModifierData *md, ModifierData *target)
 
 	trmd->mat_ofs_difference = rmd->mat_ofs_difference;
 	trmd->mat_ofs_intersect = rmd->mat_ofs_intersect;
+	trmd->keep_distort = rmd->keep_distort;
+	trmd->do_merge = rmd->do_merge;
+	trmd->orthogonality_factor = rmd->orthogonality_factor;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
@@ -3240,7 +3247,7 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 {
 	SharedVert *sv;
 	SharedVertGroup *vg;
-	bool do_calc_delta = true;
+	bool do_calc_delta = fmd->keep_distort;
 
 	int cd_edge_crease_offset = CustomData_get_offset(&bm->edata, CD_CREASE);
 	if (cd_edge_crease_offset == -1) {
@@ -3346,7 +3353,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 	DerivedMesh *result;
 	BMFace **faces = MEM_mallocN(sizeof(BMFace *), "faces");
 	int del_faces = 0;
-	bool do_merge = true;
+	bool do_merge = fmd->do_merge;
 
 	DM_to_bmesh_ex(dm, bm, true);
 
