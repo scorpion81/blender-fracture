@@ -94,16 +94,19 @@ static void cleanup_arrange_shard(FractureModifierData *fmd, Shard *s, float cen
 static MeshIsland* find_meshisland(ListBase* meshIslands, int id);
 static void do_halving(FractureModifierData *fmd, Object* ob, DerivedMesh *dm, DerivedMesh *orig_dm, bool is_prehalving, ShardID id);
 static void free_shared_verts(FractureModifierData* fmd);
+static void reset_automerge(FractureModifierData *fmd);
 
 typedef struct SharedVertGroup {
 	struct SharedVertGroup* next, *prev;
 	int index;
+	bool exceeded;
 	ListBase verts;
 } SharedVertGroup;
 
 typedef struct SharedVert {
 	struct SharedVert* next, *prev;
 	int index;
+	bool exceeded;
 } SharedVert;
 
 //TODO XXX Make BKE
@@ -3199,13 +3202,35 @@ static void find_other_face(FractureModifierData *fmd, int i, BMesh* bm, Object*
 	}
 }
 
-static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
+static void reset_automerge(FractureModifierData *fmd)
 {
 	SharedVert *sv;
 	SharedVertGroup *vg;
 
 	for (vg = fmd->shared_verts.first; vg; vg = vg->next) {
+		vg->exceeded = false;
+
+		for (sv = vg->verts.first; sv; sv = sv->next)
+		{
+			sv->exceeded = false;
+		}
+	}
+}
+
+static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
+{
+	SharedVert *sv;
+	SharedVertGroup *vg;
+	int cd_edge_crease_offset = CustomData_get_offset(&bm->edata, CD_CREASE);
+	if (cd_edge_crease_offset == -1) {
+		BM_data_layer_add(bm, &bm->edata, CD_CREASE);
+		cd_edge_crease_offset = CustomData_get_offset(&bm->edata, CD_CREASE);
+	}
+
+	for (vg = fmd->shared_verts.first; vg; vg = vg->next) {
 		BMVert* v1, *v2;
+		BMIter iter;
+		BMEdge *e;
 		float co[3];
 		int verts = 0;
 
@@ -3213,32 +3238,52 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 		copy_v3_v3(co, v1->co);
 		verts = 1;
 
-		//printf("Index: %d %d\n", vg->index, verts);
 		for (sv = vg->verts.first; sv; sv = sv->next)
 		{
 			v2 = bm->vtable[sv->index];
-			add_v3_v3(co, v2->co);
-			verts++;
-			//printf("Index2: %d\n", sv->index);
-		}
+			BMIter iter2;
 
-		mul_v3_fl(co, 1.0f/(float)verts);
-		//print_v3("co", co);
+			if (!sv->exceeded) {
+				add_v3_v3(co, v2->co);
+				verts++;
+			}
 
-		verts = 0;
-
-		for (sv = vg->verts.first; sv; sv = sv->next)
-		{
-			v2 = bm->vtable[sv->index];
-			if (len_squared_v3v3(co, v2->co) <= fmd->automerge_dist * fmd->automerge_dist)
+			BM_ITER_ELEM(e, &iter2, v2, BM_EDGES_OF_VERT)
 			{
-				copy_v3_v3(v2->co, co);
+				BM_ELEM_CD_SET_FLOAT(e, cd_edge_crease_offset, fmd->inner_crease);
 			}
 		}
 
-		if (len_squared_v3v3(co, v1->co) <= fmd->automerge_dist * fmd->automerge_dist)
+		mul_v3_fl(co, 1.0f/(float)verts);
+		verts = 0;
+
+		if (!vg->exceeded)
 		{
-			copy_v3_v3(v1->co, co);
+			for (sv = vg->verts.first; sv; sv = sv->next)
+			{
+				v2 = bm->vtable[sv->index];
+				if (len_squared_v3v3(co, v2->co) <= fmd->automerge_dist * fmd->automerge_dist)
+				{
+					if (!sv->exceeded)
+					{
+						copy_v3_v3(v2->co, co);
+					}
+				}
+				else {
+					sv->exceeded = true;
+					vg->exceeded = true;
+				}
+			}
+
+			if (len_squared_v3v3(co, v1->co) <= fmd->automerge_dist * fmd->automerge_dist)
+			{
+				copy_v3_v3(v1->co, co);
+			}
+		}
+
+		BM_ITER_ELEM(e, &iter, v1, BM_EDGES_OF_VERT)
+		{
+			BM_ELEM_CD_SET_FLOAT(e, cd_edge_crease_offset, fmd->inner_crease);
 		}
 	}
 }
@@ -3251,7 +3296,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 	DerivedMesh *result;
 	BMFace **faces = MEM_mallocN(sizeof(BMFace *), "faces");
 	int del_faces = 0;
-	bool do_merge = false;
+	bool do_merge = true;
 
 	DM_to_bmesh_ex(dm, bm, true);
 
@@ -3300,7 +3345,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 		//separate this, because it costs performance and might not work so well with thin objects, but its useful for smooth objects
 		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
 	             "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT,
-	             0.001f); /*need to merge larger cracks*/
+	             0.0001f); /*need to merge larger cracks*/
 
 		if (fmd->fix_normals) {
 			/* dissolve sharp edges with limit dissolve
@@ -3886,6 +3931,7 @@ static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm)
 			gvert->index = i;
 			gvert->verts.first = NULL;
 			gvert->verts.last = NULL;
+			gvert->exceeded = false;
 
 			for (j = 1; j < r; j++)
 			{
@@ -3896,6 +3942,7 @@ static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm)
 
 					SharedVert *svert = MEM_mallocN(sizeof(SharedVert), "sharedVert");
 					svert->index = index;
+					svert->exceeded = false;
 					BLI_addtail(&gvert->verts, svert);
 				}
 			}
@@ -4175,6 +4222,16 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 	if (fmd->refresh_constraints) {
 		do_island_index_map(fmd);
 		do_refresh_constraints(fmd, ob);
+	}
+
+	if (fmd->modifier.scene && fmd->modifier.scene->rigidbody_world) {
+		Scene *sc = fmd->modifier.scene;
+		RigidBodyWorld *rbw = sc->rigidbody_world;
+		int frame = (int)BKE_scene_frame_get(sc);
+		int start = rbw ? rbw->pointcache->startframe : 1;
+		if (frame == start) {
+			reset_automerge(fmd);
+		}
 	}
 
 	/*XXX better rename this, it checks whether we have a valid fractured mesh */
