@@ -99,14 +99,18 @@ static void reset_automerge(FractureModifierData *fmd);
 typedef struct SharedVertGroup {
 	struct SharedVertGroup* next, *prev;
 	int index;
-	bool exceeded;
+	bool exceeded, deltas_set;
+	float rest_co[3];
+	float delta[3];
 	ListBase verts;
 } SharedVertGroup;
 
 typedef struct SharedVert {
 	struct SharedVert* next, *prev;
 	int index;
-	bool exceeded;
+	bool exceeded, deltas_set;
+	float rest_co[3];
+	float delta[3];
 } SharedVert;
 
 //TODO XXX Make BKE
@@ -3217,10 +3221,27 @@ static void reset_automerge(FractureModifierData *fmd)
 	}
 }
 
+static void calc_delta(SharedVert* sv, BMVert *v)
+{
+	//apply deltas
+	float a[3], b[3], delta[3], quat[3], co[3];
+	copy_v3_v3(co, v->co);
+	normalize_v3_v3(a, sv->rest_co);
+	normalize_v3_v3(b, v->co);
+	rotation_between_vecs_to_quat(quat, a, b);
+
+	copy_v3_v3(delta, sv->delta);
+	mul_qt_v3(quat, delta);
+	add_v3_v3(co, delta);
+	copy_v3_v3(v->co, co);
+}
+
 static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 {
 	SharedVert *sv;
 	SharedVertGroup *vg;
+	bool do_calc_delta = true;
+
 	int cd_edge_crease_offset = CustomData_get_offset(&bm->edata, CD_CREASE);
 	if (cd_edge_crease_offset == -1) {
 		BM_data_layer_add(bm, &bm->edata, CD_CREASE);
@@ -3246,6 +3267,13 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 			if (!sv->exceeded) {
 				add_v3_v3(co, v2->co);
 				verts++;
+			}
+			else
+			{
+				if (do_calc_delta && sv->deltas_set)
+				{
+					calc_delta(sv, v2);
+				}
 			}
 
 			if (vg->exceeded)
@@ -3275,16 +3303,33 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 				else {
 					sv->exceeded = true;
 					vg->exceeded = true;
+
+					if (!sv->deltas_set){
+						sub_v3_v3v3(sv->delta, co, v2->co);
+						sv->deltas_set = true;
+					}
 				}
 			}
 
 			if (len_squared_v3v3(co, v1->co) <= fmd->automerge_dist * fmd->automerge_dist)
 			{
-				copy_v3_v3(v1->co, co);
+				copy_v3_v3(v1->co, co);	
+			}
+			else {
+
+				if (!vg->deltas_set){
+					sub_v3_v3v3(vg->delta, co, v1->co);
+					vg->deltas_set = true;
+				}
 			}
 		}
 		else
 		{
+			if (do_calc_delta && vg->deltas_set)
+			{
+				calc_delta((SharedVert*)vg, v1);
+			}
+
 			BM_ITER_ELEM(e, &iter, v1, BM_EDGES_OF_VERT)
 			{
 				BM_ELEM_CD_SET_FLOAT(e, cd_edge_crease_offset, fmd->inner_crease);
@@ -3937,6 +3982,9 @@ static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm)
 			gvert->verts.first = NULL;
 			gvert->verts.last = NULL;
 			gvert->exceeded = false;
+			gvert->deltas_set = false;
+			zero_v3(gvert->delta);
+			copy_v3_v3(gvert->rest_co, mvert[i].co);
 
 			for (j = 1; j < r; j++)
 			{
@@ -3948,6 +3996,9 @@ static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm)
 					SharedVert *svert = MEM_mallocN(sizeof(SharedVert), "sharedVert");
 					svert->index = index;
 					svert->exceeded = false;
+					svert->deltas_set = false;
+					zero_v3(svert->delta);
+					copy_v3_v3(svert->rest_co, mvert[index].co);
 					BLI_addtail(&gvert->verts, svert);
 				}
 			}
