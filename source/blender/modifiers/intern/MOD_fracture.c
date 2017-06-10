@@ -3445,6 +3445,11 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 		}
 	}
 
+	if (fmd->automerge_dist > 0 && !fmd->fix_normals)
+	{
+		BM_mesh_normals_update(bm);
+	}
+
 	result = CDDM_from_bmesh(bm, true);
 	BM_mesh_free(bm);
 	MEM_freeN(faces);
