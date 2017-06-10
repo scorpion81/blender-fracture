@@ -3389,7 +3389,10 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 			}
 		}
 
-		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "delete_keep_normals geom=%hf context=%i", BM_ELEM_SELECT, DEL_FACES);
+		if (fmd->frac_algorithm != MOD_FRACTURE_BISECT && fmd->frac_algorithm != MOD_FRACTURE_BISECT_FAST)
+		{
+			BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "delete_keep_normals geom=%hf context=%i", BM_ELEM_SELECT, DEL_FACES);
+		}
 
 		if (del_faces == 0) {
 			/*fallback if you want to merge verts but use no filling method, whose faces could be hidden (and you dont have any selection then) */
@@ -3400,9 +3403,20 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 	if (fmd->automerge_dist > 0 && do_merge) {
 
 		//separate this, because it costs performance and might not work so well with thin objects, but its useful for smooth objects
-		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
-	             "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT,
-	             0.0001f); /*need to merge larger cracks*/
+		if (fmd->frac_algorithm == MOD_FRACTURE_BISECT || fmd->frac_algorithm == MOD_FRACTURE_BISECT_FAST)
+		{
+			//here we dont expect inner faces and odd interpolation so we can recalc the normals
+			BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+					 "automerge verts=%hv dist=%f", BM_ELEM_SELECT,
+					 0.0001f); /*need to merge larger cracks*/
+		}
+		else {
+
+			//here we might need to keep the original normals
+			BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE),
+					 "automerge_keep_normals verts=%hv dist=%f", BM_ELEM_SELECT,
+					 0.0001f); /*need to merge larger cracks*/
+		}
 
 		if (fmd->fix_normals) {
 			/* dissolve sharp edges with limit dissolve
@@ -3983,7 +3997,7 @@ static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm)
 		r = BLI_kdtree_range_search(tree, mv->co, &n, fmd->autohide_dist);
 		/*2nd nearest means not ourselves...*/
 
-		if (r > 1) {
+		if (r > 0) {
 			SharedVertGroup *gvert = MEM_mallocN(sizeof(SharedVertGroup), "sharedVertGroup");
 			gvert->index = i;
 			gvert->verts.first = NULL;
@@ -3993,20 +4007,23 @@ static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm)
 			zero_v3(gvert->delta);
 			copy_v3_v3(gvert->rest_co, mvert[i].co);
 
-			for (j = 1; j < r; j++)
+			for (j = 0; j < r; j++)
 			{
 				index = n[j].index;
-				if (!BLI_ghash_haskey(visit, SET_INT_IN_POINTER(i)))
+				if (!BLI_ghash_haskey(visit, SET_INT_IN_POINTER(index)))
 				{
-					BLI_ghash_insert(visit, SET_INT_IN_POINTER(index), SET_INT_IN_POINTER(i));
+					BLI_ghash_insert(visit, SET_INT_IN_POINTER(index), SET_INT_IN_POINTER(index));
 
-					SharedVert *svert = MEM_mallocN(sizeof(SharedVert), "sharedVert");
-					svert->index = index;
-					svert->exceeded = false;
-					svert->deltas_set = false;
-					zero_v3(svert->delta);
-					copy_v3_v3(svert->rest_co, mvert[index].co);
-					BLI_addtail(&gvert->verts, svert);
+					if (i != index)
+					{
+						SharedVert *svert = MEM_mallocN(sizeof(SharedVert), "sharedVert");
+						svert->index = index;
+						svert->exceeded = false;
+						svert->deltas_set = false;
+						zero_v3(svert->delta);
+						copy_v3_v3(svert->rest_co, mvert[index].co);
+						BLI_addtail(&gvert->verts, svert);
+					}
 				}
 			}
 
