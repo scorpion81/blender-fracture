@@ -3243,6 +3243,15 @@ static void calc_delta(SharedVert* sv, BMVert *v)
 	copy_v3_v3(v->co, co);
 }
 
+static void clamp_delta(SharedVert *sv, FractureModifierData *fmd)
+{
+	float factor = (fmd->automerge_dist * fmd->automerge_dist) / len_squared_v3(sv->delta);
+	if (factor < 1.0f)
+	{
+		mul_v3_fl(sv->delta, factor);
+	}
+}
+
 static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 {
 	SharedVert *sv;
@@ -3313,6 +3322,7 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 
 					if (!sv->deltas_set){
 						sub_v3_v3v3(sv->delta, co, v2->co);
+						clamp_delta(sv, fmd);
 						sv->deltas_set = true;
 					}
 				}
@@ -3326,6 +3336,7 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 
 				if (!vg->deltas_set){
 					sub_v3_v3v3(vg->delta, co, v1->co);
+					clamp_delta((SharedVert*)vg, fmd);
 					vg->deltas_set = true;
 				}
 			}
@@ -3369,23 +3380,26 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 		prepare_automerge(fmd, bm);
 	}
 
-	if (fmd->autohide_dist > 0 && fmd->face_pairs)
+	if (fmd->face_pairs)
 	{
-		for (i = 0; i < totpoly; i++) {
-			find_other_face(fmd, i, bm, ob,  &faces, &del_faces);
-		}
+		if (fmd->autohide_dist > 0)
+		{
+			for (i = 0; i < totpoly; i++) {
+				find_other_face(fmd, i, bm, ob,  &faces, &del_faces);
+			}
 
-		for (i = 0; i < del_faces; i++) {
-			BMFace *f = faces[i];
-			if (f->l_first->e != NULL) { /* a lame check.... */
-				BMIter iter;
-				BMVert *v;
-				BM_ITER_ELEM(v, &iter, f, BM_VERTS_OF_FACE)
-				{
-					BM_elem_flag_enable(v, BM_ELEM_SELECT);
+			for (i = 0; i < del_faces; i++) {
+				BMFace *f = faces[i];
+				if (f->l_first->e != NULL) { /* a lame check.... */
+					BMIter iter;
+					BMVert *v;
+					BM_ITER_ELEM(v, &iter, f, BM_VERTS_OF_FACE)
+					{
+						BM_elem_flag_enable(v, BM_ELEM_SELECT);
+					}
+
+					BM_elem_flag_enable(f, BM_ELEM_SELECT);
 				}
-
-				BM_elem_flag_enable(f, BM_ELEM_SELECT);
 			}
 		}
 
@@ -4296,7 +4310,10 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 
 	if (fmd->refresh_autohide) {
 		do_refresh_autohide(fmd, ob);
-		do_refresh_automerge(fmd, ob);
+
+		if (fmd->autohide_dist > 0) {
+			do_refresh_automerge(fmd, ob);
+		}
 	}
 
 	if (fmd->refresh_constraints) {
