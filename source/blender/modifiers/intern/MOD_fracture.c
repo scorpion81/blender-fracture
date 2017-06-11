@@ -3270,7 +3270,7 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 	SharedVert *sv;
 	SharedVertGroup *vg;
 	bool do_calc_delta = fmd->keep_distort;
-	float margin = 0.01f;
+	float margin = 0.001f;
 
 	int cd_edge_crease_offset = CustomData_get_offset(&bm->edata, CD_CREASE);
 	if (cd_edge_crease_offset == -1) {
@@ -3439,6 +3439,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 
 	BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
 
+#if 0
 	//if (fmd->automerge_dist > 0)
 	{
 		Scene* sc = fmd->modifier.scene;
@@ -3456,6 +3457,13 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 		{
 			optimize_automerge(fmd);
 		}
+	}
+#endif
+
+	if (fmd->automerge_dist > 0)
+	{
+		//make vert groups together here, if vert is close enough
+		prepare_automerge(fmd, bm);
 	}
 
 	if (fmd->face_pairs && fmd->autohide_dist > 0)
