@@ -5343,7 +5343,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			}
 
 			/* ugly ugly, need only the shard... the rest is to be generated on demand... */
-			BKE_fracture_create_dm(fmd, true);
+			BKE_fracture_create_dm(fmd, true, false);
 
 			if (fm->shard_count == 0) {
 				fmd->shards_to_islands = false;
@@ -5423,6 +5423,12 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 				}
 			}
 
+			link_list(fd, &fmd->pack_storage);
+			for (s = fmd->pack_storage.first; s; s = s->next)
+			{
+				read_shard(fd, &s);
+			}
+
 			MEM_freeN(shards);
 		}
 		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
@@ -5462,7 +5468,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 				msq->is_new = false;
 				fmd->frac_mesh = fmd->current_shard_entry->frac_mesh;
 				fmd->shards_to_islands = false;
-				BKE_fracture_create_dm(fmd, true);
+				BKE_fracture_create_dm(fmd, true, false);
 				fmd->shards_to_islands = temp;
 				fmd->visible_mesh_cached = CDDM_copy(fmd->dm);
 				msq->visible_dm = fmd->visible_mesh_cached;

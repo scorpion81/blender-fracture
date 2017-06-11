@@ -361,6 +361,38 @@ Shard* BKE_create_initial_shard(DerivedMesh *dm)
 	return s;
 }
 
+Shard* BKE_fracture_shard_copy(Shard *s)
+{
+	Shard *t = BKE_create_fracture_shard(s->mvert, s->mpoly, s->mloop, s->medge, s->totvert, s->totpoly, s->totloop, s->totedge, true);
+	copy_v3_v3(t->centroid, s->centroid);
+	t->neighbor_count = s->neighbor_count;
+	t->neighbor_ids = MEM_mallocN(sizeof(int) * t->neighbor_count, __func__);
+	memcpy(t->neighbor_ids, s->neighbor_ids, sizeof(int) * t->neighbor_count);
+	copy_v3_v3(t->raw_centroid, s->raw_centroid);
+	t->raw_volume = s->raw_volume;
+	t->shard_id = s->shard_id;
+	t->setting_id = s->setting_id;
+	t->flag = s->flag;
+	t->parent_id = s->parent_id;
+	copy_v3_v3(t->max, s->max);
+	copy_v3_v3(t->min, s->min);
+	copy_v3_v3(t->impact_loc, s->impact_loc);
+	copy_v3_v3(t->impact_size, s->impact_size);
+	//TODO, maybe cluster colors too ?
+
+	CustomData_reset(&t->vertData);
+	CustomData_reset(&t->loopData);
+	CustomData_reset(&t->polyData);
+	CustomData_reset(&t->edgeData);
+
+	CustomData_copy(&s->vertData, &t->vertData, CD_MASK_MDEFORMVERT, CD_DUPLICATE, s->totvert);
+	CustomData_copy(&s->loopData, &t->loopData, CD_MASK_MLOOPUV, CD_DUPLICATE, s->totloop);
+	CustomData_copy(&s->polyData, &t->polyData, CD_MASK_MTEXPOLY, CD_DUPLICATE, s->totpoly);
+	CustomData_copy(&s->edgeData, &t->edgeData, CD_MASK_CREASE | CD_MASK_BWEIGHT | CD_MASK_MEDGE, CD_DUPLICATE, s->totedge);
+
+	return t;
+}
+
 
 /*access shard directly by index / id*/
 Shard *BKE_shard_by_id(FracMesh *mesh, ShardID id, DerivedMesh *dm) {
@@ -1946,7 +1978,8 @@ static void do_marking(FractureModifierData *fmd, DerivedMesh *result)
 	}
 }
 
-static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_loops, int num_polys, int num_edges, bool doCustomData)
+static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_loops, int num_polys, int num_edges,
+                              bool doCustomData, bool use_packed)
 {
 	int shard_count = fmd->shards_to_islands ? BLI_listbase_count(&fmd->islandShards) : fmd->frac_mesh->shard_count;
 	ListBase *shardlist;
@@ -1997,7 +2030,11 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 	}
 
 	vertstart = polystart = loopstart = edgestart = 0;
-	if (fmd->shards_to_islands) {
+	if (use_packed)
+	{
+		shardlist = &fmd->pack_storage;
+	}
+	else if (fmd->shards_to_islands) {
 		shardlist = &fmd->islandShards;
 	}
 	else {
@@ -2073,7 +2110,7 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 }
 
 /* DerivedMesh */
-static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
+static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData, bool use_packed)
 {
 	Shard *s;
 	int num_verts, num_polys, num_loops, num_edges;
@@ -2081,7 +2118,16 @@ static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
 	
 	num_verts = num_polys = num_loops = num_edges = 0;
 
-	if (fmd->shards_to_islands) {
+	if (use_packed)
+	{
+		for (s = fmd->pack_storage.first; s; s = s->next) {
+			num_verts += s->totvert;
+			num_polys += s->totpoly;
+			num_loops += s->totloop;
+			num_edges += s->totedge;
+		}
+	}
+	else if (fmd->shards_to_islands) {
 		for (s = fmd->islandShards.first; s; s = s->next) {
 			num_verts += s->totvert;
 			num_polys += s->totpoly;
@@ -2102,7 +2148,7 @@ static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
 		}
 	}
 	
-	result = do_create(fmd, num_verts, num_loops, num_polys, num_edges, doCustomData);
+	result = do_create(fmd, num_verts, num_loops, num_polys, num_edges, doCustomData, use_packed);
 
 	if (num_edges == 0) {
 		CustomData_free(&result->edgeData, 0);
@@ -2116,18 +2162,23 @@ static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData)
 	return result;
 }
 
-void BKE_fracture_create_dm(FractureModifierData *fmd, bool doCustomData)
+DerivedMesh* BKE_fracture_create_dm(FractureModifierData *fmd, bool doCustomData, bool use_packed)
 {
 	DerivedMesh *dm_final = NULL;
 	
-	if (fmd->dm) {
+	if (fmd->dm && !use_packed) {
 		fmd->dm->needsFree = 1;
 		fmd->dm->release(fmd->dm);
 		fmd->dm = NULL;
 	}
 	
-	dm_final = create_dm(fmd, doCustomData);
-	fmd->dm = dm_final;
+	dm_final = create_dm(fmd, doCustomData, use_packed);
+
+	if (!use_packed) {
+		fmd->dm = dm_final;
+	}
+
+	return dm_final;
 }
 
 void BKE_copy_customdata_layers(CustomData* dest, CustomData *src, int type, int count)
@@ -2733,7 +2784,7 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 	DerivedMesh *dm = fmd->visible_mesh_cached;
 	int vertstart = 0, totvert = 0, totpoly = 0, polystart = 0, matstart = 1, defstart = 0;
 	MVert *mv = NULL;
-	MPoly *mp = NULL, *mpoly = NULL, *ppoly = NULL, *pp = NULL, *spoly = NULL, *sp = NULL;
+	MPoly *mp = NULL, *mpoly = NULL, *ppoly = NULL, *pp = NULL, *spoly = NULL, *sp = NULL, *tpoly = NULL, *tp = NULL;
 	int i = 0, j = 0;
 	MDeformVert *dvert = NULL;
 
@@ -2745,7 +2796,7 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 		dm = fmd->visible_mesh_cached = NULL;
 	}
 
-	fmd->visible_mesh_cached = create_dm(fmd, do_custom_data);
+	fmd->visible_mesh_cached = create_dm(fmd, do_custom_data, fmd->pack_storage.first != NULL);
 
 	if (!fmd->visible_mesh_cached)
 		return 0;
@@ -2762,6 +2813,8 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 		MVert *pvert = mi->physics_mesh->getVertArray(mi->physics_mesh);
 		float inv_size[3] = {1.0f, 1.0f, 1.0f};
 		Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, mi->id);
+		Shard *t = BLI_findlink(&fmd->pack_storage, mi->id);
+
 		if (!s)
 			continue;
 
@@ -2847,6 +2900,10 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 		totpoly = mi->physics_mesh->getNumPolys(mi->physics_mesh);
 		ppoly = mi->physics_mesh->getPolyArray(mi->physics_mesh);
 		spoly = s->mpoly;
+		if (t) {
+			tpoly = t->mpoly;
+		}
+
 		for (j = 0, mp = mpoly + polystart, pp = ppoly, sp = spoly; j < totpoly; j++, mp++, pp++, sp++)
 		{
 			/* material index lookup and correction, avoid having the same material in different slots */
@@ -2861,6 +2918,12 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 			// having a materialmap then)
 			pp->mat_nr = index;
 			sp->mat_nr = index;
+
+			//also dont forget pack storage
+			if (tpoly) {
+				tp = tpoly + j;
+				tp->mat_nr = index;
+			}
 		}
 
 		/* fortunately we know how many faces "belong" to this meshisland, too */
@@ -2927,6 +2990,12 @@ short BKE_fracture_collect_materials(Object* o, Object* ob, int matstart, GHash*
 	}
 
 	return (*totcolp);
+}
+
+void pack_storage_add(FractureModifierData *fmd, Shard* s)
+{
+	Shard *t = BKE_fracture_shard_copy(s);
+	BLI_addtail(&fmd->pack_storage, t);
 }
 
 MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own, Object *target)
@@ -2999,6 +3068,9 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 
 	//XXX TODO handle UVs, shapekeys and more ?
 
+	//add shard to pack storage
+	pack_storage_add(fmd, s);
+
 	return mi;
 }
 
@@ -3069,6 +3141,22 @@ void BKE_fracture_free_mesh_island(FractureModifierData *rmd, MeshIsland *mi, bo
 	mi = NULL;
 }
 
+void pack_storage_remove(FractureModifierData *fmd, Shard *s)
+{
+	Shard *t = fmd->pack_storage.first;
+	while(t)
+	{
+		if (t->shard_id == s->shard_id)
+		{
+			BLI_remlink(&fmd->pack_storage, t);
+			BKE_shard_free(t, true);
+			break;
+		}
+
+		t = t->next;
+	}
+}
+
 void BKE_fracture_mesh_island_remove(FractureModifierData *fmd, MeshIsland *mi)
 {
 	if (BLI_listbase_is_single(&fmd->meshIslands))
@@ -3085,6 +3173,7 @@ void BKE_fracture_mesh_island_remove(FractureModifierData *fmd, MeshIsland *mi)
 		{
 			int i;
 			BLI_remlink(&fmd->frac_mesh->shard_map, s);
+			pack_storage_remove(fmd, s);
 			BKE_shard_free(s, true);
 			fmd->frac_mesh->shard_count--;
 
@@ -3101,6 +3190,16 @@ void BKE_fracture_mesh_island_remove(FractureModifierData *fmd, MeshIsland *mi)
 	}
 }
 
+void pack_storage_remove_all(FractureModifierData*fmd)
+{
+	Shard *s;
+	while (fmd->pack_storage.first) {
+		s = fmd->pack_storage.first;
+		BLI_remlink(&fmd->pack_storage, s);
+		BKE_shard_free(s, true);
+	}
+}
+
 void BKE_fracture_mesh_island_remove_all(FractureModifierData *fmd)
 {
 	MeshIsland *mi;
@@ -3109,6 +3208,9 @@ void BKE_fracture_mesh_island_remove_all(FractureModifierData *fmd)
 	BKE_fracmesh_free(fmd->frac_mesh, true);
 	MEM_freeN(fmd->frac_mesh);
 	fmd->frac_mesh = NULL;
+
+	//free pack storage
+	pack_storage_remove_all(fmd);
 
 	//free all constraints first
 	BKE_free_constraints(fmd);

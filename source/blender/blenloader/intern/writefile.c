@@ -1931,6 +1931,10 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 						{
 							writestruct(wd, DATA, RigidBodyShardCon, 1, con);
 						}
+
+						for (s = fmd->pack_storage.first; s; s = s->next) {
+							write_shard(wd, s);
+						}
 					}
 				}
 			}

@@ -257,6 +257,9 @@ static void initData(ModifierData *md)
 	fmd->orthogonality_factor = 0.0f;
 	fmd->keep_distort = false;
 	fmd->do_merge = false;
+
+	fmd->pack_storage.first = NULL;
+	fmd->pack_storage.last = NULL;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -420,6 +423,8 @@ static void free_simulation(FractureModifierData *fmd, bool do_free_seq, bool do
 
 static void free_shards(FractureModifierData *fmd)
 {
+	Shard *s;
+
 	if (fmd->frac_mesh) {
 
 		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED ||
@@ -446,6 +451,12 @@ static void free_shards(FractureModifierData *fmd)
 
 			fmd->current_shard_entry = NULL;
 		}
+	}
+
+	while (fmd->pack_storage.first) {
+		s = fmd->pack_storage.first;
+		BLI_remlink(&fmd->pack_storage, s);
+		BKE_shard_free(s, true);
 	}
 }
 
@@ -1663,7 +1674,7 @@ static void do_fracture_points(FractureModifierData *fmd, Object* obj, DerivedMe
 
 		/* here we REALLY need to fracture so deactivate the shards to islands flag and activate afterwards */
 		fmd->shards_to_islands = false;
-		BKE_fracture_create_dm(fmd, true);
+		BKE_fracture_create_dm(fmd, true, false);
 		fmd->shards_to_islands = temp;
 
 		cleanup_splinters(fmd, mat, s, dm);
@@ -4501,7 +4512,7 @@ static ShardSequence* shard_sequence_add(FractureModifierData* fmd, float frame,
 
 		//build fmd->dm here !
 		fmd->shards_to_islands = false;
-		BKE_fracture_create_dm(fmd, true);
+		BKE_fracture_create_dm(fmd, true, false);
 		fmd->shards_to_islands = temp;
 
 		ssq->frac_mesh = fmd->frac_mesh;
@@ -4601,7 +4612,7 @@ static int do_modifier(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, c
 						bool tmp = fmd->shards_to_islands;
 
 						fmd->shards_to_islands = false;
-						BKE_fracture_create_dm(fmd, true);
+						BKE_fracture_create_dm(fmd, true, false);
 						fmd->shards_to_islands = tmp;
 
 						BKE_fracture_update_visual_mesh(fmd, ob, true);
@@ -4885,6 +4896,20 @@ static Shard* copy_shard(Shard *s)
 	return t;
 }
 
+static DerivedMesh *dm_from_packdata(FractureModifierData *fmd, DerivedMesh *derivedData)
+{
+	DerivedMesh *dm = NULL;
+	if (fmd->pack_storage.first)
+	{
+		dm = BKE_fracture_create_dm(fmd, true, true);
+	}
+	else {
+		dm = derivedData;
+	}
+
+	return dm;
+}
+
 static ThreadMutex dynamic_lock = BLI_MUTEX_INITIALIZER;
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
                                   DerivedMesh *derivedData,
@@ -4892,13 +4917,14 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 {
 
 	FractureModifierData *fmd = (FractureModifierData *) md;
+	DerivedMesh *pack_dm = dm_from_packdata(fmd, derivedData);
 	DerivedMesh *final_dm = derivedData;
 
 	if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 	{
 		bool init = false;
 		//deactivate multiple settings for now, not working properly XXX TODO (also deactivated in RNA and python)
-		final_dm = do_prefractured(fmd, ob, derivedData);
+		final_dm = do_prefractured(fmd, ob, pack_dm);
 
 		if (init)
 			fmd->shard_count = 10;
@@ -4911,7 +4937,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		}
 
 		BLI_mutex_lock(&dynamic_lock);
-		final_dm = do_dynamic(fmd, ob, derivedData);
+		final_dm = do_dynamic(fmd, ob, pack_dm);
 		BLI_mutex_unlock(&dynamic_lock);
 	}
 	else if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
@@ -4932,6 +4958,13 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	{
 		//dont forget to create customdatalayers for crease and bevel weights (else they wont be drawn in editmode)
 		final_dm->cd_flag |= (ME_CDFLAG_EDGE_CREASE | ME_CDFLAG_VERT_BWEIGHT | ME_CDFLAG_EDGE_BWEIGHT);
+	}
+
+	if (pack_dm != derivedData)
+	{
+		pack_dm->needsFree = 1;
+		pack_dm->release(pack_dm);
+		pack_dm = NULL;
 	}
 
 	return final_dm;

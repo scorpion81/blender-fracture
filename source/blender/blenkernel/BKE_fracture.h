@@ -84,10 +84,11 @@ float BKE_shard_calc_minmax(struct Shard *shard);
 
 void BKE_fracmesh_free(struct FracMesh *fm, bool doCustomData);
 void BKE_shard_free(struct Shard *s, bool doCustomData);
+struct Shard* BKE_fracture_shard_copy(struct Shard *s);
 
 
 /* DerivedMesh */
-void BKE_fracture_create_dm(struct FractureModifierData *fmd, bool doCustomData);
+struct DerivedMesh *BKE_fracture_create_dm(struct FractureModifierData *fmd, bool doCustomData, bool use_packed);
 struct DerivedMesh *BKE_shard_create_dm(struct Shard *s, bool doCustomData);
 
 /* create shards from base mesh and a list of points */
