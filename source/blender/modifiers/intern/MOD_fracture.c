@@ -99,7 +99,7 @@ static void reset_automerge(FractureModifierData *fmd);
 typedef struct SharedVertGroup {
 	struct SharedVertGroup* next, *prev;
 	int index;
-	bool exceeded, deltas_set;
+	bool exceeded, deltas_set, moved;
 	float rest_co[3];
 	float delta[3];
 	ListBase verts;
@@ -108,7 +108,7 @@ typedef struct SharedVertGroup {
 typedef struct SharedVert {
 	struct SharedVert* next, *prev;
 	int index;
-	bool exceeded, deltas_set;
+	bool exceeded, deltas_set, moved;
 	float rest_co[3];
 	float delta[3];
 } SharedVert;
@@ -3231,10 +3231,12 @@ static void reset_automerge(FractureModifierData *fmd)
 
 	for (vg = fmd->shared_verts.first; vg; vg = vg->next) {
 		vg->exceeded = false;
+		vg->moved = false;
 
 		for (sv = vg->verts.first; sv; sv = sv->next)
 		{
 			sv->exceeded = false;
+			sv->moved = false;
 		}
 	}
 }
@@ -3268,6 +3270,7 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 	SharedVert *sv;
 	SharedVertGroup *vg;
 	bool do_calc_delta = fmd->keep_distort;
+	float margin = 0.01f;
 
 	int cd_edge_crease_offset = CustomData_get_offset(&bm->edata, CD_CREASE);
 	if (cd_edge_crease_offset == -1) {
@@ -3320,11 +3323,18 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 			for (sv = vg->verts.first; sv; sv = sv->next)
 			{
 				v2 = bm->vtable[sv->index];
+
+				if ((len_squared_v3v3(co, v2->co) > ((fmd->autohide_dist + margin) * (fmd->autohide_dist + margin))))
+				{
+					sv->moved = true;
+				}
+
 				if (len_squared_v3v3(co, v2->co) <= fmd->automerge_dist * fmd->automerge_dist)
 				{
 					if (!sv->exceeded)
 					{
 						copy_v3_v3(v2->co, co);
+						BM_elem_flag_enable(v2, BM_ELEM_SELECT);
 					}
 				}
 				else {
@@ -3341,7 +3351,12 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 
 			if (len_squared_v3v3(co, v1->co) <= fmd->automerge_dist * fmd->automerge_dist)
 			{
+				if ((len_squared_v3v3(co, v1->co) > ((fmd->autohide_dist + margin) * (fmd->autohide_dist + margin))))
+				{
+					vg->moved = true;
+				}
 				copy_v3_v3(v1->co, co);	
+				BM_elem_flag_enable(v1, BM_ELEM_SELECT);
 			}
 			else {
 
@@ -3367,6 +3382,45 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 	}
 }
 
+static void optimize_automerge(FractureModifierData *fmd)
+{
+	SharedVertGroup *vg = fmd->shared_verts.first, *next = NULL;
+	SharedVert* sv = NULL;
+	int removed = 0, count = 0;
+
+	while(vg) {
+		bool intact = true;
+		sv = vg->verts.first;
+		while (sv) {
+			intact = intact && !sv->moved;
+			sv = sv->next;
+		}
+
+		intact = intact && !vg->moved;
+
+		next = vg->next;
+
+		if (intact) {
+			while(vg->verts.first) {
+				sv = vg->verts.first;
+				BLI_remlink(&vg->verts, sv);
+				MEM_freeN(sv);
+				sv = NULL;
+			}
+
+
+			BLI_remlink(&fmd->shared_verts, vg);
+			MEM_freeN(vg);
+			removed++;
+		}
+
+		vg = next;
+	}
+
+	count = BLI_listbase_count(&fmd->shared_verts);
+	printf("remaining | removed groups: %d | %d\n", count, removed);
+}
+
 static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Object *ob)
 {
 	int totpoly = dm->getNumPolys(dm);
@@ -3385,32 +3439,42 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 
 	BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
 
-	if (fmd->automerge_dist > 0)
+	//if (fmd->automerge_dist > 0)
 	{
-		//make vert groups together here, if vert is close enough
-		prepare_automerge(fmd, bm);
+		Scene* sc = fmd->modifier.scene;
+		RigidBodyWorld *rbw = sc ? sc->rigidbody_world : NULL;
+		PointCache *cache = rbw ? rbw->pointcache : NULL;
+		int frame = (int)BKE_scene_frame_get(sc);
+
+		if (fmd->automerge_dist > 0)
+		{
+			//make vert groups together here, if vert is close enough
+			prepare_automerge(fmd, bm);
+		}
+
+		if (cache && cache->endframe == frame)
+		{
+			optimize_automerge(fmd);
+		}
 	}
 
-	if (fmd->face_pairs)
+	if (fmd->face_pairs && fmd->autohide_dist > 0)
 	{
-		if (fmd->autohide_dist > 0)
-		{
-			for (i = 0; i < totpoly; i++) {
-				find_other_face(fmd, i, bm, ob,  &faces, &del_faces);
-			}
+		for (i = 0; i < totpoly; i++) {
+			find_other_face(fmd, i, bm, ob,  &faces, &del_faces);
+		}
 
-			for (i = 0; i < del_faces; i++) {
-				BMFace *f = faces[i];
-				if (f->l_first->e != NULL) { /* a lame check.... */
-					BMIter iter;
-					BMVert *v;
-					BM_ITER_ELEM(v, &iter, f, BM_VERTS_OF_FACE)
-					{
-						BM_elem_flag_enable(v, BM_ELEM_SELECT);
-					}
-
-					BM_elem_flag_enable(f, BM_ELEM_SELECT);
+		for (i = 0; i < del_faces; i++) {
+			BMFace *f = faces[i];
+			if (f->l_first->e != NULL) { /* a lame check.... */
+				BMIter iter;
+				BMVert *v;
+				BM_ITER_ELEM(v, &iter, f, BM_VERTS_OF_FACE)
+				{
+					BM_elem_flag_enable(v, BM_ELEM_SELECT);
 				}
+
+				BM_elem_flag_enable(f, BM_ELEM_SELECT);
 			}
 		}
 
@@ -3456,7 +3520,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 		}
 	}
 
-	if (fmd->automerge_dist > 0 && !fmd->fix_normals)
+	if (!fmd->fix_normals)
 	{
 		BM_mesh_normals_update(bm);
 	}
@@ -3883,12 +3947,16 @@ static DerivedMesh *output_dm(FractureModifierData* fmd, DerivedMesh *dm, Object
 			}
 		}
 
-		if (fmd->autohide_dist > 0 || fmd->automerge_dist > 0) {
+		if (fmd->autohide_dist > 0 || fmd->automerge_dist > 0)
+		{
 			//printf("Autohide \n");
 			dm_final = do_autoHide(fmd, fmd->visible_mesh_cached, ob);
 		}
 		else {
 			dm_final = CDDM_copy(fmd->visible_mesh_cached);
+			if (!fmd->fix_normals) {
+				dm_final->calcNormals(dm_final);
+			}
 		}
 
 		return dm_final;
@@ -4034,6 +4102,7 @@ static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm)
 			gvert->verts.last = NULL;
 			gvert->exceeded = false;
 			gvert->deltas_set = false;
+			gvert->moved = false;
 			zero_v3(gvert->delta);
 			copy_v3_v3(gvert->rest_co, mvert[i].co);
 
@@ -4050,6 +4119,7 @@ static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm)
 						svert->index = index;
 						svert->exceeded = false;
 						svert->deltas_set = false;
+						svert->moved = false;
 						zero_v3(svert->delta);
 						copy_v3_v3(svert->rest_co, mvert[index].co);
 						BLI_addtail(&gvert->verts, svert);
