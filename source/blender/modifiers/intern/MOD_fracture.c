@@ -4969,7 +4969,8 @@ static Shard* copy_shard(Shard *s)
 static DerivedMesh *dm_from_packdata(FractureModifierData *fmd, DerivedMesh *derivedData)
 {
 	DerivedMesh *dm = NULL;
-	if (fmd->pack_storage.first)
+	/* keep old way of using dynamic external working as well, without interfering with packing */
+	if (fmd->pack_storage.first && !fmd->is_dynamic_external)
 	{
 		dm = BKE_fracture_create_dm(fmd, true, true);
 	}
