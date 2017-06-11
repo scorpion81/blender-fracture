@@ -93,8 +93,9 @@ static Shard* find_shard(ListBase *shards, ShardID id);
 static void cleanup_arrange_shard(FractureModifierData *fmd, Shard *s, float cent[]);
 static MeshIsland* find_meshisland(ListBase* meshIslands, int id);
 static void do_halving(FractureModifierData *fmd, Object* ob, DerivedMesh *dm, DerivedMesh *orig_dm, bool is_prehalving, ShardID id);
-static void free_shared_verts(FractureModifierData* fmd);
+static void free_shared_verts(ListBase *lb);
 static void reset_automerge(FractureModifierData *fmd);
+static void do_refresh_automerge(FractureModifierData *fmd);
 
 typedef struct SharedVertGroup {
 	struct SharedVertGroup* next, *prev;
@@ -493,7 +494,7 @@ static void free_modifier(FractureModifierData *fmd, bool do_free_seq, bool do_f
 		fmd->face_pairs = NULL;
 	}
 
-	free_shared_verts(fmd);
+	free_shared_verts(&fmd->shared_verts);
 
 	//called on deleting modifier, object or quitting blender...
 	//why was this necessary again ?!
@@ -3270,7 +3271,7 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 	SharedVert *sv;
 	SharedVertGroup *vg;
 	bool do_calc_delta = fmd->keep_distort;
-	float margin = 0.001f;
+	float dist = fmd->autohide_dist;
 
 	int cd_edge_crease_offset = CustomData_get_offset(&bm->edata, CD_CREASE);
 	if (cd_edge_crease_offset == -1) {
@@ -3324,7 +3325,7 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 			{
 				v2 = bm->vtable[sv->index];
 
-				if ((len_squared_v3v3(co, v2->co) > ((fmd->autohide_dist + margin) * (fmd->autohide_dist + margin))))
+				if ((len_squared_v3v3(co, v2->co) > (dist * dist)))
 				{
 					sv->moved = true;
 				}
@@ -3351,10 +3352,11 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 
 			if (len_squared_v3v3(co, v1->co) <= fmd->automerge_dist * fmd->automerge_dist)
 			{
-				if ((len_squared_v3v3(co, v1->co) > ((fmd->autohide_dist + margin) * (fmd->autohide_dist + margin))))
+				if ((len_squared_v3v3(co, v1->co) > (dist * dist)))
 				{
 					vg->moved = true;
 				}
+
 				copy_v3_v3(v1->co, co);	
 				BM_elem_flag_enable(v1, BM_ELEM_SELECT);
 			}
@@ -3439,13 +3441,14 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 
 	BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
 
-#if 0
 	//if (fmd->automerge_dist > 0)
 	{
 		Scene* sc = fmd->modifier.scene;
 		RigidBodyWorld *rbw = sc ? sc->rigidbody_world : NULL;
 		PointCache *cache = rbw ? rbw->pointcache : NULL;
 		int frame = (int)BKE_scene_frame_get(sc);
+		int endframe = sc->r.efra;
+		int testframe = MIN2(cache->endframe, endframe);
 
 		if (fmd->automerge_dist > 0)
 		{
@@ -3453,17 +3456,9 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 			prepare_automerge(fmd, bm);
 		}
 
-		if (cache && cache->endframe == frame)
-		{
+		if (cache && frame == testframe) {
 			optimize_automerge(fmd);
 		}
-	}
-#endif
-
-	if (fmd->automerge_dist > 0)
-	{
-		//make vert groups together here, if vert is close enough
-		prepare_automerge(fmd, bm);
 	}
 
 	if (fmd->face_pairs && fmd->autohide_dist > 0)
@@ -4076,7 +4071,7 @@ static void do_refresh_constraints(FractureModifierData *fmd, Object *ob)
 	printf("Constraints: %d\n", BLI_listbase_count(&fmd->meshConstraints));
 }
 
-static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm)
+static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm, ListBase *shared_verts)
 {
 	/* make kdtree of all verts of dm, then find closest(rangesearch) verts for each vert*/
 	MVert* mvert = dm->getVertArray(dm), *mv = NULL;
@@ -4137,7 +4132,7 @@ static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm)
 
 			if (gvert->verts.first != NULL)
 			{
-				BLI_addtail(&fmd->shared_verts, gvert);
+				BLI_addtail(shared_verts, gvert);
 				groups++;
 			}
 			else {
@@ -4155,40 +4150,46 @@ static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm)
 	BLI_kdtree_free(tree);
 }
 
-static void free_shared_verts(FractureModifierData* fmd)
+static void free_shared_vert_group(SharedVertGroup *vg)
 {
-	SharedVertGroup *vg;
 	SharedVert *sv;
 
-	while (fmd->shared_verts.first)
-	{
-		vg = fmd->shared_verts.first;
-		BLI_remlink(&fmd->shared_verts, vg);
-		while (vg->verts.first) {
-			sv = vg->verts.first;
-			BLI_remlink(&vg->verts, sv);
-			MEM_freeN(sv);
-		}
-		MEM_freeN(vg);
+	while (vg->verts.first) {
+		sv = vg->verts.first;
+		BLI_remlink(&vg->verts, sv);
+		MEM_freeN(sv);
 	}
-
-	fmd->shared_verts.first = NULL;
-	fmd->shared_verts.last = NULL;
+	MEM_freeN(vg);
 }
 
-static void do_refresh_automerge(FractureModifierData* fmd, Object *ob)
+static void free_shared_verts(ListBase* lb)
 {
-	free_shared_verts(fmd);
+	SharedVertGroup *vg;
+
+	while (lb->first)
+	{
+		vg = lb->first;
+		BLI_remlink(lb, vg);
+		free_shared_vert_group(vg);
+	}
+
+	lb->first = NULL;
+	lb->last = NULL;
+}
+
+static void do_refresh_automerge(FractureModifierData* fmd)
+{
+	free_shared_verts(&fmd->shared_verts);
 
 	/* in case of re-using existing islands this one might become invalid for automerge, so force fallback */
 	if (fmd->dm && fmd->dm->getNumVerts(fmd->dm) > 0)
 	{
-		make_shared_vert_groups(fmd, fmd->dm);
+		make_shared_vert_groups(fmd, fmd->dm, &fmd->shared_verts);
 	}
 	else if (fmd->visible_mesh)
 	{
 		DerivedMesh *fdm = CDDM_from_bmesh(fmd->visible_mesh, true);
-		make_shared_vert_groups(fmd, fdm);
+		make_shared_vert_groups(fmd, fdm, &fmd->shared_verts);
 
 		fdm->needsFree = 1;
 		fdm->release(fdm);
@@ -4406,7 +4407,7 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		do_refresh_autohide(fmd, ob);
 
 		if (fmd->autohide_dist > 0) {
-			do_refresh_automerge(fmd, ob);
+			do_refresh_automerge(fmd);
 		}
 	}
 
@@ -5021,6 +5022,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	}
 	else if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 	{
+		DerivedMesh *dm_final = NULL;
+
 		fmd->refresh = false;
 		fmd->shards_to_islands = false;
 
@@ -5029,8 +5032,29 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			BKE_fracture_update_visual_mesh(fmd, ob, true);
 		}
 
-		if (fmd->visible_mesh_cached)
-			return CDDM_copy(fmd->visible_mesh_cached);
+		if (fmd->visible_mesh_cached) {
+
+			if (fmd->refresh_autohide) {
+				do_refresh_autohide(fmd, ob);
+
+				if (fmd->autohide_dist > 0) {
+					do_refresh_automerge(fmd);
+				}
+			}
+
+			if (fmd->autohide_dist > 0 || fmd->automerge_dist > 0)
+			{
+				dm_final = do_autoHide(fmd, fmd->visible_mesh_cached, ob);
+			}
+			else {
+				dm_final = CDDM_copy(fmd->visible_mesh_cached);
+				if (!fmd->fix_normals) {
+					dm_final->calcNormals(dm_final);
+				}
+			}
+
+			return dm_final;
+		}
 	}
 
 	if (final_dm != derivedData)

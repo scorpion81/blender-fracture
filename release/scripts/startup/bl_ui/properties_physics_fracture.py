@@ -87,10 +87,10 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         row.prop(md, "fracture_mode")
 
         if md.fracture_mode == 'EXTERNAL':
-            col = layout.column(align=True)
-            col.context_pointer_set("modifier", md)
-            col.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
-            col.operator("object.rigidbody_convert_to_keyframes", text = "Convert To Keyframed Objects")
+        #    col = layout.column(align=True)
+        #    col.context_pointer_set("modifier", md)
+        #    col.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
+        #    col.operator("object.rigidbody_convert_to_keyframes", text = "Convert To Keyframed Objects")
             return
 
         if md.fracture_mode == 'DYNAMIC':
@@ -246,7 +246,7 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
     @classmethod
     def poll(cls, context):
         md = context.fracture
-        return PhysicButtonsPanel.poll(context) and md.fracture_mode != 'EXTERNAL'
+        return PhysicButtonsPanel.poll(context) # and md.fracture_mode != 'EXTERNAL'
 
     def draw(self, context):
         layout = self.layout
