@@ -3139,6 +3139,11 @@ static void make_face_pairs(FractureModifierData *fmd, DerivedMesh *dm, Object *
 		}
 	}
 
+	if (faces == 0 || pairs == 0) {
+		BLI_ghash_free(fmd->face_pairs, NULL, NULL);
+		fmd->face_pairs = NULL;
+	}
+
 	printf("faces, pairs: %d %d\n", faces, pairs);
 	BLI_kdtree_free(tree);
 }
@@ -3233,11 +3238,15 @@ static void reset_automerge(FractureModifierData *fmd)
 	for (vg = fmd->shared_verts.first; vg; vg = vg->next) {
 		vg->exceeded = false;
 		vg->moved = false;
+		zero_v3(vg->delta);
+		vg->deltas_set = false;
 
 		for (sv = vg->verts.first; sv; sv = sv->next)
 		{
 			sv->exceeded = false;
 			sv->moved = false;
+			zero_v3(sv->delta);
+			sv->deltas_set = false;
 		}
 	}
 }
@@ -3283,11 +3292,12 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 		BMVert* v1, *v2;
 		BMIter iter;
 		BMEdge *e;
-		float co[3];
+		float co[3], no[3], inverse;
 		int verts = 0;
 
 		v1 = bm->vtable[vg->index];
 		copy_v3_v3(co, v1->co);
+		copy_v3_v3(no, v1->no);
 		verts = 1;
 
 		for (sv = vg->verts.first; sv; sv = sv->next)
@@ -3297,6 +3307,7 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 
 			if (!sv->exceeded) {
 				add_v3_v3(co, v2->co);
+				add_v3_v3(no, v2->no);
 				verts++;
 			}
 			else
@@ -3307,7 +3318,7 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 				}
 			}
 
-			if (vg->exceeded)
+			if (sv->exceeded)
 			{
 				BM_ITER_ELEM(e, &iter2, v2, BM_EDGES_OF_VERT)
 				{
@@ -3316,10 +3327,12 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 			}
 		}
 
-		mul_v3_fl(co, 1.0f/(float)verts);
+		inverse = 1.0f/(float)verts;
+		mul_v3_fl(co, inverse);
+		mul_v3_fl(no, inverse);
 		verts = 0;
 
-		if (!vg->exceeded)
+		//if (!vg->exceeded)
 		{
 			for (sv = vg->verts.first; sv; sv = sv->next)
 			{
@@ -3335,12 +3348,11 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 					if (!sv->exceeded)
 					{
 						copy_v3_v3(v2->co, co);
-						BM_elem_flag_enable(v2, BM_ELEM_SELECT);
+						copy_v3_v3(v2->no, no);
 					}
 				}
 				else {
 					sv->exceeded = true;
-					vg->exceeded = true;
 
 					if (!sv->deltas_set){
 						sub_v3_v3v3(sv->delta, co, v2->co);
@@ -3350,15 +3362,17 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 				}
 			}
 
+			if ((len_squared_v3v3(co, v1->co) > (dist * dist)))
+			{
+				vg->moved = true;
+			}
+
 			if (len_squared_v3v3(co, v1->co) <= fmd->automerge_dist * fmd->automerge_dist)
 			{
-				if ((len_squared_v3v3(co, v1->co) > (dist * dist)))
-				{
-					vg->moved = true;
+				if (!vg->exceeded) {
+					copy_v3_v3(v1->co, co);
+					copy_v3_v3(v1->no, no);
 				}
-
-				copy_v3_v3(v1->co, co);	
-				BM_elem_flag_enable(v1, BM_ELEM_SELECT);
 			}
 			else {
 
@@ -3369,7 +3383,8 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 				}
 			}
 		}
-		else
+
+		if (vg->exceeded)
 		{
 			if (do_calc_delta && vg->deltas_set)
 			{
@@ -3439,7 +3454,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 	BM_mesh_elem_table_ensure(bm, BM_FACE | BM_VERT);
 	BM_mesh_elem_toolflags_ensure(bm);
 
-	BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
+	//BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
 
 	//if (fmd->automerge_dist > 0)
 	{
@@ -3463,6 +3478,8 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 
 	if (fmd->face_pairs && fmd->autohide_dist > 0)
 	{
+		BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
+
 		for (i = 0; i < totpoly; i++) {
 			find_other_face(fmd, i, bm, ob,  &faces, &del_faces);
 		}
@@ -3485,11 +3502,11 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 		{
 			BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "delete_keep_normals geom=%hf context=%i", BM_ELEM_SELECT, DEL_FACES);
 		}
+	}
 
-		if (del_faces == 0) {
-			/*fallback if you want to merge verts but use no filling method, whose faces could be hidden (and you dont have any selection then) */
-			BM_mesh_elem_hflag_enable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
-		}
+	if (del_faces == 0) {
+		/*fallback if you want to merge verts but use no filling method, whose faces could be hidden (and you dont have any selection then) */
+		BM_mesh_elem_hflag_enable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
 	}
 
 	if (fmd->automerge_dist > 0 && do_merge) {
