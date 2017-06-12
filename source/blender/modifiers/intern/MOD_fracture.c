@@ -3237,14 +3237,14 @@ static void reset_automerge(FractureModifierData *fmd)
 
 	for (vg = fmd->shared_verts.first; vg; vg = vg->next) {
 		vg->exceeded = false;
-		vg->moved = false;
+		//vg->moved = false;
 		zero_v3(vg->delta);
 		vg->deltas_set = false;
 
 		for (sv = vg->verts.first; sv; sv = sv->next)
 		{
 			sv->exceeded = false;
-			sv->moved = false;
+			//sv->moved = false;
 			zero_v3(sv->delta);
 			sv->deltas_set = false;
 		}
@@ -4360,6 +4360,19 @@ static void do_island_index_map(FractureModifierData *fmd)
 	}
 }
 
+static void do_reset_automerge(FractureModifierData* fmd)
+{
+	if (fmd->modifier.scene && fmd->modifier.scene->rigidbody_world) {
+		Scene *sc = fmd->modifier.scene;
+		RigidBodyWorld *rbw = sc->rigidbody_world;
+		int frame = (int)BKE_scene_frame_get(sc);
+		int start = rbw ? MAX2(rbw->pointcache->startframe, sc->r.sfra) : 1;
+		if (frame == start) {
+			reset_automerge(fmd);
+		}
+	}
+}
+
 
 static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm, char names [][66], int count)
 {
@@ -4428,19 +4441,11 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 		}
 	}
 
+	do_reset_automerge(fmd);
+
 	if (fmd->refresh_constraints) {
 		do_island_index_map(fmd);
 		do_refresh_constraints(fmd, ob);
-	}
-
-	if (fmd->modifier.scene && fmd->modifier.scene->rigidbody_world) {
-		Scene *sc = fmd->modifier.scene;
-		RigidBodyWorld *rbw = sc->rigidbody_world;
-		int frame = (int)BKE_scene_frame_get(sc);
-		int start = rbw ? rbw->pointcache->startframe : 1;
-		if (frame == start) {
-			reset_automerge(fmd);
-		}
 	}
 
 	/*XXX better rename this, it checks whether we have a valid fractured mesh */
@@ -5058,6 +5063,8 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					do_refresh_automerge(fmd);
 				}
 			}
+
+			do_reset_automerge(fmd);
 
 			if (fmd->autohide_dist > 0 || fmd->automerge_dist > 0)
 			{
