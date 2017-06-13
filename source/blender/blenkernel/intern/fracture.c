@@ -92,6 +92,7 @@ static void parse_cell_verts(cell c, MVert *mvert, int totvert);
 static void parse_cell_polys(cell c, MPoly *mpoly, int totpoly, int *r_totloop);
 static void parse_cell_loops(cell c, MLoop *mloop, int totloop, MPoly *mpoly, int totpoly);
 static void parse_cell_neighbors(cell c, int *neighbors, int totpoly);
+static void fracture_collect_layers(Shard *shard, DerivedMesh *result, int vertstart, int polystart, int loopstart, int edgestart);
 
 static void add_shard(FracMesh *fm, Shard *s, float mat[4][4])
 {
@@ -2001,8 +2002,11 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 		medges = CDDM_get_edges(result);
 	}
 
+#if 0
 	if (doCustomData && shard_count > 0) {
+
 		Shard *s;
+
 		if (fmd->shards_to_islands) {
 			s = (Shard *)fmd->islandShards.first;
 		}
@@ -2010,7 +2014,7 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 			s = (Shard *)fmd->frac_mesh->shard_map.first;
 		}
 
-		if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
+		//if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED || fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			/*keep old behavior for now for older modes */
 			CustomData_merge(&s->vertData, &result->vertData, CD_MASK_MDEFORMVERT, CD_CALLOC, num_verts);
@@ -2028,6 +2032,7 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 			CustomData_add_layer(&result->edgeData, CD_BWEIGHT, CD_CALLOC, NULL, num_edges);
 		}
 	}
+#endif
 
 	vertstart = polystart = loopstart = edgestart = 0;
 	if (use_packed)
@@ -2050,18 +2055,6 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 
 		memcpy(mverts + vertstart, shard->mvert, shard->totvert * sizeof(MVert));
 		memcpy(mpolys + polystart, shard->mpoly, shard->totpoly * sizeof(MPoly));
-
-#if 0
-		if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
-		{
-			for (i = 0, mv = mverts + vertstart; i < shard->totvert; i++, mv++)
-			{
-				sub_v3_v3(mv->co, shard->centroid);
-				mul_v3_v3(mv->co, shard->raw_centroid);
-				add_v3_v3(mv->co, shard->centroid);
-			}
-		}
-#endif
 
 		for (i = 0, mp = mpolys + polystart; i < shard->totpoly; ++i, ++mp) {
 			/* adjust loopstart index */
@@ -2086,7 +2079,9 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 			}
 		}
 
+#if 0
 		if (doCustomData) {
+
 			if (shard->totvert > 1) {
 				CustomData_copy_data(&shard->vertData, &result->vertData, 0, vertstart, shard->totvert);
 			}
@@ -2098,6 +2093,11 @@ static DerivedMesh* do_create(FractureModifierData *fmd, int num_verts, int num_
 			if (shard->totpoly > 0) {
 				CustomData_copy_data(&shard->polyData, &result->polyData, 0, polystart, shard->totpoly);
 			}
+		}
+#endif
+
+		if (doCustomData) {
+			fracture_collect_layers(shard, result, vertstart, polystart, loopstart, edgestart);
 		}
 
 		vertstart += shard->totvert;
@@ -2223,7 +2223,7 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 	CDDM_calc_normals_mapping(dm);
 
 	if (doCustomData) {
-		if (s->totvert > 0) {
+		/*if (s->totvert > 0) {
 			BKE_copy_customdata_layers(&dm->vertData, &s->vertData, CD_MDEFORMVERT, s->totvert);
 		}
 		if (s->totloop > 0) {
@@ -2231,7 +2231,9 @@ DerivedMesh *BKE_shard_create_dm(Shard *s, bool doCustomData)
 		}
 		if (s->totpoly > 0) {
 			BKE_copy_customdata_layers(&dm->polyData, &s->polyData, CD_MTEXPOLY, s->totpoly);
-		}
+		}*/
+
+		fracture_collect_layers(s, dm, 0, 0, 0, 0);
 	}
 
 	return dm;
@@ -2782,11 +2784,12 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 {
 	MeshIsland *mi;
 	DerivedMesh *dm = fmd->visible_mesh_cached;
-	int vertstart = 0, totvert = 0, totpoly = 0, polystart = 0, matstart = 1, defstart = 0;
+	int vertstart = 0, totvert = 0, totpoly = 0, polystart = 0, matstart = 1, defstart = 0, loopstart = 0;
 	MVert *mv = NULL;
 	MPoly *mp = NULL, *mpoly = NULL, *ppoly = NULL, *pp = NULL, *spoly = NULL, *sp = NULL, *tpoly = NULL, *tp = NULL;
 	int i = 0, j = 0;
 	MDeformVert *dvert = NULL;
+	Mesh *me = (Mesh*)ob->data;
 
 	if (dm)
 	{
@@ -2807,6 +2810,9 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 	mpoly = dm->getPolyArray(dm);
 	dvert = CustomData_get_layer(&dm->vertData, CD_MDEFORMVERT);
 
+	CustomData_merge(&dm->loopData, &me->ldata, CD_MASK_MLOOPUV, CD_CALLOC, dm->getNumLoops(dm));
+	CustomData_merge(&dm->polyData, &me->pdata, CD_MASK_MTEXPOLY, CD_CALLOC, dm->getNumPolys(dm));
+
 	//update existing island's vert refs, if any...should have used indexes instead :S
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 	{
@@ -2817,6 +2823,9 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 
 		if (!s)
 			continue;
+
+		//CustomData_copy_data(&dm->loopData, &me->ldata, loopstart, loopstart, s->totloop);
+		//CustomData_copy_data(&dm->polyData, &me->pdata, polystart, polystart, s->totpoly);
 
 		inv_size[0] = 1.0f / s->impact_size[0];
 		inv_size[1] = 1.0f / s->impact_size[1];
@@ -2929,12 +2938,13 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 		/* fortunately we know how many faces "belong" to this meshisland, too */
 		polystart += totpoly;
 		matstart += mi->totcol;
+		loopstart += s->totloop;
 	}
 
 	return vertstart;
 }
 
-short fracture_collect_defgrp(Object* o, Object* ob, short defstart, GHash** def_index_map)
+int fracture_collect_defgrp(Object* o, Object* ob, int defstart, GHash** def_index_map)
 {
 	bDeformGroup *vgroup, *ngroup;
 	int k = 0;
@@ -2998,14 +3008,51 @@ void pack_storage_add(FractureModifierData *fmd, Shard* s)
 	BLI_addtail(&fmd->pack_storage, t);
 }
 
+void fracture_collect_layer(CustomData* src, CustomData *dst, int totelem, int cd_type, int dst_offset, int count)
+{
+	int totlayer = CustomData_number_of_layers(src, cd_type);
+	int j;
+
+	for (j = 0; j < totlayer; j++)
+	{
+		char *name = CustomData_get_layer_name(src, cd_type, j);
+
+		//find index of named layer in dst mesh
+		int index = CustomData_get_named_layer_index(dst, cd_type, name);
+		if (index == -1)
+		{
+			//add layer if not there
+			//void *layer = CustomData_get_layer_named(src, cd_type, name);
+			CustomData_add_layer_named(dst, cd_type, CD_CALLOC, NULL, totelem, name);
+		}
+
+		index = CustomData_get_named_layer_index(dst, cd_type, name);
+		CustomData_copy_data_layer(src, dst, j, index, 0, dst_offset, count);
+	}
+}
+
+void fracture_collect_layers(Shard* s, DerivedMesh *dm, int vertstart, int polystart, int loopstart, int edgestart)
+{
+	int totloop = dm->getNumLoops(dm);
+	int totvert = dm->getNumVerts(dm);
+	int totpoly = dm->getNumPolys(dm);
+	int totedge = dm->getNumEdges(dm);
+
+	fracture_collect_layer(&s->vertData, &dm->vertData, totvert, CD_MDEFORMVERT, vertstart, s->totvert);
+	fracture_collect_layer(&s->loopData, &dm->loopData, totloop, CD_MLOOPUV, loopstart, s->totloop);
+	fracture_collect_layer(&s->polyData, &dm->polyData, totpoly, CD_MTEXPOLY, polystart, s->totpoly);
+	fracture_collect_layer(&s->edgeData, &dm->edgeData, totedge, CD_CREASE, edgestart, s->totedge);
+	fracture_collect_layer(&s->edgeData, &dm->edgeData, totedge, CD_BWEIGHT, edgestart, s->totedge);
+	//fracture_collect_layer(&s->edgeData, &dm->edgeData, totedge, CD_MEDGE, edgestart, s->totedge);
+}
+
 MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own, Object *target)
 {
 	MeshIsland *mi;
 	Shard *s;
-	int vertstart = 0, totpoly = 0, i = 0;
+	int vertstart = 0;
 	short totcol = 0, totdef = 0;
 	float loc[3], quat[4];
-	MPoly *mpoly, *mp;
 
 	if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL || own->type != OB_MESH || !own->data)
 		return NULL;
@@ -3067,6 +3114,7 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 	mi->totdef = totdef;
 
 	//XXX TODO handle UVs, shapekeys and more ?
+//	fracture_collect_uv_tex(target, own);
 
 	//add shard to pack storage
 	pack_storage_add(fmd, s);

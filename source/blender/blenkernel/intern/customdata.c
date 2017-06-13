@@ -2172,7 +2172,7 @@ void CustomData_copy_elements(int type, void *src_data_ofs, void *dst_data_ofs, 
 		memcpy(dst_data_ofs, src_data_ofs, (size_t)count * typeInfo->size);
 }
 
-static void CustomData_copy_data_layer(
+void CustomData_copy_data_layer(
         const CustomData *source, CustomData *dest,
         int src_i, int dst_i,
         int src_index, int dst_index, int count)

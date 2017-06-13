@@ -5044,7 +5044,17 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	}
 	else if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
 	{
-		DerivedMesh *dm_final = NULL;
+		if (ob->type != OB_MESH)
+		{	//sanity check
+			if (pack_dm != derivedData)
+			{
+				pack_dm->needsFree = 1;
+				pack_dm->release(pack_dm);
+				pack_dm = NULL;
+			}
+
+			return derivedData;
+		}
 
 		fmd->refresh = false;
 		fmd->shards_to_islands = false;
@@ -5068,16 +5078,14 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 			if (fmd->autohide_dist > 0 || fmd->automerge_dist > 0)
 			{
-				dm_final = do_autoHide(fmd, fmd->visible_mesh_cached, ob);
+				final_dm = do_autoHide(fmd, fmd->visible_mesh_cached, ob);
 			}
 			else {
-				dm_final = CDDM_copy(fmd->visible_mesh_cached);
+				final_dm = CDDM_copy(fmd->visible_mesh_cached);
 				if (!fmd->fix_normals) {
-					dm_final->calcNormals(dm_final);
+					final_dm->calcNormals(final_dm);
 				}
 			}
-
-			return dm_final;
 		}
 	}
 

@@ -225,6 +225,12 @@ void CustomData_bmesh_copy_data(const struct CustomData *source,
                                 struct CustomData *dest, void *src_block, 
                                 void **dest_block);
 
+/* need this function exposed to deal with customdata in Fracture Modifier properly */
+void CustomData_copy_data_layer(
+        const CustomData *source, CustomData *dest,
+        int src_i, int dst_i,
+        int src_index, int dst_index, int count);
+
 /* frees data in a CustomData object
  * return 1 on success, 0 on failure
  */
