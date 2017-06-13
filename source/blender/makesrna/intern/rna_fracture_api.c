@@ -613,7 +613,7 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_DISABLE_COLLISIONS);
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_disable_collisions_set");
 	RNA_def_property_ui_text(prop, "Disable Collisions", "Disable collisions between constrained rigid bodies");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	/* Breaking Threshold */
 	prop = RNA_def_property(srna, "use_breaking", PROP_BOOLEAN, PROP_NONE);

@@ -4867,8 +4867,11 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 
 	if (ctime == -1)
 	{
-		/*hack to be able to update the simulation data after loading from FM*/
-		rigidbody_update_simulation(scene, rbw, true);
+		if (rbw && rbw->group)
+		{
+			/*hack to be able to update the simulation data after loading from FM*/
+			rigidbody_update_simulation(scene, rbw, true);
+		}
 		return;
 	}
 

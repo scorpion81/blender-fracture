@@ -3313,8 +3313,8 @@ RigidBodyShardCon *BKE_fracture_mesh_islands_connect(FractureModifierData *fmd, 
 		rbsc->flag &= ~RBC_FLAG_USE_BREAKING;
 
 		/* also delete all other "default" flags here, let them being overriden from python too */
-		rbsc->flag &= ~RBC_FLAG_ENABLED;
-		rbsc->flag &= ~RBC_FLAG_DISABLE_COLLISIONS;
+		//rbsc->flag &= ~RBC_FLAG_ENABLED;
+		rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
 
 #if 0
 		/* and dont allow to let constrained objects collide per default, as with regular constraints */
