@@ -3357,22 +3357,28 @@ RigidBodyShardCon *BKE_fracture_mesh_islands_connect(FractureModifierData *fmd, 
 
 	/* store constraints per meshisland too, to allow breaking percentage */
 	if (mi1->participating_constraints == NULL) {
-		mi1->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon *), "part_constraints_mi1");
-		mi1->participating_constraint_count = 0;
+		mi1->participating_constraints = MEM_mallocN(sizeof(RigidBodyShardCon *), "part_constraints_mi1");
+		mi1->participating_constraints[0] = rbsc;
+		mi1->participating_constraint_count = 1;
 	}
-
-	mi1->participating_constraints = MEM_reallocN(mi1->participating_constraints, sizeof(RigidBodyShardCon *) * (mi1->participating_constraint_count + 1));
-	mi1->participating_constraints[mi1->participating_constraint_count] = rbsc;
-	mi1->participating_constraint_count++;
+	else
+	{
+		mi1->participating_constraints = MEM_reallocN(mi1->participating_constraints, sizeof(RigidBodyShardCon *) * (mi1->participating_constraint_count + 1));
+		mi1->participating_constraints[mi1->participating_constraint_count] = rbsc;
+		mi1->participating_constraint_count++;
+	}
 
 	if (mi2->participating_constraints == NULL) {
-		mi2->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon *), "part_constraints_mi2");
-		mi2->participating_constraint_count = 0;
+		mi2->participating_constraints = MEM_mallocN(sizeof(RigidBodyShardCon *), "part_constraints_mi2");
+		mi2->participating_constraints[0] = rbsc;
+		mi2->participating_constraint_count = 1;
 	}
-
-	mi2->participating_constraints = MEM_reallocN(mi2->participating_constraints, sizeof(RigidBodyShardCon *) * (mi2->participating_constraint_count + 1));
-	mi2->participating_constraints[mi2->participating_constraint_count] = rbsc;
-	mi2->participating_constraint_count++;
+	else
+	{
+		mi2->participating_constraints = MEM_reallocN(mi2->participating_constraints, sizeof(RigidBodyShardCon *) * (mi2->participating_constraint_count + 1));
+		mi2->participating_constraints[mi2->participating_constraint_count] = rbsc;
+		mi2->participating_constraint_count++;
+	}
 
 	return rbsc;
 }

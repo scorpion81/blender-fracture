@@ -5062,16 +5062,33 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		if (!fmd->visible_mesh_cached)
 		{
 			BKE_fracture_update_visual_mesh(fmd, ob, true);
+			fmd->refresh_autohide = true;
+
+			if (fmd->face_pairs != NULL) {
+				BLI_ghash_free(fmd->face_pairs, NULL, NULL);
+				fmd->face_pairs = NULL;
+			}
 		}
 
 		if (fmd->visible_mesh_cached) {
 
 			if (fmd->refresh_autohide) {
-				do_refresh_autohide(fmd, ob);
 
 				if (fmd->autohide_dist > 0) {
-					do_refresh_automerge(fmd);
+
+					if (!fmd->face_pairs)
+					{
+						fmd->face_pairs = BLI_ghash_int_new("face_pairs");
+					}
+
+					make_face_pairs(fmd, fmd->visible_mesh_cached, ob);
+
+
+					free_shared_verts(&fmd->shared_verts);
+					make_shared_vert_groups(fmd, fmd->visible_mesh_cached, &fmd->shared_verts);
 				}
+
+				fmd->refresh_autohide = false;
 			}
 
 			do_reset_automerge(fmd);

@@ -2986,7 +2986,7 @@ RigidBodyShardCon *BKE_rigidbody_create_shard_constraint(Scene *scene, short typ
 	rbc->flag &= ~RBC_FLAG_DISABLE_COLLISIONS;
 	rbc->flag |= RBC_FLAG_USE_BREAKING;
 
-	rbc->breaking_threshold = 1.0f; /* no good default here, just use 10 for now */
+	rbc->breaking_threshold = 10.0f; /* no good default here, just use 10 for now */
 	rbc->num_solver_iterations = 10; /* 10 is Bullet default */
 
 	rbc->limit_lin_x_lower = -1.0f;
