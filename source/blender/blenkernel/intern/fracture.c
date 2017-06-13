@@ -2790,6 +2790,7 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 	int i = 0, j = 0;
 	MDeformVert *dvert = NULL;
 	Mesh *me = (Mesh*)ob->data;
+	Shard *s, *t;
 
 	if (dm)
 	{
@@ -2813,16 +2814,19 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 	CustomData_merge(&dm->loopData, &me->ldata, CD_MASK_MLOOPUV, CD_CALLOC, dm->getNumLoops(dm));
 	CustomData_merge(&dm->polyData, &me->pdata, CD_MASK_MTEXPOLY, CD_CALLOC, dm->getNumPolys(dm));
 
+	s = fmd->frac_mesh->shard_map.first;
+	t = fmd->pack_storage.first;
+
 	//update existing island's vert refs, if any...should have used indexes instead :S
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 	{
 		MVert *pvert = mi->physics_mesh->getVertArray(mi->physics_mesh);
 		float inv_size[3] = {1.0f, 1.0f, 1.0f};
-		Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, mi->id);
-		Shard *t = BLI_findlink(&fmd->pack_storage, mi->id);
+		//Shard *s = BLI_findlink(&fmd->frac_mesh->shard_map, mi->id);
+		//Shard *t = BLI_findlink(&fmd->pack_storage, mi->id);
 
-		if (!s)
-			continue;
+		//if (!s)
+		//	continue;
 
 		//CustomData_copy_data(&dm->loopData, &me->ldata, loopstart, loopstart, s->totloop);
 		//CustomData_copy_data(&dm->polyData, &me->pdata, polystart, polystart, s->totpoly);
@@ -2939,6 +2943,14 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 		polystart += totpoly;
 		matstart += mi->totcol;
 		loopstart += s->totloop;
+
+		if (s) {
+			s = s->next;
+		}
+
+		if (t) {
+			t = t->next;
+		}
 	}
 
 	return vertstart;
