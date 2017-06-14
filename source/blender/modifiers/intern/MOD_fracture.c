@@ -3332,68 +3332,66 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 		mul_v3_fl(no, inverse);
 		verts = 0;
 
-		//if (!vg->exceeded)
+		if ((len_squared_v3v3(co, v1->co) > (dist * dist)))
 		{
-			for (sv = vg->verts.first; sv; sv = sv->next)
-			{
-				v2 = bm->vtable[sv->index];
+			vg->moved = true;
+		}
 
-				if ((len_squared_v3v3(co, v2->co) > (dist * dist)))
-				{
-					sv->moved = true;
-				}
-
-				if (len_squared_v3v3(co, v2->co) <= fmd->automerge_dist * fmd->automerge_dist)
-				{
-					if (!sv->exceeded)
-					{
-						copy_v3_v3(v2->co, co);
-						copy_v3_v3(v2->no, no);
-					}
-				}
-				else {
-					sv->exceeded = true;
-
-					if (!sv->deltas_set){
-						sub_v3_v3v3(sv->delta, co, v2->co);
-						clamp_delta(sv, fmd);
-						sv->deltas_set = true;
-					}
-				}
+		if (len_squared_v3v3(co, v1->co) <= fmd->automerge_dist * fmd->automerge_dist)
+		{
+			if (!vg->exceeded) {
+				copy_v3_v3(v1->co, co);
+				copy_v3_v3(v1->no, no);
 			}
 
-			if ((len_squared_v3v3(co, v1->co) > (dist * dist)))
+			if (do_calc_delta && vg->deltas_set)
 			{
-				vg->moved = true;
+				calc_delta((SharedVert*)vg, v1);
 			}
+		}
+		else {
+			vg->exceeded = true;
 
-			if (len_squared_v3v3(co, v1->co) <= fmd->automerge_dist * fmd->automerge_dist)
-			{
-				if (!vg->exceeded) {
-					copy_v3_v3(v1->co, co);
-					copy_v3_v3(v1->no, no);
-				}
-			}
-			else {
-
-				if (!vg->deltas_set){
-					sub_v3_v3v3(vg->delta, co, v1->co);
-					clamp_delta((SharedVert*)vg, fmd);
-					vg->deltas_set = true;
-				}
+			if (!vg->deltas_set){
+				sub_v3_v3v3(vg->delta, co, v1->co);
+				clamp_delta((SharedVert*)vg, fmd);
+				vg->deltas_set = true;
 			}
 		}
 
 		if (vg->exceeded)
 		{
-			if (do_calc_delta && vg->deltas_set)
-			{
-				calc_delta((SharedVert*)vg, v1);
-			}
-
 			BM_ITER_ELEM(e, &iter, v1, BM_EDGES_OF_VERT)
 			{
 				BM_ELEM_CD_SET_FLOAT(e, cd_edge_crease_offset, fmd->inner_crease);
+			}
+		}
+
+		for (sv = vg->verts.first; sv; sv = sv->next)
+		{
+			v2 = bm->vtable[sv->index];
+
+			if ((len_squared_v3v3(co, v2->co) > (dist * dist)))
+			{
+				sv->moved = true;
+			}
+
+			if (len_squared_v3v3(co, v2->co) <= fmd->automerge_dist * fmd->automerge_dist)
+			{
+				if (!sv->exceeded)
+				{
+					copy_v3_v3(v2->co, co);
+					copy_v3_v3(v2->no, no);
+				}
+			}
+			else {
+				sv->exceeded = true;
+
+				if (!sv->deltas_set){
+					sub_v3_v3v3(sv->delta, co, v2->co);
+					clamp_delta(sv, fmd);
+					sv->deltas_set = true;
+				}
 			}
 		}
 	}
