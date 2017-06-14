@@ -5070,7 +5070,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 			}
 		}
 
-		if (fmd->visible_mesh_cached) {
+		if (fmd->visible_mesh_cached && fmd->dm) {
 
 			if (fmd->refresh_autohide) {
 
@@ -5081,11 +5081,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 						fmd->face_pairs = BLI_ghash_int_new("face_pairs");
 					}
 
-					make_face_pairs(fmd, fmd->visible_mesh_cached, ob);
+					make_face_pairs(fmd, fmd->dm, ob);
 
 
 					free_shared_verts(&fmd->shared_verts);
-					make_shared_vert_groups(fmd, fmd->visible_mesh_cached, &fmd->shared_verts);
+					make_shared_vert_groups(fmd, fmd->dm, &fmd->shared_verts);
 				}
 
 				fmd->refresh_autohide = false;

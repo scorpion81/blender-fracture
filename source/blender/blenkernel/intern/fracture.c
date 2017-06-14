@@ -2805,6 +2805,15 @@ int BKE_fracture_update_visual_mesh(FractureModifierData *fmd, Object *ob, bool 
 	if (!fmd->visible_mesh_cached)
 		return 0;
 
+	//store start mesh in order to be able to change autohide dist based on it later in sim too !
+	if (fmd->dm) {
+		fmd->dm->needsFree = 1;
+		fmd->dm->release(fmd->dm);
+		fmd->dm = NULL;
+	}
+
+	fmd->dm = CDDM_copy(fmd->visible_mesh_cached);
+
 	dm = fmd->visible_mesh_cached;
 	mv = dm->getVertArray(dm);
 	totvert = dm->getNumVerts(dm);

@@ -900,7 +900,7 @@ void RNA_def_fracture(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "automerge_dist", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "automerge_dist");
-	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_automerge_dist_set", NULL);
+	//RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_automerge_dist_set", NULL);
 	RNA_def_property_range(prop, 0.0f, 10.0f);
 	RNA_def_property_ui_text(prop, "Automerge Distance",
  "Distance between faces below which vertices of both faces should be merged; (costs performance, use with smooth objects and fix normals to better hide cracks)");
