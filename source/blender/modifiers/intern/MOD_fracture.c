@@ -3276,7 +3276,7 @@ static void clamp_delta(SharedVert *sv, FractureModifierData *fmd)
 }
 
 static void handle_vertex(FractureModifierData *fmd, BMesh* bm, SharedVert *sv, float co[3], float no[3],
-                          int cd_edge_crease_offset, bool allow_distort)
+                          int cd_edge_crease_offset)
 {
 	bool do_calc_delta = fmd->keep_distort;
 	float dist = fmd->autohide_dist;
@@ -3310,7 +3310,7 @@ static void handle_vertex(FractureModifierData *fmd, BMesh* bm, SharedVert *sv, 
 	if (sv->exceeded)
 	{
 		BMIter iter;
-		if (do_calc_delta && sv->deltas_set && allow_distort)
+		if (do_calc_delta && sv->deltas_set)
 		{
 			calc_delta(sv, v);
 		}
@@ -3356,18 +3356,11 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 		mul_v3_fl(no, inverse);
 		verts = 0;
 
-		handle_vertex(fmd, bm, (SharedVert*)vg, co, no, cd_edge_crease_offset, true);
+		handle_vertex(fmd, bm, (SharedVert*)vg, co, no, cd_edge_crease_offset);
 
-		if (!vg->exceeded)
+		for (sv = vg->verts.first; sv; sv = sv->next)
 		{
-			for (sv = vg->verts.first; sv; sv = sv->next)
-			{
-				handle_vertex(fmd, bm, sv, co, no, cd_edge_crease_offset, true);
-				if (sv->exceeded) {
-					vg->exceeded = true;
-					break;
-				}
-			}
+			handle_vertex(fmd, bm, sv, co, no, cd_edge_crease_offset);
 		}
 	}
 }
