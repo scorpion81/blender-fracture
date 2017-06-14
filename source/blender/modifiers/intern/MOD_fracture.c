@@ -3463,7 +3463,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 		PointCache *cache = rbw ? rbw->pointcache : NULL;
 		int frame = (int)BKE_scene_frame_get(sc);
 		int endframe = sc->r.efra;
-		int testframe = MIN2(cache->endframe, endframe);
+		int testframe = cache != NULL ? MIN2(cache->endframe, endframe) : endframe;
 
 		if (fmd->automerge_dist > 0)
 		{
@@ -3471,7 +3471,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 			prepare_automerge(fmd, bm);
 		}
 
-		if (cache && frame == testframe) {
+		if (frame == testframe) {
 			optimize_automerge(fmd);
 		}
 	}
@@ -4366,7 +4366,7 @@ static void do_reset_automerge(FractureModifierData* fmd)
 		Scene *sc = fmd->modifier.scene;
 		RigidBodyWorld *rbw = sc->rigidbody_world;
 		int frame = (int)BKE_scene_frame_get(sc);
-		int start = rbw ? MAX2(rbw->pointcache->startframe, sc->r.sfra) : 1;
+		int start = (rbw && rbw->pointcache ) ? MAX2(rbw->pointcache->startframe, sc->r.sfra) : sc->r.sfra;
 		if (frame == start) {
 			reset_automerge(fmd);
 		}
