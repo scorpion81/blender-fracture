@@ -2164,6 +2164,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	FractureModifierData *fmd1 = (FractureModifierData*)modifiers_findByType((Object*)blenderOb1, eModifierType_Fracture);
 	FractureModifierData *fmd2 = (FractureModifierData*)modifiers_findByType((Object*)blenderOb2, eModifierType_Fracture);
 
+#if 0
 	if ((fmd1 && fmd1->fracture_mode == MOD_FRACTURE_EXTERNAL) ||
 	   (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_EXTERNAL))
 	{
@@ -2173,6 +2174,7 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		ob2 = blenderOb2;
 		return check_colgroup_ghost(ob1, ob2);
 	}
+#endif
 
 	if (rbw == NULL)
 	{
@@ -4708,7 +4710,7 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 		if ((go->ob) && (go->ob->rigidbody_object) && (go->ob->rigidbody_object->flag & (RBO_FLAG_KINEMATIC | RBO_FLAG_USE_KINEMATIC_DEACTIVATION)))
 		{
 			FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
-			if (fmd && fmd->fracture_mode != MOD_FRACTURE_EXTERNAL && go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)
+			if (fmd && /*fmd->fracture_mode != MOD_FRACTURE_EXTERNAL &&*/ go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)
 			{
 				MeshIsland* mi;
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
