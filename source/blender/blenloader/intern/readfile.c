@@ -5266,11 +5266,11 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 		fmd->dynamic_min_size = 1.0f;
 	}
 
-#if 0
-	if (fd->fileversion < 279) {
+	//if there is no constraint_type in blend, just set the default value "fixed"...
+	if (!DNA_struct_elem_find(fd->filesdna, "FractureModifierData", "int", "constraint_type"))
+	{
 		fmd->constraint_type = RBC_TYPE_FIXED;
 	}
-#endif
 
 	if (fm == NULL || fmd->dm_group) {
 		fmd->dm = NULL;
