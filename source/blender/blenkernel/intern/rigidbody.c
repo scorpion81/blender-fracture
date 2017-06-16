@@ -2148,7 +2148,7 @@ static void fake_dynamic_collide(Object *ob1, Object *ob2, MeshIsland *mi1, Mesh
 
 static bool check_constraint_island(FractureModifierData* fmd, MeshIsland *mi1, MeshIsland *mi2)
 {
-	if (mi1 && mi2 && !fmd->use_compounds) {
+	if (mi1 && mi2 && !fmd->use_compounds && !fmd->use_constraint_collision) {
 		return mi1->constraint_index != mi2->constraint_index;
 	}
 
