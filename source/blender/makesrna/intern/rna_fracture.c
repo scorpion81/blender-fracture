@@ -359,6 +359,13 @@ static void rna_FractureModifier_use_breaking_set(PointerRNA *ptr, bool value)
 	}
 }
 
+static void rna_FractureModifier_constraint_type_set(PointerRNA* ptr, int value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->constraint_type = value;
+	rmd->refresh_constraints = true;
+}
+
 static void rna_FractureModifier_cluster_constraint_type_set(PointerRNA* ptr, int value)
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
@@ -1073,6 +1080,14 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_enum_default(prop, MOD_FRACTURE_CUTTER_Z);
 	RNA_def_property_enum_funcs(prop, NULL, "rna_FractureModifier_cutter_axis_set", NULL);
 	RNA_def_property_ui_text(prop, "Cutter Axis", "Global direction of cutters");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "constraint_type", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "constraint_type");
+	RNA_def_property_enum_items(prop, rna_enum_rigidbody_constraint_type_items);
+	RNA_def_property_enum_funcs(prop, NULL, "rna_FractureModifier_constraint_type_set", NULL);
+	RNA_def_property_ui_text(prop, "Constraint Type", "Type of Rigid Body Constraint between shards and inside clusters");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 

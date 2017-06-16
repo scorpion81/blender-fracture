@@ -1715,6 +1715,7 @@ typedef struct FractureModifierData {
 	int fracture_mode;
 	int boolean_solver;
 	int dynamic_percentage;
+	int constraint_type;
 
 	float breaking_angle;
 	float breaking_distance;
@@ -1794,7 +1795,7 @@ typedef struct FractureModifierData {
 	short mat_ofs_intersect;
 	short mat_ofs_difference;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

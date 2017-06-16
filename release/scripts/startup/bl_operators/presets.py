@@ -689,7 +689,8 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.material_offset_intersect",
         "fracture.orthogonality_factor",
         "fracture.keep_distort",
-        "fracture.do_merge"
+        "fracture.do_merge",
+        "fracture.constraint_type"
     ]
 
     preset_subdir = "fracture"

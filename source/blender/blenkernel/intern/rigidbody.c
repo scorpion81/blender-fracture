@@ -1514,7 +1514,7 @@ static MeshIsland* find_closest_meshisland_to_point(FractureModifierData* fmd, O
 			mi2 = mi_array[ind];
 
 			//connect ?
-			BKE_meshisland_constraint_create(fmd, mi, mi2, RBC_TYPE_FIXED, fmd->breaking_threshold);
+			BKE_meshisland_constraint_create(fmd, mi, mi2, fmd->constraint_type, fmd->breaking_threshold);
 		}
 	}
 

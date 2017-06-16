@@ -5266,6 +5266,12 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 		fmd->dynamic_min_size = 1.0f;
 	}
 
+#if 0
+	if (fd->fileversion < 279) {
+		fmd->constraint_type = RBC_TYPE_FIXED;
+	}
+#endif
+
 	if (fm == NULL || fmd->dm_group) {
 		fmd->dm = NULL;
 		fmd->meshIslands.first = NULL;

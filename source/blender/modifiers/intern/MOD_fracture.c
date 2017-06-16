@@ -216,6 +216,7 @@ static void initData(ModifierData *md)
 
 	fmd->cutter_axis = MOD_FRACTURE_CUTTER_Z;
 	fmd->cluster_constraint_type = RBC_TYPE_FIXED;
+	fmd->constraint_type = RBC_TYPE_FIXED;
 	fmd->vert_index_map = NULL;
 	fmd->constraint_target = MOD_FRACTURE_CENTROID;
 	fmd->vertex_island_map = NULL;
@@ -1858,6 +1859,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->keep_distort = rmd->keep_distort;
 	trmd->do_merge = rmd->do_merge;
 	trmd->orthogonality_factor = rmd->orthogonality_factor;
+	trmd->constraint_type = rmd->constraint_type;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
@@ -2613,7 +2615,7 @@ static void search_tree_based(FractureModifierData *rmd, MeshIsland *mi, MeshIsl
 		}
 		if ((mi != mi2) && (mi2 != NULL)) {
 			float thresh = rmd->breaking_threshold;
-			int con_type = rmd->use_compounds ? RBC_TYPE_COMPOUND : RBC_TYPE_FIXED;
+			int con_type = rmd->use_compounds ? RBC_TYPE_COMPOUND : rmd->constraint_type;
 
 			if ((i >= limit) && (limit > 0)) {
 				break;
