@@ -185,6 +185,9 @@ typedef enum eRigidBodyOb_Flag {
 	RBO_FLAG_CONSTRAINT_DISSOLVE = (1 << 13),
 	/* trigger a dynamic fracture with this type */
 	RBO_FLAG_DYNAMIC_TRIGGER = (1 << 14),
+	/* dissolve plastic constraints too (if any) */
+	RBO_FLAG_PLASTIC_DISSOLVE = (1 << 15),
+
 } eRigidBodyOb_Flag;
 
 /* RigidBody Collision Shape */
@@ -404,7 +407,7 @@ typedef enum eRigidBodyCon_Flag {
 	/* mark this constraint to be able to go into "plastic" mode */
 	RBC_FLAG_USE_PLASTIC				= (1 << 17),
 	/* mark already active plastic constraints */
-	RBC_FLAG_PLASTIC_ACTIVE				= (1 << 18)
+	RBC_FLAG_PLASTIC_ACTIVE				= (1 << 18),
 
 } eRigidBodyCon_Flag;
 

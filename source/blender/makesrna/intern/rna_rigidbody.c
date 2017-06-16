@@ -1102,6 +1102,11 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_DYNAMIC_TRIGGER);
 	RNA_def_property_ui_text(prop, "Dynamic Trigger", "Triggers a dynamic fracture independently of force threshold");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+
+	prop = RNA_def_property(srna, "plastic_dissolve", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_PLASTIC_DISSOLVE);
+	RNA_def_property_ui_text(prop, "Dissolve Plastic Constraints", "Dissolves plastic constraints on shards of this trigger target, only relevant for external mode");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
 	
 	/* Physics Parameters */
 	prop = RNA_def_property(srna, "mass", PROP_FLOAT, PROP_UNIT_MASS);

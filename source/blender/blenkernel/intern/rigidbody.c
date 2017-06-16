@@ -111,12 +111,17 @@ static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), Mes
 	if (mi && ob->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) {
 		for (i = 0; i < mi->participating_constraint_count; i++) {
 			bool different_cluster = false;
+			bool dissolve_plastic = (ob->rigidbody_object->flag & RBO_FLAG_PLASTIC_DISSOLVE);
 			con = mi->participating_constraints[i];
 
 			different_cluster = ((con->mi1->particle_index != con->mi2->particle_index) ||
 			                    ((con->mi1->particle_index == -1) && (con->mi2->particle_index == -1)));
 
 			if (con->physics_constraint && different_cluster) {
+				if (dissolve_plastic) {
+					con->flag |= RBC_FLAG_PLASTIC_ACTIVE;
+				}
+
 				RB_constraint_set_enabled(con->physics_constraint, false);
 			}
 		}
@@ -4092,11 +4097,14 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 						/*reset plastic constraints with immediate activation*/
 						if (rbsc->flag & RBC_FLAG_USE_PLASTIC)
 						{
-							rbsc->flag |= RBC_FLAG_PLASTIC_ACTIVE;
-							rigidbody_set_springs_active(rbsc, true);
-							RB_constraint_set_enabled(rbsc->physics_constraint, true);
-							if (rbsc->physics_constraint)
-								RB_constraint_set_equilibrium_6dof_spring(rbsc->physics_constraint);
+							if (!(rbsc->flag & RBC_FLAG_PLASTIC_ACTIVE))
+							{
+								rbsc->flag |= RBC_FLAG_PLASTIC_ACTIVE;
+								rigidbody_set_springs_active(rbsc, true);
+								RB_constraint_set_enabled(rbsc->physics_constraint, true);
+								if (rbsc->physics_constraint)
+									RB_constraint_set_equilibrium_6dof_spring(rbsc->physics_constraint);
+							}
 						}
 						else
 						{
