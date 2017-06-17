@@ -96,6 +96,7 @@ static void do_halving(FractureModifierData *fmd, Object* ob, DerivedMesh *dm, D
 static void free_shared_verts(ListBase *lb);
 static void reset_automerge(FractureModifierData *fmd);
 static void do_refresh_automerge(FractureModifierData *fmd);
+static void free_shards(FractureModifierData *fmd);
 
 typedef struct SharedVertGroup {
 	struct SharedVertGroup* next, *prev;
@@ -512,10 +513,9 @@ static void free_modifier(FractureModifierData *fmd, bool do_free_seq, bool do_f
 			fmd->visible_mesh_cached->release(fmd->visible_mesh_cached);
 			fmd->visible_mesh_cached = NULL;
 		}
-
-		if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL)
-			free_shards(fmd);
 	}
+
+	free_shards(fmd);
 
 	if (fmd->vert_index_map != NULL) {
 		BLI_ghash_free(fmd->vert_index_map, NULL, NULL);
@@ -567,7 +567,7 @@ static void freeData(ModifierData *md)
 {
 	FractureModifierData *fmd = (FractureModifierData *) md;
 
-	freeData_internal(fmd, true, false);
+	freeData_internal(fmd, fmd->fracture_mode == MOD_FRACTURE_DYNAMIC, false);
 
 	/*force deletion of meshshards here, it slips through improper state detection*/
 	/*here we know the modifier is about to be deleted completely*/

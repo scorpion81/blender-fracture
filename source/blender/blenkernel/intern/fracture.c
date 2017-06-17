@@ -1922,7 +1922,7 @@ void BKE_fracmesh_free(FracMesh *fm, bool doCustomData)
 
 	while (fm->shard_map.first) {
 		Shard* s = (Shard*)fm->shard_map.first;
-		BLI_remlink_safe(&fm->shard_map, s);
+		BLI_remlink(&fm->shard_map, s);
 		BKE_shard_free(s, doCustomData);
 	}
 
