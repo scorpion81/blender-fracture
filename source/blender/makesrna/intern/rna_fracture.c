@@ -318,6 +318,13 @@ static void rna_FractureModifier_cluster_threshold_set(PointerRNA *ptr, float va
 	rmd->refresh_constraints = true;
 }
 
+static void rna_FractureModifier_deform_weakening_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->deform_weakening = value;
+	rmd->refresh_constraints = true;
+}
+
 static void rna_FractureModifier_solver_iterations_override_set(PointerRNA *ptr, float value)
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
@@ -1341,6 +1348,16 @@ void RNA_def_fracture(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "deform_distance_weighted", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "deform_distance_weighted", false);
 	RNA_def_property_ui_text(prop, "Weighted Deforming Distance", "Modify deform distance by threshold weights");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "deform_weakening", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "deform_weakening");
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_deform_weakening_set", NULL);
+	RNA_def_property_ui_text(prop, "Deform Weakening Factor",
+	                         "Multiplies the breaking threshold in each iteration with 1.0 - factor in order to weaken it at deform, 0 to disable");
+	RNA_def_property_ui_range(prop, 0.0f, 1.0f, 0.0001f, 6);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 

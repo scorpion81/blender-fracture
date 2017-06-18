@@ -2058,4 +2058,11 @@ void RB_constraint_set_id(rbConstraint *con, char id[64])
 	strncpy(con->id, id, len);
 }
 
+float RB_constraint_get_breaking_threshold(rbConstraint *con)
+{
+	btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint*>(con->con);
+
+	return constraint->getBreakingImpulseThreshold();
+}
+
 /* ********************************** */

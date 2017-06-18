@@ -3750,12 +3750,18 @@ static void deactivateRigidbody(RigidBodyOb *rbo)
 
 static void deform_constraint(FractureModifierData *fmd, Object *ob, RigidBodyShardCon* rbsc, RigidBodyWorld *rbw)
 {
+	float thresh;
+	float weakening = 1.0f - fmd->deform_weakening;
+
 	RB_dworld_remove_constraint(rbw->physics_world, rbsc->physics_constraint);
 
 	BKE_rigidbody_start_dist_angle(rbsc, true);
 	//rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
 	BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
 	//set_constraint_index(fmd, rbsc);
+
+	thresh = RB_constraint_get_breaking_threshold(rbsc->physics_constraint);
+	RB_constraint_set_breaking_threshold(rbsc->physics_constraint, thresh * weakening);
 
 	deactivateRigidbody(rbsc->mi1->rigidbody);
 	deactivateRigidbody(rbsc->mi2->rigidbody);

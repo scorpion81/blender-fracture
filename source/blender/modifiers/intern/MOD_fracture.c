@@ -263,6 +263,8 @@ static void initData(ModifierData *md)
 
 	fmd->pack_storage.first = NULL;
 	fmd->pack_storage.last = NULL;
+
+	fmd->deform_weakening = 0.0f;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1868,6 +1870,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->deform_distance = rmd->deform_distance;
 	trmd->deform_distance_weighted = rmd->deform_distance_weighted;
 	trmd->cluster_deform_distance = rmd->cluster_deform_distance;
+	trmd->deform_weakening = rmd->deform_weakening;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?

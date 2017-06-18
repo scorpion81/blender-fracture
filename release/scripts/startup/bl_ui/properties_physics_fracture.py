@@ -257,6 +257,8 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             row.prop(md, "deform_angle_weighted")
             row.prop(md, "deform_distance_weighted")
 
+            col.prop(md, "deform_weakening")
+
 
 
 

@@ -697,7 +697,8 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.cluster_deform_distance",
         "fracture.deform_angle",
         "fracture.deform_angle_weighted",
-        "fracture.cluster_deform_angle"
+        "fracture.cluster_deform_angle",
+        "fracture.deform_weakening"
     ]
 
     preset_subdir = "fracture"

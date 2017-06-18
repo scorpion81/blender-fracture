@@ -1738,6 +1738,7 @@ typedef struct FractureModifierData {
 	float deform_distance;
 	float cluster_deform_angle;
 	float cluster_deform_distance;
+	float deform_weakening;
 
 	float impulse_dampening;
 	float minimum_impulse;
@@ -1801,7 +1802,7 @@ typedef struct FractureModifierData {
 	short mat_ofs_intersect;
 	short mat_ofs_difference;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

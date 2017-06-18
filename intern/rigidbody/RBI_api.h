@@ -346,6 +346,7 @@ void RB_constraint_set_solver_iterations(rbConstraint *con, int num_solver_itera
 
 /* Set breaking impulse threshold, if constraint shouldn't break it can be set to FLT_MAX */
 void RB_constraint_set_breaking_threshold(rbConstraint *con, float threshold);
+float RB_constraint_get_breaking_threshold(rbConstraint *con);
 
 void RB_constraint_set_id(rbConstraint *con, char id[64]);
 
