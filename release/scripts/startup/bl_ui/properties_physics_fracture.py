@@ -242,6 +242,24 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             col.prop(md, "cluster_solver_iterations_override")
             layout.prop(md, "use_mass_dependent_thresholds")
 
+        if not md.use_compounds:
+            layout.label("Constraint Deform Settings")
+            col = layout.column(align=True)
+            row = col.row(align=True)
+            row.prop(md, "deform_angle", text="Deforming Angle")
+            row.prop(md, "cluster_deform_angle", text="Cluster Deforming Angle")
+
+            row = col.row(align=True)
+            row.prop(md, "deform_distance", text="Deforming Distance")
+            row.prop(md, "cluster_deform_distance", text="Cluster Deforming Distance")
+
+            row = col.row(align=True)
+            row.prop(md, "deform_angle_weighted")
+            row.prop(md, "deform_distance_weighted")
+
+
+
+
 class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
     bl_label = "Fracture Utilities"
 

@@ -283,6 +283,34 @@ static void rna_FractureModifier_breaking_distance_set(PointerRNA *ptr, float va
 	rmd->refresh_constraints = true;
 }
 
+static void rna_FractureModifier_deform_angle_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->deform_angle = value;
+	rmd->refresh_constraints = true;
+}
+
+static void rna_FractureModifier_deform_distance_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->deform_distance = value;
+	rmd->refresh_constraints = true;
+}
+
+static void rna_FractureModifier_cluster_deform_angle_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->cluster_deform_angle = value;
+	rmd->refresh_constraints = true;
+}
+
+static void rna_FractureModifier_cluster_deform_distance_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->cluster_deform_distance = value;
+	rmd->refresh_constraints = true;
+}
+
 static void rna_FractureModifier_cluster_threshold_set(PointerRNA *ptr, float value)
 {
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
@@ -1271,6 +1299,50 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "do_merge", false);
 	RNA_def_property_ui_text(prop, "Perform Merge", "Whether or not to actually weld the prepared automerge geometry.");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update_and_keep");
+
+	prop = RNA_def_property(srna, "deform_angle", PROP_FLOAT, PROP_ANGLE);
+	RNA_def_property_float_sdna(prop, NULL, "deform_angle");
+	RNA_def_property_range(prop, 0, DEG2RADF(360.0));
+	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_deform_angle_set", NULL);
+	RNA_def_property_ui_text(prop, "Deforming Angle", "Angle in degrees above which constraint should keep its deform");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "deform_distance", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "deform_distance");
+	RNA_def_property_range(prop, 0, FLT_MAX);
+	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_deform_distance_set", NULL);
+	RNA_def_property_ui_text(prop, "Deforming Distance", "Distance above which constraint should keep its deform");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "cluster_deform_angle", PROP_FLOAT, PROP_ANGLE);
+	RNA_def_property_float_sdna(prop, NULL, "cluster_deform_angle");
+	RNA_def_property_range(prop, 0, DEG2RADF(360.0));
+	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_cluster_deform_angle_set", NULL);
+	RNA_def_property_ui_text(prop, "Cluster Deforming Angle", "Angle in degrees above which constraint should keep its deform");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "cluster_deform_distance", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "cluster_deform_distance");
+	RNA_def_property_range(prop, 0, FLT_MAX);
+	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_cluster_deform_distance_set", NULL);
+	RNA_def_property_ui_text(prop, "Cluster Deforming Distance", "Distance above which constraint should keep its deform");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "deform_angle_weighted", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "deform_angle_weighted", false);
+	RNA_def_property_ui_text(prop, "Weighted Deforming Angle", "Modify deform angle by threshold weights");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "deform_distance_weighted", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "deform_distance_weighted", false);
+	RNA_def_property_ui_text(prop, "Weighted Deforming Distance", "Modify deform distance by threshold weights");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	RNA_api_fracture(brna, srna);
 }

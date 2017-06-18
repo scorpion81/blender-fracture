@@ -1860,6 +1860,14 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->do_merge = rmd->do_merge;
 	trmd->orthogonality_factor = rmd->orthogonality_factor;
 	trmd->constraint_type = rmd->constraint_type;
+
+	trmd->deform_angle = rmd->deform_angle;
+	trmd->deform_angle_weighted = rmd->deform_angle_weighted;
+	trmd->cluster_deform_angle = rmd->cluster_deform_angle;
+
+	trmd->deform_distance = rmd->deform_distance;
+	trmd->deform_distance_weighted = rmd->deform_distance_weighted;
+	trmd->cluster_deform_distance = rmd->cluster_deform_distance;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?

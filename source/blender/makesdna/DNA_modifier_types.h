@@ -1734,6 +1734,10 @@ typedef struct FractureModifierData {
 	float physics_mesh_scale;
 	float grease_offset;
 	float dynamic_force;
+	float deform_angle;
+	float deform_distance;
+	float cluster_deform_angle;
+	float cluster_deform_distance;
 
 	float impulse_dampening;
 	float minimum_impulse;
@@ -1774,6 +1778,8 @@ typedef struct FractureModifierData {
 	int is_dynamic_external;
 	int keep_distort;
 	int do_merge;
+	int deform_angle_weighted;
+	int deform_distance_weighted;
 
 	/* internal flags */
 	int use_experimental;

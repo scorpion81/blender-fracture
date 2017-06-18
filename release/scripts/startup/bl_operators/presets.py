@@ -690,7 +690,14 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.orthogonality_factor",
         "fracture.keep_distort",
         "fracture.do_merge",
-        "fracture.constraint_type"
+        "fracture.constraint_type",
+        "fracture.automerge_dist",
+        "fracture.deform_distance",
+        "fracture.deform_distance_weighted",
+        "fracture.cluster_deform_distance",
+        "fracture.deform_angle",
+        "fracture.deform_angle_weighted",
+        "fracture.cluster_deform_angle"
     ]
 
     preset_subdir = "fracture"

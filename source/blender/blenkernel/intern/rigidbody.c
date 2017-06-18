@@ -3744,20 +3744,65 @@ static void deactivateRigidbody(RigidBodyOb *rbo)
 	//RB_body_set_kinematic_state(rbo->physics_object, true);
 	//RB_body_set_mass(rbo->physics_object, 0.0f);
 	//rbo->flag |= RBO_FLAG_IS_GHOST;
+	//rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	RB_body_deactivate(rbo->physics_object);
 }
 
 static void deform_constraint(FractureModifierData *fmd, Object *ob, RigidBodyShardCon* rbsc, RigidBodyWorld *rbw)
 {
 	RB_dworld_remove_constraint(rbw->physics_world, rbsc->physics_constraint);
-	BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
-	BKE_rigidbody_start_dist_angle(rbsc, fmd->fracture_mode == MOD_FRACTURE_EXTERNAL ||
-	                               (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->is_dynamic_external));
 
+	BKE_rigidbody_start_dist_angle(rbsc, true);
 	//rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
+	BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
+	//set_constraint_index(fmd, rbsc);
+
 	deactivateRigidbody(rbsc->mi1->rigidbody);
 	deactivateRigidbody(rbsc->mi2->rigidbody);
 }
+
+static void handle_deform_angle(FractureModifierData *fmd, Object *ob, RigidBodyShardCon *rbsc, RigidBodyWorld *rbw,
+                                float anglediff, float weight, float deform_angle)
+{
+	if ((fmd->deform_angle > 0 || (fmd->deform_angle_weighted && weight > 0)) &&
+		(anglediff > deform_angle))
+	{
+		/* if we have cluster breaking angle, then only treat equal cluster indexes like the default, else all */
+		if ((fmd->cluster_deform_angle > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index) ||
+			 fmd->cluster_deform_angle == 0)
+		{
+			deform_constraint(fmd, ob, rbsc, rbw);
+		}
+	}
+
+	if ((fmd->cluster_deform_angle > 0) && (rbsc->mi1->particle_index != rbsc->mi2->particle_index)
+		&& anglediff > fmd->cluster_deform_angle)
+	{
+		deform_constraint(fmd, ob, rbsc, rbw);
+	}
+}
+
+static void handle_deform_dist(FractureModifierData *fmd, Object *ob, RigidBodyShardCon *rbsc, RigidBodyWorld *rbw,
+                                float distdiff, float weight, float deform_dist)
+{
+	if ((fmd->deform_distance > 0 || (fmd->deform_angle_weighted && weight > 0)) &&
+		(distdiff > deform_dist))
+	{
+		/* if we have cluster breaking angle, then only treat equal cluster indexes like the default, else all */
+		if ((fmd->cluster_deform_distance > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index) ||
+			 fmd->cluster_deform_distance == 0)
+		{
+			deform_constraint(fmd, ob, rbsc, rbw);
+		}
+	}
+
+	if ((fmd->cluster_deform_distance > 0) && (rbsc->mi1->particle_index != rbsc->mi2->particle_index)
+		&& distdiff > fmd->cluster_deform_distance)
+	{
+		deform_constraint(fmd, ob, rbsc, rbw);
+	}
+}
+
 
 static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBodyShardCon *rbsc, RigidBodyWorld *rbw,
                                   float anglediff, float weight, float breaking_angle)
@@ -3778,12 +3823,6 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 					activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
 				}
 			}
-			else {
-				//attempt to make plastic deform by reconstraining the shards
-				if (rbsc->physics_constraint) {
-					deform_constraint(fmd, ob, rbsc, rbw);
-				}
-			}
 		}
 	}
 
@@ -3796,12 +3835,6 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 				RB_constraint_set_enabled(rbsc->physics_constraint, false);
 				activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
 				activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
-			}
-		}
-		else {
-			//attempt to make plastic deform by reconstraining the shards
-			if (rbsc->physics_constraint) {
-				deform_constraint(fmd, ob, rbsc, rbw);
 			}
 		}
 	}
@@ -3825,12 +3858,6 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 					activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
 				}
 			}
-			else {
-				//attempt to make plastic deform by reconstraining the shards
-				if (rbsc->physics_constraint) {
-					deform_constraint(fmd, ob, rbsc, rbw);
-				}
-			}
 		}
 	}
 
@@ -3843,12 +3870,6 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 				RB_constraint_set_enabled(rbsc->physics_constraint, false);
 				activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
 				activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
-			}
-		}
-		else {
-			//attempt to make plastic deform by reconstraining the shards
-			if (rbsc->physics_constraint) {
-				deform_constraint(fmd, ob, rbsc, rbw);
 			}
 		}
 	}
@@ -3940,6 +3961,9 @@ static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, Rigid
 	float weight = MIN2(rbsc->mi1->thresh_weight, rbsc->mi2->thresh_weight);
 	float breaking_angle = fmd->breaking_angle_weighted ? fmd->breaking_angle * weight : fmd->breaking_angle;
 	float breaking_distance = fmd->breaking_distance_weighted ? fmd->breaking_distance * weight : fmd->breaking_distance;
+	float deform_angle = fmd->deform_angle_weighted ? fmd->deform_angle * weight : fmd->deform_angle;
+	float deform_distance = fmd->deform_distance_weighted ? fmd->deform_distance * weight : fmd->deform_distance;
+	float dist, angle, distdiff, anglediff;
 
 	if ((fmd->use_mass_dependent_thresholds || fmd->use_compounds /*|| fmd->mass_threshold_factor > 0.0f*/)) {
 		BKE_rigidbody_calc_threshold(max_con_mass, fmd, rbsc);
@@ -3949,17 +3973,29 @@ static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, Rigid
 		(fmd->breaking_distance > 0) || (fmd->breaking_distance_weighted && weight > 0) ||
 		 (fmd->cluster_breaking_angle > 0 || (fmd->cluster_breaking_distance > 0))) /*&& !rebuild*/)
 	{
-		float dist, angle, distdiff, anglediff;
 		calc_dist_angle(rbsc, &dist, &angle, false);
-
 		anglediff = fabs(angle - rbsc->start_angle);
 		distdiff = fabs(dist - rbsc->start_dist);
 
-		/* Treat angles here */
+		/* handle breaking */
 		handle_breaking_angle(fmd, ob, rbsc, rbw, anglediff, weight, breaking_angle);
-
-		/* Treat distances here */
 		handle_breaking_distance(fmd, ob, rbsc, rbw, distdiff, weight, breaking_distance);
+	}
+
+	if ((((fmd->deform_angle) > 0) || (fmd->deform_angle_weighted && weight > 0) ||
+		(fmd->deform_distance > 0) || (fmd->deform_distance_weighted && weight > 0) ||
+		 (fmd->cluster_deform_angle > 0 || (fmd->cluster_deform_distance > 0))) /*&& !rebuild*/)
+	{
+		if (rbsc->physics_constraint && RB_constraint_is_enabled(rbsc->physics_constraint))
+		{
+			calc_dist_angle(rbsc, &dist, &angle, false);
+			anglediff = fabs(angle - rbsc->start_angle);
+			distdiff = fabs(dist - rbsc->start_dist);
+
+			/* handle deform */
+			handle_deform_angle(fmd, ob, rbsc, rbw, anglediff, weight, deform_angle);
+			handle_deform_dist(fmd, ob, rbsc, rbw, distdiff, weight, deform_distance);
+		}
 	}
 }
 
