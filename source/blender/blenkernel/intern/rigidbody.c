@@ -3750,10 +3750,17 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 		{
 			if (fmd->use_breaking)
 			{
+				//break constraint
 				if (rbsc->physics_constraint) {
 					RB_constraint_set_enabled(rbsc->physics_constraint, false);
 					activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
 					activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+				}
+			}
+			else {
+				//attempt to make plastic deform by reconstraining the shards
+				if (rbsc->physics_constraint) {
+					BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
 				}
 			}
 		}
@@ -3768,6 +3775,12 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 				RB_constraint_set_enabled(rbsc->physics_constraint, false);
 				activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
 				activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+			}
+		}
+		else {
+			//attempt to make plastic deform by reconstraining the shards
+			if (rbsc->physics_constraint) {
+				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
 			}
 		}
 	}
@@ -3791,6 +3804,12 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 					activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
 				}
 			}
+			else {
+				//attempt to make plastic deform by reconstraining the shards
+				if (rbsc->physics_constraint) {
+					BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
+				}
+			}
 		}
 	}
 
@@ -3803,6 +3822,12 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 				RB_constraint_set_enabled(rbsc->physics_constraint, false);
 				activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
 				activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+			}
+		}
+		else {
+			//attempt to make plastic deform by reconstraining the shards
+			if (rbsc->physics_constraint) {
+				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
 			}
 		}
 	}
