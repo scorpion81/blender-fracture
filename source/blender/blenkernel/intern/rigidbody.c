@@ -3738,6 +3738,27 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 	}
 }
 
+static void deactivateRigidbody(RigidBodyOb *rbo)
+{
+	//make kinematic again (un-trigger)
+	//RB_body_set_kinematic_state(rbo->physics_object, true);
+	//RB_body_set_mass(rbo->physics_object, 0.0f);
+	//rbo->flag |= RBO_FLAG_IS_GHOST;
+	RB_body_deactivate(rbo->physics_object);
+}
+
+static void deform_constraint(FractureModifierData *fmd, Object *ob, RigidBodyShardCon* rbsc, RigidBodyWorld *rbw)
+{
+	RB_dworld_remove_constraint(rbw->physics_world, rbsc->physics_constraint);
+	BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
+	BKE_rigidbody_start_dist_angle(rbsc, fmd->fracture_mode == MOD_FRACTURE_EXTERNAL ||
+	                               (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->is_dynamic_external));
+
+	//rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
+	deactivateRigidbody(rbsc->mi1->rigidbody);
+	deactivateRigidbody(rbsc->mi2->rigidbody);
+}
+
 static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBodyShardCon *rbsc, RigidBodyWorld *rbw,
                                   float anglediff, float weight, float breaking_angle)
 {
@@ -3760,7 +3781,7 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 			else {
 				//attempt to make plastic deform by reconstraining the shards
 				if (rbsc->physics_constraint) {
-					BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
+					deform_constraint(fmd, ob, rbsc, rbw);
 				}
 			}
 		}
@@ -3780,7 +3801,7 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 		else {
 			//attempt to make plastic deform by reconstraining the shards
 			if (rbsc->physics_constraint) {
-				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
+				deform_constraint(fmd, ob, rbsc, rbw);
 			}
 		}
 	}
@@ -3807,7 +3828,7 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 			else {
 				//attempt to make plastic deform by reconstraining the shards
 				if (rbsc->physics_constraint) {
-					BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
+					deform_constraint(fmd, ob, rbsc, rbw);
 				}
 			}
 		}
@@ -3827,7 +3848,7 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 		else {
 			//attempt to make plastic deform by reconstraining the shards
 			if (rbsc->physics_constraint) {
-				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
+				deform_constraint(fmd, ob, rbsc, rbw);
 			}
 		}
 	}
