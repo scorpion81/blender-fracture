@@ -3358,10 +3358,12 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 
 		for (sv = vg->verts.first; sv; sv = sv->next)
 		{
-			v2 = bm->vtable[sv->index];
-			add_v3_v3(co, v2->co);
-			add_v3_v3(no, v2->no);
-			verts++;
+			if (!sv->exceeded || fmd->keep_distort) {
+				v2 = bm->vtable[sv->index];
+				add_v3_v3(co, v2->co);
+				add_v3_v3(no, v2->no);
+				verts++;
+			}
 		}
 
 		inverse = 1.0f/(float)verts;
