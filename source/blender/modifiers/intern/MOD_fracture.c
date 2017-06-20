@@ -3358,7 +3358,7 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 
 		for (sv = vg->verts.first; sv; sv = sv->next)
 		{
-			if (!sv->exceeded || fmd->keep_distort) {
+			if (!sv->exceeded) {
 				v2 = bm->vtable[sv->index];
 				add_v3_v3(co, v2->co);
 				add_v3_v3(no, v2->no);
