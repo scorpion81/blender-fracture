@@ -1822,10 +1822,10 @@ static void rigidbody_create_shard_physics_constraint(FractureModifierData* fmd,
 		/* keep old constraint calculation for other fracture modes ! */
 		/* do this for all constraints */
 		/* location for fixed constraints doesnt matter, so keep old setting */
-		if (rbc->type == RBC_TYPE_FIXED) {
+/*		if (rbc->type == RBC_TYPE_FIXED) {
 			copy_v3_v3(rbc->pos, rbc->mi1->rigidbody->pos);
 		}
-		else {
+		else*/ {
 			/* else set location to center */
 			add_v3_v3v3(rbc->pos, rbc->mi1->rigidbody->pos, rbc->mi2->rigidbody->pos);
 			mul_v3_fl(rbc->pos, 0.5f);
