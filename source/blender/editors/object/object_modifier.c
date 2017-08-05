@@ -3512,13 +3512,16 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 				}
 			}
 
+#if 0
+			//this check might be wrong in case a passive shard (no sim data then) is first
 			if (rmd && (rmd->fracture_mode != MOD_FRACTURE_DYNAMIC) && rmd->meshIslands.first)
 			{
 				MeshIsland* mi = rmd->meshIslands.first;
 				convertable = mi->frame_count > 0;
 			}
+#endif
 
-			if (rmd && convertable) {
+			if (rmd /*&& convertable*/) {
 				int count = BLI_listbase_count(&rmd->meshIslands);
 
 				if (count == 0)

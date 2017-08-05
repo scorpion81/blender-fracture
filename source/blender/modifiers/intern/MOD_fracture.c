@@ -1961,7 +1961,7 @@ static int BM_mesh_minmax(BMesh *bm, float r_min[3], float r_max[3], int tagged)
 }
 
 //XXX BKE
-static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new, ShardID par_id)
+static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new, ShardID par_id, float centroid[3])
 {
 	DerivedMesh *dmtemp;
 	Shard *s;
@@ -2002,6 +2002,8 @@ static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new, ShardID 
 			s->parent_id = -1;
 			BLI_addtail(&fmd->islandShards, s);
 		}
+
+		copy_v3_v3(centroid, s->centroid);
 
 		dmtemp->needsFree = 1;
 		dmtemp->release(dmtemp);
@@ -2199,7 +2201,8 @@ static float mesh_separate_tagged(FractureModifierData *fmd, Object *ob, BMVert 
 	BM_calc_center_centroid(bm_new, centroid, false);
 	BM_mesh_elem_index_ensure(bm_new, BM_VERT | BM_EDGE | BM_FACE);
 
-	id = do_shard_to_island(fmd, bm_new, par_id);
+	//overwrite centroid with shard centroid here if we have a valid shard
+	id = do_shard_to_island(fmd, bm_new, par_id, centroid);
 
 	BM_ITER_MESH (v, &iter, bm_new, BM_VERTS_OF_MESH) {
 		/* eliminate centroid in vertex coords */
