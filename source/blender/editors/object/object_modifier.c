@@ -3507,6 +3507,7 @@ static int rigidbody_convert_keyframes_exec(bContext *C, wmOperator *op)
 			{
 				for (frame = start; frame < end; frame++)
 				{
+					BKE_scene_frame_set(scene, (float)frame);
 					BKE_rigidbody_do_simulation(scene, (float)frame);
 					BKE_object_where_is_calc_time(scene, selob, (float)frame);
 				}
