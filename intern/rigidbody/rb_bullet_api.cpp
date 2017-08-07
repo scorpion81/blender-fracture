@@ -319,7 +319,8 @@ static void tickCallback(btDynamicsWorld *world, btScalar timeStep)
 				const btVector3& normalOnB = pt.m_normalWorldOnB;*/
 
 				//TickDiscreteDynamicsWorld* tworld = (TickDiscreteDynamicsWorld*)world;
-				if (tworld->m_contactCallback)
+				//odd check, but in debug mode we had already numcontacts = 2 but didnt have ANY contacts... gah
+				if (tworld->m_contactCallback && j < contactManifold->getNumContacts())
 				{
 
 					rbContactPoint* cp = tworld->make_contact_point(pt, obA, obB);

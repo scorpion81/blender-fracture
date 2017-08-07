@@ -1354,6 +1354,13 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 //			if (frame < 0) // GAAAAH!
 //				frame = 0;
 
+			//grow array if necessary...
+			if (frame >= mi->frame_count) {
+				mi->frame_count = frame+1;
+				mi->locs = MEM_reallocN(mi->locs, sizeof(float) * 3 * mi->frame_count);
+				mi->rots = MEM_reallocN(mi->rots, sizeof(float) * 4 * mi->frame_count);
+			}
+
 			mi->locs[3*frame] = rbo->pos[0];
 			mi->locs[3*frame+1] = rbo->pos[1];
 			mi->locs[3*frame+2] = rbo->pos[2];

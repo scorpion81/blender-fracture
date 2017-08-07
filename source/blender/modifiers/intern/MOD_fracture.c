@@ -305,75 +305,7 @@ static void free_simulation(FractureModifierData *fmd, bool do_free_seq, bool do
 	BKE_free_constraints(fmd);
 
 	if (!do_free_seq) {
-
-		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
-		{
-			//delete all except first sequence elem (really ?)
-			MeshIslandSequence *msq = fmd->meshIsland_sequence.first;
-			ShardSequence *ssq = fmd->shard_sequence.first;
-
-			if (msq)
-				msq = msq->next;
-
-			while (msq && msq != fmd->meshIsland_sequence.first)
-			{
-				BLI_remlink(&fmd->meshIsland_sequence, msq);
-				free_meshislands(fmd, &msq->meshIslands, do_free_rigidbody);
-				MEM_freeN(msq);
-				msq = fmd->meshIsland_sequence.first;
-				if (msq)
-					msq = msq->next;
-			}
-
-			msq = fmd->meshIsland_sequence.first;
-			if (msq)
-			{
-				msq->is_new = true;
-				fmd->current_mi_entry = msq;
-				fmd->meshIslands = msq->meshIslands;
-				fmd->visible_mesh_cached = msq->visible_dm;
-
-			}
-			else
-			{
-				fmd->meshIsland_sequence.first = NULL;
-				fmd->meshIsland_sequence.last = NULL;
-
-				fmd->meshIslands.first = NULL;
-				fmd->meshIslands.last = NULL;
-
-				fmd->current_mi_entry = NULL;
-			}
-
-			if (ssq)
-				ssq = ssq->next;
-
-			while (ssq && ssq != fmd->shard_sequence.first)
-			{
-				BLI_remlink(&fmd->shard_sequence, ssq);
-				BKE_fracmesh_free(ssq->frac_mesh, true);
-				MEM_freeN(ssq->frac_mesh);
-				MEM_freeN(ssq);
-
-				ssq = fmd->shard_sequence.first;
-				if (ssq)
-					ssq = ssq->next;
-			}
-
-			if (ssq)
-			{
-				fmd->current_shard_entry = ssq;
-				fmd->frac_mesh = ssq->frac_mesh;
-			}
-			else
-			{
-				fmd->shard_sequence.first = NULL;
-				fmd->shard_sequence.last = NULL;
-				fmd->current_shard_entry = NULL;
-				fmd->frac_mesh = NULL;
-			}
-		}
-		else
+		if (fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 		{
 			free_meshislands(fmd, &fmd->meshIslands, do_free_rigidbody);
 			fmd->meshIslands.first = NULL;
@@ -408,14 +340,15 @@ static void free_simulation(FractureModifierData *fmd, bool do_free_seq, bool do
 			{
 				ssq = fmd->shard_sequence.first;
 				BLI_remlink(&fmd->shard_sequence, ssq);
-				BKE_fracmesh_free(ssq->frac_mesh, true);
-				MEM_freeN(ssq->frac_mesh);
+				//BKE_fracmesh_free(ssq->frac_mesh, true);
+				//MEM_freeN(ssq->frac_mesh);
 				MEM_freeN(ssq);
 			}
 
 			fmd->shard_sequence.first = NULL;
 			fmd->shard_sequence.last = NULL;
 			fmd->current_shard_entry = NULL;
+			BKE_fracmesh_free(fmd->frac_mesh, true);
 			fmd->frac_mesh = NULL;
 		}
 	}
@@ -2095,7 +2028,7 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 	{
 		/* in dynamic case preallocate cache here */
 		int start = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
-		int end = fmd->modifier.scene->rigidbody_world->pointcache->endframe;
+		int end = 10; //fmd->modifier.scene->rigidbody_world->pointcache->endframe;
 
 		if (fmd->current_mi_entry) {
 			MeshIslandSequence *prev = fmd->current_mi_entry->prev;
@@ -2104,6 +2037,8 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 				start = prev->frame;
 			}
 		}
+
+		end = start + 10;
 
 		mi->frame_count = end - start + 1;
 		mi->start_frame = start;
@@ -3736,12 +3671,12 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	{
 		/* in dynamic case preallocate cache here */
 		int start = 1;
-		int end = 250;
+		int end = 10;
 
 		if (fmd->modifier.scene->rigidbody_world)
 		{
 			start = fmd->modifier.scene->rigidbody_world->pointcache->startframe;
-			end = fmd->modifier.scene->rigidbody_world->pointcache->endframe;
+			//end = fmd->modifier.scene->rigidbody_world->pointcache->endframe;
 		}
 
 		if (fmd->current_mi_entry) {
@@ -3751,6 +3686,8 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 				start = prev->frame + 1;
 			}
 		}
+
+		end = start + 10;
 
 		mi->frame_count = end - start + 1;
 		mi->start_frame = start;
@@ -4603,7 +4540,7 @@ static ShardSequence* shard_sequence_add(FractureModifierData* fmd, float frame,
 		ssq->frac_mesh = fmd->frac_mesh;
 	}
 	else {
-		ssq->frac_mesh = copy_fracmesh(fmd->frac_mesh);
+		ssq->frac_mesh = fmd->frac_mesh; //copy_fracmesh(fmd->frac_mesh);
 	}
 
 	ssq->is_new = true;
