@@ -3102,11 +3102,42 @@ MINLINE void div_v3_v3(float r[3], const float a[3], const float b[3])
 		r[2] = a[2];
 }
 
+MINLINE void div_v4_v4(float r[4], const float a[4], const float b[4])
+{
+	if (b[0] != 0)
+		r[0] = a[0] / b[0];
+	else
+		r[0] = a[0];
+
+	if (b[1] != 0)
+		r[1] = a[1] / b[1];
+	else
+		r[1] = a[1];
+
+	if (b[2] != 0)
+		r[2] = a[2] / b[2];
+	else
+		r[2] = a[2];
+
+	if (b[3] != 0)
+		r[3] = a[3] / b[3];
+	else
+		r[3] = a[3];
+}
+
 MINLINE void compare_v3_fl(bool r[3], const float a[3], const float b)
 {
 	r[0] = fabsf(1.0f - a[0]) > b;
 	r[1] = fabsf(1.0f - a[1]) > b;
 	r[2] = fabsf(1.0f - a[2]) > b;
+}
+
+MINLINE void compare_v4_fl(bool r[4], const float a[4], const float b)
+{
+	r[0] = fabsf(1.0f - a[0]) > b;
+	r[1] = fabsf(1.0f - a[1]) > b;
+	r[2] = fabsf(1.0f - a[2]) > b;
+	r[3] = fabsf(1.0f - a[3]) > b;
 }
 
 static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, Group* gr, Object* ob, Scene* scene,
@@ -3120,8 +3151,8 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 	float cent[3];
 	float prevloc[3] = {0, 0, 0};
 	float prevploc[3] = {0, 0, 0};
-	float prevrot[3] = {0, 0, 0};
-	float prevprot[3] = {0, 0, 0};
+	float prevrot[4] = {0, 0, 0, 0};
+	float prevprot[4] = {0, 0, 0, 0};
 	bool adaptive = threshold > 0;
 
 	char *name = BLI_strdupcat(ob->id.name + 2, "_key");
@@ -3135,6 +3166,9 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 
 	ob_new = BKE_object_add(G.main, scene, OB_MESH, name);
 	*base = scene->basact;
+
+	//this and keyframing quats hopefully solves the sudden rotation / gimbal lock (?) issue
+	ob_new->rotmode = ROT_MODE_QUAT;
 
 	//MEM_freeN((void*)name);
 
@@ -3187,7 +3221,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 			bool dostep = adaptive ? (((i + start) % step == 0) || i == start || i == end) : true;
 			float size[3] = {1, 1, 1};
 			bool locset[3] = {true, true, true};
-			bool rotset[3] = {true, true, true};
+			bool rotset[4] = {true, true, true, true};
 
 			if (dostep) {
 				//if adaptive and step is on same frame, prefer adaptive vector handle
@@ -3209,6 +3243,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 				rotset[0] = false;
 				rotset[1] = false;
 				rotset[2] = false;
+				rotset[3] = false;
 			}
 
 			copy_v3_v3(size, ob->size);
@@ -3239,9 +3274,22 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 						rot[2] = mi->rots[x*4+2];
 						rot[3] = mi->rots[x*4+3];
 
+						if (i >= start + 1)
+						{
+							//taken from rigidbody.py
+							// make quaternion compatible with the previous one
+							//if q1.dot(q2) < 0.0:
+							//	obj.rotation_quaternion = -q2
+							//else:
+							//	obj.rotation_quaternion = q2
+							if (dot_qtqt(prevrot, rot) < 0.0) {
+								negate_v4(rot);
+							}
+						}
+
 						if (adaptive)
 						{
-							float diffloc[3], diffploc[3], diffrot[3], diffprot[3], difflq[3], diffrq[3];
+							float diffloc[3], diffploc[3], diffrot[4], diffprot[4], difflq[3], diffrq[4];
 							if (i >= start + 2)
 							{
 								sub_v3_v3v3(diffploc, prevploc, prevloc);
@@ -3249,20 +3297,20 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 								div_v3_v3(difflq, diffploc, diffloc);
 								compare_v3_fl(locset, difflq, threshold);
 
-								sub_v3_v3v3(diffprot, prevprot, prevrot);
-								sub_v3_v3v3(diffrot, prevrot, rot);
-								div_v3_v3(diffrq, diffprot, diffrot);
-								compare_v3_fl(rotset, diffrq, threshold);
+								sub_v4_v4v4(diffprot, prevprot, prevrot);
+								sub_v4_v4v4(diffrot, prevrot, rot);
+								div_v4_v4(diffrq, diffprot, diffrot);
+								compare_v4_fl(rotset, diffrq, threshold);
 							}
 
 							if (i >= start + 1)
 							{
 								copy_v3_v3(prevploc, prevloc);
-								copy_v3_v3(prevprot, prevrot);
+								copy_v4_v4(prevprot, prevrot);
 							}
 
 							copy_v3_v3(prevloc, loc);
-							copy_v3_v3(prevrot, rot);
+							copy_v4_v4(prevrot, rot);
 						}
 
 						if (dostep)
@@ -3274,6 +3322,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 							rotset[0] = true;
 							rotset[1] = true;
 							rotset[2] = true;
+							rotset[3] = true;
 						}
 					}
 				}
@@ -3294,7 +3343,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 
 				loc_quat_size_to_mat4(mat, loc, rot, size);
 
-				if (locset[0] || locset[1] || locset[2] || rotset[0] || rotset[1] || rotset[2]) {
+				if (locset[0] || locset[1] || locset[2] || rotset[0] || rotset[1] || rotset[2] || rotset[3]) {
 					BKE_scene_frame_set(scene, (double)i);
 				}
 
@@ -3302,6 +3351,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 
 				copy_v3_v3(ob_new->loc, loc);
 				copy_qt_qt(ob_new->quat, rot);
+
 				quat_to_compatible_eul(ob_new->rot, ob_new->rot, rot);
 				copy_v3_v3(ob_new->size, size);
 			}
@@ -3316,13 +3366,16 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 				insert_keyframe(NULL, (ID*)ob_new, NULL, "Location", "location", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
 
 			if (rotset[0])
-				insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
+				insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_quaternion", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
 
 			if (rotset[1])
-				insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
+				insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_quaternion", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
 
 			if (rotset[2])
-				insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_euler", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
+				insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_quaternion", 2, i, BEZT_KEYTYPE_KEYFRAME, flag);
+
+			if (rotset[3])
+				insert_keyframe(NULL, (ID*)ob_new, NULL, "Rotation", "rotation_quaternion", 3, i, BEZT_KEYTYPE_KEYFRAME, flag);
 
 			//insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 0, i, BEZT_KEYTYPE_KEYFRAME, flag);
 			//insert_keyframe(NULL, (ID*)ob_new, NULL, "Scale", "scale", 1, i, BEZT_KEYTYPE_KEYFRAME, flag);
