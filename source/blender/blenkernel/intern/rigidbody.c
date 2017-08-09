@@ -1273,9 +1273,10 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 		BKE_rigidbody_validate_sim_shard_shape(mi, ob, true);
 	
 	if (rbo->physics_object) {
-		if (rebuild == false || mi->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD)
+		if (rebuild == false /*|| mi->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD*/)
 			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 	}
+
 	if (!rbo->physics_object || rebuild) {
 		float size[3];
 
@@ -1349,6 +1350,12 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 			}
 		}
 	}
+	else if (mi->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD )
+	{
+		RB_body_deactivate(rbo->physics_object);
+		RB_body_set_mass(rbo->physics_object, 0.0f);
+		RB_body_set_kinematic_state(rbo->physics_object, true);
+	}
 
 	if (rbw && rbw->physics_world && rbo->physics_object)
 	{
@@ -1356,7 +1363,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 	}
 
 	rbo->flag &= ~RBO_FLAG_NEEDS_VALIDATE;
-	rbo->flag &= ~RBO_FLAG_KINEMATIC_REBUILD;
+	//rbo->flag &= ~RBO_FLAG_KINEMATIC_REBUILD;
 }
 
 
@@ -1443,6 +1450,12 @@ static void rigidbody_validate_sim_object(RigidBodyWorld *rbw, Object *ob, bool 
 				RB_body_set_angular_velocity(rbo->physics_object, rbo->ang_vel);
 			}
 		}
+	}
+	else if (rbo->flag & RBO_FLAG_KINEMATIC_REBUILD )
+	{
+		RB_body_deactivate(rbo->physics_object);
+		RB_body_set_mass(rbo->physics_object, 0.0f);
+		RB_body_set_kinematic_state(rbo->physics_object, true);
 	}
 
 	if (rbw && rbw->physics_world)
@@ -3539,7 +3552,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 
 	/* update rigid body location and rotation for kinematic bodies */
 	if ((rbo->flag & RBO_FLAG_KINEMATIC && rbo->force_thresh == 0.0f) || (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
-		if (rbo->type == RBO_TYPE_ACTIVE || mi == NULL)
+		if (((rbo->type == RBO_TYPE_ACTIVE || mi == NULL) && (rbo->flag & RBO_FLAG_KINEMATIC_REBUILD) == 0))
 		{
 			mul_v3_v3(centr, scale);
 			mul_qt_v3(rot, centr);
@@ -3583,12 +3596,15 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 			}
 			else if (rbo->flag & RBO_FLAG_KINEMATIC)
 			{
-				/* do the same here as above, but here we needed the eff_force value to compare against threshold */
-				mul_v3_v3(centr, scale);
-				mul_qt_v3(rot, centr);
-				add_v3_v3(loc, centr);
-				RB_body_activate(rbo->physics_object);
-				RB_body_set_loc_rot(rbo->physics_object, loc, rot);
+				if ((rbo->flag & RBO_FLAG_KINEMATIC_REBUILD) == 0)
+				{   //XXXXX TODO, maybe this is wrong here
+					/* do the same here as above, but here we needed the eff_force value to compare against threshold */
+					mul_v3_v3(centr, scale);
+					mul_qt_v3(rot, centr);
+					add_v3_v3(loc, centr);
+					RB_body_activate(rbo->physics_object);
+					RB_body_set_loc_rot(rbo->physics_object, loc, rot);
+				}
 			}
 			else
 			{
@@ -3619,7 +3635,7 @@ static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int r
 		return;
 	}
 
-	if (rebuild || (mi->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD)) {
+	if (rebuild /*|| (mi->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD)*/) {
 		/* World has been rebuilt so rebuild object */
 		BKE_rigidbody_validate_sim_shard(rbw, mi, ob, true, transfer_speed, size);
 	}
@@ -3759,12 +3775,15 @@ void BKE_deactivateRigidbody(RigidBodyOb *rbo)
 {
 	//make kinematic again (un-trigger)
 	//printf("Untrigger\n");
-	if (rbo->physics_object)
+	//if (rbo->physics_object)
 	{
-		RB_body_set_kinematic_state(rbo->physics_object, true);
-		RB_body_set_mass(rbo->physics_object, 0.0f);
+		//RB_body_set_kinematic_state(rbo->physics_object, true);
+		//RB_body_set_mass(rbo->physics_object, 0.0f);
 		//rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
-		RB_body_deactivate(rbo->physics_object);
+		//RB_body_deactivate(rbo->physics_object);
+		rbo->flag |= RBO_FLAG_KINEMATIC;
+		rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 	}
 }
 
@@ -4224,8 +4243,8 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				}
 			}
 
-			if (rebuild || rbsc->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD ||
-				rbsc->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD) {
+			if (rebuild) { // || rbsc->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD ||
+				//rbsc->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC_REBUILD) {
 				/* World has been rebuilt so rebuild constraint */
 				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
 				BKE_rigidbody_start_dist_angle(rbsc, fmd->fracture_mode == MOD_FRACTURE_EXTERNAL ||
@@ -4823,23 +4842,24 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 
 	/*restore kinematic state of shards if object is kinematic*/
 	for (go = rbw->group->gobject.first; go; go = go->next)	{
-		if ((go->ob) && (go->ob->rigidbody_object) && (go->ob->rigidbody_object->flag & (RBO_FLAG_KINEMATIC | RBO_FLAG_USE_KINEMATIC_DEACTIVATION)))
+		if ((go->ob) && (go->ob->rigidbody_object) && (go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC))
 		{
 			FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
-			if (fmd && /*fmd->fracture_mode != MOD_FRACTURE_EXTERNAL &&*/ go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)
+			if (fmd)
 			{
 				MeshIsland* mi;
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 				{
 					if (mi->rigidbody)
 					{
+						mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC_REBUILD;
 						mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
 						mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 						did_it = true;
 					}
 				}
 			}
-			else if (!fmd && (go->ob->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION))
+			else if (!fmd && (go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC))
 			{	/* restore regular triggered objects back to kinematic at all, they very likely were kinematic before...
 				 * user has to disable triggered if behavior is not desired */
 				go->ob->rigidbody_object->flag |= RBO_FLAG_KINEMATIC;
@@ -5096,6 +5116,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 		BKE_ptcache_validate(cache, (int)ctime);
 
 		rbw->ltime = ctime;
+
 		return;
 	}
 	else if (rbw->ltime == startframe)

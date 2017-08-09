@@ -723,20 +723,15 @@ struct rbFilterCallback : public btOverlapFilterCallback
 		this->callback = callback;
 	}
 
-	virtual bool needBroadphaseCollision(btBroadphaseProxy *proxy0, btBroadphaseProxy *proxy1) const
+	bool check_collision(rbRigidBody* rb0, rbRigidBody* rb1, bool collides) const
 	{
-		rbRigidBody *rb0 = (rbRigidBody *)((btFractureBody *)proxy0->m_clientObject)->getUserPointer();
-		rbRigidBody *rb1 = (rbRigidBody *)((btFractureBody *)proxy1->m_clientObject)->getUserPointer();
-		
-		bool collides;
-		collides = (proxy0->m_collisionFilterGroup & proxy1->m_collisionFilterMask) != 0;
-		collides = collides && (proxy1->m_collisionFilterGroup & proxy0->m_collisionFilterMask);
 		if (!rb0 || !rb1)
 			return collides;
 
 		collides = collides && (rb0->col_groups & rb1->col_groups);
 		if (this->callback != NULL) {
 			int result = 0;
+#if 0
 			//cast ray from centroid of 1 rigidbody to another, do this only for mesh shapes (all other can use standard bbox)
 			int stype0 = rb0->body->getCollisionShape()->getShapeType();
 			int stype1 = rb1->body->getCollisionShape()->getShapeType();
@@ -806,9 +801,28 @@ struct rbFilterCallback : public btOverlapFilterCallback
 			}
 
 			collides = collides && (bool)result;
+#endif
+			result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland, rb0->blenderOb, rb1->blenderOb);
+			collides = collides && (bool)result;
 		}
-		
+
 		return collides;
+	}
+
+	virtual bool needBroadphaseCollision(btBroadphaseProxy *proxy0, btBroadphaseProxy *proxy1) const
+	{
+		//rbRigidBody *rb0 = (rbRigidBody *)((btFractureBody *)proxy0->m_clientObject)->getUserPointer();
+		//rbRigidBody *rb1 = (rbRigidBody *)((btFractureBody *)proxy1->m_clientObject)->getUserPointer();
+		
+		bool collides;
+		collides = (proxy0->m_collisionFilterGroup &
+		           (proxy1->m_collisionFilterMask | btBroadphaseProxy::StaticFilter |
+		            btBroadphaseProxy::KinematicFilter)) != 0;
+		collides = collides && (proxy1->m_collisionFilterGroup &
+		           (proxy0->m_collisionFilterMask | btBroadphaseProxy::StaticFilter |
+		            btBroadphaseProxy::KinematicFilter));
+
+		return collides; //this->check_collision(rb0, rb1, collides);
 	}
 };
 
@@ -892,6 +906,33 @@ static void idCallback(void *userPtr, int* objectId, int* shardId)
 	}
 }
 
+class CollisionFilterDispatcher : public btCollisionDispatcher
+{
+	public:
+		virtual bool needsCollision(const btCollisionObject *body0, const btCollisionObject *body1);
+		rbFilterCallback *filterCallback;
+		CollisionFilterDispatcher(btDefaultCollisionConfiguration *configuration, rbFilterCallback* callback);
+};
+
+CollisionFilterDispatcher::CollisionFilterDispatcher(btDefaultCollisionConfiguration* configuration, rbFilterCallback *callback)
+    :btCollisionDispatcher(configuration)
+{
+	this->filterCallback = callback;
+}
+
+bool CollisionFilterDispatcher::needsCollision(const btCollisionObject *body0, const btCollisionObject *body1)
+{
+	rbRigidBody *rb0 = (rbRigidBody *)((btFractureBody *)body0)->getUserPointer();
+	rbRigidBody *rb1 = (rbRigidBody *)((btFractureBody *)body1)->getUserPointer();
+
+	if (this->filterCallback)
+	{
+		return this->filterCallback->check_collision(rb0, rb1, true);
+	}
+
+	return true;
+}
+
 //yuck, but need a handle for the world somewhere for collision callback...
 rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, void* blenderScene, int (*callback)(void *, void *, void *, void *, void *),
 							   void (*contactCallback)(rbContactPoint* cp, void *bworld), void (*idCallbackOut)(void*, void*, int*, int*),
@@ -901,13 +942,12 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, void*
 	
 	/* collision detection/handling */
 	world->collisionConfiguration = new btDefaultCollisionConfiguration();
-	
-	world->dispatcher = new btCollisionDispatcher(world->collisionConfiguration);
+
+	world->filterCallback = new rbFilterCallback(callback);
+	world->dispatcher = new CollisionFilterDispatcher(world->collisionConfiguration, (rbFilterCallback*)world->filterCallback);
 	btGImpactCollisionAlgorithm::registerAlgorithm((btCollisionDispatcher *)world->dispatcher);
 	
 	world->pairCache = new btDbvtBroadphase();
-	
-	world->filterCallback = new rbFilterCallback(callback);
 	world->pairCache->getOverlappingPairCache()->setOverlapFilterCallback(world->filterCallback);
 
 	/* constraint solving */
