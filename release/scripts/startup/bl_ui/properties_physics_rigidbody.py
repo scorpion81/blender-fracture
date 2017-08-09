@@ -81,7 +81,7 @@ class PHYSICS_PT_rigid_body_trigger_advanced(PHYSICS_PT_rigidbody_panel, Panel):
         row.prop(rbo, "dynamic_trigger")
         row = layout.row()
         row.prop(rbo, "plastic_dissolve")
-
+        row.prop(rbo, "is_anti_trigger")
 
 class PHYSICS_PT_rigid_body_collisions(PHYSICS_PT_rigidbody_panel, Panel):
     bl_label = "Rigid Body Collisions"

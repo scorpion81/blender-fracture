@@ -2064,15 +2064,18 @@ static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 {
 	FractureModifierData *fmd;
 	bool valid = true;
+	bool antiValid = ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER;
 	MeshIsland *mi;
 
 	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 	valid = valid && (fmd != NULL);
+	antiValid = antiValid && (fmd != NULL);
+
 	valid = valid && (ob->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION);
 	valid = valid && ((ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER) || ((ob2->rigidbody_object->flag & RBO_FLAG_PROPAGATE_TRIGGER) &&
 	        ((mi_trigger) && (mi_trigger->rigidbody->flag & RBO_FLAG_PROPAGATE_TRIGGER))));
 
-	if (valid)
+	if (valid || antiValid)
 	{
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 		{
@@ -2084,11 +2087,18 @@ static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 			bool different_cluster = !same_cluster && dissolve;
 
 			RigidBodyOb* rbo = mi->rigidbody;
-			if (((rbo->flag & RBO_FLAG_KINEMATIC) || different_cluster) &&
-			     ((mi_compare == mi) || (same_cluster && !dissolve)))
+			if ((((rbo->flag & RBO_FLAG_KINEMATIC) || different_cluster) &&
+			     ((mi_compare == mi) || (same_cluster && !dissolve))) && valid)
 			{
 				if (rbo->physics_object) {
 					activateRigidbody(rbo, rbw, mi, ob);
+				}
+			}
+
+			if ((mi_compare == mi) && antiValid)
+			{
+				if (rbo->physics_object) {
+					BKE_deactivateRigidbody(rbo);
 				}
 			}
 		}
@@ -2096,11 +2106,17 @@ static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 	else if (!fmd)
 	{
 		bool valid = ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER;
+		bool antiValid = ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER;
 		RigidBodyOb* rbo = ob->rigidbody_object;
 
 		if (rbo && valid)
 		{
 			activateRigidbody(rbo, rbw, NULL, ob);
+		}
+
+		if (rbo && antiValid)
+		{
+			BKE_deactivateRigidbody(rbo);
 		}
 	}
 }
@@ -2237,7 +2253,8 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		          ((ob1->rigidbody_object->type == RBO_TYPE_ACTIVE) && (ob2->rigidbody_object->type == RBO_TYPE_ACTIVE)));
 	}
 
-	if (validOb || (ob1->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) || (ob2->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE))
+	if (validOb || (ob1->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) || (ob2->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) ||
+	   (ob1->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER) || (ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER))
 	{
 		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
@@ -3738,14 +3755,17 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 	}
 }
 
-static void deactivateRigidbody(RigidBodyOb *rbo)
+void BKE_deactivateRigidbody(RigidBodyOb *rbo)
 {
 	//make kinematic again (un-trigger)
-	//RB_body_set_kinematic_state(rbo->physics_object, true);
-	//RB_body_set_mass(rbo->physics_object, 0.0f);
-	//rbo->flag |= RBO_FLAG_IS_GHOST;
-	//rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
-	RB_body_deactivate(rbo->physics_object);
+	//printf("Untrigger\n");
+	if (rbo->physics_object)
+	{
+		RB_body_set_kinematic_state(rbo->physics_object, true);
+		RB_body_set_mass(rbo->physics_object, 0.0f);
+		//rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+		RB_body_deactivate(rbo->physics_object);
+	}
 }
 
 static void deform_constraint(FractureModifierData *fmd, Object *ob, RigidBodyShardCon* rbsc, RigidBodyWorld *rbw)
@@ -3763,8 +3783,8 @@ static void deform_constraint(FractureModifierData *fmd, Object *ob, RigidBodySh
 	thresh = RB_constraint_get_breaking_threshold(rbsc->physics_constraint);
 	RB_constraint_set_breaking_threshold(rbsc->physics_constraint, thresh * weakening);
 
-	deactivateRigidbody(rbsc->mi1->rigidbody);
-	deactivateRigidbody(rbsc->mi2->rigidbody);
+	RB_body_deactivate(rbsc->mi1->rigidbody->physics_object);
+	RB_body_deactivate(rbsc->mi2->rigidbody->physics_object);
 }
 
 static void handle_deform_angle(FractureModifierData *fmd, Object *ob, RigidBodyShardCon *rbsc, RigidBodyWorld *rbw,

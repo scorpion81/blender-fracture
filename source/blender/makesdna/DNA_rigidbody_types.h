@@ -187,6 +187,8 @@ typedef enum eRigidBodyOb_Flag {
 	RBO_FLAG_DYNAMIC_TRIGGER = (1 << 14),
 	/* dissolve plastic constraints too (if any) */
 	RBO_FLAG_PLASTIC_DISSOLVE = (1 << 15),
+	/* anti trigger flag, make simulated objects kinematic again */
+	RBO_FLAG_ANTI_TRIGGER = (1 << 16),
 
 } eRigidBodyOb_Flag;
 

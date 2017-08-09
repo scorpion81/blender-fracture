@@ -1107,6 +1107,11 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_PLASTIC_DISSOLVE);
 	RNA_def_property_ui_text(prop, "Dissolve Plastic Constraints", "Dissolves plastic constraints on shards of this trigger target, only relevant for external mode");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+
+	prop = RNA_def_property(srna, "is_anti_trigger", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_ANTI_TRIGGER);
+	RNA_def_property_ui_text(prop, "Anti-Trigger", "Can trigger deactivation of other simulated objects, which are set up to be triggered");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
 	
 	/* Physics Parameters */
 	prop = RNA_def_property(srna, "mass", PROP_FLOAT, PROP_UNIT_MASS);
