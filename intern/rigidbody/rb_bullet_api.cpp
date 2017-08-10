@@ -717,13 +717,13 @@ struct myResultCallback : public btCollisionWorld::ClosestRayResultCallback
 
 struct rbFilterCallback : public btOverlapFilterCallback
 {
-	int (*callback)(void* world, void* island1, void* island2, void* blenderOb1, void* blenderOb2);
+	int (*callback)(void* world, void* island1, void* island2, void* blenderOb1, void* blenderOb2, bool activate);
 
-	rbFilterCallback(int (*callback)(void* world, void* island1, void* island2, void* blenderOb1, void* blenderOb2)) {
+	rbFilterCallback(int (*callback)(void* world, void* island1, void* island2, void* blenderOb1, void* blenderOb2, bool activate)) {
 		this->callback = callback;
 	}
 
-	bool check_collision(rbRigidBody* rb0, rbRigidBody* rb1, bool collides) const
+	bool check_collision(rbRigidBody* rb0, rbRigidBody* rb1, bool activate, bool collides) const
 	{
 		if (!rb0 || !rb1)
 			return collides;
@@ -802,7 +802,7 @@ struct rbFilterCallback : public btOverlapFilterCallback
 
 			collides = collides && (bool)result;
 #endif
-			result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland, rb0->blenderOb, rb1->blenderOb);
+			result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland, rb0->blenderOb, rb1->blenderOb, activate);
 			collides = collides && (bool)result;
 		}
 
@@ -811,8 +811,8 @@ struct rbFilterCallback : public btOverlapFilterCallback
 
 	virtual bool needBroadphaseCollision(btBroadphaseProxy *proxy0, btBroadphaseProxy *proxy1) const
 	{
-		//rbRigidBody *rb0 = (rbRigidBody *)((btFractureBody *)proxy0->m_clientObject)->getUserPointer();
-		//rbRigidBody *rb1 = (rbRigidBody *)((btFractureBody *)proxy1->m_clientObject)->getUserPointer();
+		rbRigidBody *rb0 = (rbRigidBody *)((btFractureBody *)proxy0->m_clientObject)->getUserPointer();
+		rbRigidBody *rb1 = (rbRigidBody *)((btFractureBody *)proxy1->m_clientObject)->getUserPointer();
 		
 		bool collides;
 		collides = (proxy0->m_collisionFilterGroup &
@@ -822,7 +822,8 @@ struct rbFilterCallback : public btOverlapFilterCallback
 		           (proxy0->m_collisionFilterMask | btBroadphaseProxy::StaticFilter |
 		            btBroadphaseProxy::KinematicFilter));
 
-		return collides; //this->check_collision(rb0, rb1, collides);
+		//only apply to trigger and triggered, to improve performance, but do not actually activate
+		return this->check_collision(rb0, rb1, false, collides);
 	}
 };
 
@@ -927,14 +928,14 @@ bool CollisionFilterDispatcher::needsCollision(const btCollisionObject *body0, c
 
 	if (this->filterCallback)
 	{
-		return this->filterCallback->check_collision(rb0, rb1, true);
+		return this->filterCallback->check_collision(rb0, rb1, true, true);
 	}
 
 	return true;
 }
 
 //yuck, but need a handle for the world somewhere for collision callback...
-rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, void* blenderScene, int (*callback)(void *, void *, void *, void *, void *),
+rbDynamicsWorld *RB_dworld_new(const float gravity[3], void* blenderWorld, void* blenderScene, int (*callback)(void *, void *, void *, void *, void *, bool),
 							   void (*contactCallback)(rbContactPoint* cp, void *bworld), void (*idCallbackOut)(void*, void*, int*, int*),
 							   void (*tickCallback)(float timestep, void *bworld))
 {

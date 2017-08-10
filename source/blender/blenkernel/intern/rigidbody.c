@@ -2073,11 +2073,12 @@ static bool colgroup_check(int group1, int group2)
 	return false;
 }
 
-static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBodyWorld *rbw, MeshIsland *mi_trigger)
+static bool do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBodyWorld *rbw, MeshIsland *mi_trigger, bool activate)
 {
 	FractureModifierData *fmd;
 	bool valid = true;
 	bool antiValid = ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER;
+	bool wouldActivate = false;
 	MeshIsland *mi;
 
 	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
@@ -2103,12 +2104,14 @@ static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 			if ((((rbo->flag & RBO_FLAG_KINEMATIC) || different_cluster) &&
 			     ((mi_compare == mi) || (same_cluster && !dissolve))) && valid)
 			{
-				if (rbo->physics_object) {
+				if (rbo->physics_object && activate) {
 					activateRigidbody(rbo, rbw, mi, ob);
 				}
+
+				wouldActivate = true;
 			}
 
-			if ((mi_compare == mi) && antiValid)
+			if ((mi_compare == mi) && antiValid && activate)
 			{
 				if (rbo->physics_object) {
 					BKE_deactivateRigidbody(rbo);
@@ -2122,16 +2125,19 @@ static void do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 		bool antiValid = ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER;
 		RigidBodyOb* rbo = ob->rigidbody_object;
 
-		if (rbo && valid)
+		if (rbo && valid && activate)
 		{
 			activateRigidbody(rbo, rbw, NULL, ob);
+			wouldActivate = true;
 		}
 
-		if (rbo && antiValid)
+		if (rbo && antiValid && activate)
 		{
 			BKE_deactivateRigidbody(rbo);
 		}
 	}
+
+	return wouldActivate;
 }
 
 static int check_colgroup_ghost(Object* ob1, Object *ob2)
@@ -2185,12 +2191,12 @@ static bool check_constraint_island(FractureModifierData* fmd, MeshIsland *mi1, 
 }
 
 /* this allows partial object activation, only some shards will be activated, called from bullet(!) */
-static int filterCallback(void* world, void* island1, void* island2, void *blenderOb1, void* blenderOb2) {
+static int filterCallback(void* world, void* island1, void* island2, void *blenderOb1, void* blenderOb2, bool activate) {
 	MeshIsland* mi1, *mi2;
 	RigidBodyWorld *rbw = (RigidBodyWorld*)world;
 	Object* ob1, *ob2;
 	int ob_index1 = -1, ob_index2 = -1;
-	bool validOb = true;
+	bool validOb = true, check_activate = false;
 
 	mi1 = (MeshIsland*)island1;
 	mi2 = (MeshIsland*)island2;
@@ -2271,12 +2277,12 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	{
 		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			do_activate(ob1, ob2, mi1, rbw, mi2);
+			check_activate = do_activate(ob1, ob2, mi1, rbw, mi2, activate);
 		}
 
 		if (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			do_activate(ob2, ob1, mi2, rbw, mi1);
+			check_activate = do_activate(ob2, ob1, mi2, rbw, mi1, activate);
 		}
 	}
 
@@ -2284,7 +2290,18 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	fake_dynamic_collide(ob1, ob2, mi1, mi2, rbw);
 	fake_dynamic_collide(ob2, ob1, mi2, mi1, rbw);
 
-	return check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) && check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2));
+	validOb = ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0) || ((ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0);
+	validOb = validOb || ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0) || ((mi2 && mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
+	validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || ((ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0);
+	validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || ((mi2 && mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
+
+	if (validOb)
+	{
+		//always allow when atleast one object is not kinematic
+		check_activate = true;
+	}
+
+	return check_activate && check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) && check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2));
 }
 
 static bool can_break(Object* collider, Object* ob, bool limit)
@@ -4696,7 +4713,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 		rbo = ob->rigidbody_object;
 
 		/* keep original transform for kinematic and passive objects */
-		if (ELEM(NULL, rbw, rbo) || rbo->flag & RBO_FLAG_KINEMATIC || rbo->type == RBO_TYPE_PASSIVE)
+		if (ELEM(NULL, rbw, rbo) || (((rbo->flag & RBO_FLAG_KINEMATIC) && ((rbo->flag & RBO_FLAG_KINEMATIC_REBUILD) == 0)) || rbo->type == RBO_TYPE_PASSIVE))
 			return;
 
 		/* use rigid body transform after cache start frame if objects is not being transformed */
