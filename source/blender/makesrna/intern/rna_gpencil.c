@@ -806,16 +806,6 @@ static char *rna_GPencilPalette_path(PointerRNA *ptr)
 	return BLI_sprintfN("palettes[\"%s\"]", name_esc);
 }
 
-static char *rna_GPencilPalette_path(PointerRNA *ptr)
-{
-	bGPDpalette *palette = ptr->data;
-	char name_esc[sizeof(palette->info) * 2];
-	
-	BLI_strescape(name_esc, palette->info, sizeof(name_esc));
-	
-	return BLI_sprintfN("palettes[\"%s\"]", name_esc);
-}
-
 static char *rna_GPencilPalette_color_path(PointerRNA *ptr)
 {
 	bGPdata *gpd = ptr->id.data;

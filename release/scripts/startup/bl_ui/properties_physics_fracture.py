@@ -289,5 +289,15 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
         col.operator("object.rigidbody_convert_to_objects", text = "Convert To Objects")
         col.operator("object.rigidbody_convert_to_keyframes", text = "Convert To Keyframed Objects")
 
+classes = (
+    FRACTURE_MT_presets,
+    FRACTURE_UL_fracture_settings,
+    PHYSICS_PT_fracture,
+    PHYSICS_PT_fracture_simulation,
+    PHYSICS_PT_fracture_utilities,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

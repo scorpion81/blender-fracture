@@ -201,13 +201,6 @@ static bool pointer_to_component_node_criteria(const PointerRNA *ptr,
 				*type = DEG_NODE_TYPE_GEOMETRY;
 				return true;
 			}
-			else if (strstr(prop_identifier, "data")) {
-				/* We access object.data, most likely a geometry.
-				 * Might be a bone tho..
-				 */
-				*type = DEPSNODE_TYPE_GEOMETRY;
-				return true;
-			}
 		}
 	}
 	else if (ptr->type == &RNA_ShapeKey) {

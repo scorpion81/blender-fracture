@@ -159,6 +159,7 @@ DerivedMesh *NewBooleanDerivedMeshBMesh(DerivedMesh *dm, struct Object *ob,
 				use_separate,
 				use_dissolve,
 				use_island_connect,
+				false,
 				op_type,
 				double_threshold);
 

@@ -171,6 +171,7 @@ class PHYSICS_PT_rigid_body_dynamics(PHYSICS_PT_rigidbody_panel, Panel):
 
 classes = (
     PHYSICS_PT_rigid_body,
+    PHYSICS_PT_rigid_body_trigger_advanced,
     PHYSICS_PT_rigid_body_collisions,
     PHYSICS_PT_rigid_body_dynamics,
 )

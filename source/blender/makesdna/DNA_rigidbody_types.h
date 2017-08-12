@@ -338,10 +338,16 @@ typedef struct RigidBodyShardCon {
 	float spring_stiffness_x;
 	float spring_stiffness_y;
 	float spring_stiffness_z;
+	float spring_stiffness_ang_x;
+	float spring_stiffness_ang_y;
+	float spring_stiffness_ang_z;
 	/* amount of velocity lost over time */
 	float spring_damping_x;
 	float spring_damping_y;
 	float spring_damping_z;
+	float spring_damping_ang_x;
+	float spring_damping_ang_y;
+	float spring_damping_ang_z;
 
 	/* motor settings */
 	float motor_lin_target_velocity;	/* linear velocity the motor tries to hold */

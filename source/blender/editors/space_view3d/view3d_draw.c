@@ -2952,7 +2952,7 @@ static void view3d_draw_objects(
 			{
 				view3d_cached_text_draw_begin();
 				RB_dworld_debug_draw(rbw->physics_world, view3d_draw_string);
-				view3d_cached_text_draw_end(v3d, ar, 0, NULL);
+				view3d_cached_text_draw_end(v3d, ar, 0);
 			}
 		}
 

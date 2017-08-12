@@ -790,6 +790,7 @@ classes = (
     AddPresetCamera,
     AddPresetCloth,
     AddPresetFluid,
+    AddPresetFracture,
     AddPresetHairDynamics,
     AddPresetInteraction,
     AddPresetInterfaceTheme,

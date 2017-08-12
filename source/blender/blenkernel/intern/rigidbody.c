@@ -101,6 +101,8 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 static bool restoreKinematic(RigidBodyWorld *rbw);
 static void DM_mesh_boundbox(DerivedMesh *bm, float r_loc[3], float r_size[3]);
 
+#endif
+
 
 /* ************************************** */
 /* Memory Management */
@@ -1986,7 +1988,6 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 static void do_reset_rigidbody(RigidBodyOb *rbo, Object *ob, MeshIsland* mi, float loc[3],
                               float rot[3], float quat[4], float rotAxis[3], float rotAngle)
 {
-	RigidBodyOb *rbo = ob->rigidbody_object;
 	bool correct_delta = !(rbo->flag & RBO_FLAG_KINEMATIC || rbo->type == RBO_TYPE_PASSIVE);
 
 	/* return rigid body and object to their initial states */
@@ -2047,7 +2048,7 @@ static void do_reset_rigidbody(RigidBodyOb *rbo, Object *ob, MeshIsland* mi, flo
 		}
 
 		if (mi)
-			mul_qt_qtqt(rbo->orn, qt, mi->rot);
+			mul_qt_qtqt(rbo->orn, rbo->orn, mi->rot);
 
 		copy_qt_qt(ob->quat, quat);
 	}
@@ -5203,7 +5204,8 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 
 	/*restore kinematic state of shards if object is kinematic*/
 	for (go = rbw->group->gobject.first; go; go = go->next)	{
-		if ((go->ob) && (go->ob->rigidbody_object) && (go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC))
+		if ((go->ob) && ((go->ob->rigidbody_object) && (((go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC) ||
+			(go->ob->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)))))
 		{
 			FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
 			if (fmd)
@@ -5220,9 +5222,10 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 					}
 				}
 			}
-			else if (!fmd && (go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC))
+			else if (!fmd)
 			{	/* restore regular triggered objects back to kinematic at all, they very likely were kinematic before...
 				 * user has to disable triggered if behavior is not desired */
+				go->ob->rigidbody_object->flag &= ~RBO_FLAG_KINEMATIC_REBUILD;
 				go->ob->rigidbody_object->flag |= RBO_FLAG_KINEMATIC;
 				go->ob->rigidbody_object->flag |= RBO_FLAG_NEEDS_VALIDATE;
 				did_it = true;
