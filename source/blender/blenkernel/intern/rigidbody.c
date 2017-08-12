@@ -5204,11 +5204,14 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 
 	/*restore kinematic state of shards if object is kinematic*/
 	for (go = rbw->group->gobject.first; go; go = go->next)	{
-		if ((go->ob) && ((go->ob->rigidbody_object) && (((go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC) ||
-			(go->ob->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)))))
-		{
+		bool kinematic = false, triggered = false;
+
+		if ((go->ob) && (go->ob->rigidbody_object)) {
+			kinematic = go->ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC;
+			triggered = go->ob->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION;
+
 			FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
-			if (fmd)
+			if (fmd && kinematic && triggered)
 			{
 				MeshIsland* mi;
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
@@ -5222,7 +5225,7 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 					}
 				}
 			}
-			else if (!fmd)
+			else if (!fmd && triggered)
 			{	/* restore regular triggered objects back to kinematic at all, they very likely were kinematic before...
 				 * user has to disable triggered if behavior is not desired */
 				go->ob->rigidbody_object->flag &= ~RBO_FLAG_KINEMATIC_REBUILD;
