@@ -439,6 +439,7 @@ void set_collision_margin(RigidBodyOb* rbo, float value)
 	}
 #endif
 }
+
 static void rna_RigidBodyOb_collision_margin_set(PointerRNA *ptr, float value)
 {
 	RigidBodyOb *rbo = (RigidBodyOb *)ptr->data;
@@ -750,6 +751,45 @@ static void rna_RigidBodyCon_spring_stiffness_z_set(PointerRNA *ptr, float value
 #endif
 }
 
+static void rna_RigidBodyCon_spring_stiffness_ang_x_set(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->spring_stiffness_ang_x = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint && rbc->type == RBC_TYPE_6DOF_SPRING && (rbc->flag & RBC_FLAG_USE_SPRING_ANG_X)) {
+		RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_X, value);
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_spring_stiffness_ang_y_set(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->spring_stiffness_ang_y = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint && rbc->type == RBC_TYPE_6DOF_SPRING && (rbc->flag & RBC_FLAG_USE_SPRING_ANG_Y)) {
+		RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_Y, value);
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_spring_stiffness_ang_z_set(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->spring_stiffness_ang_z = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint && rbc->type == RBC_TYPE_6DOF_SPRING && (rbc->flag & RBC_FLAG_USE_SPRING_ANG_Z)) {
+		RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_Z, value);
+	}
+#endif
+}
+
 static void rna_RigidBodyCon_spring_damping_x_set(PointerRNA *ptr, float value)
 {
 	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
@@ -783,6 +823,43 @@ static void rna_RigidBodyCon_spring_damping_z_set(PointerRNA *ptr, float value)
 #ifdef WITH_BULLET
 	if (rbc->physics_constraint && rbc->type == RBC_TYPE_6DOF_SPRING && (rbc->flag & RBC_FLAG_USE_SPRING_Z)) {
 		RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, value);
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_spring_damping_ang_x_set(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->spring_damping_ang_x = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint && rbc->type == RBC_TYPE_6DOF_SPRING && (rbc->flag & RBC_FLAG_USE_SPRING_ANG_X)) {
+		RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_X, value);
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_spring_damping_ang_y_set(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->spring_damping_ang_y = value;
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint && rbc->type == RBC_TYPE_6DOF_SPRING && (rbc->flag & RBC_FLAG_USE_SPRING_ANG_Y)) {
+		RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_Y, value);
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_spring_damping_ang_z_set(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->spring_damping_ang_z = value;
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint && rbc->type == RBC_TYPE_6DOF_SPRING && (rbc->flag & RBC_FLAG_USE_SPRING_ANG_Z)) {
+		RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_Z, value);
 	}
 #endif
 }
@@ -897,8 +974,10 @@ static void rna_def_rigidbody_world(BlenderRNA *brna)
 {
 	StructRNA *srna;
 	PropertyRNA *prop;
+
 	FunctionRNA *func;
-	
+	PropertyRNA *parm;
+
 	srna = RNA_def_struct(brna, "RigidBodyWorld", NULL);
 	RNA_def_struct_sdna(srna, "RigidBodyWorld");
 	RNA_def_struct_ui_text(srna, "Rigid Body World", "Self-contained rigid body simulation environment and settings");
@@ -936,7 +1015,7 @@ static void rna_def_rigidbody_world(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "steps_per_second", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "steps_per_second");
 	RNA_def_property_range(prop, 1, SHRT_MAX);
-	RNA_def_property_ui_range(prop, 60, 1000, 1, 0);
+	RNA_def_property_ui_range(prop, 60, 1000, 1, -1);
 	RNA_def_property_int_default(prop, 60);
 	RNA_def_property_ui_text(prop, "Steps Per Second",
 	                         "Number of simulation steps taken per second (higher values are more accurate "
@@ -947,7 +1026,7 @@ static void rna_def_rigidbody_world(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "solver_iterations", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "num_solver_iterations");
 	RNA_def_property_range(prop, 1, 1000);
-	RNA_def_property_ui_range(prop, 10, 100, 1, 0);
+	RNA_def_property_ui_range(prop, 10, 100, 1, -1);
 	RNA_def_property_int_default(prop, 10);
 	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyWorld_num_solver_iterations_set", NULL);
 	RNA_def_property_ui_text(prop, "Solver Iterations",
@@ -980,34 +1059,28 @@ static void rna_def_rigidbody_world(BlenderRNA *brna)
 	func = RNA_def_function(srna, "convex_sweep_test", "rna_RigidBodyWorld_convex_sweep_test");
 	RNA_def_function_ui_description(func, "Sweep test convex rigidbody against the current rigidbody world");
 	RNA_def_function_flag(func, FUNC_USE_REPORTS);
-
-	prop = RNA_def_pointer(func, "object", "Object", "", "Rigidbody object with a convex collision shape");
-	RNA_def_property_flag(prop, PROP_REQUIRED | PROP_NEVER_NULL);
-	RNA_def_property_clear_flag(prop, PROP_THICK_WRAP);
-
+	parm = RNA_def_pointer(func, "object", "Object", "", "Rigidbody object with a convex collision shape");
+	RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
+	RNA_def_parameter_clear_flags(parm, PROP_THICK_WRAP, 0);
 	/* ray start and end */
-	prop = RNA_def_float_vector(func, "start", 3, NULL, -FLT_MAX, FLT_MAX, "", "", -1e4, 1e4);
-	RNA_def_property_flag(prop, PROP_REQUIRED);
-	prop = RNA_def_float_vector(func, "end", 3, NULL, -FLT_MAX, FLT_MAX, "", "", -1e4, 1e4);
-	RNA_def_property_flag(prop, PROP_REQUIRED);
-
-	prop = RNA_def_float_vector(func, "object_location", 3, NULL, -FLT_MAX, FLT_MAX, "Location",
+	parm = RNA_def_float_vector(func, "start", 3, NULL, -FLT_MAX, FLT_MAX, "", "", -1e4, 1e4);
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
+	parm = RNA_def_float_vector(func, "end", 3, NULL, -FLT_MAX, FLT_MAX, "", "", -1e4, 1e4);
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
+	parm = RNA_def_float_vector(func, "object_location", 3, NULL, -FLT_MAX, FLT_MAX, "Location",
 	                            "The hit location of this sweep test", -1e4, 1e4);
-	RNA_def_property_flag(prop, PROP_THICK_WRAP);
-	RNA_def_function_output(func, prop);
-
-	prop = RNA_def_float_vector(func, "hitpoint", 3, NULL, -FLT_MAX, FLT_MAX, "Hitpoint",
+	RNA_def_parameter_flags(parm, PROP_THICK_WRAP, 0);
+	RNA_def_function_output(func, parm);
+	parm = RNA_def_float_vector(func, "hitpoint", 3, NULL, -FLT_MAX, FLT_MAX, "Hitpoint",
 	                            "The hit location of this sweep test", -1e4, 1e4);
-	RNA_def_property_flag(prop, PROP_THICK_WRAP);
-	RNA_def_function_output(func, prop);
-
-	prop = RNA_def_float_vector(func, "normal", 3, NULL, -FLT_MAX, FLT_MAX, "Normal",
+	RNA_def_parameter_flags(parm, PROP_THICK_WRAP, 0);
+	RNA_def_function_output(func, parm);
+	parm = RNA_def_float_vector(func, "normal", 3, NULL, -FLT_MAX, FLT_MAX, "Normal",
 	                            "The face normal at the sweep test hit location", -1e4, 1e4);
-	RNA_def_property_flag(prop, PROP_THICK_WRAP);
-	RNA_def_function_output(func, prop);
-
-	prop = RNA_def_int(func, "has_hit", 0, 0, 0, "", "If the function has found collision point, value is 1, otherwise 0", 0, 0);
-	RNA_def_function_output(func, prop);
+	RNA_def_parameter_flags(parm, PROP_THICK_WRAP, 0);
+	RNA_def_function_output(func, parm);
+	parm = RNA_def_int(func, "has_hit", 0, 0, 0, "", "If the function has found collision point, value is 1, otherwise 0", 0, 0);
+	RNA_def_function_output(func, parm);
 
 	prop = RNA_def_property(srna, "bullet_step", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "internal_tick");
@@ -1318,7 +1391,7 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "solver_iterations", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "num_solver_iterations");
 	RNA_def_property_range(prop, 1, 1000);
-	RNA_def_property_ui_range(prop, 1, 100, 1, 0);
+	RNA_def_property_ui_range(prop, 1, 100, 1, -1);
 	RNA_def_property_int_default(prop, 10);
 	RNA_def_property_int_funcs(prop, NULL, "rna_RigidBodyCon_num_solver_iterations_set", NULL);
 	RNA_def_property_ui_text(prop, "Solver Iterations",
@@ -1370,6 +1443,21 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_spring_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_Z);
 	RNA_def_property_ui_text(prop, "Z Spring", "Enable spring on Z axis");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+
+	prop = RNA_def_property(srna, "use_spring_ang_x", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_ANG_X);
+	RNA_def_property_ui_text(prop, "X Angle Spring", "Enable spring on X rotational axis");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+
+	prop = RNA_def_property(srna, "use_spring_ang_y", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_ANG_Y);
+	RNA_def_property_ui_text(prop, "Y Angle Spring", "Enable spring on Y rotational axis");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+
+	prop = RNA_def_property(srna, "use_spring_ang_z", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_ANG_Z);
+	RNA_def_property_ui_text(prop, "Z Angle Spring", "Enable spring on Z rotational axis");
 	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "use_motor_lin", PROP_BOOLEAN, PROP_NONE);
@@ -1489,6 +1577,33 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Z Axis Stiffness", "Stiffness on the Z axis");
 	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
 
+	prop = RNA_def_property(srna, "spring_stiffness_ang_x", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "spring_stiffness_ang_x");
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 1, 3);
+	RNA_def_property_float_default(prop, 10.0f);
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_spring_stiffness_ang_x_set", NULL);
+	RNA_def_property_ui_text(prop, "X Angle Stiffness", "Stiffness on the X rotational axis");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+
+	prop = RNA_def_property(srna, "spring_stiffness_ang_y", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "spring_stiffness_ang_y");
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 1, 3);
+	RNA_def_property_float_default(prop, 10.0f);
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_spring_stiffness_ang_y_set", NULL);
+	RNA_def_property_ui_text(prop, "Y Angle Stiffness", "Stiffness on the Y rotational axis");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+
+	prop = RNA_def_property(srna, "spring_stiffness_ang_z", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "spring_stiffness_ang_z");
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
+	RNA_def_property_ui_range(prop, 0.0f, 100.0f, 1, 3);
+	RNA_def_property_float_default(prop, 10.0f);
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_spring_stiffness_ang_z_set", NULL);
+	RNA_def_property_ui_text(prop, "Z Angle Stiffness", "Stiffness on the Z rotational axis");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+
 	prop = RNA_def_property(srna, "spring_damping_x", PROP_FLOAT, PROP_FACTOR);
 	RNA_def_property_float_sdna(prop, NULL, "spring_damping_x");
 	RNA_def_property_range(prop, 0.0f, 1.0f);
@@ -1511,6 +1626,30 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 	RNA_def_property_float_default(prop, 0.5f);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_spring_damping_z_set", NULL);
 	RNA_def_property_ui_text(prop, "Damping Z", "Damping on the Z axis");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+
+	prop = RNA_def_property(srna, "spring_damping_ang_x", PROP_FLOAT, PROP_FACTOR);
+	RNA_def_property_float_sdna(prop, NULL, "spring_damping_ang_x");
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_float_default(prop, 0.5f);
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_spring_damping_ang_x_set", NULL);
+	RNA_def_property_ui_text(prop, "Damping X Angle", "Damping on the X rotational axis");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+
+	prop = RNA_def_property(srna, "spring_damping_ang_y", PROP_FLOAT, PROP_FACTOR);
+	RNA_def_property_float_sdna(prop, NULL, "spring_damping_ang_y");
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_float_default(prop, 0.5f);
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_spring_damping_ang_y_set", NULL);
+	RNA_def_property_ui_text(prop, "Damping Y Angle", "Damping on the Y rotational axis");
+	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
+
+	prop = RNA_def_property(srna, "spring_damping_ang_z", PROP_FLOAT, PROP_FACTOR);
+	RNA_def_property_float_sdna(prop, NULL, "spring_damping_ang_z");
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_float_default(prop, 0.5f);
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_spring_damping_ang_z_set", NULL);
+	RNA_def_property_ui_text(prop, "Damping Z Angle", "Damping on the Z rotational axis");
 	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "motor_lin_target_velocity", PROP_FLOAT, PROP_UNIT_VELOCITY);

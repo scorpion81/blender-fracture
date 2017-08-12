@@ -38,8 +38,8 @@
 #include "BLI_math_color_blend.h"
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
-#include "BLI_jitter.h"
 #include "BLI_threads.h"
+#include "BLI_task.h"
 
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
@@ -74,8 +74,18 @@
 #include "GPU_compositing.h"
 #include "GPU_framebuffer.h"
 
-
 #include "render_intern.h"
+
+/* Define this to get timing information. */
+// #undef DEBUG_TIME
+
+#ifdef DEBUG_TIME
+#  include "PIL_time.h"
+#endif
+
+// TODO(sergey): Find better approximation of the scheduled frames.
+// For really highres renders it might fail still.
+#define MAX_SCHEDULED_FRAMES 8
 
 typedef struct OGLRender {
 	Main *bmain;
@@ -123,6 +133,19 @@ typedef struct OGLRender {
 
 	wmTimer *timer; /* use to check if running modal or not (invoke'd or exec'd)*/
 	void **movie_ctx_arr;
+
+	TaskScheduler *task_scheduler;
+	TaskPool *task_pool;
+	bool pool_ok;
+	bool is_animation;
+	SpinLock reports_lock;
+	unsigned int num_scheduled_frames;
+	ThreadMutex task_mutex;
+	ThreadCondition task_condition;
+
+#ifdef DEBUG_TIME
+	double time_start;
+#endif
 } OGLRender;
 
 /* added because v3d is not always valid */
@@ -182,6 +205,9 @@ static void screen_opengl_views_setup(OGLRender *oglrender)
 			if (rv_del->rectz)
 				MEM_freeN(rv_del->rectz);
 
+			if (rv_del->rect32)
+				MEM_freeN(rv_del->rect32);
+
 			MEM_freeN(rv_del);
 		}
 	}
@@ -194,8 +220,6 @@ static void screen_opengl_views_setup(OGLRender *oglrender)
 		while (rv) {
 			srv = BLI_findstring(&rd->views, rv->name, offsetof(SceneRenderView, name));
 			if (BKE_scene_multiview_is_render_view_active(rd, srv)) {
-				if (rv->rectf == NULL)
-					rv->rectf = MEM_callocN(sizeof(float) * 4 * oglrender->sizex * oglrender->sizey, "screen_opengl_render_init rect");
 				rv = rv->prev;
 			}
 			else {
@@ -209,6 +233,9 @@ static void screen_opengl_views_setup(OGLRender *oglrender)
 
 				if (rv_del->rectz)
 					MEM_freeN(rv_del->rectz);
+
+				if (rv_del->rect32)
+					MEM_freeN(rv_del->rect32);
 
 				MEM_freeN(rv_del);
 			}
@@ -229,16 +256,8 @@ static void screen_opengl_views_setup(OGLRender *oglrender)
 		}
 	}
 
-	for (rv = rr->views.first; rv; rv = rv->next) {
-		if (rv->rectf == NULL) {
-			rv->rectf = MEM_callocN(sizeof(float) * 4 * oglrender->sizex * oglrender->sizey, "screen_opengl_render_init rect");
-		}
-	}
-
-	BLI_lock_thread(LOCK_DRAW_IMAGE);
 	if (!(is_multiview && BKE_scene_multiview_is_stereo3d(rd)))
 		oglrender->iuser.flag &= ~IMA_SHOW_STEREO;
-	BLI_unlock_thread(LOCK_DRAW_IMAGE);
 
 	/* will only work for non multiview correctly */
 	if (v3d) {
@@ -266,6 +285,7 @@ static void screen_opengl_render_doit(OGLRender *oglrender, RenderResult *rr)
 	bool draw_sky = (scene->r.alphamode == R_ADDSKY);
 	unsigned char *rect = NULL;
 	const char *viewname = RE_GetActiveRenderView(oglrender->re);
+	ImBuf *ibuf_result = NULL;
 
 	if (oglrender->is_sequencer) {
 		SpaceSeq *sseq = oglrender->sseq;
@@ -289,6 +309,12 @@ static void screen_opengl_render_doit(OGLRender *oglrender, RenderResult *rr)
 				imb_freerectfloatImBuf(out);
 			}
 			BLI_assert((oglrender->sizex == ibuf->x) && (oglrender->sizey == ibuf->y));
+			RE_render_result_rect_from_ibuf(rr, &scene->r, out, oglrender->view_id);
+			IMB_freeImBuf(out);
+		}
+		else if (gpd) {
+			/* If there are no strips, Grease Pencil still needs a buffer to draw on */
+			ImBuf *out = IMB_allocImBuf(oglrender->sizex, oglrender->sizey, 32, IB_rect);
 			RE_render_result_rect_from_ibuf(rr, &scene->r, out, oglrender->view_id);
 			IMB_freeImBuf(out);
 		}
@@ -349,46 +375,20 @@ static void screen_opengl_render_doit(OGLRender *oglrender, RenderResult *rr)
 		}
 
 		if (ibuf_view) {
-			/* steal rect reference from ibuf */
+			ibuf_result = ibuf_view;
 			rect = (unsigned char *)ibuf_view->rect;
-			ibuf_view->mall &= ~IB_rect;
-
-			IMB_freeImBuf(ibuf_view);
 		}
 		else {
 			fprintf(stderr, "%s: failed to get buffer, %s\n", __func__, err_out);
 		}
 	}
 
-	/* note on color management:
-	 *
-	 * OpenGL renders into sRGB colors, but render buffers are expected to be
-	 * linear So we convert to linear here, so the conversion back to bytes can make it
-	 * sRGB (or other display space) again, and so that e.g. openexr saving also saves the
-	 * correct linear float buffer.
-	 */
-
-	if (rect) {
-		int profile_to;
-		float *rectf = RE_RenderViewGetById(rr, oglrender->view_id)->rectf;
-
-		if (BKE_scene_check_color_management_enabled(scene))
-			profile_to = IB_PROFILE_LINEAR_RGB;
-		else
-			profile_to = IB_PROFILE_SRGB;
-
-		/* sequencer has got trickier conversion happened above
-		 * also assume opengl's space matches byte buffer color space */
-		IMB_buffer_float_from_byte(rectf, rect,
-		                           profile_to, IB_PROFILE_SRGB, true,
-		                           oglrender->sizex, oglrender->sizey, oglrender->sizex, oglrender->sizex);
-
-		/* rr->rectf is now filled with image data */
-
-		if ((scene->r.stamp & R_STAMP_ALL) && (scene->r.stamp & R_STAMP_DRAW))
-			BKE_image_stamp_buf(scene, camera, NULL, rect, rectf, rr->rectx, rr->recty, 4);
-
-		MEM_freeN(rect);
+	if (ibuf_result != NULL) {
+		if ((scene->r.stamp & R_STAMP_ALL) && (scene->r.stamp & R_STAMP_DRAW)) {
+			BKE_image_stamp_buf(scene, camera, NULL, rect, NULL, rr->rectx, rr->recty, 4);
+		}
+		RE_render_result_rect_from_ibuf(rr, &scene->r, ibuf_result, oglrender->view_id);
+		IMB_freeImBuf(ibuf_result);
 	}
 }
 
@@ -480,23 +480,26 @@ static void add_gpencil_renderpass(OGLRender *oglrender, RenderResult *rr, Rende
 		RenderPass *rp = RE_create_gp_pass(rr, gpl->info, rv->name);
 
 		/* copy image data from rectf */
-		float *src = RE_RenderViewGetById(rr, oglrender->view_id)->rectf;
-		float *dest = rp->rect;
+		// XXX: Needs conversion.
+		unsigned char *src = (unsigned char *)RE_RenderViewGetById(rr, oglrender->view_id)->rect32;
+		if (src != NULL) {
+			float *dest = rp->rect;
 
-		float *pixSrc, *pixDest;
-		int x, y, rectx, recty;
-		rectx = rr->rectx;
-		recty = rr->recty;
-		for (y = 0; y < recty; y++) {
-			for (x = 0; x < rectx; x++) {
-				pixSrc = src + 4 * (rectx * y + x);
-				if (pixSrc[3] > 0.0) {
-					pixDest = dest + 4 * (rectx * y + x);
-					addAlphaOverFloat(pixDest, pixSrc);
+			int x, y, rectx, recty;
+			rectx = rr->rectx;
+			recty = rr->recty;
+			for (y = 0; y < recty; y++) {
+				for (x = 0; x < rectx; x++) {
+					unsigned char *pixSrc = src + 4 * (rectx * y + x);
+					if (pixSrc[3] > 0) {
+						float *pixDest = dest + 4 * (rectx * y + x);
+						float float_src[4];
+						srgb_to_linearrgb_uchar4(float_src, pixSrc);
+						addAlphaOverFloat(pixDest, float_src);
+					}
 				}
 			}
 		}
-
 		/* back layer status */
 		i = 0;
 		for (bGPDlayer *gph = gpd->layers.first; gph; gph = gph->next) {
@@ -546,8 +549,11 @@ static void screen_opengl_render_apply(OGLRender *oglrender)
 		BLI_assert(view_id < oglrender->views_len);
 		RE_SetActiveRenderView(oglrender->re, rv->name);
 		oglrender->view_id = view_id;
-		/* add grease pencil passes */
-		add_gpencil_renderpass(oglrender, rr, rv);
+		/* add grease pencil passes. For sequencer, the render does not include renderpasses
+		 * TODO: The sequencer render of grease pencil should be rethought */
+		if (!oglrender->is_sequencer) {
+			add_gpencil_renderpass(oglrender, rr, rv);
+		}
 		/* render composite */
 		screen_opengl_render_doit(oglrender, rr);
 	}
@@ -644,6 +650,7 @@ static bool screen_opengl_render_init(bContext *C, wmOperator *op)
 	oglrender->cfrao = scene->r.cfra;
 
 	oglrender->write_still = is_write_still && !is_animation;
+	oglrender->is_animation = is_animation;
 
 	oglrender->views_len = BKE_scene_multiview_num_views_get(&scene->r);
 
@@ -698,6 +705,34 @@ static bool screen_opengl_render_init(bContext *C, wmOperator *op)
 	oglrender->mh = NULL;
 	oglrender->movie_ctx_arr = NULL;
 
+	if (is_animation) {
+		TaskScheduler *task_scheduler = BLI_task_scheduler_get();
+		if (BKE_imtype_is_movie(scene->r.im_format.imtype)) {
+			task_scheduler = BLI_task_scheduler_create(1);
+			oglrender->task_scheduler = task_scheduler;
+			oglrender->task_pool = BLI_task_pool_create_background(task_scheduler,
+			                                                       oglrender);
+		}
+		else {
+			oglrender->task_scheduler = NULL;
+			oglrender->task_pool = BLI_task_pool_create(task_scheduler,
+			                                            oglrender);
+		}
+		oglrender->pool_ok = true;
+		BLI_spin_init(&oglrender->reports_lock);
+	}
+	else {
+		oglrender->task_scheduler = NULL;
+		oglrender->task_pool = NULL;
+	}
+	oglrender->num_scheduled_frames = 0;
+	BLI_mutex_init(&oglrender->task_mutex);
+	BLI_condition_init(&oglrender->task_condition);
+
+#ifdef DEBUG_TIME
+	oglrender->time_start = PIL_check_seconds_timer();
+#endif
+
 	return true;
 }
 
@@ -706,6 +741,39 @@ static void screen_opengl_render_end(bContext *C, OGLRender *oglrender)
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = oglrender->scene;
 	int i;
+
+	if (oglrender->is_animation) {
+		/* Trickery part for movie output:
+		 *
+		 * We MUST write frames in an exact order, so we only let background
+		 * thread to work on that, and main thread is simply waits for that
+		 * thread to do all the dirty work.
+		 *
+		 * After this loop is done work_and_wait() will have nothing to do,
+		 * so we don't run into wrong order of frames written to the stream.
+		 */
+		if (BKE_imtype_is_movie(scene->r.im_format.imtype)) {
+			BLI_mutex_lock(&oglrender->task_mutex);
+			while (oglrender->num_scheduled_frames > 0) {
+				BLI_condition_wait(&oglrender->task_condition,
+				                   &oglrender->task_mutex);
+			}
+			BLI_mutex_unlock(&oglrender->task_mutex);
+		}
+		BLI_task_pool_work_and_wait(oglrender->task_pool);
+		BLI_task_pool_free(oglrender->task_pool);
+		/* Depending on various things we might or might not use global scheduler. */
+		if (oglrender->task_scheduler != NULL) {
+			BLI_task_scheduler_free(oglrender->task_scheduler);
+		}
+		BLI_spin_end(&oglrender->reports_lock);
+	}
+	BLI_mutex_end(&oglrender->task_mutex);
+	BLI_condition_end(&oglrender->task_condition);
+
+#ifdef DEBUG_TIME
+	printf("Total render time: %f\n", PIL_check_seconds_timer() - oglrender->time_start);
+#endif
 
 	if (oglrender->mh) {
 		if (BKE_imtype_is_movie(scene->r.im_format.imtype)) {
@@ -801,6 +869,122 @@ static bool screen_opengl_render_anim_initialize(bContext *C, wmOperator *op)
 	return true;
 }
 
+typedef struct WriteTaskData {
+	RenderResult *rr;
+	Scene tmp_scene;
+} WriteTaskData;
+
+static void write_result_func(TaskPool * __restrict pool,
+                              void *task_data_v,
+                              int UNUSED(thread_id))
+{
+	OGLRender *oglrender = (OGLRender *) BLI_task_pool_userdata(pool);
+	WriteTaskData *task_data = (WriteTaskData *) task_data_v;
+	Scene *scene = &task_data->tmp_scene;
+	RenderResult *rr = task_data->rr;
+	const bool is_movie = BKE_imtype_is_movie(scene->r.im_format.imtype);
+	const int cfra = scene->r.cfra;
+	bool ok;
+	/* Don't attempt to write if we've got an error. */
+	if (!oglrender->pool_ok) {
+		RE_FreeRenderResult(rr);
+		BLI_mutex_lock(&oglrender->task_mutex);
+		oglrender->num_scheduled_frames--;
+		BLI_condition_notify_all(&oglrender->task_condition);
+		BLI_mutex_unlock(&oglrender->task_mutex);
+		return;
+	}
+	/* Construct local thread0safe copy of reports structure which we can
+	 * safely pass to the underlying functions.
+	 */
+	ReportList reports;
+	BKE_reports_init(&reports, oglrender->reports->flag & ~RPT_PRINT);
+	/* Do actual save logic here, depending on the file format.
+	 *
+	 * NOTE: We have to construct temporary scene with proper scene->r.cfra.
+	 * This is because underlying calls do not use r.cfra but use scene
+	 * for that.
+	 */
+	if (is_movie) {
+		ok = RE_WriteRenderViewsMovie(&reports,
+		                              rr,
+		                              scene,
+		                              &scene->r,
+		                              oglrender->mh,
+		                              oglrender->movie_ctx_arr,
+		                              oglrender->totvideos,
+		                              PRVRANGEON != 0);
+	}
+	else {
+		/* TODO(sergey): We can in theory save some CPU ticks here because we
+		 * calculate file name again here.
+		 */
+		char name[FILE_MAX];
+		BKE_image_path_from_imformat(name,
+		                             scene->r.pic,
+		                             oglrender->bmain->name,
+		                             cfra,
+		                             &scene->r.im_format,
+		                             (scene->r.scemode & R_EXTENSION) != 0,
+		                             true,
+		                             NULL);
+
+		BKE_render_result_stamp_info(scene, scene->camera, rr, false);
+		ok = RE_WriteRenderViewsImage(NULL, rr, scene, true, name);
+		if (!ok) {
+			BKE_reportf(&reports,
+			            RPT_ERROR,
+			            "Write error: cannot save %s",
+			            name);
+		}
+	}
+	if (reports.list.first != NULL) {
+		BLI_spin_lock(&oglrender->reports_lock);
+		for (Report *report = reports.list.first;
+		     report != NULL;
+		     report = report->next)
+		{
+			BKE_report(oglrender->reports,
+			           report->type,
+			           report->message);
+		}
+		BLI_spin_unlock(&oglrender->reports_lock);
+	}
+	if (!ok) {
+		oglrender->pool_ok = false;
+	}
+	RE_FreeRenderResult(rr);
+	BLI_mutex_lock(&oglrender->task_mutex);
+	oglrender->num_scheduled_frames--;
+	BLI_condition_notify_all(&oglrender->task_condition);
+	BLI_mutex_unlock(&oglrender->task_mutex);
+}
+
+static bool schedule_write_result(OGLRender *oglrender, RenderResult *rr)
+{
+	if (!oglrender->pool_ok) {
+		RE_FreeRenderResult(rr);
+		return false;
+	}
+	Scene *scene = oglrender->scene;
+	WriteTaskData *task_data = MEM_mallocN(sizeof(WriteTaskData), "write task data");
+	task_data->rr = rr;
+	task_data->tmp_scene = *scene;
+	BLI_mutex_lock(&oglrender->task_mutex);
+	oglrender->num_scheduled_frames++;
+	if (oglrender->num_scheduled_frames > MAX_SCHEDULED_FRAMES) {
+		BLI_condition_wait(&oglrender->task_condition,
+		                   &oglrender->task_mutex);
+	}
+	BLI_mutex_unlock(&oglrender->task_mutex);
+	BLI_task_pool_push(oglrender->task_pool,
+	                   write_result_func,
+	                   task_data,
+	                   true,
+	                   TASK_PRIORITY_LOW);
+	return true;
+}
+
 static bool screen_opengl_render_anim_step(bContext *C, wmOperator *op)
 {
 	Main *bmain = CTX_data_main(C);
@@ -833,7 +1017,9 @@ static bool screen_opengl_render_anim_step(bContext *C, wmOperator *op)
 		        &scene->r.im_format, (scene->r.scemode & R_EXTENSION) != 0, true, NULL);
 
 		if ((scene->r.mode & R_NO_OVERWRITE) && BLI_exists(name)) {
+			BLI_spin_lock(&oglrender->reports_lock);
 			BKE_reportf(op->reports, RPT_INFO, "Skipping existing frame \"%s\"", name);
+			BLI_spin_unlock(&oglrender->reports_lock);
 			ok = true;
 			goto finally;
 		}
@@ -861,34 +1047,10 @@ static bool screen_opengl_render_anim_step(bContext *C, wmOperator *op)
 
 	/* save to disk */
 	rr = RE_AcquireResultRead(oglrender->re);
-
-	if (is_movie) {
-		ok = RE_WriteRenderViewsMovie(oglrender->reports, rr, scene, &scene->r, oglrender->mh,
-		                              oglrender->movie_ctx_arr, oglrender->totvideos, PRVRANGEON != 0);
-		if (ok) {
-			printf("Append frame %d", scene->r.cfra);
-			BKE_reportf(op->reports, RPT_INFO, "Appended frame: %d", scene->r.cfra);
-		}
-	}
-	else {
-		BKE_render_result_stamp_info(scene, scene->camera, rr, false);
-		ok = RE_WriteRenderViewsImage(op->reports, rr, scene, true, name);
-		if (ok) {
-			printf("Saved: %s", name);
-			BKE_reportf(op->reports, RPT_INFO, "Saved file: %s", name);
-		}
-		else {
-			printf("Write error: cannot save %s\n", name);
-			BKE_reportf(op->reports, RPT_ERROR, "Write error: cannot save %s", name);
-		}
-	}
-
+	RenderResult *new_rr = RE_DuplicateRenderResult(rr);
 	RE_ReleaseResult(oglrender->re);
 
-
-	/* movie stats prints have no line break */
-	printf("\n");
-
+	ok = schedule_write_result(oglrender, new_rr);
 
 finally:  /* Step the frame and bail early if needed */
 
@@ -914,13 +1076,14 @@ static int screen_opengl_render_modal(bContext *C, wmOperator *op, const wmEvent
 	switch (event->type) {
 		case ESCKEY:
 			/* cancel */
+			oglrender->pool_ok = false;  /* Flag pool for cancel. */
 			screen_opengl_render_end(C, op->customdata);
 			return OPERATOR_FINISHED;
 		case TIMER:
 			/* render frame? */
 			if (oglrender->timer == event->customdata)
 				break;
-			/* fall-through */
+			ATTR_FALLTHROUGH;
 		default:
 			/* nothing to do */
 			return OPERATOR_RUNNING_MODAL;

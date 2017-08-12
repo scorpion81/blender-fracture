@@ -51,6 +51,7 @@
 #include "BKE_image.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
+#include "BKE_material.h"
 #include "BKE_node.h"
 #include "BKE_report.h"
 #include "BKE_modifier.h"
@@ -352,11 +353,16 @@ static bool is_noncolor_pass(ScenePassType pass_type)
 }
 
 /* if all is good tag image and return true */
-static bool bake_object_check(Object *ob, ReportList *reports)
+static bool bake_object_check(Scene *scene, Object *ob, ReportList *reports)
 {
 	Image *image;
 	void *lock;
 	int i;
+
+	if ((ob->lay & scene->lay) == 0) {
+		BKE_reportf(reports, RPT_ERROR, "Object \"%s\" is not on a scene layer", ob->id.name + 2);
+		return false;
+	}
 
 	if (ob->type != OB_MESH) {
 		BKE_reportf(reports, RPT_ERROR, "Object \"%s\" is not a mesh", ob->id.name + 2);
@@ -406,22 +412,18 @@ static bool bake_object_check(Object *ob, ReportList *reports)
 			}
 		}
 		else {
-			if (ob->mat[i]) {
-				BKE_reportf(reports, RPT_ERROR,
+			Material *mat = give_current_material(ob, i);
+			if (mat != NULL) {
+				BKE_reportf(reports, RPT_INFO,
 				            "No active image found in material \"%s\" (%d) for object \"%s\"",
-				            ob->mat[i]->id.name + 2, i, ob->id.name + 2);
-			}
-			else if (((Mesh *) ob->data)->mat[i]) {
-				BKE_reportf(reports, RPT_ERROR,
-				            "No active image found in material \"%s\" (%d) for object \"%s\"",
-				            ((Mesh *) ob->data)->mat[i]->id.name + 2, i, ob->id.name + 2);
+				            mat->id.name + 2, i, ob->id.name + 2);
 			}
 			else {
-				BKE_reportf(reports, RPT_ERROR,
-				            "No active image found in material (%d) for object \"%s\"",
+				BKE_reportf(reports, RPT_INFO,
+				            "No active image found in material slot (%d) for object \"%s\"",
 				            i, ob->id.name + 2);
 			}
-			return false;
+			continue;
 		}
 
 		image->id.tag |= LIB_TAG_DOIT;
@@ -491,7 +493,7 @@ static bool bake_pass_filter_check(ScenePassType pass_type, const int pass_filte
 }
 
 /* before even getting in the bake function we check for some basic errors */
-static bool bake_objects_check(Main *bmain, Object *ob, ListBase *selected_objects,
+static bool bake_objects_check(Main *bmain, Scene *scene, Object *ob, ListBase *selected_objects,
                                ReportList *reports, const bool is_selected_to_active)
 {
 	CollectionPointerLink *link;
@@ -502,7 +504,7 @@ static bool bake_objects_check(Main *bmain, Object *ob, ListBase *selected_objec
 	if (is_selected_to_active) {
 		int tot_objects = 0;
 
-		if (!bake_object_check(ob, reports))
+		if (!bake_object_check(scene, ob, reports))
 			return false;
 
 		for (link = selected_objects->first; link; link = link->next) {
@@ -530,7 +532,7 @@ static bool bake_objects_check(Main *bmain, Object *ob, ListBase *selected_objec
 		}
 
 		for (link = selected_objects->first; link; link = link->next) {
-			if (!bake_object_check(link->ptr.data, reports))
+			if (!bake_object_check(scene, link->ptr.data, reports))
 				return false;
 		}
 	}
@@ -561,7 +563,11 @@ static void build_image_lookup(Main *bmain, Object *ob, BakeImages *bake_images)
 		Image *image;
 		ED_object_get_active_image(ob, i + 1, &image, NULL, NULL, NULL);
 
-		if ((image->id.tag & LIB_TAG_DOIT)) {
+		/* Some materials have no image, we just ignore those cases. */
+		if (image == NULL) {
+			bake_images->lookup[i] = -1;
+		}
+		else if (image->id.tag & LIB_TAG_DOIT) {
 			for (j = 0; j < i; j++) {
 				if (bake_images->data[j].image == image) {
 					bake_images->lookup[i] = j;
@@ -619,7 +625,7 @@ static Mesh *bake_mesh_new_from_object(Main *bmain, Scene *scene, Object *ob)
 		ED_object_editmode_load(ob);
 
 	Mesh *me = BKE_mesh_new_from_object(bmain, scene, ob, 1, 2, 0, 0);
-	BKE_mesh_split_faces(me);
+	BKE_mesh_split_faces(me, true);
 
 	return me;
 }
@@ -1167,6 +1173,9 @@ static int bake_exec(bContext *C, wmOperator *op)
 	BakeAPIRender bkr = {NULL};
 	Scene *scene = CTX_data_scene(C);
 
+	G.is_break = false;
+	G.is_rendering = true;
+
 	bake_set_props(op, scene);
 
 	bake_init_api_data(op, C, &bkr);
@@ -1179,7 +1188,7 @@ static int bake_exec(bContext *C, wmOperator *op)
 		goto finally;
 	}
 
-	if (!bake_objects_check(bkr.main, bkr.ob, &bkr.selected_objects, bkr.reports, bkr.is_selected_to_active)) {
+	if (!bake_objects_check(bkr.main, bkr.scene, bkr.ob, &bkr.selected_objects, bkr.reports, bkr.is_selected_to_active)) {
 		goto finally;
 	}
 
@@ -1218,6 +1227,7 @@ static int bake_exec(bContext *C, wmOperator *op)
 
 
 finally:
+	G.is_rendering = false;
 	BLI_freelistN(&bkr.selected_objects);
 	return result;
 }
@@ -1237,7 +1247,7 @@ static void bake_startjob(void *bkv, short *UNUSED(stop), short *do_update, floa
 		return;
 	}
 
-	if (!bake_objects_check(bkr->main, bkr->ob, &bkr->selected_objects, bkr->reports, bkr->is_selected_to_active)) {
+	if (!bake_objects_check(bkr->main, bkr->scene, bkr->ob, &bkr->selected_objects, bkr->reports, bkr->is_selected_to_active)) {
 		bkr->result = OPERATOR_CANCELLED;
 		return;
 	}

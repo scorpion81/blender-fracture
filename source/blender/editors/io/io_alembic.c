@@ -31,9 +31,13 @@
 #  include "BLI_winstuff.h"
 #endif
 
+#include <string.h>
+#include <errno.h>
+
 #include "MEM_guardedalloc.h"
 
 #include "DNA_mesh_types.h"
+#include "DNA_modifier_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_space_types.h"
@@ -67,6 +71,8 @@
 
 static int wm_alembic_export_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
+	RNA_boolean_set(op->ptr, "init_scene_frame_range", true);
+
 	if (!RNA_struct_property_is_set(op->ptr, "filepath")) {
 		Main *bmain = CTX_data_main(C);
 		char filepath[FILE_MAX];
@@ -99,12 +105,12 @@ static int wm_alembic_export_exec(bContext *C, wmOperator *op)
 	char filename[FILE_MAX];
 	RNA_string_get(op->ptr, "filepath", filename);
 
-	const struct AlembicExportParams params = {
+	struct AlembicExportParams params = {
 	    .frame_start = RNA_int_get(op->ptr, "start"),
 	    .frame_end = RNA_int_get(op->ptr, "end"),
 
-	    .frame_step_xform = 1.0 / (double)RNA_int_get(op->ptr, "xsamples"),
-	    .frame_step_shape = 1.0 / (double)RNA_int_get(op->ptr, "gsamples"),
+	    .frame_samples_xform = RNA_int_get(op->ptr, "xsamples"),
+	    .frame_samples_shape = RNA_int_get(op->ptr, "gsamples"),
 
 	    .shutter_open = RNA_float_get(op->ptr, "sh_open"),
 	    .shutter_close = RNA_float_get(op->ptr, "sh_close"),
@@ -119,21 +125,37 @@ static int wm_alembic_export_exec(bContext *C, wmOperator *op)
 	    .renderable_only = RNA_boolean_get(op->ptr, "renderable_only"),
 	    .face_sets = RNA_boolean_get(op->ptr, "face_sets"),
 	    .use_subdiv_schema = RNA_boolean_get(op->ptr, "subdiv_schema"),
+	    .export_hair = RNA_boolean_get(op->ptr, "export_hair"),
+	    .export_particles = RNA_boolean_get(op->ptr, "export_particles"),
 	    .compression_type = RNA_enum_get(op->ptr, "compression_type"),
 	    .packuv = RNA_boolean_get(op->ptr, "packuv"),
+	    .triangulate = RNA_boolean_get(op->ptr, "triangulate"),
+	    .quad_method = RNA_enum_get(op->ptr, "quad_method"),
+	    .ngon_method = RNA_enum_get(op->ptr, "ngon_method"),
 
 	    .global_scale = RNA_float_get(op->ptr, "global_scale"),
 	};
 
-	ABC_export(CTX_data_scene(C), C, filename, &params);
+	/* Take some defaults from the scene, if not specified explicitly. */
+	Scene *scene = CTX_data_scene(C);
+	if (params.frame_start == INT_MIN) {
+		params.frame_start = SFRA;
+	}
+	if (params.frame_end == INT_MIN) {
+		params.frame_end = EFRA;
+	}
 
-	return OPERATOR_FINISHED;
+	const bool as_background_job = RNA_boolean_get(op->ptr, "as_background_job");
+	bool ok = ABC_export(scene, C, filename, &params, as_background_job);
+
+	return as_background_job || ok ? OPERATOR_FINISHED : OPERATOR_CANCELLED;
 }
 
 static void ui_alembic_export_settings(uiLayout *layout, PointerRNA *imfptr)
 {
 	uiLayout *box;
 	uiLayout *row;
+	uiLayout *col;
 
 #ifdef WITH_ALEMBIC_HDF5
 	box = uiLayoutBox(layout);
@@ -212,13 +234,46 @@ static void ui_alembic_export_settings(uiLayout *layout, PointerRNA *imfptr)
 
 	row = uiLayoutRow(box, false);
 	uiItemR(row, imfptr, "apply_subdiv", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiItemR(row, imfptr, "triangulate", 0, NULL, ICON_NONE);
+
+	const bool triangulate = RNA_boolean_get(imfptr, "triangulate");
+
+	row = uiLayoutRow(box, false);
+	uiLayoutSetEnabled(row, triangulate);
+	uiItemR(row, imfptr, "quad_method", 0, NULL, ICON_NONE);
+
+	row = uiLayoutRow(box, false);
+	uiLayoutSetEnabled(row, triangulate);
+	uiItemR(row, imfptr, "ngon_method", 0, NULL, ICON_NONE);
+
+	/* Object Data */
+	box = uiLayoutBox(layout);
+	row = uiLayoutRow(box, false);
+	uiItemL(row, IFACE_("Particle Systems:"), ICON_PARTICLE_DATA);
+
+	col = uiLayoutColumn(box, true);
+	uiItemR(col, imfptr, "export_hair", 0, NULL, ICON_NONE);
+	uiItemR(col, imfptr, "export_particles", 0, NULL, ICON_NONE);
 }
 
-static void wm_alembic_export_draw(bContext *UNUSED(C), wmOperator *op)
+static void wm_alembic_export_draw(bContext *C, wmOperator *op)
 {
 	PointerRNA ptr;
 
 	RNA_pointer_create(NULL, op->type->srna, op->properties, &ptr);
+
+	/* Conveniently set start and end frame to match the scene's frame range. */
+	Scene *scene = CTX_data_scene(C);
+
+	if (scene != NULL && RNA_boolean_get(&ptr, "init_scene_frame_range")) {
+		RNA_int_set(&ptr, "start", SFRA);
+		RNA_int_set(&ptr, "end", EFRA);
+
+		RNA_boolean_set(&ptr, "init_scene_frame_range", false);
+	}
+
 	ui_alembic_export_settings(op->layout, &ptr);
 }
 
@@ -252,11 +307,17 @@ void WM_OT_alembic_export(wmOperatorType *ot)
 	                               FILE_BLENDER, FILE_SAVE, WM_FILESEL_FILEPATH,
 	                               FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 
-	RNA_def_int(ot->srna, "start", 1, INT_MIN, INT_MAX,
-	            "Start Frame", "Start Frame", INT_MIN, INT_MAX);
+	RNA_def_int(ot->srna, "start", INT_MIN, INT_MIN, INT_MAX,
+	            "Start Frame",
+	            "Start frame of the export, use the default value to "
+	            "take the start frame of the current scene",
+	            INT_MIN, INT_MAX);
 
-	RNA_def_int(ot->srna, "end", 1, INT_MIN, INT_MAX,
-	            "End Frame", "End Frame", INT_MIN, INT_MAX);
+	RNA_def_int(ot->srna, "end", INT_MIN, INT_MIN, INT_MAX,
+	            "End Frame",
+	            "End frame of the export, use the default value to "
+	            "take the end frame of the current scene",
+	            INT_MIN, INT_MAX);
 
 	RNA_def_int(ot->srna, "xsamples", 1, 1, 128,
 	            "Transform Samples", "Number of times per frame transformations are sampled", 1, 128);
@@ -308,6 +369,26 @@ void WM_OT_alembic_export(wmOperatorType *ot)
 	RNA_def_float(ot->srna, "global_scale", 1.0f, 0.0001f, 1000.0f, "Scale",
 	              "Value by which to enlarge or shrink the objects with respect to the world's origin",
 	              0.0001f, 1000.0f);
+
+	RNA_def_boolean(ot->srna, "triangulate", false, "Triangulate",
+	                "Export Polygons (Quads & NGons) as Triangles");
+
+	RNA_def_enum(ot->srna, "quad_method", rna_enum_modifier_triangulate_quad_method_items,
+	             MOD_TRIANGULATE_QUAD_SHORTEDGE, "Quad Method", "Method for splitting the quads into triangles");
+
+	RNA_def_enum(ot->srna, "ngon_method", rna_enum_modifier_triangulate_quad_method_items,
+	             MOD_TRIANGULATE_NGON_BEAUTY, "Polygon Method", "Method for splitting the polygons into triangles");
+
+	RNA_def_boolean(ot->srna, "export_hair", 1, "Export Hair", "Exports hair particle systems as animated curves");
+	RNA_def_boolean(ot->srna, "export_particles", 1, "Export Particles", "Exports non-hair particle systems");
+
+	RNA_def_boolean(ot->srna, "as_background_job", true, "Run as Background Job",
+	                "Enable this to run the import in the background, disable to block Blender while importing");
+
+	/* This dummy prop is used to check whether we need to init the start and
+	 * end frame values to that of the scene's, otherwise they are reset at
+	 * every change, draw update. */
+	RNA_def_boolean(ot->srna, "init_scene_frame_range", false, "", "");
 }
 
 /* ************************************************************************** */
@@ -339,9 +420,20 @@ static int get_sequence_len(char *filename, int *ofs)
 	}
 
 	char path[FILE_MAX];
+	BLI_path_abs(filename, G.main->name);
 	BLI_split_dir_part(filename, path, FILE_MAX);
 
+	if (path[0] == '\0') {
+		/* The filename had no path, so just use the blend file path. */
+		BLI_split_dir_part(G.main->name, path, FILE_MAX);
+	}
+
 	DIR *dir = opendir(path);
+	if (dir == NULL) {
+		fprintf(stderr, "Error opening directory '%s': %s\n",
+		        path, errno ? strerror(errno) : "unknown error");
+		return -1;
+	}
 
 	const char *ext = ".abc";
 	const char *basename = BLI_path_basename(filename);
@@ -438,17 +530,24 @@ static int wm_alembic_import_exec(bContext *C, wmOperator *op)
 	const bool is_sequence = RNA_boolean_get(op->ptr, "is_sequence");
 	const bool set_frame_range = RNA_boolean_get(op->ptr, "set_frame_range");
 	const bool validate_meshes = RNA_boolean_get(op->ptr, "validate_meshes");
+	const bool as_background_job = RNA_boolean_get(op->ptr, "as_background_job");
 
 	int offset = 0;
 	int sequence_len = 1;
 
 	if (is_sequence) {
 		sequence_len = get_sequence_len(filename, &offset);
+		if (sequence_len < 0) {
+			BKE_report(op->reports, RPT_ERROR, "Unable to determine ABC sequence length");
+			return OPERATOR_CANCELLED;
+		}
 	}
 
-	ABC_import(C, filename, scale, is_sequence, set_frame_range, sequence_len, offset, validate_meshes);
+	bool ok = ABC_import(C, filename, scale, is_sequence, set_frame_range,
+	                     sequence_len, offset, validate_meshes,
+	                     as_background_job);
 
-	return OPERATOR_FINISHED;
+	return as_background_job || ok ? OPERATOR_FINISHED : OPERATOR_CANCELLED;
 }
 
 void WM_OT_alembic_import(wmOperatorType *ot)
@@ -479,6 +578,9 @@ void WM_OT_alembic_import(wmOperatorType *ot)
 
 	RNA_def_boolean(ot->srna, "is_sequence", false, "Is Sequence",
 	                "Set to true if the cache is split into separate files");
+
+	RNA_def_boolean(ot->srna, "as_background_job", true, "Run as Background Job",
+	                "Enable this to run the export in the background, disable to block Blender while exporting");
 }
 
 #endif

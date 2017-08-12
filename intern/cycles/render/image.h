@@ -17,13 +17,13 @@
 #ifndef __IMAGE_H__
 #define __IMAGE_H__
 
-#include "device.h"
-#include "device_memory.h"
+#include "device/device.h"
+#include "device/device_memory.h"
 
-#include "util_image.h"
-#include "util_string.h"
-#include "util_thread.h"
-#include "util_vector.h"
+#include "util/util_image.h"
+#include "util/util_string.h"
+#include "util/util_thread.h"
+#include "util/util_vector.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -36,17 +36,6 @@ class ImageManager {
 public:
 	explicit ImageManager(const DeviceInfo& info);
 	~ImageManager();
-
-	enum ImageDataType {
-		IMAGE_DATA_TYPE_FLOAT4 = 0,
-		IMAGE_DATA_TYPE_BYTE4 = 1,
-		IMAGE_DATA_TYPE_HALF4 = 2,
-		IMAGE_DATA_TYPE_FLOAT = 3,
-		IMAGE_DATA_TYPE_BYTE = 4,
-		IMAGE_DATA_TYPE_HALF = 5,
-
-		IMAGE_DATA_NUM_TYPES
-	};
 
 	int add_image(const string& filename,
 	              void *builtin_data,
@@ -61,13 +50,19 @@ public:
 	void remove_image(const string& filename,
 	                  void *builtin_data,
 	                  InterpolationType interpolation,
-	                  ExtensionType extension);
+	                  ExtensionType extension,
+	                  bool use_alpha);
 	void tag_reload_image(const string& filename,
 	                      void *builtin_data,
 	                      InterpolationType interpolation,
-	                      ExtensionType extension);
-	ImageDataType get_image_metadata(const string& filename, void *builtin_data, bool& is_linear);
+	                      ExtensionType extension,
+	                      bool use_alpha);
+	ImageDataType get_image_metadata(const string& filename,
+	                                 void *builtin_data,
+	                                 bool& is_linear,
+	                                 bool& builtin_free_cache);
 
+	void device_prepare_update(DeviceScene *dscene);
 	void device_update(Device *device,
 	                   DeviceScene *dscene,
 	                   Scene *scene,
@@ -96,19 +91,23 @@ public:
 	              int &width,
 	              int &height,
 	              int &depth,
-	              int &channels)> builtin_image_info_cb;
+	              int &channels,
+	              bool &free_cache)> builtin_image_info_cb;
 	function<bool(const string &filename,
 	              void *data,
 	              unsigned char *pixels,
-	              const size_t pixels_size)> builtin_image_pixels_cb;
+	              const size_t pixels_size,
+	              const bool free_cache)> builtin_image_pixels_cb;
 	function<bool(const string &filename,
 	              void *data,
 	              float *pixels,
-	              const size_t pixels_size)> builtin_image_float_pixels_cb;
+	              const size_t pixels_size,
+	              const bool free_cache)> builtin_image_float_pixels_cb;
 
 	struct Image {
 		string filename;
 		void *builtin_data;
+		bool builtin_free_cache;
 
 		bool use_alpha;
 		bool need_load;
@@ -122,7 +121,9 @@ public:
 
 private:
 	int tex_num_images[IMAGE_DATA_NUM_TYPES];
-	int tex_start_images[IMAGE_DATA_NUM_TYPES];
+	int max_num_images;
+	bool has_half_images;
+	bool cuda_fermi_limits;
 
 	thread_mutex device_mutex;
 	int animation_frame;
@@ -131,7 +132,12 @@ private:
 	void *osl_texture_system;
 	bool pack_images;
 
-	bool file_load_image_generic(Image *img, ImageInput **in, int &width, int &height, int &depth, int &components);
+	bool file_load_image_generic(Image *img,
+	                             ImageInput **in,
+	                             int &width,
+	                             int &height,
+	                             int &depth,
+	                             int &components);
 
 	template<TypeDesc::BASETYPE FileFormat,
 	         typename StorageType,
@@ -141,6 +147,7 @@ private:
 	                     int texture_limit,
 	                     device_vector<DeviceType>& tex_img);
 
+	int max_flattened_slot(ImageDataType type);
 	int type_index_to_flattened_slot(int slot, ImageDataType type);
 	int flattened_slot_to_type_index(int flat_slot, ImageDataType *type);
 	string name_from_type(int type);
@@ -157,6 +164,13 @@ private:
 	                       DeviceScene *dscene,
 	                       ImageDataType type,
 	                       int slot);
+
+	template<typename T>
+	void device_pack_images_type(
+	        ImageDataType type,
+	        const vector<device_vector<T>*>& cpu_textures,
+	        device_vector<T> *device_image,
+	        uint4 *info);
 
 	void device_pack_images(Device *device,
 	                        DeviceScene *dscene,

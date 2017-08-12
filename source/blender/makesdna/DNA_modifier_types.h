@@ -86,6 +86,7 @@ typedef enum ModifierType {
 	eModifierType_NormalEdit        = 50,
 	eModifierType_CorrectiveSmooth  = 51,
 	eModifierType_MeshSequenceCache = 52,
+	eModifierType_SurfaceDeform     = 53,
 	eModifierType_Fracture          = (1 << 20),
 	NUM_MODIFIER_TYPES
 } ModifierType;
@@ -98,7 +99,7 @@ typedef enum ModifierMode {
 	eModifierMode_Expanded          = (1 << 4),
 	eModifierMode_Virtual           = (1 << 5),
 	eModifierMode_ApplyOnSpline     = (1 << 6),
-	eModifierMode_DisableTemporary  = (1 << 31)
+	eModifierMode_DisableTemporary  = (1u << 31)
 } ModifierMode;
 
 typedef struct ModifierData {
@@ -277,6 +278,7 @@ typedef struct MirrorModifierData {
 	short axis  DNA_DEPRECATED; /* deprecated, use flag instead */
 	short flag;
 	float tolerance;
+	float uv_offset[2];
 	struct Object *mirror_ob;
 } MirrorModifierData;
 
@@ -384,7 +386,7 @@ typedef struct DisplaceModifierData {
 	int direction;
 	char defgrp_name[64];   /* MAX_VGROUP_NAME */
 	float midlevel;
-	int pad;
+	int space;
 } DisplaceModifierData;
 
 /* DisplaceModifierData->direction */
@@ -403,6 +405,12 @@ enum {
 	MOD_DISP_MAP_GLOBAL = 1,
 	MOD_DISP_MAP_OBJECT = 2,
 	MOD_DISP_MAP_UV     = 3,
+};
+
+/* DisplaceModifierData->space */
+enum {
+	MOD_DISP_SPACE_LOCAL  = 0,
+	MOD_DISP_SPACE_GLOBAL = 1,
 };
 
 typedef struct UVProjectModifierData {
@@ -622,6 +630,9 @@ typedef struct CollisionModifierData {
 	unsigned int mvert_num;
 	unsigned int tri_num;
 	float time_x, time_xnew;    /* cfra time of modifier */
+	char is_static;             /* collider doesn't move this frame, i.e. x[].co==xnew[].co */
+	char pad[7];
+
 	struct BVHTree *bvhtree;    /* bounding volume hierarchy for this cloth object */
 } CollisionModifierData;
 
@@ -1844,7 +1855,7 @@ enum {
 	MOD_DATATRANSFER_USE_VERT         = 1 << 28,
 	MOD_DATATRANSFER_USE_EDGE         = 1 << 29,
 	MOD_DATATRANSFER_USE_LOOP         = 1 << 30,
-	MOD_DATATRANSFER_USE_POLY         = 1 << 31,
+	MOD_DATATRANSFER_USE_POLY         = 1u << 31,
 };
 
 /* Set Split Normals modifier */
@@ -1886,6 +1897,7 @@ typedef struct MeshSeqCacheModifierData {
 	ModifierData modifier;
 
 	struct CacheFile *cache_file;
+	struct CacheReader *reader;
 	char object_path[1024];  /* 1024 = FILE_MAX */
 
 	char read_flag;
@@ -1898,6 +1910,46 @@ enum {
 	MOD_MESHSEQ_READ_POLY  = (1 << 1),
 	MOD_MESHSEQ_READ_UV    = (1 << 2),
 	MOD_MESHSEQ_READ_COLOR = (1 << 3),
+};
+
+typedef struct SDefBind {
+	unsigned int *vert_inds;
+	unsigned int numverts;
+	int mode;
+	float *vert_weights;
+	float normal_dist;
+	float influence;
+} SDefBind;
+
+typedef struct SDefVert {
+	SDefBind *binds;
+	unsigned int numbinds;
+	char pad[4];
+} SDefVert;
+
+typedef struct SurfaceDeformModifierData {
+	ModifierData modifier;
+
+	struct Object *target;	/* bind target object */
+	SDefVert *verts;		/* vertex bind data */
+	float falloff;
+	unsigned int numverts, numpoly;
+	int flags;
+	float mat[4][4];
+} SurfaceDeformModifierData;
+
+/* Surface Deform modifier flags */
+enum {
+	MOD_SDEF_BIND = (1 << 0),
+	MOD_SDEF_USES_LOOPTRI = (1 << 1),
+	MOD_SDEF_HAS_CONCAVE = (1 << 2),
+};
+
+/* Surface Deform vertex bind modes */
+enum {
+	MOD_SDEF_MODE_LOOPTRI = 0,
+	MOD_SDEF_MODE_NGON = 1,
+	MOD_SDEF_MODE_CENTROID = 2,
 };
 
 #define MOD_MESHSEQ_READ_ALL \

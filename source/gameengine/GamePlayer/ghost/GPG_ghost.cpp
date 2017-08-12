@@ -355,7 +355,7 @@ static BlendFileData *load_game_data(const char *progname, char *filename = NULL
 			BLI_strncpy(bfd->main->name, progname, sizeof(bfd->main->name));
 		}
 	} else {
-		bfd= BLO_read_from_file(progname, &reports);
+		bfd= BLO_read_from_file(progname, &reports, BLO_READ_SKIP_NONE);
 	}
 	
 	if (!bfd && filename) {
@@ -516,7 +516,7 @@ int main(
 #endif
 
 	// Setup builtin font for BLF (mostly copied from creator.c, wm_init_exit.c and interface_style.c)
-	BLF_init(11, U.dpi);
+	BLF_init();
 	BLT_lang_init();
 	BLT_lang_set("");
 
@@ -1148,7 +1148,7 @@ int main(
 								MEM_freeN(python_code);
 							}
 							else {
-								fprintf(stderr, "ERROR: cannot yield control to Python: no Python text data block named '%s'\n", python_main);
+								fprintf(stderr, "ERROR: cannot yield control to Python: no Python text data-block named '%s'\n", python_main);
 							}
 						}
 						else {

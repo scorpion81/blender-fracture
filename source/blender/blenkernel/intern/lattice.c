@@ -67,7 +67,7 @@
 
 #include "BKE_deform.h"
 
-/* Workaround for cyclic depenndnecy with curves.
+/* Workaround for cyclic dependency with curves.
  * In such case curve_cache might not be ready yet,
  */
 #define CYCLIC_DEPENDENCY_WORKAROUND
@@ -277,7 +277,7 @@ Lattice *BKE_lattice_add(Main *bmain, const char *name)
 	return lt;
 }
 
-Lattice *BKE_lattice_copy(Main *bmain, Lattice *lt)
+Lattice *BKE_lattice_copy(Main *bmain, const Lattice *lt)
 {
 	Lattice *ltn;
 

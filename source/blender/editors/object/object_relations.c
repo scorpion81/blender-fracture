@@ -72,15 +72,18 @@
 #include "BKE_global.h"
 #include "BKE_group.h"
 #include "BKE_fcurve.h"
+#include "BKE_idprop.h"
 #include "BKE_lamp.h"
 #include "BKE_lattice.h"
 #include "BKE_library.h"
 #include "BKE_library_query.h"
+#include "BKE_library_remap.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
 #include "BKE_mball.h"
 #include "BKE_mesh.h"
 #include "BKE_modifier.h"
+#include "BKE_node.h"
 #include "BKE_object.h"
 #include "BKE_report.h"
 #include "BKE_sca.h"
@@ -1737,6 +1740,7 @@ void OBJECT_OT_make_links_data(wmOperatorType *ot)
 
 /**************************** Make Single User ********************************/
 
+/* Warning, sets ID->newid pointers of objects and groups, but does not clear them. */
 static void single_object_users(Main *bmain, Scene *scene, View3D *v3d, const int flag, const bool copy_groups)
 {
 	Base *base;
@@ -1744,12 +1748,7 @@ static void single_object_users(Main *bmain, Scene *scene, View3D *v3d, const in
 	Group *group, *groupn;
 	GroupObject *go;
 
-	clear_sca_new_poins();  /* sensor/contr/act */
-
-	/* newid may still have some trash from Outliner tree building,
-	 * so clear that first to avoid errors [#26002] */
-	for (ob = bmain->object.first; ob; ob = ob->id.next)
-		ob->id.newid = NULL;
+	clear_sca_new_poins();  /* BGE logic */
 
 	/* duplicate (must set newid) */
 	for (base = FIRSTBASE; base; base = base->next) {
@@ -1758,8 +1757,7 @@ static void single_object_users(Main *bmain, Scene *scene, View3D *v3d, const in
 		if ((base->flag & flag) == flag) {
 			if (!ID_IS_LINKED_DATABLOCK(ob) && ob->id.us > 1) {
 				/* base gets copy of object */
-				obn = BKE_object_copy(bmain, ob);
-				base->object = obn;
+				base->object = obn = ID_NEW_SET(ob, BKE_object_copy(bmain, ob));
 
 				if (copy_groups) {
 					if (ob->flag & OB_FROMGROUP) {
@@ -1789,8 +1787,6 @@ static void single_object_users(Main *bmain, Scene *scene, View3D *v3d, const in
 
 	/* duplicate groups that consist entirely of duplicated objects */
 	for (group = bmain->group.first; group; group = group->id.next) {
-		group->id.newid = NULL;
-
 		if (copy_groups && group->gobject.first) {
 			bool all_duplicated = true;
 
@@ -1802,10 +1798,11 @@ static void single_object_users(Main *bmain, Scene *scene, View3D *v3d, const in
 			}
 
 			if (all_duplicated) {
-				groupn = BKE_group_copy(bmain, group);
+				groupn = ID_NEW_SET(group, BKE_group_copy(bmain, group));
 
-				for (go = groupn->gobject.first; go; go = go->next)
+				for (go = groupn->gobject.first; go; go = go->next) {
 					go->ob = (Object *)go->ob->id.newid;
+				}
 			}
 		}
 	}
@@ -1813,12 +1810,12 @@ static void single_object_users(Main *bmain, Scene *scene, View3D *v3d, const in
 	/* group pointers in scene */
 	BKE_scene_groups_relink(scene);
 
-	ID_NEW(scene->camera);
-	if (v3d) ID_NEW(v3d->camera);
+	ID_NEW_REMAP(scene->camera);
+	if (v3d) ID_NEW_REMAP(v3d->camera);
 
 	/* object and group pointers */
 	for (base = FIRSTBASE; base; base = base->next) {
-		BKE_libblock_relink(&base->object->id);
+		BKE_libblock_relink_to_newid(&base->object->id);
 	}
 
 	set_sca_new_poins();
@@ -1837,6 +1834,8 @@ void ED_object_single_user(Main *bmain, Scene *scene, Object *ob)
 	}
 
 	single_object_users(bmain, scene, NULL, OB_DONE, copy_groups);
+
+	BKE_main_id_clear_newpoins(bmain);
 }
 
 static void new_id_matar(Main *bmain, Material **matar, const int totcol)
@@ -1853,9 +1852,8 @@ static void new_id_matar(Main *bmain, Material **matar, const int totcol)
 				id_us_min(id);
 			}
 			else if (id->us > 1) {
-				matar[a] = BKE_material_copy(bmain, matar[a]);
+				matar[a] = ID_NEW_SET(id, BKE_material_copy(bmain, matar[a]));
 				id_us_min(id);
-				id->newid = (ID *)matar[a];
 			}
 		}
 	}
@@ -1883,45 +1881,46 @@ static void single_obdata_users(Main *bmain, Scene *scene, const int flag)
 
 				switch (ob->type) {
 					case OB_LAMP:
-						ob->data = la = BKE_lamp_copy(bmain, ob->data);
+						ob->data = la = ID_NEW_SET(ob->data, BKE_lamp_copy(bmain, ob->data));
 						for (a = 0; a < MAX_MTEX; a++) {
 							if (la->mtex[a]) {
-								ID_NEW(la->mtex[a]->object);
+								ID_NEW_REMAP(la->mtex[a]->object);
 							}
 						}
 						break;
 					case OB_CAMERA:
-						ob->data = BKE_camera_copy(bmain, ob->data);
+						ob->data = ID_NEW_SET(ob->data, BKE_camera_copy(bmain, ob->data));
 						break;
 					case OB_MESH:
-						ob->data = me = BKE_mesh_copy(bmain, ob->data);
-						if (me->key)
-							BKE_animdata_copy_id_action((ID *)me->key);
+						/* Needed to remap texcomesh below. */
+						me = ob->data = ID_NEW_SET(ob->data, BKE_mesh_copy(bmain, ob->data));
+						if (me->key)  /* We do not need to set me->key->id.newid here... */
+							BKE_animdata_copy_id_action((ID *)me->key, false);
 						break;
 					case OB_MBALL:
-						ob->data = BKE_mball_copy(bmain, ob->data);
+						ob->data = ID_NEW_SET(ob->data, BKE_mball_copy(bmain, ob->data));
 						break;
 					case OB_CURVE:
 					case OB_SURF:
 					case OB_FONT:
-						ob->data = cu = BKE_curve_copy(bmain, ob->data);
-						ID_NEW(cu->bevobj);
-						ID_NEW(cu->taperobj);
-						if (cu->key)
-							BKE_animdata_copy_id_action((ID *)cu->key);
+						ob->data = cu = ID_NEW_SET(ob->data, BKE_curve_copy(bmain, ob->data));
+						ID_NEW_REMAP(cu->bevobj);
+						ID_NEW_REMAP(cu->taperobj);
+						if (cu->key)  /* We do not need to set cu->key->id.newid here... */
+							BKE_animdata_copy_id_action((ID *)cu->key, false);
 						break;
 					case OB_LATTICE:
-						ob->data = lat = BKE_lattice_copy(bmain, ob->data);
-						if (lat->key)
-							BKE_animdata_copy_id_action((ID *)lat->key);
+						ob->data = lat = ID_NEW_SET(ob->data, BKE_lattice_copy(bmain, ob->data));
+						if (lat->key)  /* We do not need to set lat->key->id.newid here... */
+							BKE_animdata_copy_id_action((ID *)lat->key, false);
 						break;
 					case OB_ARMATURE:
 						DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
-						ob->data = BKE_armature_copy(bmain, ob->data);
+						ob->data = ID_NEW_SET(ob->data, BKE_armature_copy(bmain, ob->data));
 						BKE_pose_rebuild(ob, ob->data);
 						break;
 					case OB_SPEAKER:
-						ob->data = BKE_speaker_copy(bmain, ob->data);
+						ob->data = ID_NEW_SET(ob->data, BKE_speaker_copy(bmain, ob->data));
 						break;
 					default:
 						if (G.debug & G_DEBUG)
@@ -1934,17 +1933,16 @@ static void single_obdata_users(Main *bmain, Scene *scene, const int flag)
 				 * AnimData structure, which is not what we want.
 				 *                                             (sergey)
 				 */
-				BKE_animdata_copy_id_action((ID *)ob->data);
+				BKE_animdata_copy_id_action((ID *)ob->data, false);
 
 				id_us_min(id);
-				id->newid = ob->data;
 			}
 		}
 	}
 
 	me = bmain->mesh.first;
 	while (me) {
-		ID_NEW(me->texcomesh);
+		ID_NEW_REMAP(me->texcomesh);
 		me = me->id.next;
 	}
 }
@@ -1958,7 +1956,7 @@ static void single_object_action_users(Scene *scene, const int flag)
 		ob = base->object;
 		if (!ID_IS_LINKED_DATABLOCK(ob) && (flag == 0 || (base->flag & SELECT)) ) {
 			DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
-			BKE_animdata_copy_id_action(&ob->id);
+			BKE_animdata_copy_id_action(&ob->id, false);
 		}
 	}
 }
@@ -1977,11 +1975,11 @@ static void single_mat_users(Main *bmain, Scene *scene, const int flag, const bo
 			for (a = 1; a <= ob->totcol; a++) {
 				ma = give_current_material(ob, a);
 				if (ma) {
-					/* do not test for LIB_TAG_NEW: this functions guaranteed delivers single_users! */
+					/* do not test for LIB_TAG_NEW or use newid: this functions guaranteed delivers single_users! */
 
 					if (ma->id.us > 1) {
 						man = BKE_material_copy(bmain, ma);
-						BKE_animdata_copy_id_action(&man->id);
+						BKE_animdata_copy_id_action(&man->id, false);
 
 						man->id.us = 0;
 						assign_material(ob, man, a, BKE_MAT_ASSIGN_USERPREF);
@@ -1992,7 +1990,7 @@ static void single_mat_users(Main *bmain, Scene *scene, const int flag, const bo
 									if (tex->id.us > 1) {
 										id_us_min(&tex->id);
 										tex = BKE_texture_copy(bmain, tex);
-										BKE_animdata_copy_id_action(&tex->id);
+										BKE_animdata_copy_id_action(&tex->id, false);
 										man->mtex[b]->tex = tex;
 									}
 								}
@@ -2018,8 +2016,8 @@ static void do_single_tex_user(Main *bmain, Tex **from)
 		id_us_min(&tex->id);
 	}
 	else if (tex->id.us > 1) {
-		texn = BKE_texture_copy(bmain, tex);
-		BKE_animdata_copy_id_action(&texn->id);
+		texn = ID_NEW_SET(tex, BKE_texture_copy(bmain, tex));
+		BKE_animdata_copy_id_action(&texn->id, false);
 		tex->id.newid = (ID *)texn;
 		id_us_min(&tex->id);
 		*from = texn;
@@ -2096,7 +2094,7 @@ static void single_mat_users_expand(Main *bmain)
 		if (ma->id.tag & LIB_TAG_NEW)
 			for (a = 0; a < MAX_MTEX; a++)
 				if (ma->mtex[a])
-					ID_NEW(ma->mtex[a]->object);
+					ID_NEW_REMAP(ma->mtex[a]->object);
 }
 
 /* used for copying scenes */
@@ -2111,29 +2109,51 @@ void ED_object_single_users(Main *bmain, Scene *scene, const bool full, const bo
 		single_tex_users_expand(bmain);
 	}
 
+	/* Relink nodetrees' pointers that have been duplicated. */
+	FOREACH_NODETREE(bmain, ntree, id)
+	{
+		/* This is a bit convoluted, we want to root ntree of copied IDs and only those,
+		 * so we first check that old ID has been copied and that ntree is root tree of old ID,
+		 * then get root tree of new ID and remap its pointers to new ID... */
+		if (id->newid && (&ntree->id != id)) {
+			ntree = ntreeFromID(id->newid);
+			BKE_libblock_relink_to_newid(&ntree->id);
+		}
+	} FOREACH_NODETREE_END
+
+	/* Relink datablock pointer properties */
+	{
+		IDP_RelinkProperty(scene->id.properties);
+
+		for (Base *base = scene->base.first; base; base = base->next) {
+			Object *ob = base->object;
+			if (!ID_IS_LINKED_DATABLOCK(ob)) {
+				IDP_RelinkProperty(ob->id.properties);
+			}
+		}
+
+		if (scene->nodetree) {
+			IDP_RelinkProperty(scene->nodetree->id.properties);
+			for (bNode *node = scene->nodetree->nodes.first; node; node = node->next) {
+				IDP_RelinkProperty(node->prop);
+			}
+		}
+
+		if (scene->gpd) {
+			IDP_RelinkProperty(scene->gpd->id.properties);
+		}
+
+		IDP_RelinkProperty(scene->world->id.properties);
+
+		if (scene->clip) {
+			IDP_RelinkProperty(scene->clip->id.properties);
+		}
+	}
 	BKE_main_id_clear_newpoins(bmain);
 	DAG_relations_tag_update(bmain);
 }
 
 /******************************* Make Local ***********************************/
-
-/* helper for below, ma was checked to be not NULL */
-static void make_local_makelocalmaterial(Material *ma)
-{
-	AnimData *adt;
-	int b;
-
-	id_make_local(G.main, &ma->id, false, false);
-
-	for (b = 0; b < MAX_MTEX; b++)
-		if (ma->mtex[b] && ma->mtex[b]->tex)
-			id_make_local(G.main, &ma->mtex[b]->tex->id, false, false);
-
-	adt = BKE_animdata_from_id(&ma->id);
-	if (adt) BKE_animdata_make_local(adt);
-
-	/* nodetree? XXX */
-}
 
 enum {
 	MAKE_LOCAL_SELECT_OB              = 1,
@@ -2143,7 +2163,7 @@ enum {
 };
 
 static int tag_localizable_looper(
-        void *UNUSED(user_data), ID *UNUSED(self_id), ID **id_pointer, const int UNUSED(cd_flag))
+        void *UNUSED(user_data), ID *UNUSED(self_id), ID **id_pointer, const int UNUSED(cb_flag))
 {
 	if (*id_pointer) {
 		(*id_pointer)->tag &= ~LIB_TAG_DOIT;
@@ -2180,12 +2200,12 @@ static void tag_localizable_objects(bContext *C, const int mode)
 	 */
 	for (Object *object = bmain->object.first; object; object = object->id.next) {
 		if ((object->id.tag & LIB_TAG_DOIT) == 0) {
-			BKE_library_foreach_ID_link(&object->id, tag_localizable_looper, NULL, IDWALK_READONLY);
+			BKE_library_foreach_ID_link(NULL, &object->id, tag_localizable_looper, NULL, IDWALK_READONLY);
 		}
 		if (object->data) {
 			ID *data_id = (ID *) object->data;
 			if ((data_id->tag & LIB_TAG_DOIT) == 0) {
-				BKE_library_foreach_ID_link(data_id, tag_localizable_looper, NULL, IDWALK_READONLY);
+				BKE_library_foreach_ID_link(NULL, data_id, tag_localizable_looper, NULL, IDWALK_READONLY);
 			}
 		}
 	}
@@ -2220,123 +2240,142 @@ static bool make_local_all__instance_indirect_unused(Main *bmain, Scene *scene)
 	return changed;
 }
 
+static void make_local_animdata_tag_strips(ListBase *strips)
+{
+	NlaStrip *strip;
+
+	for (strip = strips->first; strip; strip = strip->next) {
+		if (strip->act) {
+			strip->act->id.tag &= ~LIB_TAG_PRE_EXISTING;
+		}
+		if (strip->remap && strip->remap->target) {
+			strip->remap->target->id.tag &= ~LIB_TAG_PRE_EXISTING;
+		}
+
+		make_local_animdata_tag_strips(&strip->strips);
+	}
+}
+
+/* Tag all actions used by given animdata to be made local. */
+static void make_local_animdata_tag(AnimData *adt)
+{
+	if (adt) {
+		/* Actions - Active and Temp */
+		if (adt->action) {
+			adt->action->id.tag &= ~LIB_TAG_PRE_EXISTING;
+		}
+		if (adt->tmpact) {
+			adt->tmpact->id.tag &= ~LIB_TAG_PRE_EXISTING;
+		}
+		/* Remaps */
+		if (adt->remap && adt->remap->target) {
+			adt->remap->target->id.tag &= ~LIB_TAG_PRE_EXISTING;
+		}
+
+		/* Drivers */
+		/* TODO: need to handle the ID-targets too? */
+
+		/* NLA Data */
+		for (NlaTrack *nlt = adt->nla_tracks.first; nlt; nlt = nlt->next) {
+			make_local_animdata_tag_strips(&nlt->strips);
+		}
+	}
+}
+
+static void make_local_material_tag(Material *ma)
+{
+	if (ma) {
+		ma->id.tag &= ~LIB_TAG_PRE_EXISTING;
+		make_local_animdata_tag(BKE_animdata_from_id(&ma->id));
+
+		/* About nodetrees: root one is made local together with material, others we keep linked for now... */
+
+		for (int a = 0; a < MAX_MTEX; a++) {
+			if (ma->mtex[a] && ma->mtex[a]->tex) {
+				ma->mtex[a]->tex->id.tag &= ~LIB_TAG_PRE_EXISTING;
+			}
+		}
+	}
+}
+
 static int make_local_exec(bContext *C, wmOperator *op)
 {
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
-	AnimData *adt;
 	ParticleSystem *psys;
 	Material *ma, ***matarar;
 	Lamp *la;
-	ID *id;
 	const int mode = RNA_enum_get(op->ptr, "type");
-	int a, b;
+	int a;
 
+	/* Note: we (ab)use LIB_TAG_PRE_EXISTING to cherry pick which ID to make local... */
 	if (mode == MAKE_LOCAL_ALL) {
+		BKE_main_id_tag_all(bmain, LIB_TAG_PRE_EXISTING, false);
+
 		/* de-select so the user can differentiate newly instanced from existing objects */
 		BKE_scene_base_deselect_all(scene);
 
 		if (make_local_all__instance_indirect_unused(bmain, scene)) {
-			BKE_report(op->reports, RPT_INFO,
-			           "Orphan library objects added to the current scene to avoid loss");
-		}
-
-		BKE_library_make_local(bmain, NULL, false, false); /* NULL is all libs */
-		WM_event_add_notifier(C, NC_WINDOW, NULL);
-		return OPERATOR_FINISHED;
-	}
-
-	tag_localizable_objects(C, mode);
-	BKE_main_id_clear_newpoins(bmain);
-
-	CTX_DATA_BEGIN (C, Object *, ob, selected_objects)
-	{
-		if ((ob->id.tag & LIB_TAG_DOIT) == 0) {
-			continue;
-		}
-
-		if (ob->id.lib)
-			id_make_local(bmain, &ob->id, false, false);
-	}
-	CTX_DATA_END;
-
-	/* maybe object pointers */
-	CTX_DATA_BEGIN (C, Object *, ob, selected_objects)
-	{
-		if (ob->id.lib == NULL) {
-			ID_NEW(ob->parent);
+			BKE_report(op->reports, RPT_INFO, "Orphan library objects added to the current scene to avoid loss");
 		}
 	}
-	CTX_DATA_END;
+	else {
+		BKE_main_id_tag_all(bmain, LIB_TAG_PRE_EXISTING, true);
+		tag_localizable_objects(C, mode);
 
-	CTX_DATA_BEGIN (C, Object *, ob, selected_objects)
-	{
-		if ((ob->id.tag & LIB_TAG_DOIT) == 0) {
-			continue;
-		}
-
-		id = ob->data;
-
-		if (id && (ELEM(mode, MAKE_LOCAL_SELECT_OBDATA, MAKE_LOCAL_SELECT_OBDATA_MATERIAL))) {
-			id_make_local(bmain, id, false, false);
-			adt = BKE_animdata_from_id(id);
-			if (adt) BKE_animdata_make_local(adt);
-
-			/* tag indirect data direct */
-			matarar = give_matarar(ob);
-			if (matarar) {
-				for (a = 0; a < ob->totcol; a++) {
-					ma = (*matarar)[a];
-					if (ma)
-						id_lib_extern(&ma->id);
-				}
-			}
-		}
-
-		for (psys = ob->particlesystem.first; psys; psys = psys->next)
-			id_make_local(bmain, &psys->part->id, false, false);
-
-		adt = BKE_animdata_from_id(&ob->id);
-		if (adt) BKE_animdata_make_local(adt);
-	}
-	CTX_DATA_END;
-
-	if (mode == MAKE_LOCAL_SELECT_OBDATA_MATERIAL) {
 		CTX_DATA_BEGIN (C, Object *, ob, selected_objects)
 		{
 			if ((ob->id.tag & LIB_TAG_DOIT) == 0) {
 				continue;
 			}
 
-			if (ob->type == OB_LAMP) {
-				la = ob->data;
-
-				for (b = 0; b < MAX_MTEX; b++)
-					if (la->mtex[b] && la->mtex[b]->tex)
-						id_make_local(bmain, &la->mtex[b]->tex->id, false, false);
+			ob->id.tag &= ~LIB_TAG_PRE_EXISTING;
+			make_local_animdata_tag(BKE_animdata_from_id(&ob->id));
+			for (psys = ob->particlesystem.first; psys; psys = psys->next) {
+				psys->part->id.tag &= ~LIB_TAG_PRE_EXISTING;
 			}
-			else {
+
+			if (mode == MAKE_LOCAL_SELECT_OBDATA_MATERIAL) {
 				for (a = 0; a < ob->totcol; a++) {
 					ma = ob->mat[a];
-					if (ma)
-						make_local_makelocalmaterial(ma);
+					if (ma) {
+						make_local_material_tag(ma);
+					}
 				}
 
 				matarar = (Material ***)give_matarar(ob);
 				if (matarar) {
 					for (a = 0; a < ob->totcol; a++) {
 						ma = (*matarar)[a];
-						if (ma)
-							make_local_makelocalmaterial(ma);
+						if (ma) {
+							make_local_material_tag(ma);
+						}
 					}
 				}
+
+				if (ob->type == OB_LAMP) {
+					BLI_assert(ob->data != NULL);
+					la = ob->data;
+					for (a = 0; a < MAX_MTEX; a++) {
+						if (la->mtex[a] && la->mtex[a]->tex) {
+							la->id.tag &= ~LIB_TAG_PRE_EXISTING;
+						}
+					}
+				}
+			}
+
+			if (ELEM(mode, MAKE_LOCAL_SELECT_OBDATA, MAKE_LOCAL_SELECT_OBDATA_MATERIAL) && ob->data != NULL) {
+				ID *ob_data = ob->data;
+				ob_data->tag &= ~LIB_TAG_PRE_EXISTING;
+				make_local_animdata_tag(BKE_animdata_from_id(ob_data));
 			}
 		}
 		CTX_DATA_END;
 	}
 
-	WM_event_add_notifier(C, NC_WINDOW, NULL);
+	BKE_library_make_local(bmain, NULL, NULL, true, false); /* NULL is all libs */
 
+	WM_event_add_notifier(C, NC_WINDOW, NULL);
 	return OPERATOR_FINISHED;
 }
 
@@ -2352,7 +2391,7 @@ void OBJECT_OT_make_local(wmOperatorType *ot)
 
 	/* identifiers */
 	ot->name = "Make Local";
-	ot->description = "Make library linked datablocks local to this file";
+	ot->description = "Make library linked data-blocks local to this file";
 	ot->idname = "OBJECT_OT_make_local";
 
 	/* api callbacks */
@@ -2381,8 +2420,6 @@ static int make_single_user_exec(bContext *C, wmOperator *op)
 	const bool copy_groups = false;
 	bool update_deps = false;
 
-	BKE_main_id_clear_newpoins(bmain);
-
 	if (RNA_boolean_get(op->ptr, "object")) {
 		single_object_users(bmain, scene, v3d, flag, copy_groups);
 
@@ -2406,11 +2443,6 @@ static int make_single_user_exec(bContext *C, wmOperator *op)
 		single_object_action_users(scene, flag);
 	}
 
-	/* TODO(sergey): This should not be needed, however some tool still could rely
-	 *               on the fact, that id->newid is kept NULL by default.
-	 *               Need to make sure all the guys are learing newid before they're
-	 *               using it, not after.
-	 */
 	BKE_main_id_clear_newpoins(bmain);
 
 	WM_event_add_notifier(C, NC_WINDOW, NULL);
@@ -2447,7 +2479,7 @@ void OBJECT_OT_make_single_user(wmOperatorType *ot)
 
 	RNA_def_boolean(ot->srna, "object", 0, "Object", "Make single user objects");
 	RNA_def_boolean(ot->srna, "obdata", 0, "Object Data", "Make single user object data");
-	RNA_def_boolean(ot->srna, "material", 0, "Materials", "Make materials local to each datablock");
+	RNA_def_boolean(ot->srna, "material", 0, "Materials", "Make materials local to each data-block");
 	RNA_def_boolean(ot->srna, "texture", 0, "Textures",
 	                "Make textures local to each material (needs 'Materials' to be set too)");
 	RNA_def_boolean(ot->srna, "animation", 0, "Object Animation", "Make animation data local to each object");

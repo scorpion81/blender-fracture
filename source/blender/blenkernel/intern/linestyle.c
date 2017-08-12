@@ -41,6 +41,7 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
+#include "BLI_string_utils.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_context.h"
@@ -154,7 +155,7 @@ void BKE_linestyle_free(FreestyleLineStyle *linestyle)
 		BKE_linestyle_geometry_modifier_remove(linestyle, m);
 }
 
-FreestyleLineStyle *BKE_linestyle_copy(struct Main *bmain, FreestyleLineStyle *linestyle)
+FreestyleLineStyle *BKE_linestyle_copy(struct Main *bmain, const FreestyleLineStyle *linestyle)
 {
 	FreestyleLineStyle *new_linestyle;
 	LineStyleModifier *m;
@@ -354,7 +355,7 @@ LineStyleModifier *BKE_linestyle_color_modifier_add(FreestyleLineStyle *linestyl
 	return m;
 }
 
-LineStyleModifier *BKE_linestyle_color_modifier_copy(FreestyleLineStyle *linestyle, LineStyleModifier *m)
+LineStyleModifier *BKE_linestyle_color_modifier_copy(FreestyleLineStyle *linestyle, const LineStyleModifier *m)
 {
 	LineStyleModifier *new_m;
 
@@ -593,7 +594,7 @@ LineStyleModifier *BKE_linestyle_alpha_modifier_add(FreestyleLineStyle *linestyl
 	return m;
 }
 
-LineStyleModifier *BKE_linestyle_alpha_modifier_copy(FreestyleLineStyle *linestyle, LineStyleModifier *m)
+LineStyleModifier *BKE_linestyle_alpha_modifier_copy(FreestyleLineStyle *linestyle, const LineStyleModifier *m)
 {
 	LineStyleModifier *new_m;
 
@@ -862,7 +863,7 @@ LineStyleModifier *BKE_linestyle_thickness_modifier_add(FreestyleLineStyle *line
 	return m;
 }
 
-LineStyleModifier *BKE_linestyle_thickness_modifier_copy(FreestyleLineStyle *linestyle, LineStyleModifier *m)
+LineStyleModifier *BKE_linestyle_thickness_modifier_copy(FreestyleLineStyle *linestyle, const LineStyleModifier *m)
 {
 	LineStyleModifier *new_m;
 
@@ -1194,7 +1195,7 @@ LineStyleModifier *BKE_linestyle_geometry_modifier_add(FreestyleLineStyle *lines
 	return m;
 }
 
-LineStyleModifier *BKE_linestyle_geometry_modifier_copy(FreestyleLineStyle *linestyle, LineStyleModifier *m)
+LineStyleModifier *BKE_linestyle_geometry_modifier_copy(FreestyleLineStyle *linestyle, const LineStyleModifier *m)
 {
 	LineStyleModifier *new_m;
 
@@ -1343,33 +1344,25 @@ int BKE_linestyle_geometry_modifier_remove(FreestyleLineStyle *linestyle, LineSt
 	return 0;
 }
 
-static void move_modifier(ListBase *lb, LineStyleModifier *modifier, int direction)
+/**
+ * Reinsert \a modifier in modifier list with an offset of \a direction.
+ * \return if position of \a modifier has changed.
+ */
+bool BKE_linestyle_color_modifier_move(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
 {
-	BLI_remlink(lb, modifier);
-	if (direction > 0)
-		BLI_insertlinkbefore(lb, modifier->prev, modifier);
-	else
-		BLI_insertlinkafter(lb, modifier->next, modifier);
+	return BLI_listbase_link_move(&linestyle->color_modifiers, modifier, direction);
 }
-
-void BKE_linestyle_color_modifier_move(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
+bool BKE_linestyle_alpha_modifier_move(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
 {
-	move_modifier(&linestyle->color_modifiers, modifier, direction);
+	return BLI_listbase_link_move(&linestyle->alpha_modifiers, modifier, direction);
 }
-
-void BKE_linestyle_alpha_modifier_move(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
+bool BKE_linestyle_thickness_modifier_move(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
 {
-	move_modifier(&linestyle->alpha_modifiers, modifier, direction);
+	return BLI_listbase_link_move(&linestyle->thickness_modifiers, modifier, direction);
 }
-
-void BKE_linestyle_thickness_modifier_move(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
+bool BKE_linestyle_geometry_modifier_move(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
 {
-	move_modifier(&linestyle->thickness_modifiers, modifier, direction);
-}
-
-void BKE_linestyle_geometry_modifier_move(FreestyleLineStyle *linestyle, LineStyleModifier *modifier, int direction)
-{
-	move_modifier(&linestyle->geometry_modifiers, modifier, direction);
+	return BLI_listbase_link_move(&linestyle->geometry_modifiers, modifier, direction);
 }
 
 void BKE_linestyle_modifier_list_color_ramps(FreestyleLineStyle *linestyle, ListBase *listbase)

@@ -36,6 +36,7 @@
 struct BezTriple;
 struct Curve;
 struct EditNurb;
+struct GHash;
 struct ListBase;
 struct Main;
 struct Nurb;
@@ -51,6 +52,13 @@ typedef struct CurveCache {
 	ListBase deformed_nurbs;
 	struct Path *path;
 } CurveCache;
+
+/* Definitions needed for shape keys */
+typedef struct CVKeyIndex {
+	void *orig_cv;
+	int key_index, nu_index, pt_index, vertex_index;
+	bool switched;
+} CVKeyIndex;
 
 #define KNOTSU(nu)      ( (nu)->orderu + (nu)->pntsu + (((nu)->flagu & CU_NURB_CYCLIC) ? ((nu)->orderu - 1) : 0) )
 #define KNOTSV(nu)      ( (nu)->orderv + (nu)->pntsv + (((nu)->flagv & CU_NURB_CYCLIC) ? ((nu)->orderv - 1) : 0) )
@@ -70,7 +78,7 @@ void BKE_curve_free(struct Curve *cu);
 void BKE_curve_editfont_free(struct Curve *cu);
 void BKE_curve_init(struct Curve *cu);
 struct Curve *BKE_curve_add(struct Main *bmain, const char *name, int type);
-struct Curve *BKE_curve_copy(struct Main *bmain, struct Curve *cu);
+struct Curve *BKE_curve_copy(struct Main *bmain, const struct Curve *cu);
 void BKE_curve_make_local(struct Main *bmain, struct Curve *cu, const bool lib_local);
 short BKE_curve_type_get(struct Curve *cu);
 void BKE_curve_type_test(struct Object *ob);
@@ -108,7 +116,8 @@ void BK_curve_nurbs_vertexCos_apply(struct ListBase *lb, float (*vertexCos)[3]);
 float (*BKE_curve_nurbs_keyVertexCos_get(struct ListBase *lb, float *key))[3];
 void BKE_curve_nurbs_keyVertexTilts_apply(struct ListBase *lb, float *key);
 
-void BKE_curve_editNurb_keyIndex_free(struct EditNurb *editnurb);
+void BKE_curve_editNurb_keyIndex_delCV(struct GHash *keyindex, const void *cv);
+void BKE_curve_editNurb_keyIndex_free(struct GHash **keyindex);
 void BKE_curve_editNurb_free(struct Curve *cu);
 struct ListBase *BKE_curve_editNurbs_get(struct Curve *cu);
 
@@ -133,7 +142,7 @@ int BKE_nurbList_verts_count(struct ListBase *nurb);
 int BKE_nurbList_verts_count_without_handles(struct ListBase *nurb);
 
 void BKE_nurbList_free(struct ListBase *lb);
-void BKE_nurbList_duplicate(struct ListBase *lb1,  struct ListBase *lb2);
+void BKE_nurbList_duplicate(struct ListBase *lb1, const struct ListBase *lb2);
 void BKE_nurbList_handles_set(struct ListBase *editnurb, const char code);
 void BKE_nurbList_handles_recalculate(struct ListBase *editnurb, const bool calc_length, const char flag);
 
@@ -141,7 +150,7 @@ void BKE_nurbList_handles_autocalc(ListBase *editnurb, int flag);
 void BKE_nurbList_flag_set(ListBase *editnurb, short flag);
 
 void BKE_nurb_free(struct Nurb *nu);
-struct Nurb *BKE_nurb_duplicate(struct Nurb *nu);
+struct Nurb *BKE_nurb_duplicate(const struct Nurb *nu);
 struct Nurb *BKE_nurb_copy(struct Nurb *src, int pntsu, int pntsv);
 
 void BKE_nurb_test2D(struct Nurb *nu);
@@ -189,6 +198,7 @@ void BKE_nurb_bezt_calc_normal(struct Nurb *nu, struct BezTriple *bezt, float r_
 void BKE_nurb_bezt_calc_plane(struct Nurb *nu, struct BezTriple *bezt, float r_plane[3]);
 
 void BKE_nurb_bpoint_calc_normal(struct Nurb *nu, struct BPoint *bp, float r_normal[3]);
+void BKE_nurb_bpoint_calc_plane(struct Nurb *nu, struct BPoint *bp, float r_plane[3]);
 
 void BKE_nurb_handle_calc(struct BezTriple *bezt, struct BezTriple *prev,  struct BezTriple *next,
                           const bool is_fcurve);

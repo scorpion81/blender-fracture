@@ -172,7 +172,7 @@ struct Brush *BKE_brush_first_search(struct Main *bmain, short ob_mode)
 	return NULL;
 }
 
-Brush *BKE_brush_copy(Main *bmain, Brush *brush)
+Brush *BKE_brush_copy(Main *bmain, const Brush *brush)
 {
 	Brush *brushn;
 	
@@ -195,7 +195,7 @@ Brush *BKE_brush_copy(Main *bmain, Brush *brush)
 	brushn->curve = curvemapping_copy(brush->curve);
 
 	/* enable fake user by default */
-	id_fake_user_set(&brush->id);
+	id_fake_user_set(&brushn->id);
 
 	BKE_id_copy_ensure_local(bmain, &brush->id, &brushn->id);
 
@@ -239,7 +239,7 @@ void BKE_brush_make_local(Main *bmain, Brush *brush, const bool lib_local)
 	if (lib_local || is_local) {
 		if (!is_lib) {
 			id_clear_lib_data(bmain, &brush->id);
-			BKE_id_expand_local(&brush->id);
+			BKE_id_expand_local(bmain, &brush->id);
 
 			/* enable fake user by default */
 			id_fake_user_set(&brush->id);
@@ -248,6 +248,9 @@ void BKE_brush_make_local(Main *bmain, Brush *brush, const bool lib_local)
 			Brush *brush_new = BKE_brush_copy(bmain, brush);  /* Ensures FAKE_USER is set */
 
 			brush_new->id.us = 0;
+
+			/* setting newid is mandatory for complex make_lib_local logic... */
+			ID_NEW_SET(brush, brush_new);
 
 			if (!lib_local) {
 				BKE_libblock_remap(bmain, brush, brush_new, ID_REMAP_SKIP_INDIRECT_USAGE);

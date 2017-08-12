@@ -30,15 +30,13 @@
 
 #include "intern/builder/deg_builder.h"
 
-// TODO(sergey): Use own wrapper over STD.
-#include <stack>
-
 #include "DNA_anim_types.h"
 #include "DNA_object_types.h"
 #include "DNA_ID.h"
 
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
+#include "BLI_stack.h"
 
 #include "intern/depsgraph.h"
 #include "intern/depsgraph_types.h"
@@ -51,14 +49,6 @@
 #include <cstdio>
 
 namespace DEG {
-
-string deg_fcurve_id_name(const FCurve *fcu)
-{
-	char index_buf[32];
-	// TODO(sergey): Use int-to-string utility or so.
-	BLI_snprintf(index_buf, sizeof(index_buf), "[%d]", fcu->array_index);
-	return string(fcu->rna_path) + index_buf;
-}
 
 static bool check_object_needs_evaluation(Object *object)
 {
@@ -75,6 +65,56 @@ static bool check_object_needs_evaluation(Object *object)
 		return object->curve_cache == NULL;
 	}
 	return false;
+}
+
+void deg_graph_build_flush_layers(Depsgraph *graph)
+{
+	BLI_Stack *stack = BLI_stack_new(sizeof(OperationDepsNode*),
+	                                 "DEG flush layers stack");
+	foreach (OperationDepsNode *node, graph->operations) {
+		IDDepsNode *id_node = node->owner->owner;
+		node->done = 0;
+		node->num_links_pending = 0;
+		foreach (DepsRelation *rel, node->outlinks) {
+			if ((rel->from->type == DEG_NODE_TYPE_OPERATION) &&
+			    (rel->flag & DEPSREL_FLAG_CYCLIC) == 0)
+			{
+				++node->num_links_pending;
+			}
+		}
+		if (node->num_links_pending == 0) {
+			BLI_stack_push(stack, &node);
+			node->done = 1;
+		}
+		node->owner->layers = id_node->layers;
+		id_node->id->tag |= LIB_TAG_DOIT;
+	}
+	while (!BLI_stack_is_empty(stack)) {
+		OperationDepsNode *node;
+		BLI_stack_pop(stack, &node);
+		/* Flush layers to parents. */
+		foreach (DepsRelation *rel, node->inlinks) {
+			if (rel->from->type == DEG_NODE_TYPE_OPERATION) {
+				OperationDepsNode *from = (OperationDepsNode *)rel->from;
+				from->owner->layers |= node->owner->layers;
+			}
+		}
+		/* Schedule parent nodes. */
+		foreach (DepsRelation *rel, node->inlinks) {
+			if (rel->from->type == DEG_NODE_TYPE_OPERATION) {
+				OperationDepsNode *from = (OperationDepsNode *)rel->from;
+				if ((rel->flag & DEPSREL_FLAG_CYCLIC) == 0) {
+					BLI_assert(from->num_links_pending > 0);
+					--from->num_links_pending;
+				}
+				if (from->num_links_pending == 0 && from->done == 0) {
+					BLI_stack_push(stack, &from);
+					from->done = 1;
+				}
+			}
+		}
+	}
+	BLI_stack_free(stack);
 }
 
 void deg_graph_build_finalize(Depsgraph *graph)
@@ -99,50 +139,7 @@ void deg_graph_build_finalize(Depsgraph *graph)
 	}
 	GHASH_FOREACH_END();
 	/* STEP 2: Flush visibility layers from children to parent. */
-	std::stack<OperationDepsNode *> stack;
-	foreach (OperationDepsNode *node, graph->operations) {
-		IDDepsNode *id_node = node->owner->owner;
-		node->done = 0;
-		node->num_links_pending = 0;
-		foreach (DepsRelation *rel, node->outlinks) {
-			if ((rel->from->type == DEPSNODE_TYPE_OPERATION) &&
-			    (rel->flag & DEPSREL_FLAG_CYCLIC) == 0)
-			{
-				++node->num_links_pending;
-			}
-		}
-		if (node->num_links_pending == 0) {
-			stack.push(node);
-			node->done = 1;
-		}
-		node->owner->layers = id_node->layers;
-		id_node->id->tag |= LIB_TAG_DOIT;
-	}
-	while (!stack.empty()) {
-		OperationDepsNode *node = stack.top();
-		stack.pop();
-		/* Flush layers to parents. */
-		foreach (DepsRelation *rel, node->inlinks) {
-			if (rel->from->type == DEPSNODE_TYPE_OPERATION) {
-				OperationDepsNode *from = (OperationDepsNode *)rel->from;
-				from->owner->layers |= node->owner->layers;
-			}
-		}
-		/* Schedule parent nodes. */
-		foreach (DepsRelation *rel, node->inlinks) {
-			if (rel->from->type == DEPSNODE_TYPE_OPERATION) {
-				OperationDepsNode *from = (OperationDepsNode *)rel->from;
-				if ((rel->flag & DEPSREL_FLAG_CYCLIC) == 0) {
-					BLI_assert(from->num_links_pending > 0);
-					--from->num_links_pending;
-				}
-				if (from->num_links_pending == 0 && from->done == 0) {
-					stack.push(from);
-					from->done = 1;
-				}
-			}
-		}
-	}
+	deg_graph_build_flush_layers(graph);
 	/* STEP 3: Re-tag IDs for update if it was tagged before the relations
 	 * update tag.
 	 */
@@ -154,7 +151,7 @@ void deg_graph_build_finalize(Depsgraph *graph)
 		}
 		GHASH_FOREACH_END();
 
-		if ((id_node->layers & graph->layers) != 0) {
+		if ((id_node->layers & graph->layers) != 0 || graph->layers == 0) {
 			ID *id = id_node->id;
 			if ((id->tag & LIB_TAG_ID_RECALC_ALL) &&
 			    (id->tag & LIB_TAG_DOIT))

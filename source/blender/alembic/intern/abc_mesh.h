@@ -39,8 +39,6 @@ class AbcMeshWriter : public AbcObjectWriter {
 	Alembic::AbcGeom::OSubDSchema m_subdiv_schema;
 	Alembic::AbcGeom::OSubDSchema::Sample m_subdiv_sample;
 
-	bool m_has_per_face_materials;
-	Alembic::AbcGeom::OFaceSet m_face_set;
 	Alembic::Abc::OArrayProperty m_mat_indices;
 
 	bool m_is_animated;
@@ -87,7 +85,7 @@ private:
 	void getVelocities(DerivedMesh *dm, std::vector<Imath::V3f> &vels);
 
 	template <typename Schema>
-	void writeCommonData(DerivedMesh *dm, Schema &schema);
+	void writeFaceSets(DerivedMesh *dm, Schema &schema);
 };
 
 /* ************************************************************************** */
@@ -101,19 +99,20 @@ public:
 	AbcMeshReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
 
 	bool valid() const;
+	bool accepts_object_type(const Alembic::AbcCoreAbstract::ObjectHeader &alembic_header,
+	                       const Object *const ob,
+	                       const char **err_str) const;
+	void readObjectData(Main *bmain, const Alembic::Abc::ISampleSelector &sample_sel);
 
-	void readObjectData(Main *bmain, float time);
+	DerivedMesh *read_derivedmesh(DerivedMesh *dm,
+	                              const Alembic::Abc::ISampleSelector &sample_sel,
+	                              int read_flag,
+	                              const char **err_str);
 
 private:
 	void readFaceSetsSample(Main *bmain, Mesh *mesh, size_t poly_start,
 	                        const Alembic::AbcGeom::ISampleSelector &sample_sel);
 };
-
-void read_mesh_sample(ImportSettings *settings,
-                      const Alembic::AbcGeom::IPolyMeshSchema &schema,
-                      const Alembic::AbcGeom::ISampleSelector &selector,
-                      CDStreamConfig &config,
-                      bool &do_normals);
 
 /* ************************************************************************** */
 
@@ -126,27 +125,22 @@ public:
 	AbcSubDReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
 
 	bool valid() const;
-
-	void readObjectData(Main *bmain, float time);
+	bool accepts_object_type(const Alembic::AbcCoreAbstract::ObjectHeader &alembic_header,
+	                         const Object *const ob,
+	                         const char **err_str) const;
+	void readObjectData(Main *bmain, const Alembic::Abc::ISampleSelector &sample_sel);
+	DerivedMesh *read_derivedmesh(DerivedMesh *dm,
+	                              const Alembic::Abc::ISampleSelector &sample_sel,
+	                              int read_flag,
+	                              const char **err_str);
 };
 
-void read_subd_sample(ImportSettings *settings,
-                      const Alembic::AbcGeom::ISubDSchema &schema,
-                      const Alembic::AbcGeom::ISampleSelector &selector,
-                      CDStreamConfig &config);
-
 /* ************************************************************************** */
-
-namespace utils {
-
-void mesh_add_verts(struct Mesh *mesh, size_t len);
-
-}
 
 void read_mverts(MVert *mverts,
                  const Alembic::AbcGeom::P3fArraySamplePtr &positions,
                  const Alembic::AbcGeom::N3fArraySamplePtr &normals);
 
-CDStreamConfig create_config(Mesh *mesh);
+CDStreamConfig get_config(DerivedMesh *dm);
 
 #endif  /* __ABC_MESH_H__ */

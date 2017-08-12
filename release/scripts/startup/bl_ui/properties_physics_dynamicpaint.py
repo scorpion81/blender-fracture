@@ -68,7 +68,7 @@ class PHYSICS_PT_dynamic_paint(PhysicButtonsPanel, Panel):
 
         md = context.dynamic_paint
 
-        layout.prop(md, "ui_type", expand=True)
+        layout.row().prop(md, "ui_type", expand=True)
 
         if md.ui_type == 'CANVAS':
             canvas = md.canvas_settings
@@ -363,7 +363,7 @@ class PHYSICS_PT_dp_effects(PhysicButtonsPanel, Panel):
         canvas = context.dynamic_paint.canvas_settings
         surface = canvas.canvas_surfaces.active
 
-        layout.prop(surface, "effect_ui", expand=True)
+        layout.row().prop(surface, "effect_ui", expand=True)
 
         if surface.effect_ui == 'SPREAD':
             layout.prop(surface, "use_spread")
@@ -529,12 +529,20 @@ class PHYSICS_PT_dp_brush_wave(PhysicButtonsPanel, Panel):
             row.prop(brush, "wave_clamp")
 
 
-def register():
-    bpy.utils.register_module(__name__)
+classes = (
+    PHYSICS_UL_dynapaint_surfaces,
+    PHYSICS_PT_dynamic_paint,
+    PHYSICS_PT_dp_advanced_canvas,
+    PHYSICS_PT_dp_canvas_output,
+    PHYSICS_PT_dp_canvas_initial_color,
+    PHYSICS_PT_dp_effects,
+    PHYSICS_PT_dp_cache,
+    PHYSICS_PT_dp_brush_source,
+    PHYSICS_PT_dp_brush_velocity,
+    PHYSICS_PT_dp_brush_wave,
+)
 
-
-def unregister():
-    bpy.utils.register_module(__name__)
-
-if __name__ == "__main__":
-    register()
+if __name__ == "__main__":  # only for live edit.
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

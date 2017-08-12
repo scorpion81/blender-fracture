@@ -32,6 +32,8 @@
 
 #include "BLI_utildefines.h"
 
+#include "BLT_translation.h"
+
 #include "MEM_guardedalloc.h"
 
 #include "RNA_access.h"
@@ -89,7 +91,7 @@ static void rna_AnimData_update(Main *UNUSED(bmain), Scene *UNUSED(scene), Point
 	DAG_id_tag_update(id, OB_RECALC_OB | OB_RECALC_DATA);
 }
 
-static int rna_AnimData_action_editable(PointerRNA *ptr)
+static int rna_AnimData_action_editable(PointerRNA *ptr, const char **UNUSED(r_info))
 {
 	AnimData *adt = (AnimData *)ptr->data;
 	
@@ -305,7 +307,7 @@ static StructRNA *rna_ksPath_id_typef(PointerRNA *ptr)
 	return ID_code_to_RNA_type(ksp->idtype);
 }
 
-static int rna_ksPath_id_editable(PointerRNA *ptr)
+static int rna_ksPath_id_editable(PointerRNA *ptr, const char **UNUSED(r_info))
 {
 	KS_Path *ksp = (KS_Path *)ptr->data;
 	return (ksp->idtype) ? PROP_EDITABLE : 0;
@@ -393,7 +395,7 @@ static void rna_KeyingSet_name_set(PointerRNA *ptr, const char *value)
 }
 
 
-static int rna_KeyingSet_active_ksPath_editable(PointerRNA *ptr)
+static int rna_KeyingSet_active_ksPath_editable(PointerRNA *ptr, const char **UNUSED(r_info))
 {
 	KeyingSet *ks = (KeyingSet *)ptr->data;
 	
@@ -693,27 +695,27 @@ static void rna_def_keyingset_info(BlenderRNA *brna)
 	RNA_def_function_flag(func, FUNC_REGISTER);
 	RNA_def_function_return(func, RNA_def_boolean(func, "ok", 1, "", ""));
 	parm = RNA_def_pointer(func, "context", "Context", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	
 	/* iterator */
 	func = RNA_def_function(srna, "iterator", NULL);
 	RNA_def_function_ui_description(func, "Call generate() on the structs which have properties to be keyframed");
 	RNA_def_function_flag(func, FUNC_REGISTER);
 	parm = RNA_def_pointer(func, "context", "Context", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	parm = RNA_def_pointer(func, "ks", "KeyingSet", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	
 	/* generate */
 	func = RNA_def_function(srna, "generate", NULL);
 	RNA_def_function_ui_description(func, "Add Paths to the Keying Set to keyframe the properties of the given data");
 	RNA_def_function_flag(func, FUNC_REGISTER);
 	parm = RNA_def_pointer(func, "context", "Context", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	parm = RNA_def_pointer(func, "ks", "KeyingSet", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	parm = RNA_def_pointer(func, "data", "AnyType", "", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_RNAPTR | PROP_NEVER_NULL);
+	RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
 }
 
 static void rna_def_keyingset_path(BlenderRNA *brna)
@@ -742,6 +744,7 @@ static void rna_def_keyingset_path(BlenderRNA *brna)
 	RNA_def_property_enum_default(prop, ID_OB);
 	RNA_def_property_enum_funcs(prop, NULL, "rna_ksPath_id_type_set", NULL);
 	RNA_def_property_ui_text(prop, "ID Type", "Type of ID-block that can be used");
+	RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_ID);
 	RNA_def_property_update(prop, NC_SCENE | ND_KEYINGSET | NA_EDITED, NULL); /* XXX: maybe a bit too noisy */
 	
 	/* Group */
@@ -806,12 +809,12 @@ static void rna_def_keyingset_paths(BlenderRNA *brna, PropertyRNA *cprop)
 	parm = RNA_def_pointer(func, "ksp", "KeyingSetPath", "New Path", "Path created and added to the Keying Set");
 	RNA_def_function_return(func, parm);
 	/* ID-block for target */
-	parm = RNA_def_pointer(func, "target_id", "ID", "Target ID", "ID-Datablock for the destination");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
+	parm = RNA_def_pointer(func, "target_id", "ID", "Target ID", "ID data-block for the destination");
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	/* rna-path */
 	/* XXX hopefully this is long enough */
 	parm = RNA_def_string(func, "data_path", NULL, 256, "Data-Path", "RNA-Path to destination property");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	/* index (defaults to -1 for entire array) */
 	RNA_def_int(func, "index", -1, -1, INT_MAX, "Index",
 	            "The index of the destination property (i.e. axis of Location/Rotation/etc.), "
@@ -829,8 +832,8 @@ static void rna_def_keyingset_paths(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	/* path to remove */
 	parm = RNA_def_pointer(func, "path", "KeyingSetPath", "Path", "");
-	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
-	RNA_def_property_clear_flag(parm, PROP_THICK_WRAP);
+	RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
+	RNA_def_parameter_clear_flags(parm, PROP_THICK_WRAP, 0);
 
 
 	/* Remove All Paths */
@@ -939,8 +942,8 @@ static void rna_api_animdata_nla_tracks(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_function_flag(func, FUNC_USE_REPORTS | FUNC_USE_CONTEXT);
 	RNA_def_function_ui_description(func, "Remove a NLA Track");
 	parm = RNA_def_pointer(func, "track", "NlaTrack", "", "NLA Track to remove");
-	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
-	RNA_def_property_clear_flag(parm, PROP_THICK_WRAP);
+	RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
+	RNA_def_parameter_clear_flags(parm, PROP_THICK_WRAP, 0);
 
 	prop = RNA_def_property(srna, "active", PROP_POINTER, PROP_NONE);
 	RNA_def_property_struct_type(prop, "NlaTrack");
@@ -979,7 +982,7 @@ static void rna_api_animdata_drivers(BlenderRNA *brna, PropertyRNA *cprop)
 	                                "of all driver F-Curves.");
 	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	parm = RNA_def_string(func, "data_path", NULL, 0, "Data Path", "F-Curve data path");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	RNA_def_int(func, "index", 0, 0, INT_MAX, "Index", "Array index", 0, INT_MAX);
 	/* return type */
 	parm = RNA_def_pointer(func, "fcurve", "FCurve", "", "The found F-Curve, or None if it doesn't exist");

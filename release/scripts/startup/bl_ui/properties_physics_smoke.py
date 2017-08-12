@@ -21,9 +21,9 @@ import bpy
 from bpy.types import Panel
 
 from bl_ui.properties_physics_common import (
-        point_cache_ui,
-        effector_weights_ui,
-        )
+    point_cache_ui,
+    effector_weights_ui,
+)
 
 
 class PhysicButtonsPanel:
@@ -45,10 +45,14 @@ class PHYSICS_PT_smoke(PhysicButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
 
+        if not bpy.app.build_options.mod_smoke:
+            layout.label("Built without Smoke modifier")
+            return
+
         md = context.smoke
         ob = context.object
 
-        layout.prop(md, "smoke_type", expand=True)
+        layout.row().prop(md, "smoke_type", expand=True)
 
         if md.smoke_type == 'DOMAIN':
             domain = md.domain_settings
@@ -318,14 +322,14 @@ class PHYSICS_PT_smoke_cache(PhysicButtonsPanel, Panel):
 
         if cache_file_format == 'POINTCACHE':
             layout.label(text="Compression:")
-            layout.prop(domain, "point_cache_compress_type", expand=True)
+            layout.row().prop(domain, "point_cache_compress_type", expand=True)
         elif cache_file_format == 'OPENVDB':
             if not bpy.app.build_options.openvdb:
                 layout.label("Built without OpenVDB support")
                 return
 
             layout.label(text="Compression:")
-            layout.prop(domain, "openvdb_cache_compress_type", expand=True)
+            layout.row().prop(domain, "openvdb_cache_compress_type", expand=True)
             row = layout.row()
             row.label("Data Depth:")
             row.prop(domain, "data_depth", expand=True, text="Data Depth")
@@ -349,5 +353,76 @@ class PHYSICS_PT_smoke_field_weights(PhysicButtonsPanel, Panel):
         domain = context.smoke.domain_settings
         effector_weights_ui(self, context, domain.effector_weights, 'SMOKE')
 
+
+class PHYSICS_PT_smoke_display_settings(PhysicButtonsPanel, Panel):
+    bl_label = "Smoke Display Settings"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context):
+        md = context.smoke
+        rd = context.scene.render
+        return md and (md.smoke_type == 'DOMAIN') and (not rd.use_game_engine)
+
+    def draw(self, context):
+        domain = context.smoke.domain_settings
+        layout = self.layout
+
+        layout.prop(domain, "display_thickness")
+
+        layout.separator()
+        layout.label(text="Slicing:")
+        layout.prop(domain, "slice_method")
+
+        slice_method = domain.slice_method
+        axis_slice_method = domain.axis_slice_method
+
+        do_axis_slicing = (slice_method == 'AXIS_ALIGNED')
+        do_full_slicing = (axis_slice_method == 'FULL')
+
+        row = layout.row()
+        row.enabled = do_axis_slicing
+        row.prop(domain, "axis_slice_method")
+
+        col = layout.column()
+        col.enabled = not do_full_slicing and do_axis_slicing
+        col.prop(domain, "slice_axis")
+        col.prop(domain, "slice_depth")
+
+        row = layout.row()
+        row.enabled = do_full_slicing or not do_axis_slicing
+        row.prop(domain, "slice_per_voxel")
+
+        layout.separator()
+        layout.label(text="Debug:")
+        layout.prop(domain, "draw_velocity")
+        col = layout.column()
+        col.enabled = domain.draw_velocity
+        col.prop(domain, "vector_draw_type")
+        col.prop(domain, "vector_scale")
+
+        layout.separator()
+        layout.label(text="Color Mapping:")
+        layout.prop(domain, "use_color_ramp")
+        col = layout.column()
+        col.enabled = domain.use_color_ramp
+        col.prop(domain, "coba_field")
+        col.template_color_ramp(domain, "color_ramp", expand=True)
+
+
+classes = (
+    PHYSICS_PT_smoke,
+    PHYSICS_PT_smoke_flow_advanced,
+    PHYSICS_PT_smoke_fire,
+    PHYSICS_PT_smoke_adaptive_domain,
+    PHYSICS_PT_smoke_highres,
+    PHYSICS_PT_smoke_groups,
+    PHYSICS_PT_smoke_cache,
+    PHYSICS_PT_smoke_field_weights,
+    PHYSICS_PT_smoke_display_settings,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

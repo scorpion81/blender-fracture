@@ -23,10 +23,10 @@
  * update notifications from a job running in another thread. All methods
  * except for the constructor/destructor are thread safe. */
 
-#include "util_function.h"
-#include "util_string.h"
-#include "util_time.h"
-#include "util_thread.h"
+#include "util/util_function.h"
+#include "util/util_string.h"
+#include "util/util_time.h"
+#include "util/util_thread.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -37,9 +37,11 @@ public:
 		pixel_samples = 0;
 		total_pixel_samples = 0;
 		current_tile_sample = 0;
-		finished_tiles = 0;
+		rendered_tiles = 0;
+		denoised_tiles = 0;
 		start_time = time_dt();
 		render_start_time = time_dt();
+		end_time = 0.0;
 		status = "Initializing";
 		substatus = "";
 		sync_status = "";
@@ -75,9 +77,11 @@ public:
 		pixel_samples = 0;
 		total_pixel_samples = 0;
 		current_tile_sample = 0;
-		finished_tiles = 0;
+		rendered_tiles = 0;
+		denoised_tiles = 0;
 		start_time = time_dt();
 		render_start_time = time_dt();
+		end_time = 0.0;
 		status = "Initializing";
 		substatus = "";
 		sync_status = "";
@@ -144,6 +148,7 @@ public:
 		thread_scoped_lock lock(progress_mutex);
 
 		start_time = time_dt();
+		end_time = 0.0;
 	}
 
 	void set_render_start_time()
@@ -167,8 +172,15 @@ public:
 	{
 		thread_scoped_lock lock(progress_mutex);
 
-		total_time_ = time_dt() - start_time;
-		render_time_ = time_dt() - render_start_time;
+		double time = (end_time > 0) ? end_time : time_dt();
+
+		total_time_ = time - start_time;
+		render_time_ = time - render_start_time;
+	}
+
+	void set_end_time()
+	{
+		end_time = time_dt();
 	}
 
 	void reset_sample()
@@ -177,7 +189,8 @@ public:
 
 		pixel_samples = 0;
 		current_tile_sample = 0;
-		finished_tiles = 0;
+		rendered_tiles = 0;
+		denoised_tiles = 0;
 	}
 
 	void set_total_pixel_samples(uint64_t total_pixel_samples_)
@@ -209,23 +222,36 @@ public:
 		set_update();
 	}
 
-	void add_finished_tile()
+	void add_finished_tile(bool denoised)
 	{
 		thread_scoped_lock lock(progress_mutex);
 
-		finished_tiles++;
+		if(denoised) {
+			denoised_tiles++;
+		}
+		else {
+			rendered_tiles++;
+		}
 	}
 
 	int get_current_sample()
 	{
+		thread_scoped_lock lock(progress_mutex);
 		/* Note that the value here always belongs to the last tile that updated,
 		 * so it's only useful if there is only one active tile. */
 		return current_tile_sample;
 	}
 
-	int get_finished_tiles()
+	int get_rendered_tiles()
 	{
-		return finished_tiles;
+		thread_scoped_lock lock(progress_mutex);
+		return rendered_tiles;
+	}
+
+	int get_denoised_tiles()
+	{
+		thread_scoped_lock lock(progress_mutex);
+		return denoised_tiles;
 	}
 
 	/* status messages */
@@ -318,9 +344,11 @@ protected:
 	int current_tile_sample;
 	/* Stores the number of tiles that's already finished.
 	 * Used to determine whether all but the last tile are finished rendering, in which case the current_tile_sample is displayed. */
-	int finished_tiles;
+	int rendered_tiles, denoised_tiles;
 
 	double start_time, render_start_time;
+	/* End time written when render is done, so it doesn't keep increasing on redraws. */
+	double end_time;
 
 	string status;
 	string substatus;

@@ -37,6 +37,7 @@
 #include "DNA_anim_types.h"
 
 #include "BLI_listbase.h"
+#include "BLI_linklist.h"
 #include "BLI_math.h"
 
 #include "BLT_translation.h"
@@ -92,9 +93,9 @@ static int node_group_operator_editable(bContext *C)
 		 * Disabled otherwise to allow pynodes define their own operators
 		 * with same keymap.
 		 */
-		if (STREQ(snode->tree_idname, "ShaderNodeTree") ||
-		    STREQ(snode->tree_idname, "CompositorNodeTree") ||
-		    STREQ(snode->tree_idname, "TextureNodeTree"))
+		if (ED_node_is_shader(snode) ||
+		    ED_node_is_compositor(snode) ||
+		    ED_node_is_texture(snode))
 		{
 			return true;
 		}
@@ -112,11 +113,11 @@ static const char *group_node_idname(bContext *C)
 {
 	SpaceNode *snode = CTX_wm_space_node(C);
 	
-	if (STREQ(snode->tree_idname, "ShaderNodeTree"))
+	if (ED_node_is_shader(snode))
 		return "ShaderNodeGroup";
-	else if (STREQ(snode->tree_idname, "CompositorNodeTree"))
+	else if (ED_node_is_compositor(snode))
 		return "CompositorNodeGroup";
-	else if (STREQ(snode->tree_idname, "TextureNodeTree"))
+	else if (ED_node_is_texture(snode))
 		return "TextureNodeGroup";
 	
 	return "";
@@ -186,6 +187,7 @@ static int node_group_ungroup(bNodeTree *ntree, bNode *gnode)
 	bNode *node, *nextnode;
 	bNodeTree *ngroup, *wgroup;
 	ListBase anim_basepaths = {NULL, NULL};
+	LinkNode *nodes_delayed_free = NULL;
 	
 	ngroup = (bNodeTree *)gnode->id;
 	
@@ -208,8 +210,8 @@ static int node_group_ungroup(bNodeTree *ntree, bNode *gnode)
 		 * This also removes remaining links to and from interface nodes.
 		 */
 		if (ELEM(node->type, NODE_GROUP_INPUT, NODE_GROUP_OUTPUT)) {
-			nodeFreeNode(wgroup, node);
-			continue;
+			/* We must delay removal since sockets will reference this node. see: T52092 */
+			BLI_linklist_prepend(&nodes_delayed_free, node);
 		}
 		
 		/* keep track of this node's RNA "base" path (the part of the path identifying the node) 
@@ -336,6 +338,11 @@ static int node_group_ungroup(bNodeTree *ntree, bNode *gnode)
 		}
 	}
 	
+	while (nodes_delayed_free) {
+		node = BLI_linklist_pop(&nodes_delayed_free);
+		nodeFreeNode(ntree, node);
+	}
+
 	/* delete the group instance */
 	nodeFreeNode(ntree, gnode);
 	

@@ -1625,51 +1625,45 @@ void translate_m4(float mat[4][4], float Tx, float Ty, float Tz)
 	mat[3][2] += (Tx * mat[0][2] + Ty * mat[1][2] + Tz * mat[2][2]);
 }
 
+/**
+ * Rotate a matrix in-place.
+ *
+ * \note To create a new rotation matrix see:
+ * #axis_angle_to_mat4_single, #axis_angle_to_mat3_single, #angle_to_mat2
+ * (axis & angle args are compatible).
+ */
 void rotate_m4(float mat[4][4], const char axis, const float angle)
 {
-	int col;
-	float temp[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-	float cosine, sine;
+	const float angle_cos = cosf(angle);
+	const float angle_sin = sinf(angle);
 
 	assert(axis >= 'X' && axis <= 'Z');
 
-	cosine = cosf(angle);
-	sine   = sinf(angle);
 	switch (axis) {
 		case 'X':
-			for (col = 0; col < 4; col++)
-				temp[col] = cosine * mat[1][col] + sine * mat[2][col];
-			for (col = 0; col < 4; col++) {
-				mat[2][col] = -sine * mat[1][col] + cosine * mat[2][col];
-				mat[1][col] = temp[col];
+			for (int col = 0; col < 4; col++) {
+				float temp  =  angle_cos * mat[1][col] + angle_sin * mat[2][col];
+				mat[2][col] = -angle_sin * mat[1][col] + angle_cos * mat[2][col];
+				mat[1][col] =  temp;
 			}
 			break;
 
 		case 'Y':
-			for (col = 0; col < 4; col++)
-				temp[col] = cosine * mat[0][col] - sine * mat[2][col];
-			for (col = 0; col < 4; col++) {
-				mat[2][col] = sine * mat[0][col] + cosine * mat[2][col];
-				mat[0][col] = temp[col];
+			for (int col = 0; col < 4; col++) {
+				float temp  =  angle_cos * mat[0][col] - angle_sin * mat[2][col];
+				mat[2][col] =  angle_sin * mat[0][col] + angle_cos * mat[2][col];
+				mat[0][col] =  temp;
 			}
 			break;
 
 		case 'Z':
-			for (col = 0; col < 4; col++)
-				temp[col] = cosine * mat[0][col] + sine * mat[1][col];
-			for (col = 0; col < 4; col++) {
-				mat[1][col] = -sine * mat[0][col] + cosine * mat[1][col];
-				mat[0][col] = temp[col];
+			for (int col = 0; col < 4; col++) {
+				float temp  =  angle_cos * mat[0][col] + angle_sin * mat[1][col];
+				mat[1][col] = -angle_sin * mat[0][col] + angle_cos * mat[1][col];
+				mat[0][col] =  temp;
 			}
 			break;
 	}
-}
-
-void rotate_m2(float mat[2][2], const float angle)
-{
-	mat[0][0] = mat[1][1] = cosf(angle);
-	mat[0][1] = sinf(angle);
-	mat[1][0] = -mat[0][1];
 }
 
 /**
@@ -1744,16 +1738,16 @@ void blend_m4_m4m4(float out[4][4], float dst[4][4], float src[4][4], const floa
 /**
  * A polar-decomposition-based interpolation between matrix A and matrix B.
  *
- * \note This code is about five times slower as the 'naive' interpolation done by \a blend_m3_m3m3
- *       (it typically remains below 2 usec on an average i74700, while \a blend_m3_m3m3 remains below 0.4 usec).
+ * \note This code is about five times slower as the 'naive' interpolation done by #blend_m3_m3m3
+ *       (it typically remains below 2 usec on an average i74700, while #blend_m3_m3m3 remains below 0.4 usec).
  *       However, it gives expected results even with non-uniformaly scaled matrices, see T46418 for an example.
  *
  * Based on "Matrix Animation and Polar Decomposition", by Ken Shoemake & Tom Duff
  *
- * @return R the interpolated matrix.
- * @param A the intput matrix which is totally effective with \a t = 0.0.
- * @param B the intput matrix which is totally effective with \a t = 1.0.
- * @param t the interpolation factor.
+ * \param R: Resulting interpolated matrix.
+ * \param A: Input matrix which is totally effective with `t = 0.0`.
+ * \param B: Input matrix which is totally effective with `t = 1.0`.
+ * \param t: Interpolation factor.
  */
 void interp_m3_m3m3(float R[3][3], float A[3][3], float B[3][3], const float t)
 {
@@ -1783,12 +1777,12 @@ void interp_m3_m3m3(float R[3][3], float A[3][3], float B[3][3], const float t)
 }
 
 /**
- * Complete transform matrix interpolation, based on polar-decomposition-based interpolation from interp_m3_m3m3.
+ * Complete transform matrix interpolation, based on polar-decomposition-based interpolation from #interp_m3_m3m3.
  *
- * @return R the interpolated matrix.
- * @param A the intput matrix which is totally effective with \a t = 0.0.
- * @param B the intput matrix which is totally effective with \a t = 1.0.
- * @param t the interpolation factor.
+ * \param R: Resulting interpolated matrix.
+ * \param A: Input matrix which is totally effective with `t = 0.0`.
+ * \param B: Input matrix which is totally effective with `t = 1.0`.
+ * \param t: Interpolation factor.
  */
 void interp_m4_m4m4(float R[4][4], float A[4][4], float B[4][4], const float t)
 {

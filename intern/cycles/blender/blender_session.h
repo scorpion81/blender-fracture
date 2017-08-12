@@ -17,12 +17,12 @@
 #ifndef __BLENDER_SESSION_H__
 #define __BLENDER_SESSION_H__
 
-#include "device.h"
-#include "scene.h"
-#include "session.h"
-#include "bake.h"
+#include "device/device.h"
+#include "render/scene.h"
+#include "render/session.h"
+#include "render/bake.h"
 
-#include "util_vector.h"
+#include "util/util_vector.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -79,7 +79,7 @@ public:
 	void update_render_result(BL::RenderResult& b_rr,
 	                          BL::RenderLayer& b_rlay,
 	                          RenderTile& rtile);
-	void update_render_tile(RenderTile& rtile);
+	void update_render_tile(RenderTile& rtile, bool highlight);
 
 	/* interactive updates */
 	void synchronize();
@@ -113,6 +113,7 @@ public:
 	string last_status;
 	string last_error;
 	float last_progress;
+	double last_status_time;
 
 	int width, height;
 	double start_resize_time;
@@ -137,12 +138,16 @@ public:
 	/* Current resumable chunk index to render. */
 	static int current_resumable_chunk;
 
+	/* Alternative to single-chunk rendering to render a range of chunks. */
+	static int start_resumable_chunk;
+	static int end_resumable_chunk;
+
 protected:
 	void do_write_update_render_result(BL::RenderResult& b_rr,
 	                                   BL::RenderLayer& b_rlay,
 	                                   RenderTile& rtile,
 	                                   bool do_update_only);
-	void do_write_update_render_tile(RenderTile& rtile, bool do_update_only);
+	void do_write_update_render_tile(RenderTile& rtile, bool do_update_only, bool highlight);
 
 	int builtin_image_frame(const string &builtin_name);
 	void builtin_image_info(const string &builtin_name,
@@ -151,15 +156,18 @@ protected:
 	                        int &width,
 	                        int &height,
 	                        int &depth,
-	                        int &channels);
+	                        int &channels,
+	                        bool &free_cache);
 	bool builtin_image_pixels(const string &builtin_name,
 	                          void *builtin_data,
 	                          unsigned char *pixels,
-	                          const size_t pixels_size);
+	                          const size_t pixels_size,
+	                          const bool free_cache);
 	bool builtin_image_float_pixels(const string &builtin_name,
 	                                void *builtin_data,
 	                                float *pixels,
-	                                const size_t pixels_size);
+	                                const size_t pixels_size,
+	                                const bool free_cache);
 
 	/* Update tile manager to reflect resumable render settings. */
 	void update_resumable_tile_manager(int num_samples);

@@ -48,7 +48,8 @@ int collada_import(bContext *C,
 				   int find_chains,
 				   int auto_connect,
 				   int fix_orientation,
-				   int min_chain_length)
+				   int min_chain_length,
+				   int keep_bind_info)
 {
 
 	ImportSettings import_settings;
@@ -58,6 +59,7 @@ int collada_import(bContext *C,
 	import_settings.find_chains      = find_chains != 0;
 	import_settings.fix_orientation  = fix_orientation != 0;
 	import_settings.min_chain_length = min_chain_length;
+	import_settings.keep_bind_info = keep_bind_info !=0;
 
 	DocumentImporter imp(C, &import_settings);
 	if (imp.import()) return 1;
@@ -78,8 +80,7 @@ int collada_export(Scene *sce,
                    int deform_bones_only,
 
 				   int active_uv_only,
-				   int include_uv_textures,
-				   int include_material_textures,
+				   BC_export_texture_type export_texture_type,
 				   int use_texture_copies,
 
                    int triangulate,
@@ -87,7 +88,9 @@ int collada_export(Scene *sce,
 				   int use_blender_profile,
 				   int sort_by_name,
 				   BC_export_transformation_type export_transformation_type,
-                   int open_sim)
+				   int open_sim,
+				   int limit_precision,
+				   int keep_bind_info)
 {
 	ExportSettings export_settings;
 
@@ -102,8 +105,7 @@ int collada_export(Scene *sce,
 	export_settings.deform_bones_only        = deform_bones_only != 0;
 
 	export_settings.active_uv_only           = active_uv_only != 0;
-	export_settings.include_uv_textures      = include_uv_textures != 0;
-	export_settings.include_material_textures= include_material_textures != 0;
+	export_settings.export_texture_type      = export_texture_type;
 	export_settings.use_texture_copies       = use_texture_copies != 0;
 
 	export_settings.triangulate                = triangulate != 0;
@@ -112,7 +114,8 @@ int collada_export(Scene *sce,
 	export_settings.sort_by_name               = sort_by_name != 0;
 	export_settings.export_transformation_type = export_transformation_type;
 	export_settings.open_sim                   = open_sim != 0;
-
+	export_settings.limit_precision = limit_precision != 0;
+	export_settings.keep_bind_info = keep_bind_info !=0;
 
 	int includeFilter = OB_REL_NONE;
 	if (export_settings.include_armatures) includeFilter |= OB_REL_MOD_ARMATURE;

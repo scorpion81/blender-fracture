@@ -470,7 +470,7 @@ void buttons_texture_context_compute(const bContext *C, SpaceButs *sbuts)
 	}
 	else {
 		/* set one user as active based on active index */
-		if (ct->index == BLI_listbase_count_ex(&ct->users, ct->index + 1))
+		if (ct->index >= BLI_listbase_count_ex(&ct->users, ct->index + 1))
 			ct->index = 0;
 
 		ct->user = BLI_findlink(&ct->users, ct->index);
@@ -587,6 +587,8 @@ static void template_texture_user_menu(bContext *C, uiLayout *layout, void *UNUS
 
 		last_category = user->category;
 	}
+
+	UI_block_flag_enable(block, UI_BLOCK_NO_FLIP);
 }
 
 void uiTemplateTextureUser(uiLayout *layout, bContext *C)

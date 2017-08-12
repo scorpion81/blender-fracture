@@ -875,8 +875,7 @@ static int slide_marker_modal(bContext *C, wmOperator *op, const wmEvent *event)
 			if (ELEM(event->type, LEFTSHIFTKEY, RIGHTSHIFTKEY)) {
 				data->accurate = event->val == KM_PRESS;
 			}
-
-			/* fall-through */
+			ATTR_FALLTHROUGH;
 		case MOUSEMOVE:
 			mdelta[0] = event->mval[0] - data->mval[0];
 			mdelta[1] = event->mval[1] - data->mval[1];
@@ -1534,7 +1533,8 @@ static int join_tracks_exec(bContext *C, wmOperator *op)
 				update_stabilization = true;
 				if ((act_track->flag & TRACK_USE_2D_STAB) == 0) {
 					act_track->flag |= TRACK_USE_2D_STAB;
-				} else {
+				}
+				else {
 					stab->tot_track--;
 				}
 				BLI_assert(0 <= stab->tot_track);
@@ -1543,7 +1543,8 @@ static int join_tracks_exec(bContext *C, wmOperator *op)
 				update_stabilization = true;
 				if ((act_track->flag & TRACK_USE_2D_STAB_ROT) == 0) {
 					act_track->flag |= TRACK_USE_2D_STAB_ROT;
-				} else {
+				}
+				else {
 					stab->tot_rot_track--;
 				}
 				BLI_assert(0 <= stab->tot_rot_track);

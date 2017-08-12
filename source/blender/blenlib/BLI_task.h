@@ -81,6 +81,7 @@ typedef void (*TaskFreeFunction)(TaskPool *__restrict pool, void *taskdata, int 
 
 TaskPool *BLI_task_pool_create(TaskScheduler *scheduler, void *userdata);
 TaskPool *BLI_task_pool_create_background(TaskScheduler *scheduler, void *userdata);
+TaskPool *BLI_task_pool_create_suspended(TaskScheduler *scheduler, void *userdata);
 void BLI_task_pool_free(TaskPool *pool);
 
 void BLI_task_pool_push_ex(
@@ -95,14 +96,6 @@ void BLI_task_pool_push_from_thread(TaskPool *pool, TaskRunFunction run,
 void BLI_task_pool_work_and_wait(TaskPool *pool);
 /* cancel all tasks, keep worker threads running */
 void BLI_task_pool_cancel(TaskPool *pool);
-/* stop all worker threads */
-void BLI_task_pool_stop(TaskPool *pool);
-
-/* get number of threads allowed to be used by this pool */
-int BLI_pool_get_num_threads(TaskPool *pool);
-
-/* set number of threads allowed to be used by this pool */
-void BLI_pool_set_num_threads(TaskPool *pool, int num_threads);
 
 /* for worker threads, test if canceled */
 bool BLI_task_pool_canceled(TaskPool *pool);
@@ -113,8 +106,12 @@ void *BLI_task_pool_userdata(TaskPool *pool);
 /* optional mutex to use from run function */
 ThreadMutex *BLI_task_pool_user_mutex(TaskPool *pool);
 
-/* number of tasks done, for stats, don't use this to make decisions */
-size_t BLI_task_pool_tasks_done(TaskPool *pool);
+/* Delayed push, use that to reduce thread overhead by accumulating
+ * all new tasks into local queue first and pushing it to scheduler
+ * from within a single mutex lock.
+ */
+void BLI_task_pool_delayed_push_begin(TaskPool *pool, int thread_id);
+void BLI_task_pool_delayed_push_end(TaskPool *pool, int thread_id);
 
 /* Parallel for routines */
 typedef void (*TaskParallelRangeFunc)(void *userdata, const int iter);

@@ -48,6 +48,8 @@
 #include "depsgraph_private.h"
 #include "DEG_depsgraph_build.h"
 
+#include "MOD_modifiertypes.h"
+
 static void initData(ModifierData *md)
 {
 	MirrorModifierData *mmd = (MirrorModifierData *) md;
@@ -72,7 +74,7 @@ static void foreachObjectLink(
 {
 	MirrorModifierData *mmd = (MirrorModifierData *) md;
 
-	walk(userData, ob, &mmd->mirror_ob, IDWALK_NOP);
+	walk(userData, ob, &mmd->mirror_ob, IDWALK_CB_NOP);
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
@@ -274,8 +276,8 @@ static DerivedMesh *doMirrorOnAxis(MirrorModifierData *mmd,
 			int j = maxLoops;
 			dmloopuv += j; /* second set of loops only */
 			for (; j-- > 0; dmloopuv++) {
-				if (do_mirr_u) dmloopuv->uv[0] = 1.0f - dmloopuv->uv[0];
-				if (do_mirr_v) dmloopuv->uv[1] = 1.0f - dmloopuv->uv[1];
+				if (do_mirr_u) dmloopuv->uv[0] = 1.0f - dmloopuv->uv[0] + mmd->uv_offset[0];
+				if (do_mirr_v) dmloopuv->uv[1] = 1.0f - dmloopuv->uv[1] + mmd->uv_offset[1];
 			}
 		}
 	}

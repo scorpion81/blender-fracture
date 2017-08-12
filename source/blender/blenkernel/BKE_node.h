@@ -49,7 +49,7 @@
 #include "RNA_types.h"
 
 /* not very important, but the stack solver likes to know a maximum */
-#define MAX_SOCKET	64
+#define MAX_SOCKET	512
 
 struct bContext;
 struct bNode;
@@ -335,10 +335,8 @@ struct bNodeTree *ntreeAddTree(struct Main *bmain, const char *name, const char 
 
 /* copy/free funcs, need to manage ID users */
 void              ntreeFreeTree(struct bNodeTree *ntree);
-struct bNodeTree *ntreeCopyTree_ex(struct bNodeTree *ntree, struct Main *bmain, const bool do_id_user);
-struct bNodeTree *ntreeCopyTree(struct Main *bmain, struct bNodeTree *ntree);
-void              ntreeSwitchID_ex(struct bNodeTree *ntree, struct ID *sce_from, struct ID *sce_to, const bool do_id_user);
-void              ntreeSwitchID(struct bNodeTree *ntree, struct ID *sce_from, struct ID *sce_to);
+struct bNodeTree *ntreeCopyTree_ex(const struct bNodeTree *ntree, struct Main *bmain, const bool do_id_user);
+struct bNodeTree *ntreeCopyTree(struct Main *bmain, const struct bNodeTree *ntree);
 /* node->id user count */
 void              ntreeUserIncrefID(struct bNodeTree *ntree);
 void              ntreeUserDecrefID(struct bNodeTree *ntree);
@@ -787,6 +785,7 @@ struct ShadeResult;
 #define SH_NODE_OUTPUT_LINESTYLE		190
 #define SH_NODE_UVALONGSTROKE			191
 #define SH_NODE_TEX_POINTDENSITY		192
+#define SH_NODE_BSDF_PRINCIPLED         193
 
 /* custom defines options for Material node */
 #define SH_NODE_MAT_DIFF   1
@@ -974,7 +973,8 @@ void ntreeCompositExecTree(struct Scene *scene, struct bNodeTree *ntree, struct 
 void ntreeCompositTagRender(struct Scene *sce);
 int ntreeCompositTagAnimated(struct bNodeTree *ntree);
 void ntreeCompositTagGenerators(struct bNodeTree *ntree);
-void ntreeCompositForceHidden(struct bNodeTree *ntree);
+void ntreeCompositUpdateRLayers(struct bNodeTree *ntree);
+void ntreeCompositRegisterPass(struct bNodeTree *ntree, struct Scene *scene, struct SceneRenderLayer *srl, const char *name, int type);
 void ntreeCompositClearTags(struct bNodeTree *ntree);
 
 struct bNodeSocket *ntreeCompositOutputFileAddSocket(struct bNodeTree *ntree, struct bNode *node,

@@ -181,7 +181,7 @@ void WM_init(bContext *C, int argc, const char **argv)
 	ED_file_init();         /* for fsmenu */
 	ED_node_init_butfuncs();
 	
-	BLF_init(11, U.dpi); /* Please update source/gamengine/GamePlayer/GPG_ghost.cpp if you change this */
+	BLF_init(); /* Please update source/gamengine/GamePlayer/GPG_ghost.cpp if you change this */
 	BLT_lang_init();
 
 	/* Enforce loading the UI for the initial homefile */
@@ -192,7 +192,7 @@ void WM_init(bContext *C, int argc, const char **argv)
 	wm_init_reports(C);
 
 	/* get the default database, plus a wm */
-	wm_homefile_read(C, NULL, G.factory_startup, NULL);
+	wm_homefile_read(C, NULL, G.factory_startup, false, NULL, NULL);
 	
 
 	BLT_lang_set(NULL);
@@ -444,8 +444,6 @@ void WM_exit_ext(bContext *C, const bool do_python)
 {
 	wmWindowManager *wm = C ? CTX_wm_manager(C) : NULL;
 
-	BKE_sound_exit();
-
 	/* first wrap up running stuff, we assume only the active WM is running */
 	/* modal handlers are on window level freed, others too? */
 	/* note; same code copied in wm_files.c */
@@ -527,7 +525,6 @@ void WM_exit_ext(bContext *C, const bool do_python)
 	ANIM_fmodifiers_copybuf_free();
 	ED_gpencil_anim_copybuf_free();
 	ED_gpencil_strokes_copybuf_free();
-	ED_clipboard_posebuf_free();
 	BKE_node_clipboard_clear();
 
 	BLF_exit();
@@ -575,7 +572,7 @@ void WM_exit_ext(bContext *C, const bool do_python)
 	ED_file_exit(); /* for fsmenu */
 
 	UI_exit();
-	BKE_blender_userdef_free();
+	BKE_blender_userdef_free_data(&U);
 
 	RNA_exit(); /* should be after BPY_python_end so struct python slots are cleared */
 	
@@ -591,6 +588,10 @@ void WM_exit_ext(bContext *C, const bool do_python)
 	DNA_sdna_current_free();
 
 	BLI_threadapi_exit();
+
+	/* No need to call this early, rather do it late so that other pieces of Blender using sound may exit cleanly,
+	 * see also T50676. */
+	BKE_sound_exit();
 
 	BKE_blender_atexit();
 

@@ -38,6 +38,7 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math_vector.h"
+#include "BLI_string_utils.h"
 #include "BLI_utildefines.h"
 
 #include "BLT_translation.h"
@@ -150,7 +151,7 @@ Key *BKE_key_add(ID *id)    /* common function */
 	return key;
 }
 
-Key *BKE_key_copy(Main *bmain, Key *key)
+Key *BKE_key_copy(Main *bmain, const Key *key)
 {
 	Key *keyn;
 	KeyBlock *kbn, *kb;

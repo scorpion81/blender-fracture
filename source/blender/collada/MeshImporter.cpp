@@ -27,7 +27,7 @@
 
 #include <algorithm>
 
-#if !defined(WIN32) || defined(FREE_WINDOWS)
+#if !defined(WIN32)
 #include <iostream>
 #endif
 
@@ -317,11 +317,6 @@ bool MeshImporter::is_nice_mesh(COLLADAFW::Mesh *mesh)  // checks if mesh has su
 		}
 	}
 	
-	if (mesh->getPositions().empty()) {
-		fprintf(stderr, "ERROR: Mesh %s has no vertices.\n", name.c_str());
-		return false;
-	}
-
 	return true;
 }
 
@@ -329,11 +324,15 @@ void MeshImporter::read_vertices(COLLADAFW::Mesh *mesh, Mesh *me)
 {
 	// vertices
 	COLLADAFW::MeshVertexData& pos = mesh->getPositions();
+	if (pos.empty()) {
+		return;
+	}
+
 	int stride = pos.getStride(0);
 	if (stride == 0) stride = 3;
-	
-	me->totvert = mesh->getPositions().getFloatValues()->getCount() / stride;
-	me->mvert = (MVert *)CustomData_add_layer(&me->vdata, CD_MVERT, CD_CALLOC, NULL, me->totvert);
+
+	me->totvert = pos.getFloatValues()->getCount() / stride;
+	me->mvert   = (MVert *)CustomData_add_layer(&me->vdata, CD_MVERT, CD_CALLOC, NULL, me->totvert);
 
 	MVert *mvert;
 	int i;
@@ -1174,8 +1173,9 @@ Object *MeshImporter::create_mesh_object(COLLADAFW::Node *node, COLLADAFW::Insta
 	BKE_mesh_assign_object(ob, new_mesh);
 	BKE_mesh_calc_normals(new_mesh);
 
-	if (old_mesh->id.us == 0) BKE_libblock_free(G.main, old_mesh);
-	
+	id_us_plus(&old_mesh->id);  /* Because BKE_mesh_assign_object would have already decreased it... */
+	BKE_libblock_free_us(G.main, old_mesh);
+
 	char layername[100];
 	layername[0] = '\0';
 	MTFace *texture_face = NULL;

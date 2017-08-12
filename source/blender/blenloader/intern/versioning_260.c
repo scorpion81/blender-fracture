@@ -56,6 +56,7 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
+#include "BLI_string_utils.h"
 
 #include "BLT_translation.h"
 
@@ -999,7 +1000,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 		{
 			/* convert extended ascii to utf-8 for text editor */
 			Text *text;
-			for (text = main->text.first; text; text = text->id.next)
+			for (text = main->text.first; text; text = text->id.next) {
 				if (!(text->flags & TXT_ISEXT)) {
 					TextLine *tl;
 
@@ -1012,6 +1013,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 							text->curc = 0;
 					}
 				}
+			}
 		}
 		{
 			/* set new dynamic paint values */

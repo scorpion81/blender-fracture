@@ -102,16 +102,9 @@ BMLoop *BM_loop_other_edge_loop(BMLoop *l, BMVert *v)
  */
 BMLoop *BM_face_other_vert_loop(BMFace *f, BMVert *v_prev, BMVert *v)
 {
-	BMIter liter;
-	BMLoop *l_iter;
+	BMLoop *l_iter = BM_face_vert_share_loop(f, v);
 
 	BLI_assert(BM_edge_exists(v_prev, v) != NULL);
-
-	BM_ITER_ELEM (l_iter, &liter, v, BM_LOOPS_OF_VERT) {
-		if (l_iter->f == f) {
-			break;
-		}
-	}
 
 	if (l_iter) {
 		if (l_iter->prev->v == v_prev) {
@@ -149,7 +142,6 @@ BMLoop *BM_face_other_vert_loop(BMFace *f, BMVert *v_prev, BMVert *v)
  *                      The faces loop direction is ignored.
  * </pre>
  */
-
 BMLoop *BM_loop_other_vert_loop(BMLoop *l, BMVert *v)
 {
 #if 0 /* works but slow */
@@ -178,9 +170,6 @@ BMLoop *BM_loop_other_vert_loop(BMLoop *l, BMVert *v)
 			return l->next->next;
 		}
 	}
-
-
-
 #endif
 }
 
@@ -392,17 +381,7 @@ BMFace *BM_vert_pair_share_face_by_angle(
  */
 BMLoop *BM_vert_find_first_loop(BMVert *v)
 {
-	BMEdge *e;
-
-	if (!v->e)
-		return NULL;
-
-	e = bmesh_disk_faceedge_find_first(v->e, v);
-
-	if (!e)
-		return NULL;
-
-	return bmesh_radial_faceloop_find_first(e->l, v);
+	return v->e ? bmesh_disk_faceloop_find_first(v->e, v) : NULL;
 }
 
 /**
@@ -878,9 +857,18 @@ int BM_vert_face_count_ex(const BMVert *v, int count_max)
  *
  * same as ``BM_vert_face_count(v) != 0`` or ``BM_vert_find_first_loop(v) == NULL``
  */
-bool BM_vert_face_check(BMVert *v)
+bool BM_vert_face_check(const BMVert *v)
 {
-	return v->e && (bmesh_disk_faceedge_find_first(v->e, v) != NULL);
+	if (v->e != NULL) {
+		const BMEdge *e_iter, *e_first;
+		e_first = e_iter = v->e;
+		do {
+			if (e_iter->l != NULL) {
+				return true;
+			}
+		} while ((e_iter = bmesh_disk_edge_next(e_iter, v)) != e_first);
+	}
+	return false;
 }
 
 /**
@@ -910,7 +898,7 @@ bool BM_vert_is_wire(const BMVert *v)
  * A vertex is non-manifold if it meets the following conditions:
  * 1: Loose - (has no edges/faces incident upon it).
  * 2: Joins two distinct regions - (two pyramids joined at the tip).
- * 3: Is part of a an edge with more than 2 faces.
+ * 3: Is part of an edge with more than 2 faces.
  * 4: Is part of a wire edge.
  */
 bool BM_vert_is_manifold(const BMVert *v)
@@ -926,7 +914,8 @@ bool BM_vert_is_manifold(const BMVert *v)
 
 	/* count edges while looking for non-manifold edges */
 	e_first = e_iter = v->e;
-	l_first = e_iter->l ? e_iter->l : NULL;
+	/* may be null */
+	l_first = e_iter->l;
 	do {
 		/* loose edge or edge shared by more than two faces,
 		 * edges with 1 face user are OK, otherwise we could
@@ -1522,20 +1511,68 @@ float BM_loop_calc_face_angle(const BMLoop *l)
  * Calculate the normal at this loop corner or fallback to the face normal on straight lines.
  *
  * \param l The loop to calculate the normal at
+ * \param epsilon: Value to avoid numeric errors (1e-5f works well).
  * \param r_normal Resulting normal
  */
-void BM_loop_calc_face_normal(const BMLoop *l, float r_normal[3])
+float BM_loop_calc_face_normal_safe_ex(const BMLoop *l, const float epsilon_sq, float r_normal[3])
 {
-	if (normal_tri_v3(r_normal,
-	                  l->prev->v->co,
-	                  l->v->co,
-	                  l->next->v->co) != 0.0f)
-	{
-		/* pass */
+	/* Note: we cannot use result of normal_tri_v3 here to detect colinear vectors (vertex on a straight line)
+	 * from zero value, because it does not normalize both vectors before making crossproduct.
+	 * Instead of adding two costly normalize computations, just check ourselves for colinear case. */
+	/* Note: FEPSILON might need some finer tweaking at some point? Seems to be working OK for now though. */
+	float v1[3], v2[3], v_tmp[3];
+	sub_v3_v3v3(v1, l->prev->v->co, l->v->co);
+	sub_v3_v3v3(v2, l->next->v->co, l->v->co);
+
+	const float fac =
+	        ((v2[0] == 0.0f) ?
+	        ((v2[1] == 0.0f) ?
+	        ((v2[2] == 0.0f) ?  0.0f : v1[2] / v2[2]) : v1[1] / v2[1]) : v1[0] / v2[0]);
+
+	mul_v3_v3fl(v_tmp, v2, fac);
+	sub_v3_v3(v_tmp, v1);
+	if (fac != 0.0f && !is_zero_v3(v1) && len_squared_v3(v_tmp) > epsilon_sq) {
+		/* Not co-linear, we can compute crossproduct and normalize it into normal. */
+		cross_v3_v3v3(r_normal, v1, v2);
+		return normalize_v3(r_normal);
 	}
 	else {
 		copy_v3_v3(r_normal, l->f->no);
+		return 0.0f;
 	}
+}
+
+/**
+ * #BM_loop_calc_face_normal_safe_ex with pre-defined sane epsilon.
+ *
+ * Since this doesn't scale baed on triangle size, fixed value works well.
+ */
+float BM_loop_calc_face_normal_safe(const BMLoop *l, float r_normal[3])
+{
+	return BM_loop_calc_face_normal_safe_ex(l, 1e-5f, r_normal);
+}
+
+/**
+ * \brief BM_loop_calc_face_normal
+ *
+ * Calculate the normal at this loop corner or fallback to the face normal on straight lines.
+ *
+ * \param l The loop to calculate the normal at
+ * \param r_normal Resulting normal
+ * \return The length of the cross product (double the area).
+ */
+float BM_loop_calc_face_normal(const BMLoop *l, float r_normal[3])
+{
+	float v1[3], v2[3];
+	sub_v3_v3v3(v1, l->prev->v->co, l->v->co);
+	sub_v3_v3v3(v2, l->next->v->co, l->v->co);
+
+	cross_v3_v3v3(r_normal, v1, v2);
+	const float len = normalize_v3(r_normal);
+	if (UNLIKELY(len == 0.0f)) {
+		copy_v3_v3(r_normal, l->f->no);
+	}
+	return len;
 }
 
 /**
@@ -1924,7 +1961,7 @@ BMEdge *BM_edge_find_double(BMEdge *e)
  *
  * \note there used to be a BM_face_exists_overlap function that checks for partial overlap.
  */
-bool BM_face_exists(BMVert **varr, int len, BMFace **r_existface)
+BMFace *BM_face_exists(BMVert **varr, int len)
 {
 	if (varr[0]->e) {
 		BMEdge *e_iter, *e_first;
@@ -1963,10 +2000,7 @@ bool BM_face_exists(BMVert **varr, int len, BMFace **r_existface)
 						}
 
 						if (i_walk == len) {
-							if (r_existface) {
-								*r_existface = l_iter_radial->f;
-							}
-							return true;
+							return l_iter_radial->f;
 						}
 					}
 				} while ((l_iter_radial = l_iter_radial->radial_next) != l_first_radial);
@@ -1975,10 +2009,7 @@ bool BM_face_exists(BMVert **varr, int len, BMFace **r_existface)
 		} while ((e_iter = BM_DISK_EDGE_NEXT(e_iter, varr[0])) != e_first);
 	}
 
-	if (r_existface) {
-		*r_existface = NULL;
-	}
-	return false;
+	return NULL;
 }
 
 
@@ -2121,25 +2152,20 @@ bool BM_face_exists_multi_edge(BMEdge **earr, int len)
  * \note The face may contain other verts \b not in \a varr.
  *
  * \note Its possible there are more than one overlapping faces,
- * in this case the first one found will be assigned to \a r_f_overlap.
+ * in this case the first one found will be returned.
  *
  * \param varr  Array of unordered verts.
  * \param len  \a varr array length.
- * \param r_f_overlap  The overlapping face to return.
- * \return Success
+ * \return The face or NULL.
  */
 
-bool BM_face_exists_overlap(BMVert **varr, const int len, BMFace **r_f_overlap)
+BMFace *BM_face_exists_overlap(BMVert **varr, const int len)
 {
 	BMIter viter;
 	BMFace *f;
 	int i;
-	bool is_overlap = false;
+	BMFace *f_overlap = NULL;
 	LinkNode *f_lnk = NULL;
-
-	if (r_f_overlap) {
-		*r_f_overlap = NULL;
-	}
 
 #ifdef DEBUG
 	/* check flag isn't already set */
@@ -2154,10 +2180,7 @@ bool BM_face_exists_overlap(BMVert **varr, const int len, BMFace **r_f_overlap)
 		BM_ITER_ELEM (f, &viter, varr[i], BM_FACES_OF_VERT) {
 			if (BM_ELEM_API_FLAG_TEST(f, _FLAG_OVERLAP) == 0) {
 				if (len <= BM_verts_in_face_count(varr, len, f)) {
-					if (r_f_overlap)
-						*r_f_overlap = f;
-
-					is_overlap = true;
+					f_overlap = f;
 					break;
 				}
 
@@ -2171,7 +2194,7 @@ bool BM_face_exists_overlap(BMVert **varr, const int len, BMFace **r_f_overlap)
 		BM_ELEM_API_FLAG_DISABLE((BMFace *)f_lnk->link, _FLAG_OVERLAP);
 	}
 
-	return is_overlap;
+	return f_overlap;
 }
 
 /**
@@ -2351,7 +2374,7 @@ static void bm_mesh_calc_volume_face(const BMFace *f, float *r_vol)
 {
 	const int tottri = f->len - 2;
 	BMLoop **loops = BLI_array_alloca(loops, f->len);
-	unsigned int (*index)[3] = BLI_array_alloca(index, tottri);
+	uint (*index)[3] = BLI_array_alloca(index, tottri);
 	int j;
 
 	BM_face_calc_tessellation(f, false, loops, index);
@@ -2420,8 +2443,8 @@ int BM_mesh_calc_face_groups(
 
 	int group_curr = 0;
 
-	unsigned int tot_faces = 0;
-	unsigned int tot_touch = 0;
+	uint tot_faces = 0;
+	uint tot_touch = 0;
 
 	BMFace **stack;
 	STACK_DECLARE(stack);
@@ -2578,8 +2601,8 @@ int BM_mesh_calc_edge_groups(
 
 	int group_curr = 0;
 
-	unsigned int tot_edges = 0;
-	unsigned int tot_touch = 0;
+	uint tot_edges = 0;
+	uint tot_touch = 0;
 
 	BMEdge **stack;
 	STACK_DECLARE(stack);

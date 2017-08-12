@@ -309,7 +309,7 @@ void bmo_dissolve_edges_exec(BMesh *bm, BMOperator *op)
 	BMO_ITER (e, &eiter, op->slots_in, "edges", BM_EDGE) {
 		BMFace *f_pair[2];
 		if (BM_edge_face_pair(e, &f_pair[0], &f_pair[1])) {
-			unsigned int j;
+			uint j;
 			for (j = 0; j < 2; j++) {
 				BMLoop *l_first, *l_iter;
 				l_iter = l_first = BM_FACE_FIRST_LOOP(f_pair[j]);
@@ -322,12 +322,12 @@ void bmo_dissolve_edges_exec(BMesh *bm, BMOperator *op)
 	}
 
 	BMO_ITER (e, &eiter, op->slots_in, "edges", BM_EDGE) {
-		BMFace *fa, *fb;
-		if (BM_edge_face_pair(e, &fa, &fb)) {
+		BMLoop *l_a, *l_b;
+		if (BM_edge_loop_pair(e, &l_a, &l_b)) {
 			BMFace *f_new;
 
 			/* join faces */
-			f_new = BM_faces_join_pair(bm, fa, fb, e, false);
+			f_new = BM_faces_join_pair(bm, l_a, l_b, false);
 
 			if (f_new) {
 				/* maintain active face */
@@ -437,12 +437,12 @@ void bmo_dissolve_verts_exec(BMesh *bm, BMOperator *op)
 
 		if (!BMO_vert_flag_test(bm, v, VERT_MARK_PAIR)) {
 			BM_ITER_ELEM (e, &itersub, v, BM_EDGES_OF_VERT) {
-				BMFace *fa, *fb;
-				if (BM_edge_face_pair(e, &fa, &fb)) {
+				BMLoop *l_a, *l_b;
+				if (BM_edge_loop_pair(e, &l_a, &l_b)) {
 					BMFace *f_new;
 
 					/* join faces */
-					f_new = BM_faces_join_pair(bm, fa, fb, e, false);
+					f_new = BM_faces_join_pair(bm, l_a, l_b, false);
 
 					/* maintain active face */
 					if (act_face && bm->act_face == NULL) {

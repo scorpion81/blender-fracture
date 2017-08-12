@@ -86,7 +86,7 @@ BMEdge *BM_vert_other_disk_edge(BMVert *v, BMEdge *e) ATTR_WARN_UNUSED_RESULT AT
 
 bool    BM_vert_is_edge_pair(const BMVert *v) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 bool    BM_vert_edge_pair(BMVert *v, BMEdge **r_e_a, BMEdge **r_e_b);
-bool    BM_vert_face_check(BMVert *v) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
+bool    BM_vert_face_check(const BMVert *v) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 bool    BM_vert_is_wire(const BMVert *v) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 BLI_INLINE bool    BM_edge_is_wire(const BMEdge *e) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 
@@ -113,7 +113,9 @@ BMLoop *BM_loop_find_prev_nodouble(BMLoop *l, BMLoop *l_stop, const float eps_sq
 BMLoop *BM_loop_find_next_nodouble(BMLoop *l, BMLoop *l_stop, const float eps_sq);
 
 float   BM_loop_calc_face_angle(const BMLoop *l) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
-void    BM_loop_calc_face_normal(const BMLoop *l, float r_normal[3]) ATTR_NONNULL();
+float   BM_loop_calc_face_normal(const BMLoop *l, float r_normal[3]) ATTR_NONNULL();
+float   BM_loop_calc_face_normal_safe(const BMLoop *l, float r_normal[3]) ATTR_NONNULL();
+float   BM_loop_calc_face_normal_safe_ex(const BMLoop *l, const float epsilon, float r_normal[3]) ATTR_NONNULL();
 void    BM_loop_calc_face_direction(const BMLoop *l, float r_normal[3]);
 void    BM_loop_calc_face_tangent(const BMLoop *l, float r_tangent[3]);
 
@@ -135,12 +137,12 @@ BMLoop *BM_face_find_longest_loop(BMFace *f) ATTR_WARN_UNUSED_RESULT ATTR_NONNUL
 BMEdge *BM_edge_exists(BMVert *v1, BMVert *v2) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 BMEdge *BM_edge_find_double(BMEdge *e) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 
-bool    BM_face_exists(BMVert **varr, int len, BMFace **r_existface) ATTR_NONNULL(1);
+BMFace *BM_face_exists(BMVert **varr, int len) ATTR_NONNULL(1);
 
 bool    BM_face_exists_multi(BMVert **varr, BMEdge **earr, int len) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 bool    BM_face_exists_multi_edge(BMEdge **earr, int len) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 
-bool    BM_face_exists_overlap(BMVert **varr, const int len, BMFace **r_f_overlap) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL(1);
+BMFace *BM_face_exists_overlap(BMVert **varr, const int len) ATTR_WARN_UNUSED_RESULT;
 bool    BM_face_exists_overlap_subset(BMVert **varr, const int len) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 
 int     BM_face_share_face_count(BMFace *f_a, BMFace *f_b) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();

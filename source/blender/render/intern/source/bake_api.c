@@ -298,20 +298,16 @@ static bool cast_ray_highpoly(
 		}
 
 		if (hits[i].index != -1) {
-			/* cull backface */
-			const float dot = dot_v3v3(dir_high, hits[i].no);
-			if (dot < 0.0f) {
-				float distance;
-				float hit_world[3];
+			float distance;
+			float hit_world[3];
 
-				/* distance comparison in world space */
-				mul_v3_m4v3(hit_world, highpoly[i].obmat, hits[i].co);
-				distance = len_squared_v3v3(hit_world, co);
+			/* distance comparison in world space */
+			mul_v3_m4v3(hit_world, highpoly[i].obmat, hits[i].co);
+			distance = len_squared_v3v3(hit_world, co);
 
-				if (distance < hit_distance) {
-					hit_mesh = i;
-					hit_distance = distance;
-				}
+			if (distance < hit_distance) {
+				hit_mesh = i;
+				hit_distance = distance;
 			}
 		}
 	}
@@ -688,6 +684,10 @@ void RE_bake_pixels_populate(
 		float vec[3][2];
 		int mat_nr = mp->mat_nr;
 		int image_id = bake_images->lookup[mat_nr];
+
+		if (image_id < 0) {
+			continue;
+		}
 
 		bd.bk_image = &bake_images->data[image_id];
 		bd.primitive_id = ++p_id;

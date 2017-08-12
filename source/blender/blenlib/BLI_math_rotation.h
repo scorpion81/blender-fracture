@@ -122,8 +122,9 @@ void mat3_to_axis_angle(float axis[3], float *angle, float M[3][3]);
 void mat4_to_axis_angle(float axis[3], float *angle, float M[4][4]);
 void quat_to_axis_angle(float axis[3], float *angle, const float q[4]);
 
-void axis_angle_to_mat3_single(float R[3][3], const char axis, const float angle);
 void      angle_to_mat2(float R[2][2], const float angle);
+void axis_angle_to_mat3_single(float R[3][3], const char axis, const float angle);
+void axis_angle_to_mat4_single(float R[4][4], const char axis, const float angle);
 
 void axis_angle_to_quat_single(float q[4], const char axis, const float angle);
 
@@ -217,8 +218,12 @@ float angle_wrap_deg(float angle);
 
 float angle_compat_rad(float angle, float angle_compat);
 
-int mat3_from_axis_conversion(int from_forward, int from_up, int to_forward, int to_up,
-                              float r_mat[3][3]);
+bool mat3_from_axis_conversion(
+        int src_forward, int src_up, int dst_forward, int dst_up,
+        float r_mat[3][3]);
+bool mat3_from_axis_conversion_single(
+        int src_axis, int dst_axis,
+        float r_mat[3][3]);
 
 #ifdef __cplusplus
 }

@@ -54,6 +54,8 @@
 #include "depsgraph_private.h"
 #include "DEG_depsgraph_build.h"
 
+#include "MOD_modifiertypes.h"
+
 static void initData(ModifierData *md)
 {
 	ParticleInstanceModifierData *pimd = (ParticleInstanceModifierData *) md;
@@ -145,7 +147,7 @@ static void foreachObjectLink(ModifierData *md, Object *ob,
 {
 	ParticleInstanceModifierData *pimd = (ParticleInstanceModifierData *) md;
 
-	walk(userData, ob, &pimd->ob, IDWALK_NOP);
+	walk(userData, ob, &pimd->ob, IDWALK_CB_NOP);
 }
 
 static int particle_skip(ParticleInstanceModifierData *pimd, ParticleSystem *psys, int p)

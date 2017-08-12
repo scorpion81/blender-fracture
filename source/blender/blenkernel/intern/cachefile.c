@@ -29,6 +29,8 @@
 
 #include "DNA_anim_types.h"
 #include "DNA_cachefile_types.h"
+#include "DNA_constraint_types.h"
+#include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
 #include "BLI_fileops.h"
@@ -43,6 +45,7 @@
 #include "BKE_global.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
+#include "BKE_modifier.h"
 #include "BKE_scene.h"
 
 #ifdef WITH_ALEMBIC
@@ -79,6 +82,7 @@ void BKE_cachefile_init(CacheFile *cache_file)
 	cache_file->is_sequence = false;
 	cache_file->scale = 1.0f;
 	cache_file->handle_mutex = BLI_mutex_alloc();
+	BLI_listbase_clear(&cache_file->object_paths);
 }
 
 /** Free (or release) any data used by this cachefile (does not free the cachefile itself). */
@@ -90,16 +94,18 @@ void BKE_cachefile_free(CacheFile *cache_file)
 	ABC_free_handle(cache_file->handle);
 #endif
 
-	BLI_mutex_free(cache_file->handle_mutex);
+	if (cache_file->handle_mutex) {
+		BLI_mutex_free(cache_file->handle_mutex);
+	}
 	BLI_freelistN(&cache_file->object_paths);
 }
 
-CacheFile *BKE_cachefile_copy(Main *bmain, CacheFile *cache_file)
+CacheFile *BKE_cachefile_copy(Main *bmain, const CacheFile *cache_file)
 {
 	CacheFile *new_cache_file = BKE_libblock_copy(bmain, &cache_file->id);
 	new_cache_file->handle = NULL;
 
-	BLI_listbase_clear(&cache_file->object_paths);
+	BLI_listbase_clear(&new_cache_file->object_paths);
 
 	BKE_id_copy_ensure_local(bmain, &cache_file->id, &new_cache_file->id);
 
@@ -160,10 +166,12 @@ void BKE_cachefile_update_frame(Main *bmain, Scene *scene, const float ctime, co
 		const float time = BKE_cachefile_time_offset(cache_file, ctime, fps);
 
 		if (BKE_cachefile_filepath_get(bmain, cache_file, time, filename)) {
+			BKE_cachefile_clean(scene, cache_file);
 #ifdef WITH_ALEMBIC
 			ABC_free_handle(cache_file->handle);
 			cache_file->handle = ABC_create_handle(filename, NULL);
 #endif
+			break;
 		}
 	}
 }
@@ -195,4 +203,44 @@ float BKE_cachefile_time_offset(CacheFile *cache_file, const float time, const f
 {
 	const float frame = (cache_file->override_frame ? cache_file->frame : time);
 	return cache_file->is_sequence ? frame : frame / fps;
+}
+
+/* TODO(kevin): replace this with some depsgraph mechanism, or something similar. */
+void BKE_cachefile_clean(Scene *scene, CacheFile *cache_file)
+{
+	for (Base *base = scene->base.first; base; base = base->next) {
+		Object *ob = base->object;
+
+		ModifierData *md = modifiers_findByType(ob, eModifierType_MeshSequenceCache);
+
+		if (md) {
+			MeshSeqCacheModifierData *mcmd = (MeshSeqCacheModifierData *)md;
+
+			if (cache_file == mcmd->cache_file) {
+#ifdef WITH_ALEMBIC
+				if (mcmd->reader != NULL) {
+					CacheReader_free(mcmd->reader);
+				}
+#endif
+				mcmd->reader = NULL;
+			}
+		}
+
+		for (bConstraint *con = ob->constraints.first; con; con = con->next) {
+			if (con->type != CONSTRAINT_TYPE_TRANSFORM_CACHE) {
+				continue;
+			}
+
+			bTransformCacheConstraint *data = con->data;
+
+			if (cache_file == data->cache_file) {
+#ifdef WITH_ALEMBIC
+				if (data->reader != NULL) {
+					CacheReader_free(data->reader);
+				}
+#endif
+				data->reader = NULL;
+			}
+		}
+	}
 }

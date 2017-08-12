@@ -61,8 +61,6 @@ namespace DEG {
 
 struct Depsgraph;
 struct DepsNode;
-struct RootDepsNode;
-struct SubgraphDepsNode;
 struct IDDepsNode;
 struct TimeSourceDepsNode;
 struct ComponentDepsNode;
@@ -72,32 +70,30 @@ struct DepsgraphNodeBuilder {
 	DepsgraphNodeBuilder(Main *bmain, Depsgraph *graph);
 	~DepsgraphNodeBuilder();
 
-	RootDepsNode *add_root_node();
+	void begin_build(Main *bmain);
+
 	IDDepsNode *add_id_node(ID *id);
-	TimeSourceDepsNode *add_time_source(ID *id);
+	TimeSourceDepsNode *add_time_source();
 
 	ComponentDepsNode *add_component_node(ID *id,
 	                                      eDepsNode_Type comp_type,
 	                                      const char *comp_name = "");
 
 	OperationDepsNode *add_operation_node(ComponentDepsNode *comp_node,
-	                                      eDepsOperation_Type optype,
-	                                      DepsEvalOperationCb op,
+	                                      const DepsEvalOperationCb& op,
 	                                      eDepsOperation_Code opcode,
 	                                      const char *name = "",
 	                                      int name_tag = -1);
 	OperationDepsNode *add_operation_node(ID *id,
 	                                      eDepsNode_Type comp_type,
 	                                      const char *comp_name,
-	                                      eDepsOperation_Type optype,
-	                                      DepsEvalOperationCb op,
+	                                      const DepsEvalOperationCb& op,
 	                                      eDepsOperation_Code opcode,
 	                                      const char *name = "",
 	                                      int name_tag = -1);
 	OperationDepsNode *add_operation_node(ID *id,
 	                                      eDepsNode_Type comp_type,
-	                                      eDepsOperation_Type optype,
-	                                      DepsEvalOperationCb op,
+	                                      const DepsEvalOperationCb& op,
 	                                      eDepsOperation_Code opcode,
 	                                      const char *name = "",
 	                                      int name_tag = -1);
@@ -123,14 +119,14 @@ struct DepsgraphNodeBuilder {
 	                                       int name_tag = -1);
 
 	void build_scene(Main *bmain, Scene *scene);
-	SubgraphDepsNode *build_subgraph(Group *group);
 	void build_group(Scene *scene, Base *base, Group *group);
 	void build_object(Scene *scene, Base *base, Object *ob);
 	void build_object_transform(Scene *scene, Object *ob);
 	void build_object_constraints(Scene *scene, Object *ob);
-	void build_pose_constraints(Object *ob, bPoseChannel *pchan);
+	void build_pose_constraints(Scene *scene, Object *ob, bPoseChannel *pchan);
 	void build_rigidbody(Scene *scene);
 	void build_particles(Scene *scene, Object *ob);
+	void build_cloth(Scene *scene, Object *object);
 	void build_animdata(ID *id);
 	OperationDepsNode *build_driver(ID *id, FCurve *fcurve);
 	void build_ik_pose(Scene *scene,
@@ -147,10 +143,10 @@ struct DepsgraphNodeBuilder {
 	void build_obdata_geom(Scene *scene, Object *ob);
 	void build_camera(Object *ob);
 	void build_lamp(Object *ob);
-	void build_nodetree(DepsNode *owner_node, bNodeTree *ntree);
-	void build_material(DepsNode *owner_node, Material *ma);
-	void build_texture(DepsNode *owner_node, Tex *tex);
-	void build_texture_stack(DepsNode *owner_node, MTex **texture_stack);
+	void build_nodetree(bNodeTree *ntree);
+	void build_material(Material *ma);
+	void build_texture(Tex *tex);
+	void build_texture_stack(MTex **texture_stack);
 	void build_image(Image *image);
 	void build_world(World *world);
 	void build_compositor(Scene *scene);

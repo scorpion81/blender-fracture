@@ -102,7 +102,8 @@ enum {
 };
 
 struct wmWindow	*WM_window_open(struct bContext *C, const struct rcti *rect);
-struct wmWindow *WM_window_open_temp(struct bContext *C, const struct rcti *rect_init, int type);
+struct wmWindow *WM_window_open_temp(struct bContext *C, int x, int y, int sizex, int sizey, int type);
+void             WM_window_set_dpi(wmWindow *win);
 			
 			/* returns true if draw method is triple buffer */
 bool		WM_is_draw_triple(struct wmWindow *win);
@@ -186,8 +187,9 @@ struct wmEventHandler *WM_event_add_dropbox_handler(ListBase *handlers, ListBase
 
 			/* mouse */
 void		WM_event_add_mousemove(struct bContext *C);
-bool        WM_modal_tweak_exit(const struct wmEvent *event, int tweak_event);
+bool		WM_event_is_modal_tweak_exit(const struct wmEvent *event, int tweak_event);
 bool		WM_event_is_absolute(const struct wmEvent *event);
+bool		WM_event_is_last_mousemove(const struct wmEvent *event);
 
 #ifdef WITH_INPUT_NDOF
 			/* 3D mouse */
@@ -252,6 +254,7 @@ int         WM_operator_confirm_message(struct bContext *C, struct wmOperator *o
 
 		/* operator api */
 void		WM_operator_free		(struct wmOperator *op);
+void		WM_operator_free_all_after(wmWindowManager *wm, struct wmOperator *op);
 void		WM_operator_type_set(struct wmOperator *op, struct wmOperatorType *ot);
 void		WM_operator_stack_clear(struct wmWindowManager *wm);
 void		WM_operator_handlers_clear(wmWindowManager *wm, struct wmOperatorType *ot);
@@ -276,6 +279,7 @@ int			WM_operator_call		(struct bContext *C, struct wmOperator *op);
 int			WM_operator_call_notest(struct bContext *C, struct wmOperator *op);
 int			WM_operator_repeat		(struct bContext *C, struct wmOperator *op);
 bool        WM_operator_repeat_check(const struct bContext *C, struct wmOperator *op);
+bool        WM_operator_is_repeat(const struct bContext *C, const struct wmOperator *op);
 int         WM_operator_name_call_ptr(struct bContext *C, struct wmOperatorType *ot, short context, struct PointerRNA *properties);
 int			WM_operator_name_call(struct bContext *C, const char *opstring, short context, struct PointerRNA *properties);
 int			WM_operator_call_py(struct bContext *C, struct wmOperatorType *ot, short context, struct PointerRNA *properties, struct ReportList *reports, const bool is_undo);

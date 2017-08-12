@@ -14,26 +14,26 @@
  * limitations under the License.
  */
 
-#include "device.h"
+#include "device/device.h"
 
-#include "graph.h"
-#include "light.h"
-#include "osl.h"
-#include "scene.h"
-#include "shader.h"
-#include "nodes.h"
+#include "render/graph.h"
+#include "render/light.h"
+#include "render/osl.h"
+#include "render/scene.h"
+#include "render/shader.h"
+#include "render/nodes.h"
 
 #ifdef WITH_OSL
 
-#include "osl_globals.h"
-#include "osl_services.h"
-#include "osl_shader.h"
+#include "kernel/osl/osl_globals.h"
+#include "kernel/osl/osl_services.h"
+#include "kernel/osl/osl_shader.h"
 
-#include "util_foreach.h"
-#include "util_logging.h"
-#include "util_md5.h"
-#include "util_path.h"
-#include "util_progress.h"
+#include "util/util_foreach.h"
+#include "util/util_logging.h"
+#include "util/util_md5.h"
+#include "util/util_path.h"
+#include "util/util_progress.h"
 
 #endif
 
@@ -156,6 +156,7 @@ void OSLShaderManager::device_free(Device *device, DeviceScene *dscene, Scene *s
 	og->surface_state.clear();
 	og->volume_state.clear();
 	og->displacement_state.clear();
+	og->bump_state.clear();
 	og->background_state.reset();
 }
 
@@ -1096,11 +1097,9 @@ void OSLCompiler::compile(Scene *scene, OSLGlobals *og, Shader *shader)
 		/* finalize */
 		shader->graph->finalize(scene,
 		                        false,
-		                        true,
 		                        shader->has_integrator_dependency);
 		if(shader->graph_bump) {
 			shader->graph_bump->finalize(scene,
-			                             true,
 			                             true,
 			                             shader->has_integrator_dependency,
 			                             shader->displacement_method == DISPLACE_BOTH);

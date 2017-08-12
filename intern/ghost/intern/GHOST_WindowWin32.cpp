@@ -92,6 +92,7 @@ GHOST_WindowWin32::GHOST_WindowWin32(GHOST_SystemWin32 *system,
       m_tablet(0),
       m_maxPressure(0),
       m_normal_state(GHOST_kWindowStateNormal),
+	  m_user32(NULL),
       m_parentWindowHwnd(parentwindowhwnd),
       m_debug_context(is_debug)
 {
@@ -353,7 +354,7 @@ GHOST_WindowWin32::~GHOST_WindowWin32()
 			// Release our reference of the DropTarget and it will delete itself eventually.
 			m_dropTarget->Release();
 		}
-
+		::SetWindowLongPtr(m_hWnd, GWLP_USERDATA, NULL);
 		::DestroyWindow(m_hWnd);
 		m_hWnd = 0;
 	}
@@ -889,19 +890,14 @@ void GHOST_WindowWin32::processWin32TabletEvent(WPARAM wParam, LPARAM lParam)
 		if (fpWTPacket) {
 			if (fpWTPacket((HCTX)lParam, wParam, &pkt)) {
 				if (m_tabletData) {
-					switch (pkt.pkCursor) {
-						case 0: /* first device */
-						case 3: /* second device */
+					switch (pkt.pkCursor % 3) { /* % 3 for multiple devices ("DualTrack") */
+						case 0:
 							m_tabletData->Active = GHOST_kTabletModeNone; /* puck - not yet supported */
 							break;
 						case 1:
-						case 4:
-						case 7:
 							m_tabletData->Active = GHOST_kTabletModeStylus; /* stylus */
 							break;
 						case 2:
-						case 5:
-						case 8:
 							m_tabletData->Active = GHOST_kTabletModeEraser; /* eraser */
 							break;
 					}
@@ -963,6 +959,23 @@ void GHOST_WindowWin32::bringTabletContextToFront()
 			fpWTOverlap(m_tablet, TRUE);
 		}
 	}
+}
+
+GHOST_TUns16 GHOST_WindowWin32::getDPIHint()
+{
+	if (!m_user32) {
+		m_user32 = ::LoadLibrary("user32.dll");
+	}
+
+	if (m_user32) {
+		GHOST_WIN32_GetDpiForWindow fpGetDpiForWindow = (GHOST_WIN32_GetDpiForWindow) ::GetProcAddress(m_user32, "GetDpiForWindow");
+
+		if (fpGetDpiForWindow) {
+			return fpGetDpiForWindow(this->m_hWnd);
+		}
+	}
+
+	return USER_DEFAULT_SCREEN_DPI;
 }
 
 /** Reverse the bits in a GHOST_TUns8 */

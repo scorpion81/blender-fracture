@@ -290,7 +290,8 @@ static void nla_draw_strip_curves(NlaStrip *strip, float yminc, float ymaxc)
 		 *	- min y-val is yminc, max is y-maxc, so clamp in those regions
 		 */
 		for (cfra = strip->start; cfra <= strip->end; cfra += 1.0f) {
-			float y = evaluate_fcurve(fcu, cfra);    // assume this to be in 0-1 range
+			float y = evaluate_fcurve(fcu, cfra);
+			CLAMP(y, 0.0f, 1.0f);
 			glVertex2f(cfra, ((y * yheight) + yminc));
 		}
 		glEnd(); // GL_LINE_STRIP
@@ -361,7 +362,7 @@ static void nla_draw_strip(SpaceNla *snla, AnimData *adt, NlaTrack *nlt, NlaStri
 					glVertex2f(strip->start, yminc);
 					glEnd();
 				}
-				/* fall-through */
+				ATTR_FALLTHROUGH;
 
 			/* this only draws after the strip */
 			case NLASTRIP_EXTEND_HOLD_FORWARD: 

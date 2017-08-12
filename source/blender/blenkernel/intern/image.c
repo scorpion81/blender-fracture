@@ -62,6 +62,7 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math_vector.h"
+#include "BLI_mempool.h"
 #include "BLI_threads.h"
 #include "BLI_timecode.h"  /* for stamp timecode format */
 #include "BLI_utildefines.h"
@@ -433,10 +434,9 @@ static void copy_image_packedfiles(ListBase *lb_dst, const ListBase *lb_src)
 }
 
 /* empty image block, of similar type and filename */
-Image *BKE_image_copy(Main *bmain, Image *ima)
+Image *BKE_image_copy(Main *bmain, const Image *ima)
 {
 	Image *nima = image_alloc(bmain, ima->id.name + 2, ima->source, ima->type);
-	ima->id.newid = &nima->id;
 
 	BLI_strncpy(nima->name, ima->name, sizeof(ima->name));
 
@@ -1239,12 +1239,11 @@ char BKE_imtype_valid_channels(const char imtype, bool write_file)
 	switch (imtype) {
 		case R_IMF_IMTYPE_BMP:
 			if (write_file) break;
-			/* fall-through */
+			ATTR_FALLTHROUGH;
 		case R_IMF_IMTYPE_TARGA:
 		case R_IMF_IMTYPE_RAWTGA:
 		case R_IMF_IMTYPE_IRIS:
 		case R_IMF_IMTYPE_PNG:
-		case R_IMF_IMTYPE_RADHDR:
 		case R_IMF_IMTYPE_TIFF:
 		case R_IMF_IMTYPE_OPENEXR:
 		case R_IMF_IMTYPE_MULTILAYER:
@@ -1325,7 +1324,7 @@ char BKE_imtype_from_arg(const char *imtype_arg)
 	else if (STREQ(imtype_arg, "EXR")) return R_IMF_IMTYPE_OPENEXR;
 	else if (STREQ(imtype_arg, "MULTILAYER")) return R_IMF_IMTYPE_MULTILAYER;
 #endif
-	else if (STREQ(imtype_arg, "MPEG")) return R_IMF_IMTYPE_FFMPEG;
+	else if (STREQ(imtype_arg, "FFMPEG")) return R_IMF_IMTYPE_FFMPEG;
 	else if (STREQ(imtype_arg, "FRAMESERVER")) return R_IMF_IMTYPE_FRAMESERVER;
 #ifdef WITH_CINEON
 	else if (STREQ(imtype_arg, "CINEON")) return R_IMF_IMTYPE_CINEON;
@@ -1580,24 +1579,7 @@ void BKE_imbuf_to_image_format(struct ImageFormatData *im_format, const ImBuf *i
 	}
 
 	/* planes */
-	/* TODO(sergey): Channels doesn't correspond actual planes used for image buffer
-	 *               For example byte buffer will have 4 channels but it might easily
-	 *               be BW or RGB image.
-	 *
-	 *               Need to use im_format->planes = imbuf->planes instead?
-	 */
-	switch (imbuf->channels) {
-		case 0:
-		case 4: im_format->planes = R_IMF_PLANES_RGBA;
-			break;
-		case 3: im_format->planes = R_IMF_PLANES_RGB;
-			break;
-		case 1: im_format->planes = R_IMF_PLANES_BW;
-			break;
-		default: im_format->planes = R_IMF_PLANES_RGB;
-			break;
-	}
-
+	im_format->planes = imbuf->planes;
 }
 
 
@@ -2235,8 +2217,10 @@ void BKE_imbuf_write_prepare(ImBuf *ibuf, const ImageFormatData *imf)
 			ibuf->foptions.flag |= OPENEXR_HALF;
 		ibuf->foptions.flag |= (imf->exr_codec & OPENEXR_COMPRESS);
 
-		if (!(imf->flag & R_IMF_FLAG_ZBUF))
-			ibuf->zbuf_float = NULL;    /* signal for exr saving */
+		if (!(imf->flag & R_IMF_FLAG_ZBUF)) {
+			/* Signal for exr saving. */
+			IMB_freezbuffloatImBuf(ibuf);
+		}
 
 	}
 #endif
@@ -2756,7 +2740,6 @@ void BKE_image_signal(Image *ima, ImageUser *iuser, int signal)
 	}
 }
 
-#define PASSTYPE_UNSET -1
 /* return renderpass for a given pass index and active view */
 /* fallback to available if there are missing passes for active view */
 static RenderPass *image_render_pass_get(RenderLayer *rl, const int pass, const int view, int *r_passindex)
@@ -2765,7 +2748,7 @@ static RenderPass *image_render_pass_get(RenderLayer *rl, const int pass, const 
 	RenderPass *rpass;
 
 	int rp_index = 0;
-	int rp_passtype = PASSTYPE_UNSET;
+	const char *rp_name = "";
 
 	for (rpass = rl->passes.first; rpass; rpass = rpass->next, rp_index++) {
 		if (rp_index == pass) {
@@ -2775,12 +2758,12 @@ static RenderPass *image_render_pass_get(RenderLayer *rl, const int pass, const 
 				break;
 			}
 			else {
-				rp_passtype = rpass->passtype;
+				rp_name = rpass->name;
 			}
 		}
 		/* multiview */
-		else if ((rp_passtype != PASSTYPE_UNSET) &&
-		         (rpass->passtype == rp_passtype) &&
+		else if (rp_name[0] &&
+		         STREQ(rpass->name, rp_name) &&
 		         (rpass->view_id == view))
 		{
 			rpass_ret = rpass;
@@ -2800,7 +2783,6 @@ static RenderPass *image_render_pass_get(RenderLayer *rl, const int pass, const 
 
 	return rpass_ret;
 }
-#undef PASSTYPE_UNSET
 
 /* if layer or pass changes, we need an index for the imbufs list */
 /* note it is called for rendered results, but it doesnt use the index! */
@@ -2881,7 +2863,7 @@ bool BKE_image_is_stereo(Image *ima)
 {
 	return BKE_image_is_multiview(ima) &&
 	       (BLI_findstring(&ima->views, STEREO_LEFT_NAME, offsetof(ImageView, name)) &&
-            BLI_findstring(&ima->views, STEREO_RIGHT_NAME, offsetof(ImageView, name)));
+	        BLI_findstring(&ima->views, STEREO_RIGHT_NAME, offsetof(ImageView, name)));
 }
 
 static void image_init_multilayer_multiview(Image *ima, RenderResult *rr)
@@ -3770,7 +3752,7 @@ static ImBuf *image_get_render_result(Image *ima, ImageUser *iuser, void **r_loc
 			}
 
 			for (rpass = rl->passes.first; rpass; rpass = rpass->next)
-				if (rpass->passtype == SCE_PASS_Z)
+				if (STREQ(rpass->name, RE_PASSNAME_Z) && rpass->view_id == actview)
 					rectz = rpass->rect;
 		}
 	}
@@ -4151,33 +4133,32 @@ typedef struct ImagePoolEntry {
 
 typedef struct ImagePool {
 	ListBase image_buffers;
+	BLI_mempool *memory_pool;
 } ImagePool;
 
 ImagePool *BKE_image_pool_new(void)
 {
 	ImagePool *pool = MEM_callocN(sizeof(ImagePool), "Image Pool");
+	pool->memory_pool = BLI_mempool_create(sizeof(ImagePoolEntry), 0, 128, BLI_MEMPOOL_NOP);
 
 	return pool;
 }
 
 void BKE_image_pool_free(ImagePool *pool)
 {
-	ImagePoolEntry *entry, *next_entry;
-
-	/* use single lock to dereference all the image buffers */
+	/* Use single lock to dereference all the image buffers. */
 	BLI_spin_lock(&image_spin);
-
-	for (entry = pool->image_buffers.first; entry; entry = next_entry) {
-		next_entry = entry->next;
-
-		if (entry->ibuf)
+	for (ImagePoolEntry *entry = pool->image_buffers.first;
+	     entry != NULL;
+	     entry = entry->next)
+	{
+		if (entry->ibuf) {
 			IMB_freeImBuf(entry->ibuf);
-
-		MEM_freeN(entry);
+		}
 	}
-
 	BLI_spin_unlock(&image_spin);
 
+	BLI_mempool_destroy(pool->memory_pool);
 	MEM_freeN(pool);
 }
 
@@ -4229,7 +4210,7 @@ ImBuf *BKE_image_pool_acquire_ibuf(Image *ima, ImageUser *iuser, ImagePool *pool
 
 		ibuf = image_acquire_ibuf(ima, iuser, NULL);
 
-		entry = MEM_callocN(sizeof(ImagePoolEntry), "Image Pool Entry");
+		entry = BLI_mempool_alloc(pool->memory_pool);
 		entry->image = ima;
 		entry->frame = frame;
 		entry->index = index;

@@ -377,7 +377,7 @@ class RENDER_PT_stamp(RenderButtonsPanel, Panel):
         sub.active = rd.use_stamp_note
         sub.prop(rd, "stamp_note_text", text="")
         if rd.use_sequencer:
-            layout.label("Sequencer")
+            layout.label("Sequencer:")
             layout.prop(rd, "use_stamp_strip_meta")
 
 
@@ -461,31 +461,42 @@ class RENDER_PT_encoding(RenderButtonsPanel, Panel):
 
         split = layout.split()
         split.prop(rd.ffmpeg, "format")
-        if ffmpeg.format in {'AVI', 'QUICKTIME', 'MKV', 'OGG', 'MPEG4'}:
-            split.prop(ffmpeg, "codec")
-            if ffmpeg.codec == 'H264':
-                row = layout.row()
-                row.label()
-                row.prop(ffmpeg, "use_lossless_output")
-        elif rd.ffmpeg.format == 'H264':
-            split.prop(ffmpeg, "use_lossless_output")
-        else:
-            split.label()
+        split.prop(ffmpeg, "use_autosplit")
 
+        layout.separator()
+
+        needs_codec = ffmpeg.format in {'AVI', 'QUICKTIME', 'MKV', 'OGG', 'MPEG4'}
+        if needs_codec:
+            layout.prop(ffmpeg, "codec")
+
+        if ffmpeg.codec in {'DNXHD'}:
+            layout.prop(ffmpeg, "use_lossless_output")
+
+        # Output quality
+        if needs_codec and ffmpeg.codec in {'H264', 'MPEG4'}:
+            layout.prop(ffmpeg, "constant_rate_factor")
+
+        # Encoding speed
+        layout.prop(ffmpeg, "ffmpeg_preset")
+        # I-frames
+        layout.prop(ffmpeg, "gopsize")
+        # B-Frames
         row = layout.row()
-        row.prop(ffmpeg, "video_bitrate")
-        row.prop(ffmpeg, "gopsize")
+        row.prop(ffmpeg, "use_max_b_frames", text='Max B-frames')
+        pbox = row.split()
+        pbox.prop(ffmpeg, "max_b_frames", text='')
+        pbox.enabled = ffmpeg.use_max_b_frames
 
         split = layout.split()
-
+        split.enabled = ffmpeg.constant_rate_factor == 'NONE'
         col = split.column()
         col.label(text="Rate:")
+        col.prop(ffmpeg, "video_bitrate")
         col.prop(ffmpeg, "minrate", text="Minimum")
         col.prop(ffmpeg, "maxrate", text="Maximum")
         col.prop(ffmpeg, "buffersize", text="Buffer")
 
         col = split.column()
-        col.prop(ffmpeg, "use_autosplit")
         col.label(text="Mux:")
         col.prop(ffmpeg, "muxrate", text="Rate")
         col.prop(ffmpeg, "packetsize", text="Packet Size")
@@ -497,6 +508,7 @@ class RENDER_PT_encoding(RenderButtonsPanel, Panel):
             layout.prop(ffmpeg, "audio_codec", text="Audio Codec")
 
         row = layout.row()
+        row.enabled = ffmpeg.audio_codec != 'NONE'
         row.prop(ffmpeg, "audio_bitrate")
         row.prop(ffmpeg, "audio_volume", slider=True)
 
@@ -572,5 +584,24 @@ class RENDER_PT_bake(RenderButtonsPanel, Panel):
             sub.prop(rd, "bake_user_scale", text="User Scale")
 
 
+classes = (
+    RENDER_MT_presets,
+    RENDER_MT_ffmpeg_presets,
+    RENDER_MT_framerate_presets,
+    RENDER_PT_render,
+    RENDER_PT_dimensions,
+    RENDER_PT_antialiasing,
+    RENDER_PT_motion_blur,
+    RENDER_PT_shading,
+    RENDER_PT_performance,
+    RENDER_PT_post_processing,
+    RENDER_PT_stamp,
+    RENDER_PT_output,
+    RENDER_PT_encoding,
+    RENDER_PT_bake,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

@@ -549,11 +549,11 @@ int colorband_element_remove(struct ColorBand *coba, int index)
 	if (index < 0 || index >= coba->tot)
 		return 0;
 
+	coba->tot--;
 	for (a = index; a < coba->tot; a++) {
 		coba->data[a] = coba->data[a + 1];
 	}
 	if (coba->cur) coba->cur--;
-	coba->tot--;
 	return 1;
 }
 
@@ -846,7 +846,7 @@ MTex *BKE_texture_mtex_add_id(ID *id, int slot)
 
 /* ------------------------------------------------------------------------- */
 
-Tex *BKE_texture_copy(Main *bmain, Tex *tex)
+Tex *BKE_texture_copy(Main *bmain, const Tex *tex)
 {
 	Tex *texn;
 	
@@ -1263,7 +1263,7 @@ EnvMap *BKE_texture_envmap_add(void)
 
 /* ------------------------------------------------------------------------- */
 
-EnvMap *BKE_texture_envmap_copy(EnvMap *env)
+EnvMap *BKE_texture_envmap_copy(const EnvMap *env)
 {
 	EnvMap *envn;
 	int a;
@@ -1336,7 +1336,7 @@ PointDensity *BKE_texture_pointdensity_add(void)
 	return pd;
 } 
 
-PointDensity *BKE_texture_pointdensity_copy(PointDensity *pd)
+PointDensity *BKE_texture_pointdensity_copy(const PointDensity *pd)
 {
 	PointDensity *pdn;
 
@@ -1430,7 +1430,7 @@ OceanTex *BKE_texture_ocean_add(void)
 	return ot;
 }
 
-OceanTex *BKE_texture_ocean_copy(struct OceanTex *ot)
+OceanTex *BKE_texture_ocean_copy(const OceanTex *ot)
 {
 	OceanTex *otn = MEM_dupallocN(ot);
 	
@@ -1485,9 +1485,11 @@ bool BKE_texture_dependsOnTime(const struct Tex *texture)
 
 /* ------------------------------------------------------------------------- */
 
-void BKE_texture_get_value(
+void BKE_texture_get_value_ex(
         const Scene *scene, Tex *texture,
-        float *tex_co, TexResult *texres, bool use_color_management)
+        float *tex_co, TexResult *texres,
+        struct ImagePool *pool,
+        bool use_color_management)
 {
 	int result_type;
 	bool do_color_manage = false;
@@ -1497,7 +1499,7 @@ void BKE_texture_get_value(
 	}
 
 	/* no node textures for now */
-	result_type = multitex_ext_safe(texture, tex_co, texres, NULL, do_color_manage, false);
+	result_type = multitex_ext_safe(texture, tex_co, texres, pool, do_color_manage, false);
 
 	/* if the texture gave an RGB value, we assume it didn't give a valid
 	 * intensity, since this is in the context of modifiers don't use perceptual color conversion.
@@ -1508,5 +1510,42 @@ void BKE_texture_get_value(
 	}
 	else {
 		copy_v3_fl(&texres->tr, texres->tin);
+	}
+}
+
+void BKE_texture_get_value(
+        const Scene *scene, Tex *texture,
+        float *tex_co, TexResult *texres, bool use_color_management)
+{
+	BKE_texture_get_value_ex(scene, texture, tex_co, texres, NULL, use_color_management);
+}
+
+static void texture_nodes_fetch_images_for_pool(bNodeTree *ntree, struct ImagePool *pool)
+{
+	for (bNode *node = ntree->nodes.first; node; node = node->next) {
+		if (node->type == SH_NODE_TEX_IMAGE && node->id != NULL) {
+			Image *image = (Image *)node->id;
+			BKE_image_pool_acquire_ibuf(image, NULL, pool);
+		}
+		else if (node->type == NODE_GROUP && node->id != NULL) {
+			/* TODO(sergey): Do we need to control recursion here? */
+			bNodeTree *nested_tree = (bNodeTree *)node->id;
+			texture_nodes_fetch_images_for_pool(nested_tree, pool);
+		}
+	}
+}
+
+/* Make sure all images used by texture are loaded into pool. */
+void BKE_texture_fetch_images_for_pool(Tex *texture, struct ImagePool *pool)
+{
+	if (texture->nodetree != NULL) {
+		texture_nodes_fetch_images_for_pool(texture->nodetree, pool);
+	}
+	else {
+		if (texture->type == TEX_IMAGE) {
+			if (texture->ima != NULL) {
+				BKE_image_pool_acquire_ibuf(texture->ima, NULL, pool);
+			}
+		}
 	}
 }

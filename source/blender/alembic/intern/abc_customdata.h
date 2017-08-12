@@ -26,6 +26,7 @@
 #define __ABC_CUSTOMDATA_H__
 
 #include <Alembic/Abc/All.h>
+#include <Alembic/AbcGeom/All.h>
 
 struct CustomData;
 struct MLoop;
@@ -63,6 +64,11 @@ struct CDStreamConfig {
 	void *user_data;
 	void *(*add_customdata_cb)(void *user_data, const char *name, int data_type);
 
+	float weight;
+	float time;
+	Alembic::AbcGeom::index_t index;
+	Alembic::AbcGeom::index_t ceil_index;
+
 	CDStreamConfig()
 	    : mloop(NULL)
 	    , totloop(0)
@@ -72,6 +78,10 @@ struct CDStreamConfig {
 	    , pack_uvs(false)
 	    , user_data(NULL)
 	    , add_customdata_cb(NULL)
+	    , weight(0.0f)
+	    , time(0.0f)
+	    , index(0)
+	    , ceil_index(0)
 	{}
 };
 

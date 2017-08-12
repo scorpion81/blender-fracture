@@ -741,7 +741,7 @@ typedef enum eFileSel_File_Types {
 	FILE_TYPE_ALEMBIC           = (1 << 16),
 
 	FILE_TYPE_DIR               = (1 << 30),  /* An FS directory (i.e. S_ISDIR on its path is true). */
-	FILE_TYPE_BLENDERLIB        = (1 << 31),
+	FILE_TYPE_BLENDERLIB        = (1u << 31),
 } eFileSel_File_Types;
 
 /* Selection Flags in filesel: struct direntry, unsigned char selflag */
@@ -898,6 +898,10 @@ typedef struct SpaceImage {
 	char dt_uvstretch;
 	char around;
 
+	/* Filter settings when editor shows other object's UVs. */
+	int other_uv_filter;
+	int pad2;
+
 	MaskSpaceInfo mask_info;
 } SpaceImage;
 
@@ -975,6 +979,12 @@ typedef enum eSpaceImage_Flag {
 	SI_SHOW_G             = (1 << 28),
 	SI_SHOW_B             = (1 << 29),
 } eSpaceImage_Flag;
+
+/* SpaceImage->other_uv_filter */
+typedef enum eSpaceImage_OtherUVFilter {
+	SI_FILTER_SAME_IMAGE    = 0,
+	SI_FILTER_ALL           = 1,
+} eSpaceImage_OtherUVFilter;
 
 /* Text Editor ============================================ */
 
@@ -1141,7 +1151,7 @@ typedef enum eSpaceNode_Flag {
 	SNODE_SHOW_G         = (1 << 8),
 	SNODE_SHOW_B         = (1 << 9),
 	SNODE_AUTO_RENDER    = (1 << 5),
-	SNODE_SHOW_HIGHLIGHT = (1 << 6),
+//	SNODE_SHOW_HIGHLIGHT = (1 << 6), DNA_DEPRECATED
 //	SNODE_USE_HIDDEN_PREVIEW = (1 << 10), DNA_DEPRECATED December2013 
 	SNODE_NEW_SHADERS    = (1 << 11),
 	SNODE_PIN            = (1 << 12),

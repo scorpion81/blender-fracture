@@ -391,7 +391,16 @@ EnumPropertyItem *ED_gpencil_layers_with_new_enum_itemf(bContext *C, PointerRNA 
 /* ******************************************************** */
 /* Brush Tool Core */
 
-/* Check if part of stroke occurs within last segment drawn by eraser */
+/**
+ * Check whether a given stroke segment is inside a circular brush
+ *
+ * \param mval     The current screen-space coordinates (midpoint) of the brush
+ * \param mvalo    The previous screen-space coordinates (midpoint) of the brush (NOT CURRENTLY USED)
+ * \param rad      The radius of the brush
+ *
+ * \param x0, y0   The screen-space x and y coordinates of the start of the stroke segment
+ * \param x1, y1   The screen-space x and y coordinates of the end of the stroke segment
+ */
 bool gp_stroke_inside_circle(const int mval[2], const int UNUSED(mvalo[2]),
                              int rad, int x0, int y0, int x1, int y1)
 {
@@ -502,7 +511,11 @@ bGPDpalettecolor *ED_gpencil_stroke_getcolor(bGPdata *gpd, bGPDstroke *gps)
 /* ******************************************************** */
 /* Space Conversion */
 
-/* Init handling for space-conversion function (from passed-in parameters) */
+/**
+ * Init settings for stroke point space conversions
+ *
+ * \param r_gsc: [out] The space conversion settings struct, populated with necessary params
+ */
 void gp_point_conversion_init(bContext *C, GP_SpaceConversion *r_gsc)
 {
 	ScrArea *sa = CTX_wm_area(C);
@@ -538,7 +551,13 @@ void gp_point_conversion_init(bContext *C, GP_SpaceConversion *r_gsc)
 	}
 }
 
-/* convert point to parent space */
+/**
+ * Convert point to parent space
+ *
+ * \param pt         Original point
+ * \param diff_mat   Matrix with the difference between original parent matrix
+ * \param[out] r_pt  Pointer to new point after apply matrix
+ */
 void gp_point_to_parent_space(bGPDspoint *pt, float diff_mat[4][4], bGPDspoint *r_pt) 
 {
 	float fpt[3];
@@ -547,7 +566,9 @@ void gp_point_to_parent_space(bGPDspoint *pt, float diff_mat[4][4], bGPDspoint *
 	copy_v3_v3(&r_pt->x, fpt);
 }
 
-/* Change position relative to parent object */
+/**
+ * Change points position relative to parent object
+ */
 void gp_apply_parent(bGPDlayer *gpl, bGPDstroke *gps)
 {
 	bGPDspoint *pt;
@@ -568,7 +589,9 @@ void gp_apply_parent(bGPDlayer *gpl, bGPDstroke *gps)
 	}
 }
 
-/* Change point position relative to parent object */
+/**
+ * Change point position relative to parent object
+ */
 void gp_apply_parent_point(bGPDlayer *gpl, bGPDspoint *pt)
 {
 	/* undo matrix */
@@ -583,8 +606,13 @@ void gp_apply_parent_point(bGPDlayer *gpl, bGPDspoint *pt)
 	copy_v3_v3(&pt->x, fpt);
 }
 
-/* Convert Grease Pencil points to screen-space values
- * WARNING: This assumes that the caller has already checked whether the stroke in question can be drawn
+/**
+ * Convert a Grease Pencil coordinate (i.e. can be 2D or 3D) to screenspace (2D)
+ *
+ * \param[out] r_x  The screen-space x-coordinate of the point
+ * \param[out] r_y  The screen-space y-coordinate of the point
+ *
+ * \warning This assumes that the caller has already checked whether the stroke in question can be drawn.
  */
 void gp_point_to_xy(GP_SpaceConversion *gsc, bGPDstroke *gps, bGPDspoint *pt,
                     int *r_x, int *r_y)
@@ -628,8 +656,16 @@ void gp_point_to_xy(GP_SpaceConversion *gsc, bGPDstroke *gps, bGPDspoint *pt,
 	}
 }
 
-/* Convert Grease Pencil points to screen-space values (as floats)
- * WARNING: This assumes that the caller has already checked whether the stroke in question can be drawn
+/**
+ * Convert a Grease Pencil coordinate (i.e. can be 2D or 3D) to screenspace (2D)
+ *
+ * Just like gp_point_to_xy(), except the resulting coordinates are floats not ints.
+ * Use this version to solve "stair-step" artifacts which may arise when roundtripping the calculations.
+ *
+ * \param r_x: [out] The screen-space x-coordinate of the point
+ * \param r_y: [out] The screen-space y-coordinate of the point
+ *
+ * \warning This assumes that the caller has already checked whether the stroke in question can be drawn
  */
 void gp_point_to_xy_fl(GP_SpaceConversion *gsc, bGPDstroke *gps, bGPDspoint *pt,
                        float *r_x, float *r_y)
@@ -688,6 +724,12 @@ void gp_point_to_xy_fl(GP_SpaceConversion *gsc, bGPDstroke *gps, bGPDspoint *pt,
 /**
  * Project screenspace coordinates to 3D-space
  *
+ * For use with editing tools where it is easier to perform the operations in 2D,
+ * and then later convert the transformed points back to 3D.
+ *
+ * \param screen_co: The screenspace 2D coordinates to convert to
+ * \param r_out: The resulting 3D coordinates of the input point
+ *
  * \note We include this as a utility function, since the standard method
  * involves quite a few steps, which are invariably always the same
  * for all GPencil operations. So, it's nicer to just centralize these.
@@ -722,7 +764,7 @@ bool gp_point_xy_to_3d(GP_SpaceConversion *gsc, Scene *scene, const float screen
 }
 
 /**
- * Apply smooth to stroke point 
+ * Apply smooth to stroke point
  * \param gps              Stroke to smooth
  * \param i                Point index
  * \param inf              Amount of smoothing to apply
@@ -830,8 +872,8 @@ bool gp_smooth_stroke_strength(bGPDstroke *gps, int i, float inf)
 	ptc = &gps->points[after];
 
 	/* the optimal value is the corresponding to the interpolation of the strength
-	*  at the distance of point b
-	*/
+	 *  at the distance of point b
+	 */
 	const float fac = line_point_factor_v3(&ptb->x, &pta->x, &ptc->x);
 	const float optimal = (1.0f - fac) * pta->strength + fac * ptc->strength;
 
@@ -915,7 +957,7 @@ void gp_subdivide_stroke(bGPDstroke *gps, const int new_totpoints)
 /**
  * Add randomness to stroke
  * \param gps           Stroke data
- * \param brsuh         Brush data
+ * \param brush         Brush data
  */
 void gp_randomize_stroke(bGPDstroke *gps, bGPDbrush *brush)
 {
@@ -997,6 +1039,46 @@ void ED_gpencil_parent_location(bGPDlayer *gpl, float diff_mat[4][4])
 	}
 }
 
+/* reset parent matrix for all layers */
+void ED_gpencil_reset_layers_parent(bGPdata *gpd)
+{
+	bGPDspoint *pt;
+	int i;
+	float diff_mat[4][4];
+	float cur_mat[4][4];
+
+	for (bGPDlayer *gpl = gpd->layers.first; gpl; gpl = gpl->next) {
+		if (gpl->parent != NULL) {
+			/* calculate new matrix */
+			if ((gpl->partype == PAROBJECT) || (gpl->partype == PARSKEL)) {
+				invert_m4_m4(cur_mat, gpl->parent->obmat);
+			}
+			else if (gpl->partype == PARBONE) {
+				bPoseChannel *pchan = BKE_pose_channel_find_name(gpl->parent->pose, gpl->parsubstr);
+				if (pchan) {
+					float tmp_mat[4][4];
+					mul_m4_m4m4(tmp_mat, gpl->parent->obmat, pchan->pose_mat);
+					invert_m4_m4(cur_mat, tmp_mat);
+				}
+			}
+
+			/* only redo if any change */
+			if (!equals_m4m4(gpl->inverse, cur_mat)) {
+				/* first apply current transformation to all strokes */
+				ED_gpencil_parent_location(gpl, diff_mat);
+				for (bGPDframe *gpf = gpl->frames.first; gpf; gpf = gpf->next) {
+					for (bGPDstroke *gps = gpf->strokes.first; gps; gps = gps->next) {
+						for (i = 0, pt = gps->points; i < gps->totpoints; i++, pt++) {
+							mul_m4_v3(diff_mat, &pt->x);
+						}
+					}
+				}
+				/* set new parent matrix */
+				copy_m4_m4(gpl->inverse, cur_mat);
+			}
+		}
+	}
+}
 /* ******************************************************** */
 bool ED_gpencil_stroke_minmax(
         const bGPDstroke *gps, const bool use_select,

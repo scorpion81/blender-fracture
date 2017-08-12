@@ -71,6 +71,7 @@ class MATERIAL_MT_specials(Menu):
 
 
 class MATERIAL_UL_matslots(UIList):
+
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         # assert(isinstance(item, bpy.types.MaterialSlot)
         # ob = data
@@ -123,9 +124,10 @@ class MATERIAL_PT_context_material(MaterialButtonsPanel, Panel):
         ob = context.object
         slot = context.material_slot
         space = context.space_data
-        is_sortable = (len(ob.material_slots) > 1)
 
         if ob:
+            is_sortable = (len(ob.material_slots) > 1)
+
             rows = 1
             if is_sortable:
                 rows = 4
@@ -169,7 +171,7 @@ class MATERIAL_PT_context_material(MaterialButtonsPanel, Panel):
             split.separator()
 
         if mat:
-            layout.prop(mat, "type", expand=True)
+            layout.row().prop(mat, "type", expand=True)
             if mat.use_nodes:
                 row = layout.row()
                 row.label(text="", icon='NODETREE')
@@ -990,7 +992,7 @@ class MATERIAL_PT_volume_transp(VolumeButtonsPanel, Panel):
 
         mat = context.material  # don't use node material
 
-        layout.prop(mat, "transparency_method", expand=True)
+        layout.row().prop(mat, "transparency_method", expand=True)
 
 
 class MATERIAL_PT_volume_integration(VolumeButtonsPanel, Panel):
@@ -1052,5 +1054,38 @@ class MATERIAL_PT_custom_props(MaterialButtonsPanel, PropertyPanel, Panel):
     _context_path = "material"
     _property_type = bpy.types.Material
 
+
+classes = (
+    MATERIAL_MT_sss_presets,
+    MATERIAL_MT_specials,
+    MATERIAL_UL_matslots,
+    MATERIAL_PT_context_material,
+    MATERIAL_PT_preview,
+    MATERIAL_PT_pipeline,
+    MATERIAL_PT_diffuse,
+    MATERIAL_PT_specular,
+    MATERIAL_PT_shading,
+    MATERIAL_PT_transp,
+    MATERIAL_PT_mirror,
+    MATERIAL_PT_sss,
+    MATERIAL_PT_halo,
+    MATERIAL_PT_flare,
+    MATERIAL_PT_game_settings,
+    MATERIAL_PT_physics,
+    MATERIAL_PT_strand,
+    MATERIAL_PT_options,
+    MATERIAL_PT_shadow,
+    MATERIAL_PT_transp_game,
+    MATERIAL_PT_volume_density,
+    MATERIAL_PT_volume_shading,
+    MATERIAL_PT_volume_lighting,
+    MATERIAL_PT_volume_transp,
+    MATERIAL_PT_volume_integration,
+    MATERIAL_PT_volume_options,
+    MATERIAL_PT_custom_props,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

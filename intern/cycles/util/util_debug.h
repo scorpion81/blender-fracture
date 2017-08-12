@@ -20,7 +20,7 @@
 #include <cassert>
 #include <iostream>
 
-#include "util_static_assert.h"
+#include "util/util_static_assert.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -46,6 +46,9 @@ public:
 
 		/* Whether QBVH usage is allowed or not. */
 		bool qbvh;
+
+		/* Whether split kernel is used */
+		bool split_kernel;
 	};
 
 	/* Descriptor of CUDA feature-set to be used. */
@@ -58,6 +61,9 @@ public:
 		/* Whether adaptive feature based runtime compile is enabled or not.
 		 * Requires the CUDA Toolkit and only works on Linux atm. */
 		bool adaptive_compile;
+
+		/* Whether split kernel is used */
+		bool split_kernel;
 	};
 
 	/* Descriptor of OpenCL feature-set to be used. */
@@ -106,6 +112,13 @@ public:
 
 		/* Use debug version of the kernel. */
 		bool debug;
+
+		/* Use single program */
+		bool single_program;
+
+		/* TODO(mai): Currently this is only for OpenCL, but we should have it implemented for all devices. */
+		/* Artificial memory limit in bytes (0 if disabled). */
+		size_t mem_limit;
 	};
 
 	/* Get instance of debug flags registry. */

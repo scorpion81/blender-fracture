@@ -350,7 +350,12 @@ int avcodec_decode_video2(AVCodecContext *avctx, AVFrame *picture,
 FFMPEG_INLINE
 int64_t av_get_pts_from_frame(AVFormatContext *avctx, AVFrame * picture)
 {
-	int64_t pts = picture->pkt_pts;
+	int64_t pts;
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(55, 34, 100)
+	pts = picture->pts;
+#else
+	pts = picture->pkt_pts;
+#endif
 
 	if (pts == AV_NOPTS_VALUE) {
 		pts = picture->pkt_dts;
@@ -425,16 +430,11 @@ void av_frame_free(AVFrame **frame)
 FFMPEG_INLINE
 AVRational av_get_r_frame_rate_compat(const AVStream *stream)
 {
-	/* Stupid way to distinguish FFmpeg from Libav. */
-#if LIBAVCODEC_VERSION_MICRO >= 100
-	return stream->r_frame_rate;
-#else
-#  if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(54, 23, 1)
+#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(54, 23, 1)
 	/* For until r_frame_rate was deprecated use it. */
 	return stream->r_frame_rate;
-#  else
+#else
 	return stream->avg_frame_rate;
-#  endif
 #endif
 }
 

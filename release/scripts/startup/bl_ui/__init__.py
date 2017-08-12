@@ -23,8 +23,7 @@
 # support reloading sub-modules
 if "bpy" in locals():
     from importlib import reload
-    for val in _modules_loaded:
-        reload(val)
+    _modules_loaded[:] = [reload(val) for val in _modules_loaded]
     del reload
 
 _modules = [
@@ -95,7 +94,10 @@ del _namespace
 
 
 def register():
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for mod in _modules_loaded:
+        for cls in mod.classes:
+            register_class(cls)
 
     # space_userprefs.py
     from bpy.props import StringProperty, EnumProperty
@@ -144,8 +146,11 @@ def register():
 
 
 def unregister():
-    bpy.utils.unregister_module(__name__)
-
+    from bpy.utils import unregister_class
+    for mod in reversed(_modules_loaded):
+        for cls in reversed(mod.classes):
+            if cls.is_registered:
+                unregister_class(cls)
 
 # Define a default UIList, when a list does not need any custom drawing...
 # Keep in sync with its #defined name in UI_interface.h

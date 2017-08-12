@@ -27,7 +27,7 @@
 
 #include <algorithm>
 
-#if !defined(WIN32) || defined(FREE_WINDOWS)
+#if !defined(WIN32)
 #include <stdint.h>
 #endif
 
@@ -230,7 +230,6 @@ void SkinInfo::link_armature(bContext *C, Object *ob, std::map<COLLADAFW::Unique
 	ModifierData *md = ED_object_modifier_add(NULL, bmain, scene, ob, NULL, eModifierType_Armature);
 	ArmatureModifierData *amd = (ArmatureModifierData *)md;
 	amd->object = ob_arm;
-	struct bArmature *armature = (bArmature *)ob_arm->data;
 
 #if 1
 	bc_set_parent(ob, ob_arm, C);

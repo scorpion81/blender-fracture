@@ -615,6 +615,16 @@ bool WM_event_is_absolute(const wmEvent *event)
 	return (event->tablet_data != NULL);
 }
 
+bool WM_event_is_last_mousemove(const wmEvent *event)
+{
+	while ((event = event->next)) {
+		if (ELEM(event->type, MOUSEMOVE, INBETWEEN_MOUSEMOVE)) {
+			return false;
+		}
+	}
+	return true;
+}
+
 #ifdef WITH_INPUT_NDOF
 void WM_ndof_deadzone_set(float deadzone)
 {
@@ -715,7 +725,9 @@ static void wm_operator_reports(bContext *C, wmOperator *op, int retval, bool ca
  */
 static bool wm_operator_register_check(wmWindowManager *wm, wmOperatorType *ot)
 {
-	return wm && (wm->op_undo_depth == 0) && (ot->flag & OPTYPE_REGISTER);
+	/* Check undo flag here since undo operators are also added to the list,
+	 * to support checking if the same operator is run twice. */
+	return wm && (wm->op_undo_depth == 0) && (ot->flag & (OPTYPE_REGISTER | OPTYPE_UNDO));
 }
 
 static void wm_operator_finished(bContext *C, wmOperator *op, const bool repeat)
@@ -727,10 +739,13 @@ static void wm_operator_finished(bContext *C, wmOperator *op, const bool repeat)
 	/* we don't want to do undo pushes for operators that are being
 	 * called from operators that already do an undo push. usually
 	 * this will happen for python operators that call C operators */
-	if (wm->op_undo_depth == 0)
+	if (wm->op_undo_depth == 0) {
 		if (op->type->flag & OPTYPE_UNDO)
 			ED_undo_push_op(C, op);
-	
+		else if (op->type->flag & OPTYPE_UNDO_GROUPED)
+			ED_undo_grouped_push_op(C, op);
+	}
+
 	if (repeat == 0) {
 		if (G.debug & G_DEBUG_WM) {
 			char *buf = WM_operator_pystring(C, op, false, true);
@@ -873,6 +888,20 @@ bool WM_operator_repeat_check(const bContext *UNUSED(C), wmOperator *op)
 	}
 
 	return false;
+}
+
+bool WM_operator_is_repeat(const bContext *C, const wmOperator *op)
+{
+	/* may be in the operators list or not */
+	wmOperator *op_prev;
+	if (op->prev == NULL && op->next == NULL) {
+		wmWindowManager *wm = CTX_wm_manager(C);
+		op_prev = wm->operators.last;
+	}
+	else {
+		op_prev = op->prev;
+	}
+	return (op_prev && (op->type == op_prev->type));
 }
 
 static wmOperator *wm_operator_create(wmWindowManager *wm, wmOperatorType *ot,
@@ -1060,6 +1089,9 @@ bool WM_operator_last_properties_store(wmOperator *UNUSED(op))
 
 #endif
 
+/**
+ * Also used for exec when 'event' is NULL.
+ */
 static int wm_operator_invoke(
         bContext *C, wmOperatorType *ot, wmEvent *event,
         PointerRNA *properties, ReportList *reports, const bool poll_only)
@@ -1075,7 +1107,9 @@ static int wm_operator_invoke(
 		wmOperator *op = wm_operator_create(wm, ot, properties, reports); /* if reports == NULL, they'll be initialized */
 		const bool is_nested_call = (wm->op_undo_depth != 0);
 		
-		op->flag |= OP_IS_INVOKE;
+		if (event != NULL) {
+			op->flag |= OP_IS_INVOKE;
+		}
 
 		/* initialize setting from previous run */
 		if (!is_nested_call) { /* not called by py script */
@@ -1854,9 +1888,12 @@ static int wm_handler_fileselect_do(bContext *C, ListBase *handlers, wmEventHand
 					wm->op_undo_depth--;
 
 				/* XXX check this carefully, CTX_wm_manager(C) == wm is a bit hackish */
-				if (CTX_wm_manager(C) == wm && wm->op_undo_depth == 0)
+				if (CTX_wm_manager(C) == wm && wm->op_undo_depth == 0) {
 					if (handler->op->type->flag & OPTYPE_UNDO)
 						ED_undo_push_op(C, handler->op);
+					else if (handler->op->type->flag & OPTYPE_UNDO_GROUPED)
+						ED_undo_grouped_push_op(C, handler->op);
+				}
 
 				if (handler->op->reports->list.first) {
 
@@ -2032,11 +2069,13 @@ static int wm_handlers_do_intern(bContext *C, wmEvent *event, ListBase *handlers
 								break;
 							}
 							else {
-								if (action & WM_HANDLER_HANDLED)
+								if (action & WM_HANDLER_HANDLED) {
 									if (G.debug & (G_DEBUG_EVENTS | G_DEBUG_HANDLERS))
 										printf("%s:       handled - and pass on! '%s'\n", __func__, kmi->idname);
-								
-									PRINT("%s:       un-handled '%s'...", __func__, kmi->idname);
+								}
+								else {
+									PRINT("%s:       un-handled '%s'\n", __func__, kmi->idname);
+								}
 							}
 						}
 					}
@@ -2828,7 +2867,7 @@ void WM_event_add_mousemove(bContext *C)
 
 
 /* for modal callbacks, check configuration for how to interpret exit with tweaks  */
-bool WM_modal_tweak_exit(const wmEvent *event, int tweak_event)
+bool WM_event_is_modal_tweak_exit(const wmEvent *event, int tweak_event)
 {
 	/* if the release-confirm userpref setting is enabled, 
 	 * tweak events can be canceled when mouse is released
@@ -3171,6 +3210,8 @@ void wm_event_add_ghostevent(wmWindowManager *wm, wmWindow *win, int type, int U
 			GHOST_TEventCursorData *cd = customdata;
 
 			copy_v2_v2_int(&event.x, &cd->x);
+			wm_stereo3d_mouse_offset_apply(win, &event.x);
+
 			event.type = MOUSEMOVE;
 			wm_event_add_mousemove(win, &event);
 			copy_v2_v2_int(&evt->x, &event.x);

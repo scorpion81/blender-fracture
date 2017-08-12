@@ -1,12 +1,6 @@
 
 set(INC
-	.
-	../graph
-	../kernel
-	../kernel/svm
-	../kernel/osl
-	../util
-	../render
+	..
 	../../glew-mx
 )
 
@@ -31,8 +25,10 @@ set(SRC
 	device.cpp
 	device_cpu.cpp
 	device_cuda.cpp
+	device_denoising.cpp
 	device_multi.cpp
 	device_opencl.cpp
+	device_split_kernel.cpp
 	device_task.cpp
 )
 
@@ -53,9 +49,11 @@ endif()
 
 set(SRC_HEADERS
 	device.h
+	device_denoising.h
 	device_memory.h
 	device_intern.h
 	device_network.h
+	device_split_kernel.h
 	device_task.h
 )
 

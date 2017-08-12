@@ -65,10 +65,6 @@ struct SnapObjectParams {
 	unsigned int use_object_edit_cage : 1;
 };
 
-enum {
-	SNAP_OBJECT_USE_CACHE = (1 << 0),
-};
-
 typedef struct SnapObjectContext SnapObjectContext;
 SnapObjectContext *ED_transform_snap_object_context_create(
         struct Main *bmain, struct Scene *scene, int flag);
@@ -88,7 +84,6 @@ void ED_transform_snap_object_context_set_editmesh_callbacks(
 
 bool ED_transform_snap_object_project_ray_ex(
         struct SnapObjectContext *sctx,
-        const unsigned short snap_to,
         const struct SnapObjectParams *params,
         const float ray_start[3], const float ray_normal[3], float *ray_depth,
         /* return args */
@@ -102,7 +97,6 @@ bool ED_transform_snap_object_project_ray(
 
 bool ED_transform_snap_object_project_ray_all(
         SnapObjectContext *sctx,
-        const unsigned short snap_to,
         const struct SnapObjectParams *params,
         const float ray_start[3], const float ray_normal[3],
         float ray_depth, bool sort,

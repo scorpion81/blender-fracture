@@ -442,6 +442,17 @@ int ED_operator_posemode(bContext *C)
 	return 0;
 }
 
+int ED_operator_posemode_local(bContext *C)
+{
+	if (ED_operator_posemode(C)) {
+		Object *ob = BKE_object_pose_armature_get(CTX_data_active_object(C));
+		bArmature *arm = ob->data;
+		return !(ID_IS_LINKED_DATABLOCK(&ob->id) ||
+		         ID_IS_LINKED_DATABLOCK(&arm->id));
+	}
+	return false;
+}
+
 /* wrapper for ED_space_image_show_uvedit */
 int ED_operator_uvedit(bContext *C)
 {
@@ -2136,7 +2147,8 @@ static void SCREEN_OT_frame_offset(wmOperatorType *ot)
 	ot->exec = frame_offset_exec;
 	
 	ot->poll = ED_operator_screenactive_norender;
-	ot->flag = 0;
+	ot->flag = OPTYPE_UNDO_GROUPED;
+	ot->undo_group = "FRAME_CHANGE";
 	
 	/* rna */
 	RNA_def_int(ot->srna, "delta", 0, INT_MIN, INT_MAX, "Delta", "", INT_MIN, INT_MAX);
@@ -2189,7 +2201,8 @@ static void SCREEN_OT_frame_jump(wmOperatorType *ot)
 	ot->exec = frame_jump_exec;
 	
 	ot->poll = ED_operator_screenactive_norender;
-	ot->flag = OPTYPE_UNDO;
+	ot->flag = OPTYPE_UNDO_GROUPED;
+	ot->undo_group = "FRAME_CHANGE";
 	
 	/* rna */
 	RNA_def_boolean(ot->srna, "end", 0, "Last Frame", "Jump to the last frame of the frame range");
@@ -2247,25 +2260,28 @@ static int keyframe_jump_exec(bContext *C, wmOperator *op)
 	BLI_dlrbTree_linkedlist_sync(&keys);
 	
 	/* find matching keyframe in the right direction */
-	do {
-		if (next)
-			ak = (ActKeyColumn *)BLI_dlrbTree_search_next(&keys, compare_ak_cfraPtr, &cfra);
-		else
-			ak = (ActKeyColumn *)BLI_dlrbTree_search_prev(&keys, compare_ak_cfraPtr, &cfra);
-		
-		if (ak) {
-			if (CFRA != (int)ak->cfra) {
-				/* this changes the frame, so set the frame and we're done */
-				CFRA = (int)ak->cfra;
-				done = true;
+	if (next)
+		ak = (ActKeyColumn *)BLI_dlrbTree_search_next(&keys, compare_ak_cfraPtr, &cfra);
+	else
+		ak = (ActKeyColumn *)BLI_dlrbTree_search_prev(&keys, compare_ak_cfraPtr, &cfra);
+	
+	while ((ak != NULL) && (done == false)) {
+		if (CFRA != (int)ak->cfra) {
+			/* this changes the frame, so set the frame and we're done */
+			CFRA = (int)ak->cfra;
+			done = true;
+		}
+		else {
+			/* take another step... */
+			if (next) {
+				ak = ak->next;
 			}
 			else {
-				/* make this the new starting point for the search */
-				cfra = ak->cfra;
+				ak = ak->prev;
 			}
 		}
-	} while ((ak != NULL) && (done == false));
-
+	}
+	
 	/* free temp stuff */
 	BLI_dlrbTree_free(&keys);
 
@@ -2295,7 +2311,8 @@ static void SCREEN_OT_keyframe_jump(wmOperatorType *ot)
 	ot->exec = keyframe_jump_exec;
 	
 	ot->poll = ED_operator_screenactive_norender;
-	ot->flag = OPTYPE_UNDO;
+	ot->flag = OPTYPE_UNDO_GROUPED;
+	ot->undo_group = "FRAME_CHANGE";
 	
 	/* properties */
 	RNA_def_boolean(ot->srna, "next", true, "Next Keyframe", "");
@@ -2357,7 +2374,8 @@ static void SCREEN_OT_marker_jump(wmOperatorType *ot)
 	ot->exec = marker_jump_exec;
 
 	ot->poll = ED_operator_screenactive_norender;
-	ot->flag = OPTYPE_UNDO;
+	ot->flag = OPTYPE_UNDO_GROUPED;
+	ot->undo_group = "FRAME_CHANGE";
 
 	/* properties */
 	RNA_def_boolean(ot->srna, "next", true, "Next Marker", "");
@@ -2793,7 +2811,7 @@ static int screen_area_options_invoke(bContext *C, wmOperator *op, const wmEvent
 	bScreen *sc = CTX_wm_screen(C);
 	uiPopupMenu *pup;
 	uiLayout *layout;
-	PointerRNA ptr1, ptr2;
+	PointerRNA ptr;
 	ScrEdge *actedge;
 	const int winsize_x = WM_window_pixels_x(win);
 	const int winsize_y = WM_window_pixels_y(win);
@@ -2805,22 +2823,17 @@ static int screen_area_options_invoke(bContext *C, wmOperator *op, const wmEvent
 	pup = UI_popup_menu_begin(C, RNA_struct_ui_name(op->type->srna), ICON_NONE);
 	layout = UI_popup_menu_layout(pup);
 	
-	WM_operator_properties_create(&ptr1, "SCREEN_OT_area_join");
-	
-	/* mouse cursor on edge, '4' can fail on wide edges... */
-	RNA_int_set(&ptr1, "min_x", event->x + 4);
-	RNA_int_set(&ptr1, "min_y", event->y + 4);
-	RNA_int_set(&ptr1, "max_x", event->x - 4);
-	RNA_int_set(&ptr1, "max_y", event->y - 4);
-	
-	WM_operator_properties_create(&ptr2, "SCREEN_OT_area_split");
-	
+	ptr = uiItemFullO(layout, "SCREEN_OT_area_split", NULL, ICON_NONE, NULL, WM_OP_INVOKE_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 	/* store initial mouse cursor position */
-	RNA_int_set(&ptr2, "mouse_x", event->x);
-	RNA_int_set(&ptr2, "mouse_y", event->y);
-	
-	uiItemFullO(layout, "SCREEN_OT_area_split", NULL, ICON_NONE, ptr2.data, WM_OP_INVOKE_DEFAULT, 0);
-	uiItemFullO(layout, "SCREEN_OT_area_join", NULL, ICON_NONE, ptr1.data, WM_OP_INVOKE_DEFAULT, 0);
+	RNA_int_set(&ptr, "mouse_x", event->x);
+	RNA_int_set(&ptr, "mouse_y", event->y);
+
+	ptr = uiItemFullO(layout, "SCREEN_OT_area_join", NULL, ICON_NONE, NULL, WM_OP_INVOKE_DEFAULT, UI_ITEM_O_RETURN_PROPS);
+	/* mouse cursor on edge, '4' can fail on wide edges... */
+	RNA_int_set(&ptr, "min_x", event->x + 4);
+	RNA_int_set(&ptr, "min_y", event->y + 4);
+	RNA_int_set(&ptr, "max_x", event->x - 4);
+	RNA_int_set(&ptr, "max_y", event->y - 4);
 	
 	UI_popup_menu_end(C, pup);
 	
@@ -2888,10 +2901,23 @@ static void SCREEN_OT_spacedata_cleanup(wmOperatorType *ot)
 
 static int repeat_last_exec(bContext *C, wmOperator *UNUSED(op))
 {
-	wmOperator *lastop = CTX_wm_manager(C)->operators.last;
-	
-	if (lastop)
+	wmWindowManager *wm = CTX_wm_manager(C);
+	wmOperator *lastop = wm->operators.last;
+
+	/* Seek last registered operator */
+	while (lastop) {
+		if (lastop->type->flag & OPTYPE_REGISTER) {
+			break;
+		}
+		else {
+			lastop = lastop->prev;
+		}
+	}
+
+	if (lastop) {
+		WM_operator_free_all_after(wm, lastop);
 		WM_operator_repeat(C, lastop);
+	}
 	
 	return OPERATOR_CANCELLED;
 }
@@ -2926,8 +2952,9 @@ static int repeat_history_invoke(bContext *C, wmOperator *op, const wmEvent *UNU
 	layout = UI_popup_menu_layout(pup);
 	
 	for (i = items - 1, lastop = wm->operators.last; lastop; lastop = lastop->prev, i--)
-		if (WM_operator_repeat_check(C, lastop))
+		if ((lastop->type->flag & OPTYPE_REGISTER) && WM_operator_repeat_check(C, lastop)) {
 			uiItemIntO(layout, RNA_struct_ui_name(lastop->type->srna), ICON_NONE, op->type->idname, "index", i);
+		}
 	
 	UI_popup_menu_end(C, pup);
 	
@@ -3732,7 +3759,7 @@ static int screen_animation_cancel_exec(bContext *C, wmOperator *op)
 	bScreen *screen = ED_screen_animation_playing(CTX_wm_manager(C));
 
 	if (screen) {
-		if (RNA_boolean_get(op->ptr, "restore_frame")) {
+		if (RNA_boolean_get(op->ptr, "restore_frame") && screen->animtimer) {
 			ScreenAnimData *sad = screen->animtimer->customdata;
 			Scene *scene = CTX_data_scene(C);
 
@@ -3859,22 +3886,11 @@ static void SCREEN_OT_back_to_previous(struct wmOperatorType *ot)
 
 static int userpref_show_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
-	wmWindow *win = CTX_wm_window(C);
-	rcti rect;
-	int sizex, sizey;
-	
-	sizex = 800 * UI_DPI_WINDOW_FAC;
-	sizey = 480 * UI_DPI_WINDOW_FAC;
-	
-	/* some magic to calculate postition */
-	/* pixelsize: mouse coords are in U.pixelsize units :/ */
-	rect.xmin = (event->x / U.pixelsize) + win->posx - sizex / 2;
-	rect.ymin = (event->y / U.pixelsize) + win->posy - sizey / 2;
-	rect.xmax = rect.xmin + sizex;
-	rect.ymax = rect.ymin + sizey;
+	int sizex = 800 * UI_DPI_FAC;
+	int sizey = 480 * UI_DPI_FAC;
 	
 	/* changes context! */
-	if (WM_window_open_temp(C, &rect, WM_WINDOW_USERPREFS) != NULL) {
+	if (WM_window_open_temp(C, event->x, event->y, sizex, sizey, WM_WINDOW_USERPREFS) != NULL) {
 		return OPERATOR_FINISHED;
 	}
 	else {
@@ -4174,6 +4190,89 @@ static void SCREEN_OT_region_blend(wmOperatorType *ot)
 	/* properties */
 }
 
+/* ******************** space context cycling operator ******************** */
+
+/* SCREEN_OT_space_context_cycle direction */
+enum {
+	SPACE_CONTEXT_CYCLE_PREV,
+	SPACE_CONTEXT_CYCLE_NEXT,
+};
+
+static EnumPropertyItem space_context_cycle_direction[] = {
+	{SPACE_CONTEXT_CYCLE_PREV, "PREV", 0, "Previous", ""},
+	{SPACE_CONTEXT_CYCLE_NEXT, "NEXT", 0, "Next", ""},
+	{0, NULL, 0, NULL, NULL}
+};
+
+static int space_context_cycle_poll(bContext *C)
+{
+	ScrArea *sa = CTX_wm_area(C);
+	/* sa might be NULL if called out of window bounds */
+	return (sa && ELEM(sa->spacetype, SPACE_BUTS, SPACE_USERPREF));
+}
+
+/**
+ * Helper to get the correct RNA pointer/property pair for changing
+ * the display context of active space type in \a sa.
+ */
+static void context_cycle_prop_get(
+        bScreen *screen, const ScrArea *sa,
+        PointerRNA *r_ptr, PropertyRNA **r_prop)
+{
+	const char *propname;
+
+	switch (sa->spacetype) {
+		case SPACE_BUTS:
+			RNA_pointer_create(&screen->id, &RNA_SpaceProperties, sa->spacedata.first, r_ptr);
+			propname = "context";
+			break;
+		case SPACE_USERPREF:
+			RNA_pointer_create(NULL, &RNA_UserPreferences, &U, r_ptr);
+			propname = "active_section";
+			break;
+		default:
+			BLI_assert(0);
+			propname = "";
+	}
+
+	*r_prop = RNA_struct_find_property(r_ptr, propname);
+}
+
+static int space_context_cycle_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
+{
+	const int direction = RNA_enum_get(op->ptr, "direction");
+
+	PointerRNA ptr;
+	PropertyRNA *prop;
+	context_cycle_prop_get(CTX_wm_screen(C), CTX_wm_area(C), &ptr, &prop);
+
+	const int old_context = RNA_property_enum_get(&ptr, prop);
+	const int new_context = RNA_property_enum_step(
+	                  C, &ptr, prop, old_context,
+	                  direction == SPACE_CONTEXT_CYCLE_PREV ? -1 : 1);
+	RNA_property_enum_set(&ptr, prop, new_context);
+	RNA_property_update(C, &ptr, prop);
+
+	return OPERATOR_FINISHED;
+}
+
+static void SCREEN_OT_space_context_cycle(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Cycle Space Context";
+	ot->description = "Cycle through the editor context by activating the next/previous one";
+	ot->idname = "SCREEN_OT_space_context_cycle";
+
+	/* api callbacks */
+	ot->invoke = space_context_cycle_invoke;
+	ot->poll = space_context_cycle_poll;
+
+	ot->flag = 0;
+
+	RNA_def_enum(ot->srna, "direction", space_context_cycle_direction, SPACE_CONTEXT_CYCLE_NEXT, "Direction",
+	             "Direction to cycle through");
+}
+
 
 /* ****************  Assigning operatortypes to global list, adding handlers **************** */
 
@@ -4209,6 +4308,7 @@ void ED_operatortypes_screen(void)
 	WM_operatortype_append(SCREEN_OT_screencast);
 	WM_operatortype_append(SCREEN_OT_userpref_show);
 	WM_operatortype_append(SCREEN_OT_region_blend);
+	WM_operatortype_append(SCREEN_OT_space_context_cycle);
 	
 	/*frame changes*/
 	WM_operatortype_append(SCREEN_OT_frame_offset);
@@ -4230,6 +4330,7 @@ void ED_operatortypes_screen(void)
 	WM_operatortype_append(ED_OT_undo);
 	WM_operatortype_append(ED_OT_undo_push);
 	WM_operatortype_append(ED_OT_redo);
+	WM_operatortype_append(ED_OT_undo_redo);
 	WM_operatortype_append(ED_OT_undo_history);
 
 	WM_operatortype_append(ED_OT_flush_edits);
@@ -4331,7 +4432,12 @@ void ED_keymap_screen(wmKeyConfig *keyconf)
 
 	WM_keymap_add_item(keymap, "SCREEN_OT_screenshot", F3KEY, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "SCREEN_OT_screencast", F3KEY, KM_PRESS, KM_ALT, 0);
-	
+
+	kmi = WM_keymap_add_item(keymap, "SCREEN_OT_space_context_cycle", TABKEY, KM_PRESS, KM_CTRL, 0);
+	RNA_enum_set(kmi->ptr, "direction", SPACE_CONTEXT_CYCLE_NEXT);
+	kmi = WM_keymap_add_item(keymap, "SCREEN_OT_space_context_cycle", TABKEY, KM_PRESS, KM_CTRL | KM_SHIFT, 0);
+	RNA_enum_set(kmi->ptr, "direction", SPACE_CONTEXT_CYCLE_PREV);
+
 	/* tests */
 	WM_keymap_add_item(keymap, "SCREEN_OT_region_quadview", QKEY, KM_PRESS, KM_CTRL | KM_ALT, 0);
 	WM_keymap_verify_item(keymap, "SCREEN_OT_repeat_history", F3KEY, KM_PRESS, 0, 0);

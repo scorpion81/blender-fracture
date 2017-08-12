@@ -886,10 +886,10 @@ class ConstraintButtonsPanel:
         box.template_cache_file(con, "cache_file")
 
         cache_file = con.cache_file
-        
+
         layout.label(text="Constraint Properties:")
         box = layout.box()
-        
+
         if cache_file is not None:
             box.prop_search(con, "object_path", cache_file, "object_paths")
 
@@ -941,5 +941,12 @@ class BONE_PT_constraints(ConstraintButtonsPanel, Panel):
         for con in context.pose_bone.constraints:
             self.draw_constraint(context, con)
 
+classes = (
+    OBJECT_PT_constraints,
+    BONE_PT_constraints,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

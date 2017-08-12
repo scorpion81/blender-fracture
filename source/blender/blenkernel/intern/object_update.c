@@ -54,6 +54,7 @@
 #include "BKE_editmesh.h"
 #include "BKE_object.h"
 #include "BKE_particle.h"
+#include "BKE_pointcache.h"
 #include "BKE_scene.h"
 #include "BKE_material.h"
 #include "BKE_image.h"
@@ -142,18 +143,6 @@ void BKE_object_eval_done(EvaluationContext *UNUSED(eval_ctx), Object *ob)
 	/* Set negative scale flag in object. */
 	if (is_negative_m4(ob->obmat)) ob->transflag |= OB_NEG_SCALE;
 	else ob->transflag &= ~OB_NEG_SCALE;
-}
-
-void BKE_object_eval_modifier(struct EvaluationContext *eval_ctx,
-                              struct Scene *scene,
-                              struct Object *ob,
-                              struct ModifierData *md)
-{
-	DEBUG_PRINT("%s on %s\n", __func__, ob->id.name);
-	(void) eval_ctx;  /* Ignored. */
-	(void) scene;  /* Ignored. */
-	(void) ob;  /* Ignored. */
-	(void) md;  /* Ignored. */
 }
 
 void BKE_object_handle_data_update(EvaluationContext *eval_ctx,
@@ -346,4 +335,10 @@ void BKE_object_eval_uber_data(EvaluationContext *eval_ctx,
 	BKE_object_handle_data_update(eval_ctx, scene, ob);
 
 	ob->recalc &= ~(OB_RECALC_DATA | OB_RECALC_TIME);
+}
+
+void BKE_object_eval_cloth(EvaluationContext *UNUSED(eval_ctx), Scene *scene, Object *object)
+{
+	DEBUG_PRINT("%s on %s\n", __func__, object->id.name);
+	BKE_ptcache_object_reset(scene, object, PTCACHE_RESET_DEPSGRAPH);
 }

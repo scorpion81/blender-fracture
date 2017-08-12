@@ -15,32 +15,39 @@
  */
 
 #include <climits>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "device.h"
-#include "device_intern.h"
+#include "device/device.h"
+#include "device/device_denoising.h"
+#include "device/device_intern.h"
+#include "device/device_split_kernel.h"
 
-#include "buffers.h"
+#include "render/buffers.h"
+
+#include "kernel/filter/filter_defines.h"
 
 #ifdef WITH_CUDA_DYNLOAD
 #  include "cuew.h"
 #else
-#  include "util_opengl.h"
+#  include "util/util_opengl.h"
 #  include <cuda.h>
 #  include <cudaGL.h>
 #endif
-#include "util_debug.h"
-#include "util_logging.h"
-#include "util_map.h"
-#include "util_md5.h"
-#include "util_opengl.h"
-#include "util_path.h"
-#include "util_string.h"
-#include "util_system.h"
-#include "util_types.h"
-#include "util_time.h"
+#include "util/util_debug.h"
+#include "util/util_logging.h"
+#include "util/util_map.h"
+#include "util/util_md5.h"
+#include "util/util_opengl.h"
+#include "util/util_path.h"
+#include "util/util_string.h"
+#include "util/util_system.h"
+#include "util/util_types.h"
+#include "util/util_time.h"
+
+#include "kernel/split/kernel_split_data_types.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -78,18 +85,45 @@ int cuewCompilerVersion(void)
 }  /* namespace */
 #endif  /* WITH_CUDA_DYNLOAD */
 
+class CUDADevice;
+
+class CUDASplitKernel : public DeviceSplitKernel {
+	CUDADevice *device;
+public:
+	explicit CUDASplitKernel(CUDADevice *device);
+
+	virtual uint64_t state_buffer_size(device_memory& kg, device_memory& data, size_t num_threads);
+
+	virtual bool enqueue_split_kernel_data_init(const KernelDimensions& dim,
+	                                            RenderTile& rtile,
+	                                            int num_global_elements,
+	                                            device_memory& kernel_globals,
+	                                            device_memory& kernel_data_,
+	                                            device_memory& split_data,
+	                                            device_memory& ray_state,
+	                                            device_memory& queue_index,
+	                                            device_memory& use_queues_flag,
+	                                            device_memory& work_pool_wgs);
+
+	virtual SplitKernelFunction* get_split_kernel_function(const string& kernel_name,
+	                                                       const DeviceRequestedFeatures&);
+	virtual int2 split_kernel_local_size();
+	virtual int2 split_kernel_global_size(device_memory& kg, device_memory& data, DeviceTask *task);
+};
+
 class CUDADevice : public Device
 {
 public:
 	DedicatedTaskPool task_pool;
 	CUdevice cuDevice;
 	CUcontext cuContext;
-	CUmodule cuModule;
+	CUmodule cuModule, cuFilterModule;
 	map<device_ptr, bool> tex_interp_map;
 	map<device_ptr, uint> tex_bindless_map;
 	int cuDevId;
 	int cuDevArchitecture;
 	bool first_error;
+	CUDASplitKernel *split_kernel;
 
 	struct PixelMem {
 		GLuint cuPBO;
@@ -130,7 +164,7 @@ public:
 	{
 		if(first_error) {
 			fprintf(stderr, "\nRefer to the Cycles GPU rendering documentation for possible solutions:\n");
-			fprintf(stderr, "http://www.blender.org/manual/render/cycles/gpu_rendering.html\n\n");
+			fprintf(stderr, "https://docs.blender.org/manual/en/dev/render/cycles/gpu_rendering.html\n\n");
 			first_error = false;
 		}
 	}
@@ -140,7 +174,7 @@ public:
 		CUresult result = stmt; \
 		\
 		if(result != CUDA_SUCCESS) { \
-			string message = string_printf("CUDA error: %s in %s", cuewErrorString(result), #stmt); \
+			string message = string_printf("CUDA error: %s in %s, line %d", cuewErrorString(result), #stmt, __LINE__); \
 			if(error_msg == "") \
 				error_msg = message; \
 			fprintf(stderr, "%s\n", message.c_str()); \
@@ -192,6 +226,11 @@ public:
 		cuDevice = 0;
 		cuContext = 0;
 
+		cuModule = 0;
+		cuFilterModule = 0;
+
+		split_kernel = NULL;
+
 		need_bindless_mapping = false;
 
 		/* intialize */
@@ -231,6 +270,8 @@ public:
 	{
 		task_pool.stop();
 
+		delete split_kernel;
+
 		if(info.has_bindless_textures) {
 			tex_free(bindless_mapping);
 		}
@@ -258,16 +299,22 @@ public:
 		return DebugFlags().cuda.adaptive_compile;
 	}
 
+	bool use_split_kernel()
+	{
+		return DebugFlags().cuda.split_kernel;
+	}
+
 	/* Common NVCC flags which stays the same regardless of shading model,
 	 * kernel sources md5 and only depends on compiler or compilation settings.
 	 */
 	string compile_kernel_get_common_cflags(
-	        const DeviceRequestedFeatures& requested_features)
+	        const DeviceRequestedFeatures& requested_features,
+	        bool filter=false, bool split=false)
 	{
 		const int cuda_version = cuewCompilerVersion();
 		const int machine = system_cpu_bits();
-		const string kernel_path = path_get("kernel");
-		const string include = kernel_path;
+		const string source_path = path_get("source");
+		const string include_path = source_path;
 		string cflags = string_printf("-m%d "
 		                              "--ptxas-options=\"-v\" "
 		                              "--use_fast_math "
@@ -276,8 +323,8 @@ public:
 		                               "-I\"%s\"",
 		                              machine,
 		                              cuda_version,
-		                              include.c_str());
-		if(use_adaptive_compilation()) {
+		                              include_path.c_str());
+		if(!filter && use_adaptive_compilation()) {
 			cflags += " " + requested_features.get_build_options();
 		}
 		const char *extra_cflags = getenv("CYCLES_CUDA_EXTRA_CFLAGS");
@@ -287,6 +334,11 @@ public:
 #ifdef WITH_CYCLES_DEBUG
 		cflags += " -D__KERNEL_DEBUG__";
 #endif
+
+		if(split) {
+			cflags += " -D__SPLIT__";
+		}
+
 		return cflags;
 	}
 
@@ -306,22 +358,36 @@ public:
 			cuda_error_message("CUDA nvcc compiler version could not be parsed.");
 			return false;
 		}
-		if(cuda_version < 75) {
+		if(cuda_version < 80) {
 			printf("Unsupported CUDA version %d.%d detected, "
-			       "you need CUDA 7.5 or newer.\n",
+			       "you need CUDA 8.0 or newer.\n",
 			       major, minor);
 			return false;
 		}
-		else if(cuda_version != 75 && cuda_version != 80) {
+		else if(cuda_version != 80) {
 			printf("CUDA version %d.%d detected, build may succeed but only "
-			       "CUDA 7.5 and 8.0 are officially supported.\n",
+			       "CUDA 8.0 is officially supported.\n",
 			       major, minor);
 		}
 		return true;
 	}
 
-	string compile_kernel(const DeviceRequestedFeatures& requested_features)
+	string compile_kernel(const DeviceRequestedFeatures& requested_features,
+	                      bool filter=false, bool split=false)
 	{
+		const char *name, *source;
+		if(filter) {
+			name = "filter";
+			source = "filter.cu";
+		}
+		else if(split) {
+			name = "kernel_split";
+			source = "kernel_split.cu";
+		}
+		else {
+			name = "kernel";
+			source = "kernel.cu";
+		}
 		/* Compute cubin name. */
 		int major, minor;
 		cuDeviceGetAttribute(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, cuDevId);
@@ -329,8 +395,8 @@ public:
 
 		/* Attempt to use kernel provided with Blender. */
 		if(!use_adaptive_compilation()) {
-			const string cubin = path_get(string_printf("lib/kernel_sm_%d%d.cubin",
-			                                            major, minor));
+			const string cubin = path_get(string_printf("lib/%s_sm_%d%d.cubin",
+			                                            name, major, minor));
 			VLOG(1) << "Testing for pre-compiled kernel " << cubin << ".";
 			if(path_exists(cubin)) {
 				VLOG(1) << "Using precompiled kernel.";
@@ -339,19 +405,19 @@ public:
 		}
 
 		const string common_cflags =
-		        compile_kernel_get_common_cflags(requested_features);
+		        compile_kernel_get_common_cflags(requested_features, filter, split);
 
 		/* Try to use locally compiled kernel. */
-		const string kernel_path = path_get("kernel");
-		const string kernel_md5 = path_files_md5_hash(kernel_path);
+		const string source_path = path_get("source");
+		const string kernel_md5 = path_files_md5_hash(source_path);
 
 		/* We include cflags into md5 so changing cuda toolkit or changing other
 		 * compiler command line arguments makes sure cubin gets re-built.
 		 */
 		const string cubin_md5 = util_md5_string(kernel_md5 + common_cflags);
 
-		const string cubin_file = string_printf("cycles_kernel_sm%d%d_%s.cubin",
-		                                        major, minor,
+		const string cubin_file = string_printf("cycles_%s_sm%d%d_%s.cubin",
+		                                        name, major, minor,
 		                                        cubin_md5.c_str());
 		const string cubin = path_cache_get(path_join("kernels", cubin_file));
 		VLOG(1) << "Testing for locally compiled kernel " << cubin << ".";
@@ -383,9 +449,10 @@ public:
 			return "";
 		}
 		const char *nvcc = cuewCompilerPath();
-		const string kernel = path_join(kernel_path,
-		                          path_join("kernels",
-		                                    path_join("cuda", "kernel.cu")));
+		const string kernel = path_join(
+		        path_join(source_path, "kernel"),
+		        path_join("kernels",
+		                  path_join("cuda", source)));
 		double starttime = time_dt();
 		printf("Compiling CUDA kernel ...\n");
 
@@ -424,6 +491,16 @@ public:
 
 	bool load_kernels(const DeviceRequestedFeatures& requested_features)
 	{
+		/* TODO(sergey): Support kernels re-load for CUDA devices.
+		 *
+		 * Currently re-loading kernel will invalidate memory pointers,
+		 * causing problems in cuCtxSynchronize.
+		 */
+		if(cuFilterModule && cuModule) {
+			VLOG(1) << "Skipping kernel reload, not currently supported.";
+			return true;
+		}
+
 		/* check if cuda init succeeded */
 		if(cuContext == 0)
 			return false;
@@ -433,9 +510,12 @@ public:
 			return false;
 
 		/* get kernel */
-		string cubin = compile_kernel(requested_features);
-
+		string cubin = compile_kernel(requested_features, false, use_split_kernel());
 		if(cubin == "")
+			return false;
+
+		string filter_cubin = compile_kernel(requested_features, true, false);
+		if(filter_cubin == "")
 			return false;
 
 		/* open module */
@@ -452,6 +532,14 @@ public:
 		if(cuda_error_(result, "cuModuleLoad"))
 			cuda_error_message(string_printf("Failed loading CUDA kernel %s.", cubin.c_str()));
 
+		if(path_read_text(filter_cubin, cubin_data))
+			result = cuModuleLoadData(&cuFilterModule, cubin_data.c_str());
+		else
+			result = CUDA_ERROR_FILE_NOT_FOUND;
+
+		if(cuda_error_(result, "cuModuleLoad"))
+			cuda_error_message(string_printf("Failed loading CUDA kernel %s.", filter_cubin.c_str()));
+
 		cuda_pop_context();
 
 		return (result == CUDA_SUCCESS);
@@ -466,8 +554,14 @@ public:
 		}
 	}
 
-	void mem_alloc(device_memory& mem, MemoryType /*type*/)
+	void mem_alloc(const char *name, device_memory& mem, MemoryType /*type*/)
 	{
+		if(name) {
+			VLOG(1) << "Buffer allocate: " << name << ", "
+			        << string_human_readable_number(mem.memory_size()) << " bytes. ("
+			        << string_human_readable_size(mem.memory_size()) << ")";
+		}
+
 		cuda_push_context();
 		CUdeviceptr device_pointer;
 		size_t size = mem.memory_size();
@@ -504,7 +598,9 @@ public:
 
 	void mem_zero(device_memory& mem)
 	{
-		memset((void*)mem.data_pointer, 0, mem.memory_size());
+		if(mem.data_pointer) {
+			memset((void*)mem.data_pointer, 0, mem.memory_size());
+		}
 
 		cuda_push_context();
 		if(mem.device_pointer)
@@ -524,6 +620,11 @@ public:
 			stats.mem_free(mem.device_size);
 			mem.device_size = 0;
 		}
+	}
+
+	virtual device_ptr mem_alloc_sub_ptr(device_memory& mem, int offset, int /*size*/, MemoryType /*type*/)
+	{
+		return (device_ptr) (((char*) mem.device_pointer) + mem.memory_elements_size(offset));
 	}
 
 	void const_copy_to(const char *name, void *host, size_t size)
@@ -617,7 +718,7 @@ public:
 		/* Data Storage */
 		if(interpolation == INTERPOLATION_NONE) {
 			if(has_bindless_textures) {
-				mem_alloc(mem, MEM_READ_ONLY);
+				mem_alloc(NULL, mem, MEM_READ_ONLY);
 				mem_copy_to(mem);
 
 				cuda_push_context();
@@ -641,7 +742,7 @@ public:
 				cuda_pop_context();
 			}
 			else {
-				mem_alloc(mem, MEM_READ_ONLY);
+				mem_alloc(NULL, mem, MEM_READ_ONLY);
 				mem_copy_to(mem);
 
 				cuda_push_context();
@@ -824,6 +925,393 @@ public:
 				mem_free(mem);
 			}
 		}
+	}
+
+	bool denoising_set_tiles(device_ptr *buffers, DenoisingTask *task)
+	{
+		mem_alloc("Denoising Tile Info", task->tiles_mem, MEM_READ_ONLY);
+
+		TilesInfo *tiles = (TilesInfo*) task->tiles_mem.data_pointer;
+		for(int i = 0; i < 9; i++) {
+			tiles->buffers[i] = buffers[i];
+		}
+
+		mem_copy_to(task->tiles_mem);
+
+		return !have_error();
+	}
+
+#define CUDA_GET_BLOCKSIZE(func, w, h)                                                                          \
+			int threads_per_block;                                                                              \
+			cuda_assert(cuFuncGetAttribute(&threads_per_block, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, func)); \
+			int threads = (int)sqrt((float)threads_per_block);                                                  \
+			int xblocks = ((w) + threads - 1)/threads;                                                          \
+			int yblocks = ((h) + threads - 1)/threads;
+
+#define CUDA_LAUNCH_KERNEL(func, args)                      \
+			cuda_assert(cuLaunchKernel(func,                \
+			                           xblocks, yblocks, 1, \
+			                           threads, threads, 1, \
+			                           0, 0, args, 0));
+
+	bool denoising_non_local_means(device_ptr image_ptr, device_ptr guide_ptr, device_ptr variance_ptr, device_ptr out_ptr,
+	                               DenoisingTask *task)
+	{
+		if(have_error())
+			return false;
+
+		cuda_push_context();
+
+		int4 rect = task->rect;
+		int w = align_up(rect.z-rect.x, 4);
+		int h = rect.w-rect.y;
+		int r = task->nlm_state.r;
+		int f = task->nlm_state.f;
+		float a = task->nlm_state.a;
+		float k_2 = task->nlm_state.k_2;
+
+		CUdeviceptr difference     = task->nlm_state.temporary_1_ptr;
+		CUdeviceptr blurDifference = task->nlm_state.temporary_2_ptr;
+		CUdeviceptr weightAccum    = task->nlm_state.temporary_3_ptr;
+
+		cuda_assert(cuMemsetD8(weightAccum, 0, sizeof(float)*w*h));
+		cuda_assert(cuMemsetD8(out_ptr, 0, sizeof(float)*w*h));
+
+		CUfunction cuNLMCalcDifference, cuNLMBlur, cuNLMCalcWeight, cuNLMUpdateOutput, cuNLMNormalize;
+		cuda_assert(cuModuleGetFunction(&cuNLMCalcDifference, cuFilterModule, "kernel_cuda_filter_nlm_calc_difference"));
+		cuda_assert(cuModuleGetFunction(&cuNLMBlur,           cuFilterModule, "kernel_cuda_filter_nlm_blur"));
+		cuda_assert(cuModuleGetFunction(&cuNLMCalcWeight,     cuFilterModule, "kernel_cuda_filter_nlm_calc_weight"));
+		cuda_assert(cuModuleGetFunction(&cuNLMUpdateOutput,   cuFilterModule, "kernel_cuda_filter_nlm_update_output"));
+		cuda_assert(cuModuleGetFunction(&cuNLMNormalize,      cuFilterModule, "kernel_cuda_filter_nlm_normalize"));
+
+		cuda_assert(cuFuncSetCacheConfig(cuNLMCalcDifference, CU_FUNC_CACHE_PREFER_L1));
+		cuda_assert(cuFuncSetCacheConfig(cuNLMBlur,           CU_FUNC_CACHE_PREFER_L1));
+		cuda_assert(cuFuncSetCacheConfig(cuNLMCalcWeight,     CU_FUNC_CACHE_PREFER_L1));
+		cuda_assert(cuFuncSetCacheConfig(cuNLMUpdateOutput,   CU_FUNC_CACHE_PREFER_L1));
+		cuda_assert(cuFuncSetCacheConfig(cuNLMNormalize,      CU_FUNC_CACHE_PREFER_L1));
+
+		CUDA_GET_BLOCKSIZE(cuNLMCalcDifference, rect.z-rect.x, rect.w-rect.y);
+
+		int dx, dy;
+		int4 local_rect;
+		int channel_offset = 0;
+		void *calc_difference_args[] = {&dx, &dy, &guide_ptr, &variance_ptr, &difference, &local_rect, &w, &channel_offset, &a, &k_2};
+		void *blur_args[]            = {&difference, &blurDifference, &local_rect, &w, &f};
+		void *calc_weight_args[]     = {&blurDifference, &difference, &local_rect, &w, &f};
+		void *update_output_args[]   = {&dx, &dy, &blurDifference, &image_ptr, &out_ptr, &weightAccum, &local_rect, &w, &f};
+
+		for(int i = 0; i < (2*r+1)*(2*r+1); i++) {
+			dy = i / (2*r+1) - r;
+			dx = i % (2*r+1) - r;
+			local_rect = make_int4(max(0, -dx), max(0, -dy), rect.z-rect.x - max(0, dx), rect.w-rect.y - max(0, dy));
+
+			CUDA_LAUNCH_KERNEL(cuNLMCalcDifference, calc_difference_args);
+			CUDA_LAUNCH_KERNEL(cuNLMBlur, blur_args);
+			CUDA_LAUNCH_KERNEL(cuNLMCalcWeight, calc_weight_args);
+			CUDA_LAUNCH_KERNEL(cuNLMBlur, blur_args);
+			CUDA_LAUNCH_KERNEL(cuNLMUpdateOutput, update_output_args);
+		}
+
+		local_rect = make_int4(0, 0, rect.z-rect.x, rect.w-rect.y);
+		void *normalize_args[] = {&out_ptr, &weightAccum, &local_rect, &w};
+		CUDA_LAUNCH_KERNEL(cuNLMNormalize, normalize_args);
+		cuda_assert(cuCtxSynchronize());
+
+		cuda_pop_context();
+		return !have_error();
+	}
+
+	bool denoising_construct_transform(DenoisingTask *task)
+	{
+		if(have_error())
+			return false;
+
+		cuda_push_context();
+
+		CUfunction cuFilterConstructTransform;
+		cuda_assert(cuModuleGetFunction(&cuFilterConstructTransform, cuFilterModule, "kernel_cuda_filter_construct_transform"));
+		cuda_assert(cuFuncSetCacheConfig(cuFilterConstructTransform, CU_FUNC_CACHE_PREFER_SHARED));
+		CUDA_GET_BLOCKSIZE(cuFilterConstructTransform,
+		                   task->storage.w,
+		                   task->storage.h);
+
+		void *args[] = {&task->buffer.mem.device_pointer,
+		                &task->storage.transform.device_pointer,
+		                &task->storage.rank.device_pointer,
+		                &task->filter_area,
+		                &task->rect,
+		                &task->radius,
+		                &task->pca_threshold,
+		                &task->buffer.pass_stride};
+		CUDA_LAUNCH_KERNEL(cuFilterConstructTransform, args);
+		cuda_assert(cuCtxSynchronize());
+
+		cuda_pop_context();
+		return !have_error();
+	}
+
+	bool denoising_reconstruct(device_ptr color_ptr,
+	                           device_ptr color_variance_ptr,
+	                           device_ptr output_ptr,
+	                           DenoisingTask *task)
+	{
+		if(have_error())
+			return false;
+
+		mem_zero(task->storage.XtWX);
+		mem_zero(task->storage.XtWY);
+
+		cuda_push_context();
+
+		CUfunction cuNLMCalcDifference, cuNLMBlur, cuNLMCalcWeight, cuNLMConstructGramian, cuFinalize;
+		cuda_assert(cuModuleGetFunction(&cuNLMCalcDifference,   cuFilterModule, "kernel_cuda_filter_nlm_calc_difference"));
+		cuda_assert(cuModuleGetFunction(&cuNLMBlur,             cuFilterModule, "kernel_cuda_filter_nlm_blur"));
+		cuda_assert(cuModuleGetFunction(&cuNLMCalcWeight,       cuFilterModule, "kernel_cuda_filter_nlm_calc_weight"));
+		cuda_assert(cuModuleGetFunction(&cuNLMConstructGramian, cuFilterModule, "kernel_cuda_filter_nlm_construct_gramian"));
+		cuda_assert(cuModuleGetFunction(&cuFinalize,            cuFilterModule, "kernel_cuda_filter_finalize"));
+
+		cuda_assert(cuFuncSetCacheConfig(cuNLMCalcDifference,   CU_FUNC_CACHE_PREFER_L1));
+		cuda_assert(cuFuncSetCacheConfig(cuNLMBlur,             CU_FUNC_CACHE_PREFER_L1));
+		cuda_assert(cuFuncSetCacheConfig(cuNLMCalcWeight,       CU_FUNC_CACHE_PREFER_L1));
+		cuda_assert(cuFuncSetCacheConfig(cuNLMConstructGramian, CU_FUNC_CACHE_PREFER_SHARED));
+		cuda_assert(cuFuncSetCacheConfig(cuFinalize,            CU_FUNC_CACHE_PREFER_L1));
+
+		CUDA_GET_BLOCKSIZE(cuNLMCalcDifference,
+		                   task->reconstruction_state.source_w,
+		                   task->reconstruction_state.source_h);
+
+		CUdeviceptr difference     = task->reconstruction_state.temporary_1_ptr;
+		CUdeviceptr blurDifference = task->reconstruction_state.temporary_2_ptr;
+
+		int r = task->radius;
+		int f = 4;
+		float a = 1.0f;
+		for(int i = 0; i < (2*r+1)*(2*r+1); i++) {
+			int dy = i / (2*r+1) - r;
+			int dx = i % (2*r+1) - r;
+
+			int local_rect[4] = {max(0, -dx), max(0, -dy),
+			                     task->reconstruction_state.source_w - max(0, dx),
+			                     task->reconstruction_state.source_h - max(0, dy)};
+
+			void *calc_difference_args[] = {&dx, &dy,
+			                                &color_ptr,
+			                                &color_variance_ptr,
+			                                &difference,
+			                                &local_rect,
+			                                &task->buffer.w,
+			                                &task->buffer.pass_stride,
+			                                &a,
+			                                &task->nlm_k_2};
+			CUDA_LAUNCH_KERNEL(cuNLMCalcDifference, calc_difference_args);
+
+			void *blur_args[] = {&difference,
+			                     &blurDifference,
+			                     &local_rect,
+			                     &task->buffer.w,
+			                     &f};
+			CUDA_LAUNCH_KERNEL(cuNLMBlur, blur_args);
+
+			void *calc_weight_args[] = {&blurDifference,
+			                            &difference,
+			                            &local_rect,
+			                            &task->buffer.w,
+			                            &f};
+			CUDA_LAUNCH_KERNEL(cuNLMCalcWeight, calc_weight_args);
+
+			/* Reuse previous arguments. */
+			CUDA_LAUNCH_KERNEL(cuNLMBlur, blur_args);
+
+			void *construct_gramian_args[] = {&dx, &dy,
+			                                  &blurDifference,
+			                                  &task->buffer.mem.device_pointer,
+			                                  &task->storage.transform.device_pointer,
+			                                  &task->storage.rank.device_pointer,
+			                                  &task->storage.XtWX.device_pointer,
+			                                  &task->storage.XtWY.device_pointer,
+			                                  &local_rect,
+			                                  &task->reconstruction_state.filter_rect,
+			                                  &task->buffer.w,
+			                                  &task->buffer.h,
+			                                  &f,
+		                                      &task->buffer.pass_stride};
+			CUDA_LAUNCH_KERNEL(cuNLMConstructGramian, construct_gramian_args);
+		}
+
+		void *finalize_args[] = {&task->buffer.w,
+		                         &task->buffer.h,
+		                         &output_ptr,
+				                 &task->storage.rank.device_pointer,
+				                 &task->storage.XtWX.device_pointer,
+				                 &task->storage.XtWY.device_pointer,
+				                 &task->filter_area,
+				                 &task->reconstruction_state.buffer_params.x,
+				                 &task->render_buffer.samples};
+		CUDA_LAUNCH_KERNEL(cuFinalize, finalize_args);
+		cuda_assert(cuCtxSynchronize());
+
+		cuda_pop_context();
+		return !have_error();
+	}
+
+	bool denoising_combine_halves(device_ptr a_ptr, device_ptr b_ptr,
+	                              device_ptr mean_ptr, device_ptr variance_ptr,
+	                              int r, int4 rect, DenoisingTask *task)
+	{
+		if(have_error())
+			return false;
+
+		cuda_push_context();
+
+		CUfunction cuFilterCombineHalves;
+		cuda_assert(cuModuleGetFunction(&cuFilterCombineHalves, cuFilterModule, "kernel_cuda_filter_combine_halves"));
+		cuda_assert(cuFuncSetCacheConfig(cuFilterCombineHalves, CU_FUNC_CACHE_PREFER_L1));
+		CUDA_GET_BLOCKSIZE(cuFilterCombineHalves,
+		                   task->rect.z-task->rect.x,
+		                   task->rect.w-task->rect.y);
+
+		void *args[] = {&mean_ptr,
+		                &variance_ptr,
+		                &a_ptr,
+		                &b_ptr,
+		                &rect,
+		                &r};
+		CUDA_LAUNCH_KERNEL(cuFilterCombineHalves, args);
+		cuda_assert(cuCtxSynchronize());
+
+		cuda_pop_context();
+		return !have_error();
+	}
+
+	bool denoising_divide_shadow(device_ptr a_ptr, device_ptr b_ptr,
+	                             device_ptr sample_variance_ptr, device_ptr sv_variance_ptr,
+	                             device_ptr buffer_variance_ptr, DenoisingTask *task)
+	{
+		if(have_error())
+			return false;
+
+		cuda_push_context();
+
+		CUfunction cuFilterDivideShadow;
+		cuda_assert(cuModuleGetFunction(&cuFilterDivideShadow, cuFilterModule, "kernel_cuda_filter_divide_shadow"));
+		cuda_assert(cuFuncSetCacheConfig(cuFilterDivideShadow, CU_FUNC_CACHE_PREFER_L1));
+		CUDA_GET_BLOCKSIZE(cuFilterDivideShadow,
+		                   task->rect.z-task->rect.x,
+		                   task->rect.w-task->rect.y);
+
+		bool use_split_variance = use_split_kernel();
+		void *args[] = {&task->render_buffer.samples,
+		                &task->tiles_mem.device_pointer,
+		                &a_ptr,
+		                &b_ptr,
+		                &sample_variance_ptr,
+		                &sv_variance_ptr,
+		                &buffer_variance_ptr,
+		                &task->rect,
+		                &task->render_buffer.pass_stride,
+		                &task->render_buffer.denoising_data_offset,
+		                &use_split_variance};
+		CUDA_LAUNCH_KERNEL(cuFilterDivideShadow, args);
+		cuda_assert(cuCtxSynchronize());
+
+		cuda_pop_context();
+		return !have_error();
+	}
+
+	bool denoising_get_feature(int mean_offset,
+	                           int variance_offset,
+	                           device_ptr mean_ptr,
+	                           device_ptr variance_ptr,
+	                           DenoisingTask *task)
+	{
+		if(have_error())
+			return false;
+
+		cuda_push_context();
+
+		CUfunction cuFilterGetFeature;
+		cuda_assert(cuModuleGetFunction(&cuFilterGetFeature, cuFilterModule, "kernel_cuda_filter_get_feature"));
+		cuda_assert(cuFuncSetCacheConfig(cuFilterGetFeature, CU_FUNC_CACHE_PREFER_L1));
+		CUDA_GET_BLOCKSIZE(cuFilterGetFeature,
+		                   task->rect.z-task->rect.x,
+		                   task->rect.w-task->rect.y);
+
+		bool use_split_variance = use_split_kernel();
+		void *args[] = {&task->render_buffer.samples,
+		                &task->tiles_mem.device_pointer,
+				        &mean_offset,
+				        &variance_offset,
+		                &mean_ptr,
+		                &variance_ptr,
+		                &task->rect,
+		                &task->render_buffer.pass_stride,
+		                &task->render_buffer.denoising_data_offset,
+		                &use_split_variance};
+		CUDA_LAUNCH_KERNEL(cuFilterGetFeature, args);
+		cuda_assert(cuCtxSynchronize());
+
+		cuda_pop_context();
+		return !have_error();
+	}
+
+	bool denoising_detect_outliers(device_ptr image_ptr,
+	                               device_ptr variance_ptr,
+	                               device_ptr depth_ptr,
+	                               device_ptr output_ptr,
+	                               DenoisingTask *task)
+	{
+		if(have_error())
+			return false;
+
+		cuda_push_context();
+
+		CUfunction cuFilterDetectOutliers;
+		cuda_assert(cuModuleGetFunction(&cuFilterDetectOutliers, cuFilterModule, "kernel_cuda_filter_detect_outliers"));
+		cuda_assert(cuFuncSetCacheConfig(cuFilterDetectOutliers, CU_FUNC_CACHE_PREFER_L1));
+		CUDA_GET_BLOCKSIZE(cuFilterDetectOutliers,
+		                   task->rect.z-task->rect.x,
+		                   task->rect.w-task->rect.y);
+
+		void *args[] = {&image_ptr,
+		                &variance_ptr,
+		                &depth_ptr,
+		                &output_ptr,
+		                &task->rect,
+		                &task->buffer.pass_stride};
+
+		CUDA_LAUNCH_KERNEL(cuFilterDetectOutliers, args);
+		cuda_assert(cuCtxSynchronize());
+
+		cuda_pop_context();
+		return !have_error();
+	}
+
+	void denoise(RenderTile &rtile, const DeviceTask &task)
+	{
+		DenoisingTask denoising(this);
+
+		denoising.functions.construct_transform = function_bind(&CUDADevice::denoising_construct_transform, this, &denoising);
+		denoising.functions.reconstruct = function_bind(&CUDADevice::denoising_reconstruct, this, _1, _2, _3, &denoising);
+		denoising.functions.divide_shadow = function_bind(&CUDADevice::denoising_divide_shadow, this, _1, _2, _3, _4, _5, &denoising);
+		denoising.functions.non_local_means = function_bind(&CUDADevice::denoising_non_local_means, this, _1, _2, _3, _4, &denoising);
+		denoising.functions.combine_halves = function_bind(&CUDADevice::denoising_combine_halves, this, _1, _2, _3, _4, _5, _6, &denoising);
+		denoising.functions.get_feature = function_bind(&CUDADevice::denoising_get_feature, this, _1, _2, _3, _4, &denoising);
+		denoising.functions.detect_outliers = function_bind(&CUDADevice::denoising_detect_outliers, this, _1, _2, _3, _4, &denoising);
+		denoising.functions.set_tiles = function_bind(&CUDADevice::denoising_set_tiles, this, _1, &denoising);
+
+		denoising.filter_area = make_int4(rtile.x, rtile.y, rtile.w, rtile.h);
+		denoising.render_buffer.samples = rtile.sample;
+
+		RenderTile rtiles[9];
+		rtiles[4] = rtile;
+		task.map_neighbor_tiles(rtiles, this);
+		denoising.tiles_from_rendertiles(rtiles);
+
+		denoising.init_from_devicetask(task);
+
+		denoising.run_denoising();
+
+		task.unmap_neighbor_tiles(rtiles, this);
 	}
 
 	void path_trace(RenderTile& rtile, int sample, bool branched)
@@ -1250,7 +1738,7 @@ public:
 
 	void thread_run(DeviceTask *task)
 	{
-		if(task->type == DeviceTask::PATH_TRACE) {
+		if(task->type == DeviceTask::RENDER) {
 			RenderTile tile;
 
 			bool branched = task->integrator_branched;
@@ -1258,25 +1746,57 @@ public:
 			/* Upload Bindless Mapping */
 			load_bindless_mapping();
 
+			DeviceRequestedFeatures requested_features;
+			if(use_split_kernel()) {
+				if(!use_adaptive_compilation()) {
+					requested_features.max_closure = 64;
+				}
+
+				if(split_kernel == NULL) {
+					split_kernel = new CUDASplitKernel(this);
+					split_kernel->load_kernels(requested_features);
+				}
+			}
+
 			/* keep rendering tiles until done */
 			while(task->acquire_tile(this, tile)) {
-				int start_sample = tile.start_sample;
-				int end_sample = tile.start_sample + tile.num_samples;
-
-				for(int sample = start_sample; sample < end_sample; sample++) {
-					if(task->get_cancel()) {
-						if(task->need_finish_queue == false)
-							break;
+				if(tile.task == RenderTile::PATH_TRACE) {
+					if(use_split_kernel()) {
+						device_memory void_buffer;
+						split_kernel->path_trace(task, tile, void_buffer, void_buffer);
 					}
+					else {
+						int start_sample = tile.start_sample;
+						int end_sample = tile.start_sample + tile.num_samples;
 
-					path_trace(tile, sample, branched);
+						for(int sample = start_sample; sample < end_sample; sample++) {
+							if(task->get_cancel()) {
+								if(task->need_finish_queue == false)
+									break;
+							}
 
-					tile.sample = sample + 1;
+							path_trace(tile, sample, branched);
+
+							tile.sample = sample + 1;
+
+							task->update_progress(&tile, tile.w*tile.h);
+						}
+					}
+				}
+				else if(tile.task == RenderTile::DENOISE) {
+					tile.sample = tile.start_sample + tile.num_samples;
+
+					denoise(tile, *task);
 
 					task->update_progress(&tile, tile.w*tile.h);
 				}
 
 				task->release_tile(tile);
+
+				if(task->get_cancel()) {
+					if(task->need_finish_queue == false)
+						break;
+				}
 			}
 		}
 		else if(task->type == DeviceTask::SHADER) {
@@ -1329,7 +1849,237 @@ public:
 	{
 		task_pool.cancel();
 	}
+
+	friend class CUDASplitKernelFunction;
+	friend class CUDASplitKernel;
 };
+
+/* redefine the cuda_assert macro so it can be used outside of the CUDADevice class
+ * now that the definition of that class is complete
+ */
+#undef cuda_assert
+#define cuda_assert(stmt) \
+	{ \
+		CUresult result = stmt; \
+		\
+		if(result != CUDA_SUCCESS) { \
+			string message = string_printf("CUDA error: %s in %s", cuewErrorString(result), #stmt); \
+			if(device->error_msg == "") \
+				device->error_msg = message; \
+			fprintf(stderr, "%s\n", message.c_str()); \
+			/*cuda_abort();*/ \
+			device->cuda_error_documentation(); \
+		} \
+	} (void)0
+
+/* split kernel */
+
+class CUDASplitKernelFunction : public SplitKernelFunction{
+	CUDADevice* device;
+	CUfunction func;
+public:
+	CUDASplitKernelFunction(CUDADevice *device, CUfunction func) : device(device), func(func) {}
+
+	/* enqueue the kernel, returns false if there is an error */
+	bool enqueue(const KernelDimensions &dim, device_memory &/*kg*/, device_memory &/*data*/)
+	{
+		return enqueue(dim, NULL);
+	}
+
+	/* enqueue the kernel, returns false if there is an error */
+	bool enqueue(const KernelDimensions &dim, void *args[])
+	{
+		device->cuda_push_context();
+
+		if(device->have_error())
+			return false;
+
+		/* we ignore dim.local_size for now, as this is faster */
+		int threads_per_block;
+		cuda_assert(cuFuncGetAttribute(&threads_per_block, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, func));
+
+		int xthreads = (int)sqrt(threads_per_block);
+		int ythreads = (int)sqrt(threads_per_block);
+
+		int xblocks = (dim.global_size[0] + xthreads - 1)/xthreads;
+		int yblocks = (dim.global_size[1] + ythreads - 1)/ythreads;
+
+		cuda_assert(cuFuncSetCacheConfig(func, CU_FUNC_CACHE_PREFER_L1));
+
+		cuda_assert(cuLaunchKernel(func,
+		                           xblocks , yblocks, 1, /* blocks */
+		                           xthreads, ythreads, 1, /* threads */
+		                           0, 0, args, 0));
+
+		device->cuda_pop_context();
+
+		return !device->have_error();
+	}
+};
+
+CUDASplitKernel::CUDASplitKernel(CUDADevice *device) : DeviceSplitKernel(device), device(device)
+{
+}
+
+uint64_t CUDASplitKernel::state_buffer_size(device_memory& /*kg*/, device_memory& /*data*/, size_t num_threads)
+{
+	device_vector<uint64_t> size_buffer;
+	size_buffer.resize(1);
+	device->mem_alloc(NULL, size_buffer, MEM_READ_WRITE);
+
+	device->cuda_push_context();
+
+	uint threads = num_threads;
+	CUdeviceptr d_size = device->cuda_device_ptr(size_buffer.device_pointer);
+
+	struct args_t {
+		uint* num_threads;
+		CUdeviceptr* size;
+	};
+
+	args_t args = {
+		&threads,
+		&d_size
+	};
+
+	CUfunction state_buffer_size;
+	cuda_assert(cuModuleGetFunction(&state_buffer_size, device->cuModule, "kernel_cuda_state_buffer_size"));
+
+	cuda_assert(cuLaunchKernel(state_buffer_size,
+	                           1, 1, 1,
+	                           1, 1, 1,
+	                           0, 0, (void**)&args, 0));
+
+	device->cuda_pop_context();
+
+	device->mem_copy_from(size_buffer, 0, 1, 1, sizeof(uint64_t));
+	device->mem_free(size_buffer);
+
+	return *size_buffer.get_data();
+}
+
+bool CUDASplitKernel::enqueue_split_kernel_data_init(const KernelDimensions& dim,
+                                    RenderTile& rtile,
+                                    int num_global_elements,
+                                    device_memory& /*kernel_globals*/,
+                                    device_memory& /*kernel_data*/,
+                                    device_memory& split_data,
+                                    device_memory& ray_state,
+                                    device_memory& queue_index,
+                                    device_memory& use_queues_flag,
+                                    device_memory& work_pool_wgs)
+{
+	device->cuda_push_context();
+
+	CUdeviceptr d_split_data = device->cuda_device_ptr(split_data.device_pointer);
+	CUdeviceptr d_ray_state = device->cuda_device_ptr(ray_state.device_pointer);
+	CUdeviceptr d_queue_index = device->cuda_device_ptr(queue_index.device_pointer);
+	CUdeviceptr d_use_queues_flag = device->cuda_device_ptr(use_queues_flag.device_pointer);
+	CUdeviceptr d_work_pool_wgs = device->cuda_device_ptr(work_pool_wgs.device_pointer);
+
+	CUdeviceptr d_rng_state = device->cuda_device_ptr(rtile.rng_state);
+	CUdeviceptr d_buffer = device->cuda_device_ptr(rtile.buffer);
+
+	int end_sample = rtile.start_sample + rtile.num_samples;
+	int queue_size = dim.global_size[0] * dim.global_size[1];
+
+	struct args_t {
+		CUdeviceptr* split_data_buffer;
+		int* num_elements;
+		CUdeviceptr* ray_state;
+		CUdeviceptr* rng_state;
+		int* start_sample;
+		int* end_sample;
+		int* sx;
+		int* sy;
+		int* sw;
+		int* sh;
+		int* offset;
+		int* stride;
+		CUdeviceptr* queue_index;
+		int* queuesize;
+		CUdeviceptr* use_queues_flag;
+		CUdeviceptr* work_pool_wgs;
+		int* num_samples;
+		CUdeviceptr* buffer;
+	};
+
+	args_t args = {
+		&d_split_data,
+		&num_global_elements,
+		&d_ray_state,
+		&d_rng_state,
+		&rtile.start_sample,
+		&end_sample,
+		&rtile.x,
+		&rtile.y,
+		&rtile.w,
+		&rtile.h,
+		&rtile.offset,
+		&rtile.stride,
+		&d_queue_index,
+		&queue_size,
+		&d_use_queues_flag,
+		&d_work_pool_wgs,
+		&rtile.num_samples,
+		&d_buffer
+	};
+
+	CUfunction data_init;
+	cuda_assert(cuModuleGetFunction(&data_init, device->cuModule, "kernel_cuda_path_trace_data_init"));
+	if(device->have_error()) {
+		return false;
+	}
+
+	CUDASplitKernelFunction(device, data_init).enqueue(dim, (void**)&args);
+
+	device->cuda_pop_context();
+
+	return !device->have_error();
+}
+
+SplitKernelFunction* CUDASplitKernel::get_split_kernel_function(const string& kernel_name,
+                                                                const DeviceRequestedFeatures&)
+{
+	CUfunction func;
+
+	device->cuda_push_context();
+
+	cuda_assert(cuModuleGetFunction(&func, device->cuModule, (string("kernel_cuda_") + kernel_name).data()));
+	if(device->have_error()) {
+		device->cuda_error_message(string_printf("kernel \"kernel_cuda_%s\" not found in module", kernel_name.data()));
+		return NULL;
+	}
+
+	device->cuda_pop_context();
+
+	return new CUDASplitKernelFunction(device, func);
+}
+
+int2 CUDASplitKernel::split_kernel_local_size()
+{
+	return make_int2(32, 1);
+}
+
+int2 CUDASplitKernel::split_kernel_global_size(device_memory& kg, device_memory& data, DeviceTask * /*task*/)
+{
+	size_t free;
+	size_t total;
+
+	device->cuda_push_context();
+	cuda_assert(cuMemGetInfo(&free, &total));
+	device->cuda_pop_context();
+
+	VLOG(1) << "Maximum device allocation size: "
+	        << string_human_readable_number(free) << " bytes. ("
+	        << string_human_readable_size(free) << ").";
+
+	size_t num_elements = max_elements_for_max_buffer_size(kg, data, free / 2);
+	size_t side = round_down((int)sqrt(num_elements), 32);
+	int2 global_size = make_int2(side, round_down(num_elements / side, 16));
+	VLOG(1) << "Global size: " << global_size << ".";
+	return global_size;
+}
 
 bool device_cuda_init(void)
 {

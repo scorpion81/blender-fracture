@@ -52,7 +52,7 @@ struct GPUFrameBuffer {
 	GPUTexture *depthtex;
 };
 
-static void GPU_print_framebuffer_error(GLenum status, char err_out[256])
+static void gpu_print_framebuffer_error(GLenum status, char err_out[256])
 {
 	const char *err = "unknown";
 
@@ -164,7 +164,7 @@ int GPU_framebuffer_texture_attach(GPUFrameBuffer *fb, GPUTexture *tex, int slot
 
 	if (error == GL_INVALID_OPERATION) {
 		GPU_framebuffer_restore();
-		GPU_print_framebuffer_error(error, err_out);
+		gpu_print_framebuffer_error(error, err_out);
 		return 0;
 	}
 
@@ -331,7 +331,7 @@ bool GPU_framebuffer_check_valid(GPUFrameBuffer *fb, char err_out[256])
 	
 	if (status != GL_FRAMEBUFFER_COMPLETE_EXT) {
 		GPU_framebuffer_restore();
-		GPU_print_framebuffer_error(status, err_out);
+		gpu_print_framebuffer_error(status, err_out);
 		return false;
 	}
 	
@@ -401,12 +401,12 @@ void GPU_framebuffer_blur(
 	GPU_shader_uniform_texture(blur_shader, texture_source_uniform, tex);
 	glViewport(0, 0, GPU_texture_width(blurtex), GPU_texture_height(blurtex));
 
-	/* Peparing to draw quad */
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
+	/* Preparing to draw quad */
 	glMatrixMode(GL_TEXTURE);
 	glLoadIdentity();
 	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
 	glDisable(GL_DEPTH_TEST);

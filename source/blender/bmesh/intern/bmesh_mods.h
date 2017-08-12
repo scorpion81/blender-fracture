@@ -31,7 +31,7 @@ bool BM_vert_dissolve(BMesh *bm, BMVert *v);
 
 bool BM_disk_dissolve(BMesh *bm, BMVert *v);
 
-BMFace *BM_faces_join_pair(BMesh *bm, BMFace *f1, BMFace *f2, BMEdge *e, const bool do_del);
+BMFace *BM_faces_join_pair(BMesh *bm, BMLoop *l_a, BMLoop *l_b, const bool do_del);
 
 
 /** see: bmesh_polygon_edgenet.h for #BM_face_split_edgenet */
@@ -86,9 +86,8 @@ enum {
 };
 
 
-BMVert *BM_face_vert_separate(BMesh *bm, BMFace *sf, BMVert *sv);
-BMVert *BM_face_loop_separate(BMesh *bm, BMLoop *sl);
-BMVert *BM_face_loop_separate_multi(
-        BMesh *bm, BMLoop **larr, int larr_len);
+BMVert *BM_face_loop_separate(BMesh *bm, BMLoop *l_sep);
+BMVert *BM_face_loop_separate_multi_isolated(BMesh *bm, BMLoop *l_sep);
+BMVert *BM_face_loop_separate_multi(BMesh *bm, BMLoop **larr, int larr_len);
 
 #endif /* __BMESH_MODS_H__ */

@@ -419,7 +419,7 @@ static int wm_link_append_exec(bContext *C, wmOperator *op)
 		const bool use_recursive = RNA_boolean_get(op->ptr, "use_recursive");
 
 		if (use_recursive) {
-			BKE_library_make_local(bmain, NULL, true, set_fake);
+			BKE_library_make_local(bmain, NULL, NULL, true, set_fake);
 		}
 		else {
 			LinkNode *itemlink;
@@ -430,7 +430,7 @@ static int wm_link_append_exec(bContext *C, wmOperator *op)
 				ID *new_id = ((WMLinkAppendDataItem *)(itemlink->link))->new_id;
 
 				if (new_id && !BLI_gset_haskey(done_libraries, new_id->lib)) {
-					BKE_library_make_local(bmain, new_id->lib, true, set_fake);
+					BKE_library_make_local(bmain, new_id->lib, NULL, true, set_fake);
 					BLI_gset_insert(done_libraries, new_id->lib);
 				}
 			}
@@ -466,7 +466,7 @@ static void wm_link_append_properties_common(wmOperatorType *ot, bool is_link)
 	/* better not save _any_ settings for this operator */
 	/* properties */
 	prop = RNA_def_boolean(ot->srna, "link", is_link,
-	                       "Link", "Link the objects or datablocks rather than appending");
+	                       "Link", "Link the objects or data-blocks rather than appending");
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE | PROP_HIDDEN);
 	prop = RNA_def_boolean(ot->srna, "autoselect", true,
 	                       "Select", "Select new objects");
@@ -608,7 +608,8 @@ static void lib_relocate_do(
 	}
 
 	/* Note that in reload case, we also want to replace indirect usages. */
-	const short remap_flags = ID_REMAP_SKIP_NEVER_NULL_USAGE | (do_reload ? 0 : ID_REMAP_SKIP_INDIRECT_USAGE);
+	const short remap_flags = ID_REMAP_SKIP_NEVER_NULL_USAGE | ID_REMAP_NO_INDIRECT_PROXY_DATA_USAGE |
+	                          (do_reload ? 0 : ID_REMAP_SKIP_INDIRECT_USAGE);
 	for (item_idx = 0, itemlink = lapp_data->items.list; itemlink; item_idx++, itemlink = itemlink->next) {
 		WMLinkAppendDataItem *item = itemlink->link;
 		ID *old_id = item->customdata;
@@ -675,7 +676,7 @@ static void lib_relocate_do(
 			id_sort_by_name(which_libbase(bmain, GS(old_id->name)), old_id);
 
 			BKE_reportf(reports, RPT_WARNING,
-			            "Lib Reload: Replacing all references to old datablock '%s' by reloaded one failed, "
+			            "Lib Reload: Replacing all references to old data-block '%s' by reloaded one failed, "
 			            "old one (%d remaining users) had to be kept and was renamed to '%s'",
 			            new_id->name, old_id->us, old_id->name);
 		}

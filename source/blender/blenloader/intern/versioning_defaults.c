@@ -58,6 +58,9 @@ void BLO_update_defaults_userpref_blend(void)
 	U.uiflag |= USER_QUIT_PROMPT;
 	U.uiflag |= USER_CONTINUOUS_MOUSE;
 
+	/* See T45301 */
+	U.uiflag |= USER_LOCK_CURSOR_ADJUST;
+
 	U.versions = 1;
 	U.savetime = 2;
 
@@ -68,6 +71,18 @@ void BLO_update_defaults_userpref_blend(void)
 	 * but take care since some hardware has driver bugs here (T46962).
 	 * Further hardware workarounds should be made in gpu_extensions.c */
 	U.glalphaclip = (1.0f / 255);
+
+	/* default so DPI is detected automatically */
+	U.dpi = 0;
+	U.ui_scale = 1.0f;
+
+#ifdef WITH_PYTHON_SECURITY
+	/* use alternative setting for security nuts
+	 * otherwise we'd need to patch the binary blob - startup.blend.c */
+	U.flag |= USER_SCRIPT_AUTOEXEC_DISABLE;
+#else
+	U.flag &= ~USER_SCRIPT_AUTOEXEC_DISABLE;
+#endif
 }
 
 /**
@@ -230,13 +245,13 @@ void BLO_update_defaults_startup_blend(Main *bmain)
 		/* remove polish brush (flatten/contrast does the same) */
 		br = (Brush *)BKE_libblock_find_name_ex(bmain, ID_BR, "Polish");
 		if (br) {
-			BKE_libblock_free(bmain, br);
+			BKE_libblock_delete(bmain, br);
 		}
 
 		/* remove brush brush (huh?) from some modes (draw brushes do the same) */
 		br = (Brush *)BKE_libblock_find_name_ex(bmain, ID_BR, "Brush");
 		if (br) {
-			BKE_libblock_free(bmain, br);
+			BKE_libblock_delete(bmain, br);
 		}
 
 		/* remove draw brush from texpaint (draw brushes do the same) */

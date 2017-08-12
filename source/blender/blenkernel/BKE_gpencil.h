@@ -60,7 +60,7 @@ struct bGPdata   *BKE_gpencil_data_addnew(const char name[]);
 
 struct bGPDframe *BKE_gpencil_frame_duplicate(const struct bGPDframe *gpf_src);
 struct bGPDlayer *BKE_gpencil_layer_duplicate(const struct bGPDlayer *gpl_src);
-struct bGPdata   *BKE_gpencil_data_duplicate(struct Main *bmain, struct bGPdata *gpd, bool internal_copy);
+struct bGPdata   *BKE_gpencil_data_duplicate(struct Main *bmain, const struct bGPdata *gpd, bool internal_copy);
 
 void BKE_gpencil_make_local(struct Main *bmain, struct bGPdata *gpd, const bool lib_local);
 
@@ -104,7 +104,7 @@ void BKE_gpencil_layer_delete(struct bGPdata *gpd, struct bGPDlayer *gpl);
 
 struct bGPDbrush *BKE_gpencil_brush_getactive(struct ToolSettings *ts);
 void BKE_gpencil_brush_setactive(struct ToolSettings *ts, struct bGPDbrush *active);
-void BKE_gpencil_brush_delete(struct ToolSettings *ts, struct bGPDbrush *palette);
+void BKE_gpencil_brush_delete(struct ToolSettings *ts, struct bGPDbrush *brush);
 
 struct bGPDpalette *BKE_gpencil_palette_getactive(struct bGPdata *gpd);
 void BKE_gpencil_palette_setactive(struct bGPdata *gpd, struct bGPDpalette *active);

@@ -22,6 +22,7 @@ from bpy.types import Menu, Panel, UIList
 from bl_ui.properties_grease_pencil_common import (
         GreasePencilDrawingToolsPanel,
         GreasePencilStrokeEditPanel,
+        GreasePencilInterpolatePanel,
         GreasePencilStrokeSculptPanel,
         GreasePencilBrushPanel,
         GreasePencilBrushCurvesPanel
@@ -431,6 +432,7 @@ class VIEW3D_PT_tools_shading(View3DPanel, Panel):
         col.label(text="Normals:")
         col.operator("mesh.normals_make_consistent", text="Recalculate")
         col.operator("mesh.flip_normals", text="Flip Direction")
+        col.operator("mesh.set_normals_from_faces", text="Set From Faces")
 
 
 class VIEW3D_PT_tools_uvs(View3DPanel, Panel):
@@ -914,16 +916,18 @@ class VIEW3D_PT_imapaint_tools_missing(Panel, View3DPaintPanel):
                 col.separator()
                 col.label("Missing Canvas", icon='INFO')
                 col.label("Add or assign a canvas image below")
-                col.label("Canvas Image")
-                col.template_ID(toolsettings, "canvas")
+                col.label("Canvas Image:")
+                # todo this should be combinded into a single row
+                col.template_ID(toolsettings, "canvas", open="image.open")
                 col.operator("image.new", text="New").gen_context = 'PAINT_CANVAS'
 
         if toolsettings.missing_stencil:
             col.separator()
             col.label("Missing Stencil", icon='INFO')
             col.label("Add or assign a stencil image below")
-            col.label("Stencil Image")
-            col.template_ID(toolsettings, "stencil_image")
+            col.label("Stencil Image:")
+            # todo this should be combinded into a single row
+            col.template_ID(toolsettings, "stencil_image", open="image.open")
             col.operator("image.new", text="New").gen_context = 'PAINT_STENCIL'
 
 
@@ -965,9 +969,9 @@ class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
                 col.prop(brush, "steps", slider=True)
                 col.prop(settings, "default_key_count", slider=True)
             elif tool == 'LENGTH':
-                layout.prop(brush, "length_mode", expand=True)
+                layout.row().prop(brush, "length_mode", expand=True)
             elif tool == 'PUFF':
-                layout.prop(brush, "puff_mode", expand=True)
+                layout.row().prop(brush, "puff_mode", expand=True)
                 layout.prop(brush, "use_puff_volume")
 
         # Sculpt Mode #
@@ -1198,20 +1202,20 @@ class VIEW3D_PT_slots_projectpaint(View3DPanel, Panel):
         ob = context.active_object
         col = layout.column()
 
-        col.label("Painting Mode")
+        col.label("Painting Mode:")
         col.prop(settings, "mode", text="")
         col.separator()
 
         if settings.mode == 'MATERIAL':
             if len(ob.material_slots) > 1:
-                col.label("Materials")
+                col.label("Materials:")
                 col.template_list("MATERIAL_UL_matslots", "layers",
                                   ob, "material_slots",
                                   ob, "active_material_index", rows=2)
 
             mat = ob.active_material
             if mat:
-                col.label("Available Paint Slots")
+                col.label("Available Paint Slots:")
                 col.template_list("TEXTURE_UL_texpaintslots", "",
                                   mat, "texture_paint_images",
                                   mat, "paint_active_slot", rows=2)
@@ -1231,16 +1235,17 @@ class VIEW3D_PT_slots_projectpaint(View3DPanel, Panel):
                         col.separator()
 
                 if slot and slot.index != -1:
-                    col.label("UV Map")
+                    col.label("UV Map:")
                     col.prop_search(slot, "uv_layer", ob.data, "uv_textures", text="")
 
         elif settings.mode == 'IMAGE':
             mesh = ob.data
             uv_text = mesh.uv_textures.active.name if mesh.uv_textures.active else ""
-            col.label("Canvas Image")
-            col.template_ID(settings, "canvas")
+            col.label("Canvas Image:")
+            # todo this should be combinded into a single row
+            col.template_ID(settings, "canvas", open="image.open")
             col.operator("image.new", text="New").gen_context = 'PAINT_CANVAS'
-            col.label("UV Map")
+            col.label("UV Map:")
             col.menu("VIEW3D_MT_tools_projectpaint_uvlayer", text=uv_text, translate=False)
 
         col.separator()
@@ -1274,14 +1279,15 @@ class VIEW3D_PT_stencil_projectpaint(View3DPanel, Panel):
         col.active = ipaint.use_stencil_layer
 
         stencil_text = mesh.uv_texture_stencil.name if mesh.uv_texture_stencil else ""
-        col.label("UV Map")
+        col.label("UV Map:")
         col.menu("VIEW3D_MT_tools_projectpaint_stencil", text=stencil_text, translate=False)
 
-        col.label("Stencil Image")
-        col.template_ID(ipaint, "stencil_image")
+        col.label("Stencil Image:")
+        # todo this should be combinded into a single row
+        col.template_ID(ipaint, "stencil_image", open="image.open")
         col.operator("image.new", text="New").gen_context = 'PAINT_STENCIL'
 
-        col.label("Visualization")
+        col.label("Visualization:")
         row = col.row(align=True)
         row.prop(ipaint, "stencil_color", text="")
         row.prop(ipaint, "invert_stencil", text="", icon='IMAGE_ALPHA')
@@ -1559,7 +1565,7 @@ class VIEW3D_PT_sculpt_dyntopo(Panel, View3DPaintPanel):
         sub.active = (brush and brush.sculpt_tool != 'MASK')
         if (sculpt.detail_type_method == 'CONSTANT'):
             row = sub.row(align=True)
-            row.prop(sculpt, "constant_detail")
+            row.prop(sculpt, "constant_detail_resolution")
             row.operator("sculpt.sample_detail_size", text="", icon='EYEDROPPER')
         elif (sculpt.detail_type_method == 'BRUSH'):
             sub.prop(sculpt, "detail_percent")
@@ -1962,6 +1968,11 @@ class VIEW3D_PT_tools_grease_pencil_edit(GreasePencilStrokeEditPanel, Panel):
     bl_space_type = 'VIEW_3D'
 
 
+# Grease Pencil stroke interpolation tools
+class VIEW3D_PT_tools_grease_pencil_interpolate(GreasePencilInterpolatePanel, Panel):
+    bl_space_type = 'VIEW_3D'
+
+
 # Grease Pencil stroke sculpting tools
 class VIEW3D_PT_tools_grease_pencil_sculpt(GreasePencilStrokeSculptPanel, Panel):
     bl_space_type = 'VIEW_3D'
@@ -2001,5 +2012,69 @@ class VIEW3D_PT_tools_history(View3DPanel, Panel):
         col.operator("screen.repeat_history", text="History...")
 
 
+classes = (
+    VIEW3D_PT_tools_transform,
+    VIEW3D_PT_tools_object,
+    VIEW3D_PT_tools_add_object,
+    VIEW3D_PT_tools_relations,
+    VIEW3D_PT_tools_animation,
+    VIEW3D_PT_tools_rigid_body,
+    VIEW3D_PT_tools_transform_mesh,
+    VIEW3D_PT_tools_meshedit,
+    VIEW3D_PT_tools_meshweight,
+    VIEW3D_PT_tools_add_mesh_edit,
+    VIEW3D_PT_tools_shading,
+    VIEW3D_PT_tools_uvs,
+    VIEW3D_PT_tools_meshedit_options,
+    VIEW3D_PT_tools_transform_curve,
+    VIEW3D_PT_tools_curveedit,
+    VIEW3D_PT_tools_add_curve_edit,
+    VIEW3D_PT_tools_curveedit_options_stroke,
+    VIEW3D_PT_tools_transform_surface,
+    VIEW3D_PT_tools_surfaceedit,
+    VIEW3D_PT_tools_add_surface_edit,
+    VIEW3D_PT_tools_textedit,
+    VIEW3D_PT_tools_armatureedit,
+    VIEW3D_PT_tools_armatureedit_transform,
+    VIEW3D_PT_tools_armatureedit_options,
+    VIEW3D_PT_tools_mballedit,
+    VIEW3D_PT_tools_add_mball_edit,
+    VIEW3D_PT_tools_latticeedit,
+    VIEW3D_PT_tools_posemode,
+    VIEW3D_PT_tools_posemode_options,
+    VIEW3D_PT_imapaint_tools_missing,
+    VIEW3D_PT_tools_brush,
+    TEXTURE_UL_texpaintslots,
+    VIEW3D_MT_tools_projectpaint_uvlayer,
+    VIEW3D_PT_slots_projectpaint,
+    VIEW3D_PT_stencil_projectpaint,
+    VIEW3D_PT_tools_brush_overlay,
+    VIEW3D_PT_tools_brush_texture,
+    VIEW3D_PT_tools_mask_texture,
+    VIEW3D_PT_tools_brush_stroke,
+    VIEW3D_PT_tools_brush_curve,
+    VIEW3D_PT_sculpt_dyntopo,
+    VIEW3D_PT_sculpt_options,
+    VIEW3D_PT_sculpt_symmetry,
+    VIEW3D_PT_tools_brush_appearance,
+    VIEW3D_PT_tools_weightpaint,
+    VIEW3D_PT_tools_weightpaint_options,
+    VIEW3D_PT_tools_vertexpaint,
+    VIEW3D_PT_tools_imagepaint_external,
+    VIEW3D_PT_tools_imagepaint_symmetry,
+    VIEW3D_PT_tools_projectpaint,
+    VIEW3D_MT_tools_projectpaint_stencil,
+    VIEW3D_PT_tools_particlemode,
+    VIEW3D_PT_tools_grease_pencil_draw,
+    VIEW3D_PT_tools_grease_pencil_edit,
+    VIEW3D_PT_tools_grease_pencil_interpolate,
+    VIEW3D_PT_tools_grease_pencil_sculpt,
+    VIEW3D_PT_tools_grease_pencil_brush,
+    VIEW3D_PT_tools_grease_pencil_brushcurves,
+    VIEW3D_PT_tools_history,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

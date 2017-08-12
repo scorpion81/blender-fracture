@@ -341,6 +341,8 @@ EXTRA_SOURCE_FILES = (
     "../examples/bge.texture.py",
     "../examples/bmesh.ops.1.py",
     "../examples/bpy.app.translations.py",
+    "../static/favicon.ico",
+    "../static/blender_logo.svg",
 )
 
 
@@ -362,8 +364,6 @@ INFO_DOCS = (
      "Blender/Python Quickstart: new to Blender/scripting and want to get your feet wet?"),
     ("info_overview.rst",
      "Blender/Python API Overview: a more complete explanation of Python integration"),
-    ("info_tutorial_addon.rst",
-     "Blender/Python Addon Tutorial: a step by step guide on how to write an addon from scratch"),
     ("info_api_reference.rst",
      "Blender/Python API Reference Usage: examples of how to use the API reference docs"),
     ("info_best_practice.rst",
@@ -427,9 +427,9 @@ if BLENDER_REVISION != "Unknown":
     BLENDER_VERSION_DOTS += " " + BLENDER_REVISION          # '2.62.1 SHA1'
 
 BLENDER_VERSION_PATH = "_".join(blender_version_strings)    # '2_62_1'
-if bpy.app.version_cycle == "release":
-    BLENDER_VERSION_PATH = "%s%s_release" % ("_".join(blender_version_strings[:2]),
-                                             bpy.app.version_char)   # '2_62_release'
+if bpy.app.version_cycle in {"rc", "release"}:
+    # '2_62a_release'
+    BLENDER_VERSION_PATH = "%s%s_release" % ("_".join(blender_version_strings[:2]), bpy.app.version_char)
 
 # --------------------------DOWNLOADABLE FILES----------------------------------
 
@@ -1565,9 +1565,9 @@ def pyrna2sphinx(basepath):
 
     # operators
     def write_ops():
-        API_BASEURL = "https://developer.blender.org/diffusion/B/browse/master/release/scripts/ "
-        API_BASEURL_ADDON = "https://developer.blender.org/diffusion/BA/"
-        API_BASEURL_ADDON_CONTRIB = "https://developer.blender.org/diffusion/BAC/"
+        API_BASEURL = "https://developer.blender.org/diffusion/B/browse/master/release/scripts "
+        API_BASEURL_ADDON = "https://developer.blender.org/diffusion/BA"
+        API_BASEURL_ADDON_CONTRIB = "https://developer.blender.org/diffusion/BAC"
 
         op_modules = {}
         for op in ops.values():
@@ -1613,10 +1613,8 @@ def pyrna2sphinx(basepath):
                     else:
                         url_base = API_BASEURL
 
-                    fw("   :file: `%s <%s/%s>`_:%d\n\n" % (location[0],
-                                                           url_base,
-                                                           location[0],
-                                                           location[1]))
+                    fw("   :file: `%s\\:%d <%s/%s$%d>`_\n\n" %
+                       (location[0], location[1], url_base, location[0], location[1]))
 
             file.close()
 
@@ -1632,27 +1630,58 @@ def write_sphinx_conf_py(basepath):
     file = open(filepath, "w", encoding="utf-8")
     fw = file.write
 
+    fw("import sys, os\n\n")
+    fw("extensions = ['sphinx.ext.intersphinx']\n\n")
+    fw("intersphinx_mapping = {'blender_manual': ('https://docs.blender.org/manual/en/dev/', None)}\n\n")
     fw("project = 'Blender'\n")
     # fw("master_doc = 'index'\n")
     fw("copyright = u'Blender Foundation'\n")
     fw("version = '%s - API'\n" % BLENDER_VERSION_DOTS)
     fw("release = '%s - API'\n" % BLENDER_VERSION_DOTS)
 
+    # Quiet file not in table-of-contents warnings.
+    fw("exclude_patterns = [\n")
+    fw("    'include__bmesh.rst',\n")
+    fw("]\n\n")
+
     if ARGS.sphinx_theme != 'default':
         fw("html_theme = '%s'\n" % ARGS.sphinx_theme)
 
     if ARGS.sphinx_theme == "blender-org":
         fw("html_theme_path = ['../']\n")
-        # copied with the theme, exclude else we get an error [T28873]
-        fw("html_favicon = 'favicon.ico'\n")    # in <theme>/static/
 
     # not helpful since the source is generated, adds to upload size.
     fw("html_copy_source = False\n")
-    fw("\n")
+    fw("html_show_sphinx = False\n")
+    fw("html_split_index = True\n")
+    fw("html_extra_path = ['__/static/favicon.ico', '__/static/blender_logo.svg']\n")
+    fw("html_favicon = '__/static/favicon.ico'\n")
+    fw("html_logo = '__/static/blender_logo.svg'\n\n")
 
     # needed for latex, pdf gen
+    fw("latex_elements = {\n")
+    fw("  'papersize': 'a4paper',\n")
+    fw("}\n\n")
+
     fw("latex_documents = [ ('contents', 'contents.tex', 'Blender Index', 'Blender Foundation', 'manual'), ]\n")
-    fw("latex_paper_size = 'a4paper'\n")
+
+    # Workaround for useless links leading to compile errors
+    # See https://github.com/sphinx-doc/sphinx/issues/3866
+    fw(r"""
+from sphinx.domains.python import PythonDomain
+
+class PatchedPythonDomain(PythonDomain):
+    def resolve_xref(self, env, fromdocname, builder, typ, target, node, contnode):
+        if 'refspecific' in node:
+            del node['refspecific']
+        return super(PatchedPythonDomain, self).resolve_xref(
+            env, fromdocname, builder, typ, target, node, contnode)
+
+def setup(sphinx):
+    sphinx.override_domain(PatchedPythonDomain)
+""")
+    # end workaround
+
     file.close()
 
 
@@ -1707,8 +1736,6 @@ def write_rst_contents(basepath):
         "bpy.utils.previews",
         "bpy.path",
         "bpy.app",
-        "bpy.app.handlers",
-        "bpy.app.translations",
 
         # C modules
         "bpy.props",
@@ -1723,19 +1750,9 @@ def write_rst_contents(basepath):
     fw("   :maxdepth: 1\n\n")
 
     standalone_modules = (
-        # mathutils
-        "mathutils",
-        "mathutils.geometry",
-        "mathutils.bvhtree", "mathutils.kdtree",
-        "mathutils.interpolate",
-        "mathutils.noise",
-        # misc
-        "freestyle", "bgl", "blf",
-        "gpu", "gpu.offscreen",
-        "aud", "bpy_extras",
-        "idprop.types",
-        # bmesh, submodules are in own page
-        "bmesh",
+        # submodules are added in parent page
+        "mathutils", "freestyle", "bgl", "blf", "gpu",
+        "aud", "bpy_extras", "idprop.types", "bmesh",
     )
 
     for mod in standalone_modules:

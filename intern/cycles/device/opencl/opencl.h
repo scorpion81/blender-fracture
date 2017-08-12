@@ -16,39 +16,40 @@
 
 #ifdef WITH_OPENCL
 
-#include "device.h"
+#include "device/device.h"
+#include "device/device_denoising.h"
 
-#include "util_map.h"
-#include "util_param.h"
-#include "util_string.h"
+#include "util/util_map.h"
+#include "util/util_param.h"
+#include "util/util_string.h"
 
 #include "clew.h"
 
 CCL_NAMESPACE_BEGIN
 
+/* Disable workarounds, seems to be working fine on latest drivers. */
+#define CYCLES_DISABLE_DRIVER_WORKAROUNDS
+
+/* Define CYCLES_DISABLE_DRIVER_WORKAROUNDS to disable workaounds for testing */
+#ifndef CYCLES_DISABLE_DRIVER_WORKAROUNDS
+/* Work around AMD driver hangs by ensuring each command is finished before doing anything else. */
+#  undef clEnqueueNDRangeKernel
+#  define clEnqueueNDRangeKernel(a, b, c, d, e, f, g, h, i) \
+	CLEW_GET_FUN(__clewEnqueueNDRangeKernel)(a, b, c, d, e, f, g, h, i); \
+	clFinish(a);
+
+#  undef clEnqueueWriteBuffer
+#  define clEnqueueWriteBuffer(a, b, c, d, e, f, g, h, i) \
+	CLEW_GET_FUN(__clewEnqueueWriteBuffer)(a, b, c, d, e, f, g, h, i); \
+	clFinish(a);
+
+#  undef clEnqueueReadBuffer
+#  define clEnqueueReadBuffer(a, b, c, d, e, f, g, h, i) \
+	CLEW_GET_FUN(__clewEnqueueReadBuffer)(a, b, c, d, e, f, g, h, i); \
+	clFinish(a);
+#endif  /* CYCLES_DISABLE_DRIVER_WORKAROUNDS */
+
 #define CL_MEM_PTR(p) ((cl_mem)(uintptr_t)(p))
-
-/* Macro declarations used with split kernel */
-
-/* Macro to enable/disable work-stealing */
-#define __WORK_STEALING__
-
-#define SPLIT_KERNEL_LOCAL_SIZE_X 64
-#define SPLIT_KERNEL_LOCAL_SIZE_Y 1
-
-/* This value may be tuned according to the scene we are rendering.
- *
- * Modifying PATH_ITER_INC_FACTOR value proportional to number of expected
- * ray-bounces will improve performance.
- */
-#define PATH_ITER_INC_FACTOR 8
-
-/* When allocate global memory in chunks. We may not be able to
- * allocate exactly "CL_DEVICE_MAX_MEM_ALLOC_SIZE" bytes in chunks;
- * Since some bytes may be needed for aligning chunks of memory;
- * This is the amount of memory that we dedicate for that purpose.
- */
-#define DATA_ALLOCATION_MEM_FACTOR 5000000 //5MB
 
 struct OpenCLPlatformDevice {
 	OpenCLPlatformDevice(cl_platform_id platform_id,
@@ -86,10 +87,65 @@ public:
 	                                   string *error = NULL);
 	static bool device_version_check(cl_device_id device,
 	                                 string *error = NULL);
-	static string get_hardware_id(string platform_name,
+	static string get_hardware_id(const string& platform_name,
 	                              cl_device_id device_id);
 	static void get_usable_devices(vector<OpenCLPlatformDevice> *usable_devices,
 	                               bool force_all = false);
+	static bool use_single_program();
+
+	/* ** Some handy shortcuts to low level cl*GetInfo() functions. ** */
+
+	/* Platform information. */
+	static bool get_num_platforms(cl_uint *num_platforms, cl_int *error = NULL);
+	static cl_uint get_num_platforms();
+
+	static bool get_platforms(vector<cl_platform_id> *platform_ids,
+	                          cl_int *error = NULL);
+	static vector<cl_platform_id> get_platforms();
+
+	static bool get_platform_name(cl_platform_id platform_id,
+	                              string *platform_name);
+	static string get_platform_name(cl_platform_id platform_id);
+
+	static bool get_num_platform_devices(cl_platform_id platform_id,
+	                                     cl_device_type device_type,
+	                                     cl_uint *num_devices,
+	                                     cl_int *error = NULL);
+	static cl_uint get_num_platform_devices(cl_platform_id platform_id,
+	                                        cl_device_type device_type);
+
+	static bool get_platform_devices(cl_platform_id platform_id,
+	                                 cl_device_type device_type,
+	                                 vector<cl_device_id> *device_ids,
+	                                 cl_int* error = NULL);
+	static vector<cl_device_id> get_platform_devices(cl_platform_id platform_id,
+	                                                 cl_device_type device_type);
+
+	/* Device information. */
+	static bool get_device_name(cl_device_id device_id,
+	                            string *device_name,
+	                            cl_int* error = NULL);
+
+	static string get_device_name(cl_device_id device_id);
+
+	static bool get_device_type(cl_device_id device_id,
+	                            cl_device_type *device_type,
+	                            cl_int* error = NULL);
+	static cl_device_type get_device_type(cl_device_id device_id);
+
+	static bool get_driver_version(cl_device_id device_id,
+	                               int *major,
+	                               int *minor,
+	                               cl_int* error = NULL);
+
+	static int mem_address_alignment(cl_device_id device_id);
+
+	/* Get somewhat more readable device name.
+	 * Main difference is AMD OpenCL here which only gives code name
+	 * for the regular device name. This will give more sane device
+	 * name using some extensions.
+	 */
+	static string get_readable_device_name(cl_device_id device_id);
 };
 
 /* Thread safe cache for contexts and programs.
@@ -173,7 +229,7 @@ public:
 		cl_int err = stmt; \
 		\
 		if(err != CL_SUCCESS) { \
-			string message = string_printf("OpenCL error: %s in %s", clewErrorString(err), #stmt); \
+			string message = string_printf("OpenCL error: %s in %s (%s:%d)", clewErrorString(err), #stmt, __FILE__, __LINE__); \
 			if(error_msg == "") \
 				error_msg = message; \
 			fprintf(stderr, "%s\n", message.c_str()); \
@@ -194,17 +250,17 @@ public:
 	public:
 		OpenCLProgram() : loaded(false), device(NULL) {}
 		OpenCLProgram(OpenCLDeviceBase *device,
-		              string program_name,
-		              string kernel_name,
-		              string kernel_build_options,
+		              const string& program_name,
+		              const string& kernel_name,
+		              const string& kernel_build_options,
 		              bool use_stdout = true);
 		~OpenCLProgram();
 
 		void add_kernel(ustring name);
 		void load();
 
-		bool is_loaded()    { return loaded; }
-		string get_log()    { return log; }
+		bool is_loaded() const { return loaded; }
+		const string& get_log() const { return log; }
 		void report_error();
 
 		cl_kernel operator()();
@@ -218,8 +274,8 @@ public:
 		bool load_binary(const string& clbin, const string *debug_src = NULL);
 		bool save_binary(const string& clbin);
 
-		void add_log(string msg, bool is_debug);
-		void add_error(string msg);
+		void add_log(const string& msg, bool is_debug);
+		void add_error(const string& msg);
 
 		bool loaded;
 		cl_program program;
@@ -237,7 +293,7 @@ public:
 		map<ustring, cl_kernel> kernels;
 	};
 
-	OpenCLProgram base_program;
+	OpenCLProgram base_program, denoising_program;
 
 	typedef map<string, device_vector<uchar>*> ConstMemMap;
 	typedef map<string, device_ptr> MemMap;
@@ -248,6 +304,7 @@ public:
 
 	bool device_initialized;
 	string platform_name;
+	string device_name;
 
 	bool opencl_error(cl_int err);
 	void opencl_error(const string& message);
@@ -266,14 +323,17 @@ public:
 
 	/* Has to be implemented by the real device classes.
 	 * The base device will then load all these programs. */
-	virtual void load_kernels(const DeviceRequestedFeatures& requested_features,
+	virtual bool load_kernels(const DeviceRequestedFeatures& requested_features,
 	                          vector<OpenCLProgram*> &programs) = 0;
 
-	void mem_alloc(device_memory& mem, MemoryType type);
+	void mem_alloc(const char *name, device_memory& mem, MemoryType type);
 	void mem_copy_to(device_memory& mem);
 	void mem_copy_from(device_memory& mem, int y, int w, int h, int elem);
 	void mem_zero(device_memory& mem);
 	void mem_free(device_memory& mem);
+
+	int mem_address_alignment();
+
 	void const_copy_to(const char *name, void *host, size_t size);
 	void tex_alloc(const char *name,
 	               device_memory& mem,
@@ -282,11 +342,13 @@ public:
 	void tex_free(device_memory& mem);
 
 	size_t global_size_round_up(int group_size, int global_size);
-	void enqueue_kernel(cl_kernel kernel, size_t w, size_t h);
+	void enqueue_kernel(cl_kernel kernel, size_t w, size_t h, size_t max_workgroup_size = -1);
 	void set_kernel_arg_mem(cl_kernel kernel, cl_uint *narg, const char *name);
 
 	void film_convert(DeviceTask& task, device_ptr buffer, device_ptr rgba_byte, device_ptr rgba_half);
 	void shader(DeviceTask& task);
+
+	void denoise(RenderTile& tile, const DeviceTask& task);
 
 	class OpenCLDeviceTask : public DeviceTask {
 	public:
@@ -321,21 +383,86 @@ public:
 
 	virtual void thread_run(DeviceTask * /*task*/) = 0;
 
+	virtual bool is_split_kernel() = 0;
+
 protected:
 	string kernel_build_options(const string *debug_src = NULL);
 
+	void mem_zero_kernel(device_ptr ptr, size_t size);
+
+	bool denoising_non_local_means(device_ptr image_ptr,
+	                               device_ptr guide_ptr,
+	                               device_ptr variance_ptr,
+	                               device_ptr out_ptr,
+	                               DenoisingTask *task);
+	bool denoising_construct_transform(DenoisingTask *task);
+	bool denoising_reconstruct(device_ptr color_ptr,
+	                           device_ptr color_variance_ptr,
+	                           device_ptr output_ptr,
+	                           DenoisingTask *task);
+	bool denoising_combine_halves(device_ptr a_ptr,
+	                              device_ptr b_ptr,
+	                              device_ptr mean_ptr,
+	                              device_ptr variance_ptr,
+	                              int r, int4 rect,
+	                              DenoisingTask *task);
+	bool denoising_divide_shadow(device_ptr a_ptr,
+	                             device_ptr b_ptr,
+	                             device_ptr sample_variance_ptr,
+	                             device_ptr sv_variance_ptr,
+	                             device_ptr buffer_variance_ptr,
+	                             DenoisingTask *task);
+	bool denoising_get_feature(int mean_offset,
+	                           int variance_offset,
+	                           device_ptr mean_ptr,
+	                           device_ptr variance_ptr,
+	                           DenoisingTask *task);
+	bool denoising_detect_outliers(device_ptr image_ptr,
+	                               device_ptr variance_ptr,
+	                               device_ptr depth_ptr,
+	                               device_ptr output_ptr,
+	                               DenoisingTask *task);
+	bool denoising_set_tiles(device_ptr *buffers,
+	                         DenoisingTask *task);
+
+	device_ptr mem_alloc_sub_ptr(device_memory& mem, int offset, int size, MemoryType type);
+	void mem_free_sub_ptr(device_ptr ptr);
+
 	class ArgumentWrapper {
 	public:
-		ArgumentWrapper() : size(0), pointer(NULL) {}
-		template <typename T>
+		ArgumentWrapper() : size(0), pointer(NULL)
+		{
+		}
+
+		ArgumentWrapper(device_memory& argument) : size(sizeof(void*)),
+		                                           pointer((void*)(&argument.device_pointer))
+		{
+		}
+
+		template<typename T>
+		ArgumentWrapper(device_vector<T>& argument) : size(sizeof(void*)),
+		                                              pointer((void*)(&argument.device_pointer))
+		{
+		}
+
+		template<typename T>
 		ArgumentWrapper(T& argument) : size(sizeof(argument)),
-		                               pointer(&argument) { }
+		                               pointer(&argument)
+		{
+		}
+
 		ArgumentWrapper(int argument) : size(sizeof(int)),
 		                                int_value(argument),
-		                                pointer(&int_value) { }
+		                                pointer(&int_value)
+		{
+		}
+
 		ArgumentWrapper(float argument) : size(sizeof(float)),
 		                                  float_value(argument),
-		                                  pointer(&float_value) { }
+		                                  pointer(&float_value)
+		{
+		}
+
 		size_t size;
 		int int_value;
 		float float_value;

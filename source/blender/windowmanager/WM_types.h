@@ -138,6 +138,7 @@ enum {
 	OPTYPE_INTERNAL     = (1 << 6),
 
 	OPTYPE_LOCK_BYPASS  = (1 << 7),  /* Allow operator to run when interface is locked */
+	OPTYPE_UNDO_GROUPED = (1 << 8),  /* Special type of undo which doesn't store itself multiple times */
 };
 
 /* context to call operator in for WM_operator_name_call */
@@ -522,6 +523,7 @@ typedef struct wmOperatorType {
 	const char *idname;		/* unique identifier */
 	const char *translation_context;
 	const char *description;	/* tooltips and python docs */
+	const char *undo_group;	/* identifier to group operators together */
 
 	/* this callback executes the operator without any interactive input,
 	 * parameters may be provided through operator properties. cannot use
@@ -540,7 +542,15 @@ typedef struct wmOperatorType {
 	 * canceled due to some external reason, cancel is called
 	 * - see defines below for return values */
 	int (*invoke)(struct bContext *, struct wmOperator *, const struct wmEvent *) ATTR_WARN_UNUSED_RESULT;
+
+	/* Called when a modal operator is canceled (not used often).
+	 * Internal cleanup can be done here if needed. */
 	void (*cancel)(struct bContext *, struct wmOperator *);
+
+	/* Modal is used for operators which continuously run, eg:
+	 * fly mode, knife tool, circle select are all examples of modal operators.
+	 * Modal operators can handle events which would normally access other operators,
+	 * they keep running until they don't return `OPERATOR_RUNNING_MODAL`. */
 	int (*modal)(struct bContext *, struct wmOperator *, const struct wmEvent *) ATTR_WARN_UNUSED_RESULT;
 
 	/* verify if the operator can be executed in the current context, note

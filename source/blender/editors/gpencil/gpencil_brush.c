@@ -297,9 +297,9 @@ static bool gp_brush_strength_apply(
 	float inf;
 
 	/* Compute strength of effect
-	* - We divide the strength by 10, so that users can set "sane" values.
-	*   Otherwise, good default values are in the range of 0.093
-	*/
+	 * - We divide the strength by 10, so that users can set "sane" values.
+	 *   Otherwise, good default values are in the range of 0.093
+	 */
 	inf = gp_brush_influence_calc(gso, radius, co) / 10.0f;
 
 	/* apply */
@@ -710,7 +710,7 @@ static bool gp_brush_randomize_apply(tGP_BrushEditData *gso, bGPDstroke *gps, in
 			}
 			else {
 				/* ERROR */
-				BLI_assert("3D stroke being sculpted in non-3D view");
+				BLI_assert(!"3D stroke being sculpted in non-3D view");
 			}
 		}
 		else {
@@ -773,6 +773,9 @@ typedef struct tGPSB_CloneBrushData {
 	
 	/* for "stamp" mode, the currently pasted brushes */
 	bGPDstroke **new_strokes;
+	
+	/* mapping from colors referenced per stroke, to the new colours in the "pasted" strokes */
+	GHash *new_colors;
 } tGPSB_CloneBrushData;
 
 /* Initialise "clone" brush data */
@@ -816,6 +819,11 @@ static void gp_brush_clone_init(bContext *C, tGP_BrushEditData *gso)
 	if (1 /*gso->brush->mode == GP_EDITBRUSH_CLONE_MODE_STAMP*/) {
 		data->new_strokes = MEM_callocN(sizeof(bGPDstroke *) * data->totitems, "cloned strokes ptr array");
 	}
+	
+	/* Init colormap for mapping between the pasted stroke's source colour(names)
+	 * and the final colours that will be used here instead...
+	 */
+	data->new_colors = gp_copybuf_validate_colormap(gso->gpd);
 }
 
 /* Free custom data used for "clone" brush */
@@ -827,6 +835,12 @@ static void gp_brush_clone_free(tGP_BrushEditData *gso)
 	if (data->new_strokes) {
 		MEM_freeN(data->new_strokes);
 		data->new_strokes = NULL;
+	}
+	
+	/* free copybuf colormap */
+	if (data->new_colors) {
+		BLI_ghash_free(data->new_colors, NULL, NULL);
+		data->new_colors = NULL;
 	}
 	
 	/* free the customdata itself */
@@ -868,6 +882,13 @@ static void gp_brush_clone_add(bContext *C, tGP_BrushEditData *gso)
 			
 			new_stroke->next = new_stroke->prev = NULL;
 			BLI_addtail(&gpf->strokes, new_stroke);
+			
+			/* Fix color references */
+			BLI_assert(new_stroke->colorname[0] != '\0');
+			new_stroke->palcolor = BLI_ghash_lookup(data->new_colors, new_stroke->colorname);
+			
+			BLI_assert(new_stroke->palcolor != NULL);
+			BLI_strncpy(new_stroke->colorname, new_stroke->palcolor->info, sizeof(new_stroke->colorname));
 			
 			/* Adjust all the stroke's points, so that the strokes
 			 * get pasted relative to where the cursor is now
@@ -1797,6 +1818,12 @@ static int gpsculpt_brush_modal(bContext *C, wmOperator *op, const wmEvent *even
 			case RIGHTARROWKEY:
 			case UPARROWKEY:
 			case DOWNARROWKEY:
+				return OPERATOR_PASS_THROUGH;
+				
+			/* Camera/View Manipulations - Allowed */
+			/* (See rationale in gpencil_paint.c -> gpencil_draw_modal()) */
+			case PAD0:  case PAD1:  case PAD2:  case PAD3:  case PAD4:
+			case PAD5:  case PAD6:  case PAD7:  case PAD8:  case PAD9:
 				return OPERATOR_PASS_THROUGH;
 			
 			/* Unhandled event */

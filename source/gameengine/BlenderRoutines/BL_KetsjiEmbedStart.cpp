@@ -40,7 +40,7 @@
 #  pragma warning (disable:4786)
 #endif
 
-#include "glew-mx.h"
+#include "GPU_glew.h"
 
 #include "KX_BlenderCanvas.h"
 #include "KX_BlenderKeyboardDevice.h"
@@ -104,13 +104,13 @@ typedef void * wmUIHandlerRemoveFunc;
 #  include AUD_DEVICE_H
 #endif
 
-static BlendFileData *load_game_data(char *filename)
+static BlendFileData *load_game_data(const char *filename)
 {
 	ReportList reports;
 	BlendFileData *bfd;
 	
 	BKE_reports_init(&reports, RPT_STORE);
-	bfd= BLO_read_from_file(filename, &reports);
+	bfd= BLO_read_from_file(filename, &reports, BLO_READ_SKIP_USERDEF);
 
 	if (!bfd) {
 		printf("Loading %s failed: ", filename);
@@ -465,19 +465,9 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 			if (always_use_expand_framing)
 				sceneconverter->SetAlwaysUseExpandFraming(true);
 
-			bool usemat = false, useglslmat = false;
+			sceneconverter->SetMaterials(true);
 
-			if (GLEW_ARB_multitexture && GLEW_VERSION_1_1)
-				usemat = true;
-
-			if (GPU_glsl_support())
-				useglslmat = true;
-			else if (gs.matmode == GAME_MAT_GLSL)
-				usemat = false;
-
-			if (usemat)
-				sceneconverter->SetMaterials(true);
-			if (useglslmat && (gs.matmode == GAME_MAT_GLSL))
+			if (gs.matmode == GAME_MAT_GLSL)
 				sceneconverter->SetGLSLMaterials(true);
 			if (scene->gm.flag & GAME_NO_MATERIAL_CACHING)
 				sceneconverter->SetCacheMaterials(false);

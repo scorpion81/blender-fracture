@@ -22,15 +22,26 @@
 
 #include "abc_util.h"
 
+#include "abc_camera.h"
+#include "abc_curves.h"
+#include "abc_mesh.h"
+#include "abc_nurbs.h"
+#include "abc_points.h"
+#include "abc_transform.h"
+
+#include <Alembic/AbcMaterial/IMaterial.h>
+
 #include <algorithm>
 
 extern "C" {
 #include "DNA_object_types.h"
 
 #include "BLI_math.h"
+
+#include "PIL_time.h"
 }
 
-std::string get_id_name(Object *ob)
+std::string get_id_name(const Object * const ob)
 {
 	if (!ob) {
 		return "";
@@ -39,7 +50,7 @@ std::string get_id_name(Object *ob)
 	return get_id_name(&ob->id);
 }
 
-std::string get_id_name(ID *id)
+std::string get_id_name(const ID * const id)
 {
 	std::string name(id->name + 2);
 	std::replace(name.begin(), name.end(), ' ', '_');
@@ -49,7 +60,7 @@ std::string get_id_name(ID *id)
 	return name;
 }
 
-std::string get_object_dag_path_name(Object *ob, Object *dupli_parent)
+std::string get_object_dag_path_name(const Object * const ob, Object *dupli_parent)
 {
 	std::string name = get_id_name(ob);
 
@@ -121,15 +132,28 @@ void split(const std::string &s, const char delim, std::vector<std::string> &tok
 	}
 }
 
-/* Create a rotation matrix for each axis from euler angles.
- * Euler angles are swaped to change coordinate system. */
-static void create_rotation_matrix(
+void create_swapped_rotation_matrix(
         float rot_x_mat[3][3], float rot_y_mat[3][3],
-        float rot_z_mat[3][3], const float euler[3], const bool to_yup)
+        float rot_z_mat[3][3], const float euler[3],
+        AbcAxisSwapMode mode)
 {
 	const float rx = euler[0];
-	const float ry = (to_yup) ?  euler[2] : -euler[2];
-	const float rz = (to_yup) ? -euler[1] :  euler[1];
+	float ry;
+	float rz;
+
+	/* Apply transformation */
+	switch (mode) {
+		case ABC_ZUP_FROM_YUP:
+			ry = -euler[2];
+			rz = euler[1];
+			break;
+		case ABC_YUP_FROM_ZUP:
+			ry = euler[2];
+			rz = -euler[1];
+			break;
+		default:
+			BLI_assert(false);
+	}
 
 	unit_m3(rot_x_mat);
 	unit_m3(rot_y_mat);
@@ -151,280 +175,109 @@ static void create_rotation_matrix(
 	rot_z_mat[1][1] = cos(rz);
 }
 
-/* Recompute transform matrix of object in new coordinate system
- * (from Y-Up to Z-Up). */
-void create_transform_matrix(float r_mat[4][4])
+/* Convert matrix from Z=up to Y=up or vice versa. Use yup_mat = zup_mat for in-place conversion. */
+void copy_m44_axis_swap(float dst_mat[4][4], float src_mat[4][4], AbcAxisSwapMode mode)
 {
-	float rot_mat[3][3], rot[3][3], scale_mat[4][4], invmat[4][4], transform_mat[4][4];
+	float dst_rot[3][3], src_rot[3][3], dst_scale_mat[4][4];
 	float rot_x_mat[3][3], rot_y_mat[3][3], rot_z_mat[3][3];
-	float loc[3], scale[3], euler[3];
+	float src_trans[3], dst_scale[3], src_scale[3], euler[3];
 
-	zero_v3(loc);
-	zero_v3(scale);
+	zero_v3(src_trans);
+	zero_v3(dst_scale);
+	zero_v3(src_scale);
 	zero_v3(euler);
-	unit_m3(rot);
-	unit_m3(rot_mat);
-	unit_m4(scale_mat);
-	unit_m4(transform_mat);
-	unit_m4(invmat);
+	unit_m3(src_rot);
+	unit_m3(dst_rot);
+	unit_m4(dst_scale_mat);
 
-	/* Compute rotation matrix. */
+	/* We assume there is no sheer component and no homogeneous scaling component. */
+	BLI_assert(fabs(src_mat[0][3]) < 2 * FLT_EPSILON);
+	BLI_assert(fabs(src_mat[1][3]) < 2 * FLT_EPSILON);
+	BLI_assert(fabs(src_mat[2][3]) < 2 * FLT_EPSILON);
+	BLI_assert(fabs(src_mat[3][3] - 1.0f) < 2 * FLT_EPSILON);
 
-	/* Extract location, rotation, and scale from matrix. */
-	mat4_to_loc_rot_size(loc, rot, scale, r_mat);
+	/* Extract translation, rotation, and scale form matrix. */
+	mat4_to_loc_rot_size(src_trans, src_rot, src_scale, src_mat);
 
 	/* Get euler angles from rotation matrix. */
-	mat3_to_eulO(euler, ROT_MODE_XYZ, rot);
+	mat3_to_eulO(euler, ROT_MODE_XZY, src_rot);
 
 	/* Create X, Y, Z rotation matrices from euler angles. */
-	create_rotation_matrix(rot_x_mat, rot_y_mat, rot_z_mat, euler, false);
+	create_swapped_rotation_matrix(rot_x_mat, rot_y_mat, rot_z_mat, euler, mode);
 
 	/* Concatenate rotation matrices. */
-	mul_m3_m3m3(rot_mat, rot_mat, rot_y_mat);
-	mul_m3_m3m3(rot_mat, rot_mat, rot_z_mat);
-	mul_m3_m3m3(rot_mat, rot_mat, rot_x_mat);
+	mul_m3_m3m3(dst_rot, dst_rot, rot_z_mat);
+	mul_m3_m3m3(dst_rot, dst_rot, rot_y_mat);
+	mul_m3_m3m3(dst_rot, dst_rot, rot_x_mat);
 
-	/* Add rotation matrix to transformation matrix. */
-	copy_m4_m3(transform_mat, rot_mat);
+	mat3_to_eulO(euler, ROT_MODE_XZY, dst_rot);
 
-	/* Add translation to transformation matrix. */
-	copy_yup_zup(transform_mat[3], loc);
+	/* Start construction of dst_mat from rotation matrix */
+	unit_m4(dst_mat);
+	copy_m4_m3(dst_mat, dst_rot);
 
-	/* Create scale matrix. */
-	scale_mat[0][0] = scale[0];
-	scale_mat[1][1] = scale[2];
-	scale_mat[2][2] = scale[1];
+	/* Apply translation */
+	switch (mode) {
+		case ABC_ZUP_FROM_YUP:
+			copy_zup_from_yup(dst_mat[3], src_trans);
+			break;
+		case ABC_YUP_FROM_ZUP:
+			copy_yup_from_zup(dst_mat[3], src_trans);
+			break;
+		default:
+			BLI_assert(false);
+	}
 
-	/* Add scale to transformation matrix. */
-	mul_m4_m4m4(transform_mat, transform_mat, scale_mat);
+	/* Apply scale matrix. Swaps y and z, but does not
+	 * negate like translation does. */
+	dst_scale[0] = src_scale[0];
+	dst_scale[1] = src_scale[2];
+	dst_scale[2] = src_scale[1];
 
-	copy_m4_m4(r_mat, transform_mat);
+	size_to_mat4(dst_scale_mat, dst_scale);
+	mul_m4_m4m4(dst_mat, dst_mat, dst_scale_mat);
 }
 
-void create_input_transform(const Alembic::AbcGeom::ISampleSelector &sample_sel,
-                            const Alembic::AbcGeom::IXform &ixform, Object *ob,
-                            float r_mat[4][4], float scale, bool has_alembic_parent)
+void convert_matrix(const Imath::M44d &xform, Object *ob, float r_mat[4][4])
 {
-
-	const Alembic::AbcGeom::IXformSchema &ixform_schema = ixform.getSchema();
-	Alembic::AbcGeom::XformSample xs;
-	ixform_schema.get(xs, sample_sel);
-	const Imath::M44d &xform = xs.getMatrix();
-
 	for (int i = 0; i < 4; ++i) {
 		for (int j = 0; j < 4; ++j) {
-			r_mat[i][j] = xform[i][j];
+			r_mat[i][j] = static_cast<float>(xform[i][j]);
 		}
 	}
 
 	if (ob->type == OB_CAMERA) {
 		float cam_to_yup[4][4];
-		unit_m4(cam_to_yup);
-		rotate_m4(cam_to_yup, 'X', M_PI_2);
+		axis_angle_to_mat4_single(cam_to_yup, 'X', M_PI_2);
 		mul_m4_m4m4(r_mat, r_mat, cam_to_yup);
 	}
 
-	create_transform_matrix(r_mat);
-
-	if (ob->parent) {
-		mul_m4_m4m4(r_mat, ob->parent->obmat, r_mat);
-	}
-	/* TODO(kevin) */
-	else if (!has_alembic_parent) {
-		/* Only apply scaling to root objects, parenting will propagate it. */
-		float scale_mat[4][4];
-		scale_m4_fl(scale_mat, scale);
-		mul_m4_m4m4(r_mat, r_mat, scale_mat);
-		mul_v3_fl(r_mat[3], scale);
-	}
+	copy_m44_axis_swap(r_mat, r_mat, ABC_ZUP_FROM_YUP);
 }
 
-/* Recompute transform matrix of object in new coordinate system (from Z-Up to Y-Up). */
-void create_transform_matrix(Object *obj, float transform_mat[4][4])
+/* Recompute transform matrix of object in new coordinate system
+ * (from Z-Up to Y-Up). */
+void create_transform_matrix(Object *obj, float r_yup_mat[4][4], AbcMatrixMode mode,
+                             Object *proxy_from)
 {
-	float rot_mat[3][3], rot[3][3], scale_mat[4][4], invmat[4][4], mat[4][4];
-	float rot_x_mat[3][3], rot_y_mat[3][3], rot_z_mat[3][3];
-	float loc[3], scale[3], euler[3];
+	float zup_mat[4][4];
 
-	zero_v3(loc);
-	zero_v3(scale);
-	zero_v3(euler);
-	unit_m3(rot);
-	unit_m3(rot_mat);
-	unit_m4(scale_mat);
-	unit_m4(transform_mat);
-	unit_m4(invmat);
-	unit_m4(mat);
-
-	/* get local matrix. */
-	if (obj->parent) {
-		invert_m4_m4(invmat, obj->parent->obmat);
-		mul_m4_m4m4(mat, invmat, obj->obmat);
+	/* get local or world matrix. */
+	if (mode == ABC_MATRIX_LOCAL && obj->parent) {
+		/* Note that this produces another matrix than the local matrix, due to
+		 * constraints and modifiers as well as the obj->parentinv matrix. */
+		invert_m4_m4(obj->parent->imat, obj->parent->obmat);
+		mul_m4_m4m4(zup_mat, obj->parent->imat, obj->obmat);
 	}
 	else {
-		copy_m4_m4(mat, obj->obmat);
+		copy_m4_m4(zup_mat, obj->obmat);
 	}
 
-	/* Compute rotation matrix. */
-	switch (obj->rotmode) {
-		case ROT_MODE_AXISANGLE:
-		{
-			/* Get euler angles from axis angle rotation. */
-			axis_angle_to_eulO(euler, ROT_MODE_XYZ, obj->rotAxis, obj->rotAngle);
-
-			/* Create X, Y, Z rotation matrices from euler angles. */
-			create_rotation_matrix(rot_x_mat, rot_y_mat, rot_z_mat, euler, true);
-
-			/* Concatenate rotation matrices. */
-			mul_m3_m3m3(rot_mat, rot_mat, rot_y_mat);
-			mul_m3_m3m3(rot_mat, rot_mat, rot_z_mat);
-			mul_m3_m3m3(rot_mat, rot_mat, rot_x_mat);
-
-			/* Extract location and scale from matrix. */
-			mat4_to_loc_rot_size(loc, rot, scale, mat);
-
-			break;
-		}
-		case ROT_MODE_QUAT:
-		{
-			float q[4];
-			copy_v4_v4(q, obj->quat);
-
-			/* Swap axis. */
-			q[2] = obj->quat[3];
-			q[3] = -obj->quat[2];
-
-			/* Compute rotation matrix from quaternion. */
-			quat_to_mat3(rot_mat, q);
-
-			/* Extract location and scale from matrix. */
-			mat4_to_loc_rot_size(loc, rot, scale, mat);
-
-			break;
-		}
-		case ROT_MODE_XYZ:
-		{
-			/* Extract location, rotation, and scale form matrix. */
-			mat4_to_loc_rot_size(loc, rot, scale, mat);
-
-			/* Get euler angles from rotation matrix. */
-			mat3_to_eulO(euler, ROT_MODE_XYZ, rot);
-
-			/* Create X, Y, Z rotation matrices from euler angles. */
-			create_rotation_matrix(rot_x_mat, rot_y_mat, rot_z_mat, euler, true);
-
-			/* Concatenate rotation matrices. */
-			mul_m3_m3m3(rot_mat, rot_mat, rot_y_mat);
-			mul_m3_m3m3(rot_mat, rot_mat, rot_z_mat);
-			mul_m3_m3m3(rot_mat, rot_mat, rot_x_mat);
-
-			break;
-		}
-		case ROT_MODE_XZY:
-		{
-			/* Extract location, rotation, and scale form matrix. */
-			mat4_to_loc_rot_size(loc, rot, scale, mat);
-
-			/* Get euler angles from rotation matrix. */
-			mat3_to_eulO(euler, ROT_MODE_XZY, rot);
-
-			/* Create X, Y, Z rotation matrices from euler angles. */
-			create_rotation_matrix(rot_x_mat, rot_y_mat, rot_z_mat, euler, true);
-
-			/* Concatenate rotation matrices. */
-			mul_m3_m3m3(rot_mat, rot_mat, rot_z_mat);
-			mul_m3_m3m3(rot_mat, rot_mat, rot_y_mat);
-			mul_m3_m3m3(rot_mat, rot_mat, rot_x_mat);
-
-			break;
-		}
-		case ROT_MODE_YXZ:
-		{
-			/* Extract location, rotation, and scale form matrix. */
-			mat4_to_loc_rot_size(loc, rot, scale, mat);
-
-			/* Get euler angles from rotation matrix. */
-			mat3_to_eulO(euler, ROT_MODE_YXZ, rot);
-
-			/* Create X, Y, Z rotation matrices from euler angles. */
-			create_rotation_matrix(rot_x_mat, rot_y_mat, rot_z_mat, euler, true);
-
-			/* Concatenate rotation matrices. */
-			mul_m3_m3m3(rot_mat, rot_mat, rot_y_mat);
-			mul_m3_m3m3(rot_mat, rot_mat, rot_x_mat);
-			mul_m3_m3m3(rot_mat, rot_mat, rot_z_mat);
-
-			break;
-		}
-		case ROT_MODE_YZX:
-		{
-			/* Extract location, rotation, and scale form matrix. */
-			mat4_to_loc_rot_size(loc, rot, scale, mat);
-
-			/* Get euler angles from rotation matrix. */
-			mat3_to_eulO(euler, ROT_MODE_YZX, rot);
-
-			/* Create X, Y, Z rotation matrices from euler angles. */
-			create_rotation_matrix(rot_x_mat, rot_y_mat, rot_z_mat, euler, true);
-
-			/* Concatenate rotation matrices. */
-			mul_m3_m3m3(rot_mat, rot_mat, rot_x_mat);
-			mul_m3_m3m3(rot_mat, rot_mat, rot_y_mat);
-			mul_m3_m3m3(rot_mat, rot_mat, rot_z_mat);
-
-			break;
-		}
-		case ROT_MODE_ZXY:
-		{
-			/* Extract location, rotation, and scale form matrix. */
-			mat4_to_loc_rot_size(loc, rot, scale, mat);
-
-			/* Get euler angles from rotation matrix. */
-			mat3_to_eulO(euler, ROT_MODE_ZXY, rot);
-
-			/* Create X, Y, Z rotation matrices from euler angles. */
-			create_rotation_matrix(rot_x_mat, rot_y_mat, rot_z_mat, euler, true);
-
-			/* Concatenate rotation matrices. */
-			mul_m3_m3m3(rot_mat, rot_mat, rot_z_mat);
-			mul_m3_m3m3(rot_mat, rot_mat, rot_x_mat);
-			mul_m3_m3m3(rot_mat, rot_mat, rot_y_mat);
-
-			break;
-		}
-		case ROT_MODE_ZYX:
-		{
-			/* Extract location, rotation, and scale form matrix. */
-			mat4_to_loc_rot_size(loc, rot, scale, mat);
-
-			/* Get euler angles from rotation matrix. */
-			mat3_to_eulO(euler, ROT_MODE_ZYX, rot);
-
-			/* Create X, Y, Z rotation matrices from euler angles. */
-			create_rotation_matrix(rot_x_mat, rot_y_mat, rot_z_mat, euler, true);
-
-			/* Concatenate rotation matrices. */
-			mul_m3_m3m3(rot_mat, rot_mat, rot_x_mat);
-			mul_m3_m3m3(rot_mat, rot_mat, rot_z_mat);
-			mul_m3_m3m3(rot_mat, rot_mat, rot_y_mat);
-
-			break;
-		}
+	if (proxy_from) {
+		mul_m4_m4m4(zup_mat, proxy_from->obmat, zup_mat);
 	}
 
-	/* Add rotation matrix to transformation matrix. */
-	copy_m4_m3(transform_mat, rot_mat);
-
-	/* Add translation to transformation matrix. */
-	copy_zup_yup(transform_mat[3], loc);
-
-	/* Create scale matrix. */
-	scale_mat[0][0] = scale[0];
-	scale_mat[1][1] = scale[2];
-	scale_mat[2][2] = scale[1];
-
-	/* Add scale to transformation matrix. */
-	mul_m4_m4m4(transform_mat, transform_mat, scale_mat);
+	copy_m44_axis_swap(r_yup_mat, zup_mat, ABC_YUP_FROM_ZUP);
 }
 
 bool has_property(const Alembic::Abc::ICompoundProperty &prop, const std::string &name)
@@ -434,4 +287,135 @@ bool has_property(const Alembic::Abc::ICompoundProperty &prop, const std::string
 	}
 
 	return prop.getPropertyHeader(name) != NULL;
+}
+
+typedef std::pair<Alembic::AbcCoreAbstract::index_t, float> index_time_pair_t;
+
+float get_weight_and_index(float time,
+                           const Alembic::AbcCoreAbstract::TimeSamplingPtr &time_sampling,
+                           int samples_number,
+                           Alembic::AbcGeom::index_t &i0,
+                           Alembic::AbcGeom::index_t &i1)
+{
+	samples_number = std::max(samples_number, 1);
+
+	index_time_pair_t t0 = time_sampling->getFloorIndex(time, samples_number);
+	i0 = i1 = t0.first;
+
+	if (samples_number == 1 || (fabs(time - t0.second) < 0.0001f)) {
+		return 0.0f;
+	}
+
+	index_time_pair_t t1 = time_sampling->getCeilIndex(time, samples_number);
+	i1 = t1.first;
+
+	if (i0 == i1) {
+		return 0.0f;
+	}
+
+	const float bias = (time - t0.second) / (t1.second - t0.second);
+
+	if (fabs(1.0f - bias) < 0.0001f) {
+		i0 = i1;
+		return 0.0f;
+	}
+
+	return bias;
+}
+
+//#define USE_NURBS
+
+AbcObjectReader *create_reader(const Alembic::AbcGeom::IObject &object, ImportSettings &settings)
+{
+	AbcObjectReader *reader = NULL;
+
+	const Alembic::AbcGeom::MetaData &md = object.getMetaData();
+
+	if (Alembic::AbcGeom::IXform::matches(md)) {
+		reader = new AbcEmptyReader(object, settings);
+	}
+	else if (Alembic::AbcGeom::IPolyMesh::matches(md)) {
+		reader = new AbcMeshReader(object, settings);
+	}
+	else if (Alembic::AbcGeom::ISubD::matches(md)) {
+		reader = new AbcSubDReader(object, settings);
+	}
+	else if (Alembic::AbcGeom::INuPatch::matches(md)) {
+#ifdef USE_NURBS
+		/* TODO(kevin): importing cyclic NURBS from other software crashes
+		 * at the moment. This is due to the fact that NURBS in other
+		 * software have duplicated points which causes buffer overflows in
+		 * Blender. Need to figure out exactly how these points are
+		 * duplicated, in all cases (cyclic U, cyclic V, and cyclic UV).
+		 * Until this is fixed, disabling NURBS reading. */
+		reader = new AbcNurbsReader(child, settings);
+#endif
+	}
+	else if (Alembic::AbcGeom::ICamera::matches(md)) {
+		reader = new AbcCameraReader(object, settings);
+	}
+	else if (Alembic::AbcGeom::IPoints::matches(md)) {
+		reader = new AbcPointsReader(object, settings);
+	}
+	else if (Alembic::AbcMaterial::IMaterial::matches(md)) {
+		/* Pass for now. */
+	}
+	else if (Alembic::AbcGeom::ILight::matches(md)) {
+		/* Pass for now. */
+	}
+	else if (Alembic::AbcGeom::IFaceSet::matches(md)) {
+		/* Pass, those are handled in the mesh reader. */
+	}
+	else if (Alembic::AbcGeom::ICurves::matches(md)) {
+		reader = new AbcCurveReader(object, settings);
+	}
+	else {
+		std::cerr << "Alembic: unknown how to handle objects of schema "
+		          << md.get("schemaObjTitle")
+		          << ", skipping object "
+		          << object.getFullName() << std::endl;
+	}
+
+	return reader;
+}
+
+/* ********************** */
+
+ScopeTimer::ScopeTimer(const char *message)
+	: m_message(message)
+	, m_start(PIL_check_seconds_timer())
+{}
+
+ScopeTimer::~ScopeTimer()
+{
+	fprintf(stderr, "%s: %fs\n", m_message, PIL_check_seconds_timer() - m_start);
+}
+
+/* ********************** */
+
+bool SimpleLogger::empty()
+{
+	return ((size_t)m_stream.tellp()) == 0ul;
+}
+
+std::string SimpleLogger::str() const
+{
+	return m_stream.str();
+}
+
+void SimpleLogger::clear()
+{
+	m_stream.clear();
+	m_stream.str("");
+}
+
+std::ostringstream &SimpleLogger::stream()
+{
+	return m_stream;
+}
+
+std::ostream &operator<<(std::ostream &os, const SimpleLogger &logger)
+{
+	os << logger.str();
+	return os;
 }

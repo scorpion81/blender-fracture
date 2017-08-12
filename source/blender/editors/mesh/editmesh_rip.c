@@ -496,7 +496,7 @@ static void edbm_tagged_loop_pairs_do_fill_faces(BMesh *bm, UnorderedLoopPair *u
 			}
 
 			/* face should never exist */
-			BLI_assert(BM_face_exists(f_verts, f_verts[3] ? 4 : 3, &f) == false);
+			BLI_assert(!BM_face_exists(f_verts, f_verts[3] ? 4 : 3));
 
 			f = BM_face_create_verts(bm, f_verts, f_verts[3] ? 4 : 3, f_example, BM_CREATE_NOP, true);
 
@@ -596,7 +596,7 @@ static int edbm_rip_invoke__vert(bContext *C, wmOperator *op, const wmEvent *eve
 		BMVert *v_new;
 
 		BLI_assert(l_sep->v == v);
-		v_new = bmesh_urmv_loop_region(bm, l_sep);
+		v_new = BM_face_loop_separate_multi_isolated(bm, l_sep);
 		BLI_assert(BM_vert_find_first_loop(v));
 
 		BM_vert_select_set(bm, v, false);
@@ -665,7 +665,7 @@ static int edbm_rip_invoke__vert(bContext *C, wmOperator *op, const wmEvent *eve
 
 		BM_vert_select_set(bm, v, false);
 
-		bmesh_vert_separate(bm, v, &vout, &vout_len, true);
+		bmesh_kernel_vert_separate(bm, v, &vout, &vout_len, true);
 
 		if (vout_len < 2) {
 			MEM_freeN(vout);

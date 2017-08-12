@@ -280,6 +280,16 @@ void mid_v3_v3v3v3v3(float v[3], const float v1[3], const float v2[3], const flo
 	v[2] = (v1[2] + v2[2] + v3[2] + v4[2]) / 4.0f;
 }
 
+void mid_v3_v3_array(float r[3], const float (*vec_arr)[3], const unsigned int nbr)
+{
+	const float factor = 1.0f / (float)nbr;
+	zero_v3(r);
+
+	for (unsigned int i = 0; i < nbr; i++) {
+		madd_v3_v3fl(r, vec_arr[i], factor);
+	}
+}
+
 /**
  * Specialized function for calculating normals.
  * fastpath for:
@@ -508,38 +518,27 @@ float angle_normalized_v2v2(const float v1[2], const float v2[2])
 }
 
 /**
- * angle between 2 vectors defined by 3 coords, about an axis. */
-float angle_on_axis_v3v3v3_v3(const float v1[3], const float v2[3], const float v3[3], const float axis[3])
+ * Angle between 2 vectors, about an axis (axis can be considered a plane).
+ */
+float angle_on_axis_v3v3_v3(const float v1[3], const float v2[3], const float axis[3])
 {
-	float v1_proj[3], v2_proj[3], tproj[3];
-
-	sub_v3_v3v3(v1_proj, v1, v2);
-	sub_v3_v3v3(v2_proj, v3, v2);
+	float v1_proj[3], v2_proj[3];
 
 	/* project the vectors onto the axis */
-	project_v3_v3v3(tproj, v1_proj, axis);
-	sub_v3_v3(v1_proj, tproj);
-
-	project_v3_v3v3(tproj, v2_proj, axis);
-	sub_v3_v3(v2_proj, tproj);
+	project_plane_normalized_v3_v3v3(v1_proj, v1, axis);
+	project_plane_normalized_v3_v3v3(v2_proj, v2, axis);
 
 	return angle_v3v3(v1_proj, v2_proj);
 }
 
-float angle_signed_on_axis_v3v3v3_v3(const float v1[3], const float v2[3], const float v3[3], const float axis[3])
+float angle_signed_on_axis_v3v3_v3(const float v1[3], const float v2[3], const float axis[3])
 {
 	float v1_proj[3], v2_proj[3], tproj[3];
 	float angle;
 
-	sub_v3_v3v3(v1_proj, v1, v2);
-	sub_v3_v3v3(v2_proj, v3, v2);
-
 	/* project the vectors onto the axis */
-	project_v3_v3v3(tproj, v1_proj, axis);
-	sub_v3_v3(v1_proj, tproj);
-
-	project_v3_v3v3(tproj, v2_proj, axis);
-	sub_v3_v3(v2_proj, tproj);
+	project_plane_normalized_v3_v3v3(v1_proj, v1, axis);
+	project_plane_normalized_v3_v3v3(v2_proj, v2, axis);
 
 	angle = angle_v3v3(v1_proj, v2_proj);
 
@@ -550,6 +549,29 @@ float angle_signed_on_axis_v3v3v3_v3(const float v1[3], const float v2[3], const
 	}
 
 	return angle;
+}
+
+/**
+ * Angle between 2 vectors defined by 3 coords, about an axis (axis can be considered a plane).
+ */
+float angle_on_axis_v3v3v3_v3(const float v1[3], const float v2[3], const float v3[3], const float axis[3])
+{
+	float vec1[3], vec2[3];
+
+	sub_v3_v3v3(vec1, v1, v2);
+	sub_v3_v3v3(vec2, v3, v2);
+
+	return angle_on_axis_v3v3_v3(vec1, vec2, axis);
+}
+
+float angle_signed_on_axis_v3v3v3_v3(const float v1[3], const float v2[3], const float v3[3], const float axis[3])
+{
+	float vec1[3], vec2[3];
+
+	sub_v3_v3v3(vec1, v1, v2);
+	sub_v3_v3v3(vec2, v3, v2);
+
+	return angle_signed_on_axis_v3v3_v3(vec1, vec2, axis);
 }
 
 void angle_tri_v3(float angles[3], const float v1[3], const float v2[3], const float v3[3])
@@ -659,6 +681,25 @@ void project_plane_v2_v2v2(float out[2], const float p[2], const float v_plane[2
 	out[1] = p[1] - (mul * v_plane[1]);
 }
 
+void project_plane_normalized_v3_v3v3(float out[3], const float p[3], const float v_plane[3])
+{
+	BLI_ASSERT_UNIT_V3(v_plane);
+	const float mul = dot_v3v3(p, v_plane);
+
+	out[0] = p[0] - (mul * v_plane[0]);
+	out[1] = p[1] - (mul * v_plane[1]);
+	out[2] = p[2] - (mul * v_plane[2]);
+}
+
+void project_plane_normalized_v2_v2v2(float out[2], const float p[2], const float v_plane[2])
+{
+	BLI_ASSERT_UNIT_V2(v_plane);
+	const float mul = dot_v2v2(p, v_plane);
+
+	out[0] = p[0] - (mul * v_plane[0]);
+	out[1] = p[1] - (mul * v_plane[1]);
+}
+
 /* project a vector on a plane defined by normal and a plane point p */
 void project_v3_plane(float out[3], const float plane_no[3], const float plane_co[3])
 {
@@ -687,7 +728,19 @@ void bisect_v3_v3v3v3(float out[3], const float v1[3], const float v2[3], const 
 
 /**
  * Returns a reflection vector from a vector and a normal vector
- * reflect = vec - ((2 * DotVecs(vec, mirror)) * mirror)
+ * reflect = vec - ((2 * dot(vec, mirror)) * mirror).
+ *
+ * <pre>
+ * v
+ * +  ^
+ *  \ |
+ *   \|
+ *    + normal: axis of reflection
+ *   /
+ *  /
+ * +
+ * out: result (negate for a 'bounce').
+ * </pre>
  */
 void reflect_v3_v3v3(float out[3], const float v[3], const float normal[3])
 {

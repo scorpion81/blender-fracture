@@ -544,10 +544,16 @@ static void build_dag_object(DagForest *dag, DagNode *scenenode, Main *bmain, Sc
 									if (ct->tar->type == OB_MESH)
 										node3->customdata_mask |= CD_MASK_MDEFORMVERT;
 								}
-								else if (ELEM(con->type, CONSTRAINT_TYPE_FOLLOWPATH, CONSTRAINT_TYPE_CLAMPTO, CONSTRAINT_TYPE_SPLINEIK))
+								else if (ELEM(con->type, CONSTRAINT_TYPE_FOLLOWPATH,
+								                         CONSTRAINT_TYPE_CLAMPTO,
+								                         CONSTRAINT_TYPE_SPLINEIK,
+								                         CONSTRAINT_TYPE_SHRINKWRAP))
+								{
 									dag_add_relation(dag, node3, node, DAG_RL_DATA_DATA | DAG_RL_OB_DATA, cti->name);
-								else
+								}
+								else {
 									dag_add_relation(dag, node3, node, DAG_RL_OB_DATA, cti->name);
+								}
 							}
 						}
 						
@@ -881,8 +887,12 @@ static void build_dag_object(DagForest *dag, DagNode *scenenode, Main *bmain, Sc
 						if (obt->type == OB_MESH)
 							node2->customdata_mask |= CD_MASK_MDEFORMVERT;
 					}
-					else
+					else if (cti->type == CONSTRAINT_TYPE_SHRINKWRAP) {
+						dag_add_relation(dag, node2, node, DAG_RL_DATA_DATA | DAG_RL_OB_DATA, cti->name);
+					}
+					else {
 						dag_add_relation(dag, node2, node, DAG_RL_OB_OB, cti->name);
+					}
 				}
 				addtoroot = 0;
 			}
@@ -1432,7 +1442,6 @@ static void scene_sort_groups(Main *bmain, Scene *sce)
 	/* test; are group objects all in this scene? */
 	for (ob = bmain->object.first; ob; ob = ob->id.next) {
 		ob->id.tag &= ~LIB_TAG_DOIT;
-		ob->id.newid = NULL; /* newid abuse for GroupObject */
 	}
 	for (base = sce->base.first; base; base = base->next)
 		base->object->id.tag |= LIB_TAG_DOIT;
@@ -1462,6 +1471,11 @@ static void scene_sort_groups(Main *bmain, Scene *sce)
 			/* copy the newly sorted listbase */
 			group->gobject = listb;
 		}
+	}
+
+	/* newid abused for GroupObject, cleanup. */
+	for (ob = bmain->object.first; ob; ob = ob->id.next) {
+		ob->id.newid = NULL;
 	}
 }
 
@@ -2559,7 +2573,7 @@ void DAG_on_visible_update(Main *bmain, const bool do_time)
 }
 
 static void dag_id_flush_update__isDependentTexture(
-        void *userData, Object *UNUSED(ob), ID **idpoin, int UNUSED(cd_flag))
+        void *userData, Object *UNUSED(ob), ID **idpoin, int UNUSED(cb_flag))
 {
 	struct { ID *id; bool is_dependent; } *data = userData;
 	
@@ -3001,7 +3015,7 @@ void DAG_id_tag_update_ex(Main *bmain, ID *id, short flag)
 				MeshSeqCacheModifierData *mcmd = (MeshSeqCacheModifierData *)md;
 
 				if (mcmd->cache_file && (&mcmd->cache_file->id == id)) {
-					ob->recalc |= OB_RECALC_DATA;
+					ob->recalc |= OB_RECALC_ALL;
 					continue;
 				}
 			}
@@ -3014,7 +3028,7 @@ void DAG_id_tag_update_ex(Main *bmain, ID *id, short flag)
 				bTransformCacheConstraint *data = con->data;
 
 				if (data->cache_file && (&data->cache_file->id == id)) {
-					ob->recalc |= OB_RECALC_DATA;
+					ob->recalc |= OB_RECALC_ALL;
 					break;
 				}
 			}
@@ -3039,7 +3053,7 @@ void DAG_id_type_tag(Main *bmain, short idtype)
 		DAG_id_type_tag(bmain, ID_SCE);
 	}
 
-	bmain->id_tag_update[BKE_idcode_to_index(idtype)] = 1;
+	atomic_fetch_and_or_uint8((uint8_t *)&bmain->id_tag_update[BKE_idcode_to_index(idtype)], 1);
 }
 
 int DAG_id_type_tagged(Main *bmain, short idtype)

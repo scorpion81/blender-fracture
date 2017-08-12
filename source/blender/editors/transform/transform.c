@@ -103,7 +103,7 @@ static void drawEdgeSlide(TransInfo *t);
 static void drawVertSlide(TransInfo *t);
 static void postInputRotation(TransInfo *t, float values[3]);
 
-static void ElementRotation(TransInfo *t, TransData *td, float mat[3][3], short around);
+static void ElementRotation(TransInfo *t, TransData *td, float mat[3][3], const short around);
 static void initSnapSpatial(TransInfo *t, float r_snap[3]);
 
 
@@ -1605,7 +1605,7 @@ static void drawArrow(ArrowDirection d, short offset, short length, short size)
 			offset = -offset;
 			length = -length;
 			size = -size;
-			/* fall-through */
+			ATTR_FALLTHROUGH;
 		case RIGHT:
 			glBegin(GL_LINES);
 			glVertex2s(offset, 0);
@@ -1621,7 +1621,7 @@ static void drawArrow(ArrowDirection d, short offset, short length, short size)
 			offset = -offset;
 			length = -length;
 			size = -size;
-			/* fall-through */
+			ATTR_FALLTHROUGH;
 		case UP:
 			glBegin(GL_LINES);
 			glVertex2s(0, offset);
@@ -1640,7 +1640,7 @@ static void drawArrowHead(ArrowDirection d, short size)
 	switch (d) {
 		case LEFT:
 			size = -size;
-			/* fall-through */
+			ATTR_FALLTHROUGH;
 		case RIGHT:
 			glBegin(GL_LINES);
 			glVertex2s(0, 0);
@@ -1652,7 +1652,7 @@ static void drawArrowHead(ArrowDirection d, short size)
 
 		case DOWN:
 			size = -size;
-			/* fall-through */
+			ATTR_FALLTHROUGH;
 		case UP:
 			glBegin(GL_LINES);
 			glVertex2s(0, 0);
@@ -2176,7 +2176,14 @@ bool initTransform(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 	calculateCenter(t);
 
 	if (event) {
-		initMouseInput(t, &t->mouse, t->center2d, event->mval);
+		/* Initialize accurate transform to settings requested by keymap. */
+		bool use_accurate = false;
+		if ((prop = RNA_struct_find_property(op->ptr, "use_accurate")) && RNA_property_is_set(op->ptr, prop)) {
+			if (RNA_property_boolean_get(op->ptr, prop)) {
+				use_accurate = true;
+			}
+		}
+		initMouseInput(t, &t->mouse, t->center2d, event->mval, use_accurate);
 	}
 
 	switch (mode) {
@@ -2880,7 +2887,7 @@ static void initBend(TransInfo *t)
 
 	curs = ED_view3d_cursor3d_get(t->scene, t->view);
 	copy_v3_v3(data->warp_sta, curs);
-	ED_view3d_win_to_3d(t->ar, curs, mval_fl, data->warp_end);
+	ED_view3d_win_to_3d(t->sa->spacedata.first, t->ar, curs, mval_fl, data->warp_end);
 
 	copy_v3_v3(data->warp_nor, t->viewinv[2]);
 	if (t->flag & T_EDIT) {
@@ -3044,19 +3051,13 @@ static void Bend(TransInfo *t, const int UNUSED(mval[2]))
 /** \name Transform Shear
  * \{ */
 
-static void postInputShear(TransInfo *UNUSED(t), float values[3])
-{
-	mul_v3_fl(values, 0.05f);
-}
-
 static void initShear(TransInfo *t)
 {
 	t->mode = TFM_SHEAR;
 	t->transform = applyShear;
 	t->handleEvent = handleEventShear;
-	
-	setInputPostFct(&t->mouse, postInputShear);
-	initMouseInputMode(t, &t->mouse, INPUT_HORIZONTAL_ABSOLUTE);
+
+	initMouseInputMode(t, &t->mouse, INPUT_HORIZONTAL_RATIO);
 	
 	t->idx_max = 0;
 	t->num.idx_max = 0;
@@ -3078,24 +3079,24 @@ static eRedrawFlag handleEventShear(TransInfo *t, const wmEvent *event)
 	if (event->type == MIDDLEMOUSE && event->val == KM_PRESS) {
 		/* Use custom.mode.data pointer to signal Shear direction */
 		if (t->custom.mode.data == NULL) {
-			initMouseInputMode(t, &t->mouse, INPUT_VERTICAL_ABSOLUTE);
+			initMouseInputMode(t, &t->mouse, INPUT_VERTICAL_RATIO);
 			t->custom.mode.data = (void *)1;
 		}
 		else {
-			initMouseInputMode(t, &t->mouse, INPUT_HORIZONTAL_ABSOLUTE);
+			initMouseInputMode(t, &t->mouse, INPUT_HORIZONTAL_RATIO);
 			t->custom.mode.data = NULL;
 		}
 
 		status = TREDRAW_HARD;
 	}
 	else if (event->type == XKEY && event->val == KM_PRESS) {
-		initMouseInputMode(t, &t->mouse, INPUT_HORIZONTAL_ABSOLUTE);
+		initMouseInputMode(t, &t->mouse, INPUT_HORIZONTAL_RATIO);
 		t->custom.mode.data = NULL;
 		
 		status = TREDRAW_HARD;
 	}
 	else if (event->type == YKEY && event->val == KM_PRESS) {
-		initMouseInputMode(t, &t->mouse, INPUT_VERTICAL_ABSOLUTE);
+		initMouseInputMode(t, &t->mouse, INPUT_VERTICAL_RATIO);
 		t->custom.mode.data = (void *)1;
 		
 		status = TREDRAW_HARD;
@@ -3392,7 +3393,9 @@ static void ElementResize(TransInfo *t, TransData *td, float mat[3][3])
 	}
 	
 	protectedTransBits(td->protectflag, vec);
-	add_v3_v3v3(td->loc, td->iloc, vec);
+	if (td->loc) {
+		add_v3_v3v3(td->loc, td->iloc, vec);
+	}
 	
 	constraintTransLim(t, td);
 }
@@ -3720,6 +3723,12 @@ static void initRotation(TransInfo *t)
 	copy_v3_v3(t->axis_orig, t->axis);
 }
 
+/**
+ * Applies values of rotation to `td->loc` and `td->ext->quat`
+ * based on a rotation matrix (mat) and a pivot (center).
+ *
+ * Protected axis and other transform settings are taken into account.
+ */
 static void ElementRotation_ex(TransInfo *t, TransData *td, float mat[3][3], const float *center)
 {
 	float vec[3], totmat[3][3], smat[3][3];
@@ -4058,13 +4067,15 @@ static void initTrackball(TransInfo *t)
 static void applyTrackballValue(TransInfo *t, const float axis1[3], const float axis2[3], float angles[2])
 {
 	TransData *td = t->data;
-	float mat[3][3], smat[3][3], totmat[3][3];
+	float mat[3][3];
+	float axis[3];
+	float angle;
 	int i;
 
-	axis_angle_normalized_to_mat3(smat, axis1, angles[0]);
-	axis_angle_normalized_to_mat3(totmat, axis2, angles[1]);
-
-	mul_m3_m3m3(mat, smat, totmat);
+	mul_v3_v3fl(axis, axis1, angles[0]);
+	madd_v3_v3fl(axis, axis2, angles[1]);
+	angle = normalize_v3(axis);
+	axis_angle_normalized_to_mat3(mat, axis, angle);
 
 	for (i = 0; i < t->total; i++, td++) {
 		if (td->flag & TD_NOACTION)
@@ -4074,10 +4085,7 @@ static void applyTrackballValue(TransInfo *t, const float axis1[3], const float 
 			continue;
 
 		if (t->flag & T_PROP_EDIT) {
-			axis_angle_normalized_to_mat3(smat, axis1, td->factor * angles[0]);
-			axis_angle_normalized_to_mat3(totmat, axis2, td->factor * angles[1]);
-
-			mul_m3_m3m3(mat, smat, totmat);
+			axis_angle_normalized_to_mat3(mat, axis, td->factor * angle);
 		}
 
 		ElementRotation(t, td, mat, t->around);
@@ -4263,7 +4271,7 @@ static void headerTranslation(TransInfo *t, const float vec[3], char str[UI_MAX_
 		bUnit_AsString(distvec, sizeof(distvec), dist * t->scene->unit.scale_length, 4, t->scene->unit.system,
 		               B_UNIT_LENGTH, do_split, false);
 	}
-	else if (dist > 1e10f || dist < -1e10f)  {
+	else if (dist > 1e10f || dist < -1e10f) {
 		/* prevent string buffer overflow */
 		BLI_snprintf(distvec, NUM_STR_REP_LEN, "%.4e", dist);
 	}
@@ -4337,9 +4345,22 @@ static void applyTranslationValue(TransInfo *t, const float vec[3])
 {
 	TransData *td = t->data;
 	float tvec[3];
-	int i;
 
-	for (i = 0; i < t->total; i++, td++) {
+	/* The ideal would be "apply_snap_align_rotation" only when a snap point is found
+	 * so, maybe inside this function is not the best place to apply this rotation.
+	 * but you need "handle snapping rotation before doing the translation" (really?) */
+	const bool apply_snap_align_rotation = usingSnappingNormal(t);// && (t->tsnap.status & POINT_INIT);
+	float pivot[3];
+	if (apply_snap_align_rotation) {
+		copy_v3_v3(pivot, t->tsnap.snapTarget);
+		/* The pivot has to be in local-space (see T49494) */
+		if (t->flag & (T_EDIT | T_POSE)) {
+			Object *ob = t->obedit ? t->obedit : t->poseobj;
+			mul_m4_v3(ob->imat, pivot);
+		}
+	}
+
+	for (int i = 0; i < t->total; i++, td++) {
 		if (td->flag & TD_NOACTION)
 			break;
 		
@@ -4350,7 +4371,7 @@ static void applyTranslationValue(TransInfo *t, const float vec[3])
 		bool use_rotate_offset = false;
 
 		/* handle snapping rotation before doing the translation */
-		if (usingSnappingNormal(t)) {
+		if (apply_snap_align_rotation) {
 			float mat[3][3];
 
 			if (validSnappingNormal(t)) {
@@ -4368,7 +4389,7 @@ static void applyTranslationValue(TransInfo *t, const float vec[3])
 				unit_m3(mat);
 			}
 
-			ElementRotation_ex(t, td, mat, t->tsnap.snapTarget);
+			ElementRotation_ex(t, td, mat, pivot);
 
 			if (td->loc) {
 				use_rotate_offset = true;
@@ -4920,7 +4941,7 @@ static void initPushPull(TransInfo *t)
 
 static void applyPushPull(TransInfo *t, const int UNUSED(mval[2]))
 {
-	float vec[3], axis[3];
+	float vec[3], axis_global[3];
 	float distance;
 	int i;
 	char str[UI_MAX_DRAW_STR];
@@ -4948,7 +4969,7 @@ static void applyPushPull(TransInfo *t, const int UNUSED(mval[2]))
 	}
 
 	if (t->con.applyRot && t->con.mode & CON_APPLY) {
-		t->con.applyRot(t, NULL, axis, NULL);
+		t->con.applyRot(t, NULL, axis_global, NULL);
 	}
 
 	for (i = 0; i < t->total; i++, td++) {
@@ -4960,7 +4981,11 @@ static void applyPushPull(TransInfo *t, const int UNUSED(mval[2]))
 
 		sub_v3_v3v3(vec, t->center, td->center);
 		if (t->con.applyRot && t->con.mode & CON_APPLY) {
+			float axis[3];
+			copy_v3_v3(axis, axis_global);
 			t->con.applyRot(t, td, axis, NULL);
+
+			mul_m3_v3(td->smtx, axis);
 			if (isLockConstraint(t)) {
 				float dvec[3];
 				project_v3_v3v3(dvec, vec, axis);
@@ -5533,7 +5558,7 @@ static void slide_origdata_interp_data_vert(
 	float v_proj[3][3];
 
 	if (do_loop_weight || do_loop_mdisps) {
-		project_plane_v3_v3v3(v_proj[1], sv->co_orig_3d, v_proj_axis);
+		project_plane_normalized_v3_v3v3(v_proj[1], sv->co_orig_3d, v_proj_axis);
 	}
 
 	// BM_ITER_ELEM (l, &liter, sv->v, BM_LOOPS_OF_VERT) {
@@ -5567,19 +5592,19 @@ static void slide_origdata_interp_data_vert(
 			/* In the unlikely case that we're next to a zero length edge - walk around the to the next.
 			 * Since we only need to check if the vertex is in this corner,
 			 * its not important _which_ loop - as long as its not overlapping 'sv->co_orig_3d', see: T45096. */
-			project_plane_v3_v3v3(v_proj[0], co_prev, v_proj_axis);
+			project_plane_normalized_v3_v3v3(v_proj[0], co_prev, v_proj_axis);
 			while (UNLIKELY(((co_prev_ok = (len_squared_v3v3(v_proj[1], v_proj[0]) > eps)) == false) &&
 			                ((l_prev = l_prev->prev) != l->next)))
 			{
 				co_prev = slide_origdata_orig_vert_co(sod, l_prev->v);
-				project_plane_v3_v3v3(v_proj[0], co_prev, v_proj_axis);
+				project_plane_normalized_v3_v3v3(v_proj[0], co_prev, v_proj_axis);
 			}
-			project_plane_v3_v3v3(v_proj[2], co_next, v_proj_axis);
+			project_plane_normalized_v3_v3v3(v_proj[2], co_next, v_proj_axis);
 			while (UNLIKELY(((co_next_ok = (len_squared_v3v3(v_proj[1], v_proj[2]) > eps)) == false) &&
 			                ((l_next = l_next->next) != l->prev)))
 			{
 				co_next = slide_origdata_orig_vert_co(sod, l_next->v);
-				project_plane_v3_v3v3(v_proj[2], co_next, v_proj_axis);
+				project_plane_normalized_v3_v3v3(v_proj[2], co_next, v_proj_axis);
 			}
 
 			if (co_prev_ok && co_next_ok) {
@@ -8493,7 +8518,7 @@ static void initTimeScale(TransInfo *t)
 	center[1] = t->mouse.imval[1];
 
 	/* force a reinit with the center2d used here */
-	initMouseInput(t, &t->mouse, center, t->mouse.imval);
+	initMouseInput(t, &t->mouse, center, t->mouse.imval, false);
 
 	initMouseInputMode(t, &t->mouse, INPUT_SPRING_FLIP);
 

@@ -631,10 +631,20 @@ void drawaxes(const float viewmat_local[4][4], float size, char drawtype)
 
 
 /* Function to draw an Image on an empty Object */
-static void draw_empty_image(Object *ob, const short dflag, const unsigned char ob_wire_col[4])
+static void draw_empty_image(Object *ob, const short dflag, const unsigned char ob_wire_col[4], StereoViews sview)
 {
 	Image *ima = ob->data;
-	ImBuf *ibuf = BKE_image_acquire_ibuf(ima, ob->iuser, NULL);
+	ImBuf *ibuf;
+	ImageUser iuser = *ob->iuser;
+
+	/* Support multi-view */
+	if (ima && (sview == STEREO_RIGHT_ID)) {
+		iuser.multiview_eye = sview;
+		iuser.flag |= IMA_SHOW_STEREO;
+		BKE_image_multiview_index(ima, &iuser);
+	}
+
+	ibuf = BKE_image_acquire_ibuf(ima, &iuser, NULL);
 
 	if (ibuf && (ibuf->rect == NULL) && (ibuf->rect_float != NULL)) {
 		IMB_rect_from_float(ibuf);
@@ -857,7 +867,7 @@ void view3d_cached_text_draw_add(const float co[3],
 	memcpy(vos->str, str, alloc_len);
 }
 
-void view3d_cached_text_draw_end(View3D *v3d, ARegion *ar, bool depth_write, float mat[4][4])
+void view3d_cached_text_draw_end(View3D *v3d, ARegion *ar, bool depth_write)
 {
 	RegionView3D *rv3d = ar->regiondata;
 	ViewCachedString *vos;
@@ -867,9 +877,6 @@ void view3d_cached_text_draw_end(View3D *v3d, ARegion *ar, bool depth_write, flo
 
 	/* project first and test */
 	for (vos = g_v3d_strings[g_v3d_string_level]; vos; vos = vos->next) {
-		if (mat && !(vos->flag & V3D_CACHE_TEXT_WORLDSPACE))
-			mul_m4_v3(mat, vos->vec);
-
 		if (ED_view3d_project_short_ex(ar,
 		                               (vos->flag & V3D_CACHE_TEXT_GLOBALSPACE) ? rv3d->persmat : rv3d->persmatob,
 		                               (vos->flag & V3D_CACHE_TEXT_LOCALCLIP) != 0,
@@ -1814,16 +1821,16 @@ static void drawcamera_volume(float near_plane[4][3], float far_plane[4][3], con
 
 	glBegin(mode);
 	glVertex3fv(near_plane[2]);
-	glVertex3fv(near_plane[1]);
-	glVertex3fv(far_plane[1]);
 	glVertex3fv(far_plane[2]);
+	glVertex3fv(far_plane[3]);
+	glVertex3fv(near_plane[3]);
 	glEnd();
 
 	glBegin(mode);
-	glVertex3fv(far_plane[0]);
-	glVertex3fv(near_plane[0]);
-	glVertex3fv(near_plane[3]);
 	glVertex3fv(far_plane[3]);
+	glVertex3fv(near_plane[3]);
+	glVertex3fv(near_plane[0]);
+	glVertex3fv(far_plane[0]);
 	glEnd();
 }
 
@@ -3079,7 +3086,7 @@ static DMDrawOption draw_dm_bweights__setDrawOptions(void *userData, int index)
 	if (!BM_elem_flag_test(eed, BM_ELEM_HIDDEN)) {
 		const float bweight = BM_ELEM_CD_GET_FLOAT(eed, data->cd_layer_offset);
 		if (bweight != 0.0f) {
-			UI_ThemeColorBlend(TH_WIRE_EDIT, TH_EDGE_SELECT, bweight);
+			UI_ThemeColorBlend(TH_WIRE_EDIT, TH_EDGE_BEVEL, bweight);
 			return DM_DRAW_OPTION_NORMAL;
 		}
 	}
@@ -3095,7 +3102,7 @@ static void draw_dm_bweights__mapFunc(void *userData, int index, const float co[
 	if (!BM_elem_flag_test(eve, BM_ELEM_HIDDEN)) {
 		const float bweight = BM_ELEM_CD_GET_FLOAT(eve, data->cd_layer_offset);
 		if (bweight != 0.0f) {
-			UI_ThemeColorBlend(TH_VERTEX, TH_VERTEX_SELECT, bweight);
+			UI_ThemeColorBlend(TH_VERTEX, TH_VERTEX_BEVEL, bweight);
 			glVertex3fv(co);
 		}
 	}
@@ -4202,7 +4209,6 @@ static void draw_mesh_fancy(Scene *scene, ARegion *ar, View3D *v3d, RegionView3D
 	
 	if (is_obact && BKE_paint_select_vert_test(ob)) {
 		const bool use_depth = (v3d->flag & V3D_ZBUF_SELECT) != 0;
-		glColor3f(0.0f, 0.0f, 0.0f);
 		glPointSize(UI_GetThemeValuef(TH_VERTEX_SIZE));
 
 		if (!use_depth) glDisable(GL_DEPTH_TEST);
@@ -5114,7 +5120,7 @@ static void draw_new_particle_system(Scene *scene, View3D *v3d, RegionView3D *rv
 			copy_m4_m4(imat, rv3d->viewinv);
 			normalize_v3(imat[0]);
 			normalize_v3(imat[1]);
-			/* fall-through */
+			ATTR_FALLTHROUGH;
 		case PART_DRAW_CROSS:
 		case PART_DRAW_AXIS:
 			/* lets calculate the scale: */
@@ -6410,18 +6416,15 @@ static void draw_editnurb(
 				vec_a[0] = fac;
 				vec_a[1] = 0.0f;
 				vec_a[2] = 0.0f;
-
-				vec_b[0] = -fac;
-				vec_b[1] = 0.0f;
-				vec_b[2] = 0.0f;
 				
 				mul_qt_v3(bevp->quat, vec_a);
-				mul_qt_v3(bevp->quat, vec_b);
+				madd_v3_v3fl(vec_a, bevp->dir, -fac);
+
+				reflect_v3_v3v3(vec_b, vec_a, bevp->dir);
+				negate_v3(vec_b);
+
 				add_v3_v3(vec_a, bevp->vec);
 				add_v3_v3(vec_b, bevp->vec);
-
-				madd_v3_v3fl(vec_a, bevp->dir, -fac);
-				madd_v3_v3fl(vec_b, bevp->dir, -fac);
 
 				glBegin(GL_LINE_STRIP);
 				glVertex3fv(vec_a);
@@ -6466,7 +6469,6 @@ static void draw_editfont(Scene *scene, View3D *v3d, RegionView3D *rv3d, Base *b
 	Curve *cu = ob->data;
 	EditFont *ef = cu->editfont;
 	float vec1[3], vec2[3];
-	int selstart, selend;
 
 	draw_editfont_textcurs(rv3d, ef->textcurs);
 
@@ -6519,17 +6521,16 @@ static void draw_editfont(Scene *scene, View3D *v3d, RegionView3D *rv3d, Base *b
 	setlinestyle(0);
 
 
-	if (BKE_vfont_select_get(ob, &selstart, &selend) && ef->selboxes) {
-		const int seltot = selend - selstart;
+	if (ef->selboxes && ef->selboxes_len) {
 		float selboxw;
 
 		cpack(0xffffff);
 		set_inverted_drawing(1);
-		for (int i = 0; i <= seltot; i++) {
+		for (int i = 0; i < ef->selboxes_len; i++) {
 			EditFontSelBox *sb = &ef->selboxes[i];
 			float tvec[3];
 
-			if (i != seltot) {
+			if (i + 1 != ef->selboxes_len) {
 				if (ef->selboxes[i + 1].y == sb->y)
 					selboxw = ef->selboxes[i + 1].x - sb->x;
 				else
@@ -7161,8 +7162,9 @@ static void drawtexspace(Object *ob)
 }
 
 /* draws wire outline */
-static void drawObjectSelect(Scene *scene, View3D *v3d, ARegion *ar, Base *base,
-                             const unsigned char ob_wire_col[4])
+static void draw_object_selected_outline(
+        Scene *scene, View3D *v3d, ARegion *ar, Base *base,
+        const unsigned char ob_wire_col[4])
 {
 	RegionView3D *rv3d = ar->regiondata;
 	Object *ob = base->object;
@@ -7345,7 +7347,7 @@ static void draw_object_wire_color(Scene *scene, Base *base, unsigned char r_ob_
 					theme_id = TH_GROUP_ACTIVE;
 
 					if (scene->basact != base) {
-						theme_shade = -16;
+						theme_shade = -32;
 					}
 				}
 				else {
@@ -7719,7 +7721,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 		if ((v3d->flag & V3D_SELECT_OUTLINE) && !render_override && ob->type != OB_MESH) {
 			if (dt > OB_WIRE && (ob->mode & OB_MODE_EDIT) == 0 && (dflag & DRAW_SCENESET) == 0) {
 				if (!(ob->dtx & OB_DRAWWIRE) && (ob->flag & SELECT) && !(dflag & (DRAW_PICKING | DRAW_CONSTCOLOR))) {
-					drawObjectSelect(scene, v3d, ar, base, ob_wire_col);
+					draw_object_selected_outline(scene, v3d, ar, base, ob_wire_col);
 				}
 			}
 		}
@@ -7792,7 +7794,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 			case OB_EMPTY:
 				if (!render_override) {
 					if (ob->empty_drawtype == OB_EMPTY_IMAGE) {
-						draw_empty_image(ob, dflag, ob_wire_col);
+						draw_empty_image(ob, dflag, ob_wire_col, v3d->multiview_eye);
 					}
 					else {
 						drawaxes(rv3d->viewmatob, ob->empty_drawsize, ob->empty_drawtype);
@@ -7905,7 +7907,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 			draw_new_particle_system(scene, v3d, rv3d, base, psys, dt, dflag);
 		}
 		invert_m4_m4(ob->imat, ob->obmat);
-		view3d_cached_text_draw_end(v3d, ar, 0, NULL);
+		view3d_cached_text_draw_end(v3d, ar, 0);
 
 		glMultMatrixf(ob->obmat);
 		
@@ -7929,121 +7931,75 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 		}
 	}
 
-	/* draw code for smoke */
-	if (smd) {
-#if 0
-		/* draw collision objects */
-		if ((smd->type & MOD_SMOKE_TYPE_COLL) && smd->coll) {
-			SmokeCollSettings *scs = smd->coll;
-			if (scs->points) {
-				size_t i;
+	/* draw code for smoke, only draw domains */
+	if (smd && smd->domain) {
+		SmokeDomainSettings *sds = smd->domain;
+		float viewnormal[3];
 
-				glLoadMatrixf(rv3d->viewmat);
+		glLoadMatrixf(rv3d->viewmat);
+		glMultMatrixf(ob->obmat);
 
-				if (col || (ob->flag & SELECT)) cpack(0xFFFFFF);
-				glDepthMask(GL_FALSE);
-				glEnable(GL_BLEND);
-				
+		if (!render_override) {
+			BoundBox bb;
+			float p0[3], p1[3];
 
-				// glPointSize(3.0);
-				glBegin(GL_POINTS);
-
-				for (i = 0; i < scs->numpoints; i++)
-				{
-					glVertex3fv(&scs->points[3 * i]);
-				}
-
-				glEnd();
-
-				glMultMatrixf(ob->obmat);
-				glDisable(GL_BLEND);
-				glDepthMask(GL_TRUE);
-				if (col) cpack(col);
-			}
-		}
-#endif
-
-		/* only draw domains */
-		if (smd->domain) {
-			SmokeDomainSettings *sds = smd->domain;
-			float viewnormal[3];
-
-			glLoadMatrixf(rv3d->viewmat);
-			glMultMatrixf(ob->obmat);
-
-			if (!render_override) {
-				BoundBox bb;
-				float p0[3], p1[3];
-
-				/* draw adaptive domain bounds */
-				if ((sds->flags & MOD_SMOKE_ADAPTIVE_DOMAIN)) {
-					/* draw domain max bounds */
-					VECSUBFAC(p0, sds->p0, sds->cell_size, sds->adapt_res);
-					VECADDFAC(p1, sds->p1, sds->cell_size, sds->adapt_res);
-					BKE_boundbox_init_from_minmax(&bb, p0, p1);
-					draw_box(bb.vec, false);
-				}
-
-#if 0
-				/* draw base resolution bounds */
-				BKE_boundbox_init_from_minmax(&bb, sds->p0, sds->p1);
-				draw_box(bb.vec);
-#endif
-
-
-				/* draw a single voxel to hint the user about the resolution of the fluid */
-				copy_v3_v3(p0, sds->p0);
-
-				if (sds->flags & MOD_SMOKE_HIGHRES) {
-					madd_v3_v3v3fl(p1, p0, sds->cell_size, 1.0f / (sds->amplify + 1));
-				}
-				else {
-					add_v3_v3v3(p1, p0, sds->cell_size);
-				}
-
+			/* draw max domain bounds */
+			if ((sds->flags & MOD_SMOKE_ADAPTIVE_DOMAIN)) {
+				VECSUBFAC(p0, sds->p0, sds->cell_size, sds->adapt_res);
+				VECADDFAC(p1, sds->p1, sds->cell_size, sds->adapt_res);
 				BKE_boundbox_init_from_minmax(&bb, p0, p1);
 				draw_box(bb.vec, false);
 			}
 
-			/* don't show smoke before simulation starts, this could be made an option in the future */
-			if (sds->fluid && CFRA >= sds->point_cache[0]->startframe) {
-				float p0[3], p1[3];
+			/* draw a single voxel to hint the user about the resolution of the fluid */
+			copy_v3_v3(p0, sds->p0);
 
-				/* get view vector */
-				invert_m4_m4(ob->imat, ob->obmat);
-				mul_v3_mat3_m4v3(viewnormal, ob->imat, rv3d->viewinv[2]);
-				normalize_v3(viewnormal);
+			if (sds->flags & MOD_SMOKE_HIGHRES) {
+				madd_v3_v3v3fl(p1, p0, sds->cell_size, 1.0f / (sds->amplify + 1));
+			}
+			else {
+				add_v3_v3v3(p1, p0, sds->cell_size);
+			}
 
-				/* set dynamic boundaries to draw the volume
-				 * also scale cube to global space to equalize volume slicing on all axes
-				 *  (it's scaled back before drawing) */
-				p0[0] = (sds->p0[0] + sds->cell_size[0] * sds->res_min[0] + sds->obj_shift_f[0]) * fabsf(ob->size[0]);
-				p0[1] = (sds->p0[1] + sds->cell_size[1] * sds->res_min[1] + sds->obj_shift_f[1]) * fabsf(ob->size[1]);
-				p0[2] = (sds->p0[2] + sds->cell_size[2] * sds->res_min[2] + sds->obj_shift_f[2]) * fabsf(ob->size[2]);
-				p1[0] = (sds->p0[0] + sds->cell_size[0] * sds->res_max[0] + sds->obj_shift_f[0]) * fabsf(ob->size[0]);
-				p1[1] = (sds->p0[1] + sds->cell_size[1] * sds->res_max[1] + sds->obj_shift_f[1]) * fabsf(ob->size[1]);
-				p1[2] = (sds->p0[2] + sds->cell_size[2] * sds->res_max[2] + sds->obj_shift_f[2]) * fabsf(ob->size[2]);
+			BKE_boundbox_init_from_minmax(&bb, p0, p1);
+			draw_box(bb.vec, false);
+		}
 
-				if (!sds->wt || !(sds->viewsettings & MOD_SMOKE_VIEW_SHOWBIG)) {
-					sds->tex = NULL;
-					GPU_create_smoke(smd, 0);
-					draw_smoke_volume(sds, ob, p0, p1, viewnormal);
-					GPU_free_smoke(smd);
-				}
-				else if (sds->wt && (sds->viewsettings & MOD_SMOKE_VIEW_SHOWBIG)) {
-					sds->tex = NULL;
-					GPU_create_smoke(smd, 1);
-					draw_smoke_volume(sds, ob, p0, p1, viewnormal);
-					GPU_free_smoke(smd);
-				}
+		/* don't show smoke before simulation starts, this could be made an option in the future */
+		if (sds->fluid && CFRA >= sds->point_cache[0]->startframe) {
+			float p0[3], p1[3];
 
-				/* smoke debug render */
-#ifdef SMOKE_DEBUG_VELOCITY
-				draw_smoke_velocity(smd->domain, ob);
-#endif
-#ifdef SMOKE_DEBUG_HEAT
-				draw_smoke_heat(smd->domain, ob);
-#endif
+			/* get view vector */
+			invert_m4_m4(ob->imat, ob->obmat);
+			mul_v3_mat3_m4v3(viewnormal, ob->imat, rv3d->viewinv[2]);
+			normalize_v3(viewnormal);
+
+			/* set dynamic boundaries to draw the volume
+			 * also scale cube to global space to equalize volume slicing on all axes
+			 *  (it's scaled back before drawing) */
+			p0[0] = (sds->p0[0] + sds->cell_size[0] * sds->res_min[0] + sds->obj_shift_f[0]) * fabsf(ob->size[0]);
+			p0[1] = (sds->p0[1] + sds->cell_size[1] * sds->res_min[1] + sds->obj_shift_f[1]) * fabsf(ob->size[1]);
+			p0[2] = (sds->p0[2] + sds->cell_size[2] * sds->res_min[2] + sds->obj_shift_f[2]) * fabsf(ob->size[2]);
+			p1[0] = (sds->p0[0] + sds->cell_size[0] * sds->res_max[0] + sds->obj_shift_f[0]) * fabsf(ob->size[0]);
+			p1[1] = (sds->p0[1] + sds->cell_size[1] * sds->res_max[1] + sds->obj_shift_f[1]) * fabsf(ob->size[1]);
+			p1[2] = (sds->p0[2] + sds->cell_size[2] * sds->res_max[2] + sds->obj_shift_f[2]) * fabsf(ob->size[2]);
+
+			if (!sds->wt || !(sds->viewsettings & MOD_SMOKE_VIEW_SHOWBIG)) {
+				sds->tex = NULL;
+				GPU_create_smoke(smd, 0);
+				draw_smoke_volume(sds, ob, p0, p1, viewnormal);
+				GPU_free_smoke(smd);
+			}
+			else if (sds->wt && (sds->viewsettings & MOD_SMOKE_VIEW_SHOWBIG)) {
+				sds->tex = NULL;
+				GPU_create_smoke(smd, 1);
+				draw_smoke_volume(sds, ob, p0, p1, viewnormal);
+				GPU_free_smoke(smd);
+			}
+
+			/* smoke debug render */
+			if (!render_override && sds->draw_velocity) {
+				draw_smoke_velocity(sds, viewnormal);
 			}
 		}
 	}
@@ -8133,7 +8089,7 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 	
 	/* return warning, this is cached text draw */
 	invert_m4_m4(ob->imat, ob->obmat);
-	view3d_cached_text_draw_end(v3d, ar, 1, NULL);
+	view3d_cached_text_draw_end(v3d, ar, 1);
 	/* return warning, clear temp flag */
 	v3d->flag2 &= ~V3D_SHOW_SOLID_MATCAP;
 	
@@ -8299,6 +8255,50 @@ void draw_object(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short
 	}
 
 	ED_view3d_clear_mats_rv3d(rv3d);
+}
+
+
+/**
+ * Drawing for selection picking,
+ * caller must have called 'GPU_select_load_id(base->selcode)' first.
+ */
+void draw_object_select(Scene *scene, ARegion *ar, View3D *v3d, Base *base, const short dflag)
+{
+	BLI_assert(dflag & DRAW_PICKING && dflag & DRAW_CONSTCOLOR);
+	draw_object(scene, ar, v3d, base, dflag);
+
+	/* we draw duplicators for selection too */
+	if ((base->object->transflag & OB_DUPLI)) {
+		ListBase *lb;
+		DupliObject *dob;
+		Base tbase;
+
+		tbase.flag = OB_FROMDUPLI;
+		lb = object_duplilist(G.main->eval_ctx, scene, base->object);
+
+		for (dob = lb->first; dob; dob = dob->next) {
+			float omat[4][4];
+			char dt;
+			short dtx;
+
+			tbase.object = dob->ob;
+			copy_m4_m4(omat, dob->ob->obmat);
+			copy_m4_m4(dob->ob->obmat, dob->mat);
+
+			/* extra service: draw the duplicator in drawtype of parent */
+			/* MIN2 for the drawtype to allow bounding box objects in groups for lods */
+			dt = tbase.object->dt;   tbase.object->dt = MIN2(tbase.object->dt, base->object->dt);
+			dtx = tbase.object->dtx; tbase.object->dtx = base->object->dtx;
+
+			draw_object(scene, ar, v3d, &tbase, dflag);
+
+			tbase.object->dt = dt;
+			tbase.object->dtx = dtx;
+
+			copy_m4_m4(dob->ob->obmat, omat);
+		}
+		free_object_duplilist(lb);
+	}
 }
 
 /* ***************** BACKBUF SEL (BBS) ********* */
@@ -8469,9 +8469,13 @@ static void bbs_mesh_solid_verts(Scene *scene, Object *ob)
 
 	DM_update_materials(dm, ob);
 
-	dm->drawMappedFaces(dm, bbs_mesh_solid_hide2__setDrawOpts, GPU_object_material_bind, NULL, me, DM_DRAW_SKIP_HIDDEN);
+	/* Only draw faces to mask out verts, we don't want their selection ID's. */
+	const int G_f_orig = G.f;
+	G.f &= ~G_BACKBUFSEL;
 
-	GPU_object_material_unbind();
+	dm->drawMappedFaces(dm, bbs_mesh_solid_hide2__setDrawOpts, NULL, NULL, me, DM_DRAW_SKIP_HIDDEN);
+
+	G.f |= (G_f_orig & G_BACKBUFSEL);
 
 	bbs_obmode_mesh_verts(ob, dm, 1);
 	bm_vertoffs = me->totvert + 1;
@@ -8528,8 +8532,8 @@ void draw_object_backbufsel(Scene *scene, View3D *v3d, RegionView3D *rv3d, Objec
 				bbs_mesh_wire(em, dm, bm_solidoffs);
 				bm_wireoffs = bm_solidoffs + em->bm->totedge;
 
-				/* we draw verts if vert select mode or if in transform (for snap). */
-				if ((ts->selectmode & SCE_SELECT_VERTEX) || (G.moving & G_TRANSFORM_EDIT)) {
+				/* we draw verts if vert select mode. */
+				if (ts->selectmode & SCE_SELECT_VERTEX) {
 					bbs_mesh_verts(em, dm, bm_wireoffs);
 					bm_vertoffs = bm_wireoffs + em->bm->totvert;
 				}
@@ -8625,7 +8629,7 @@ void draw_object_instance(Scene *scene, View3D *v3d, RegionView3D *rv3d, Object 
 		case OB_EMPTY:
 			if (ob->empty_drawtype == OB_EMPTY_IMAGE) {
 				/* CONSTCOLOR == no wire outline */
-				draw_empty_image(ob, DRAW_CONSTCOLOR, NULL);
+				draw_empty_image(ob, DRAW_CONSTCOLOR, NULL, v3d->multiview_eye);
 			}
 			else {
 				drawaxes(rv3d->viewmatob, ob->empty_drawsize, ob->empty_drawtype);

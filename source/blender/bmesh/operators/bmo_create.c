@@ -74,13 +74,13 @@ void bmo_contextual_create_exec(BMesh *bm, BMOperator *op)
 		BMVert *verts[2];
 		BMEdge *e;
 
-		BMO_iter_as_array(op->slots_in, "geom", BM_VERT, (void **)verts, 2);
-
-		/* create edge */
-		e = BM_edge_create(bm, verts[0], verts[1], NULL, BM_CREATE_NO_DOUBLE);
-		BMO_edge_flag_enable(bm, e, ELE_OUT);
-		tote += 1;
-		BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "edges.out", BM_EDGE, ELE_OUT);
+		if (BMO_iter_as_array(op->slots_in, "geom", BM_VERT, (void **)verts, 2) == 2) {
+			/* create edge */
+			e = BM_edge_create(bm, verts[0], verts[1], NULL, BM_CREATE_NO_DOUBLE);
+			BMO_edge_flag_enable(bm, e, ELE_OUT);
+			tote += 1;
+			BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "edges.out", BM_EDGE, ELE_OUT);
+		}
 		return;
 	}
 
@@ -283,14 +283,18 @@ void bmo_contextual_create_exec(BMesh *bm, BMOperator *op)
 	 */
 	if (totv > 2) {
 		/* TODO, some of these vertes may be connected by edges,
-		 * this connectivity could be used rather then treating
+		 * this connectivity could be used rather than treating
 		 * them as a bunch of isolated verts. */
 
 		BMVert **vert_arr = MEM_mallocN(sizeof(BMVert *) * totv, __func__);
 		BMFace *f;
 
-		BMO_iter_as_array(op->slots_in, "geom", BM_VERT, (void **)vert_arr, totv);
-		f = BM_face_create_ngon_vcloud(bm, vert_arr, totv, NULL, BM_CREATE_NO_DOUBLE);
+		totv = BMO_iter_as_array(op->slots_in, "geom", BM_VERT, (void **)vert_arr, totv);
+
+		BM_verts_sort_radial_plane(vert_arr, totv);
+
+		/* create edges and find the winding (if faces are attached to any existing edges) */
+		f = BM_face_create_ngon_verts(bm, vert_arr, totv, NULL, BM_CREATE_NO_DOUBLE, true, true);
 
 		if (f) {
 			BMO_face_flag_enable(bm, f, ELE_OUT);

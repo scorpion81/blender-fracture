@@ -45,6 +45,7 @@
 
 
 #include "BKE_camera.h"
+#include "BKE_library.h"
 #include "BKE_library_query.h"
 #include "BKE_mesh.h"
 #include "BKE_DerivedMesh.h"
@@ -70,9 +71,12 @@ static void copyData(ModifierData *md, ModifierData *target)
 {
 #if 0
 	UVProjectModifierData *umd = (UVProjectModifierData *) md;
-	UVProjectModifierData *tumd = (UVProjectModifierData *) target;
 #endif
+	UVProjectModifierData *tumd = (UVProjectModifierData *) target;
+
 	modifier_copyData_generic(md, target);
+
+	id_us_plus((ID *)tumd->image);
 }
 
 static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(md))
@@ -92,7 +96,7 @@ static void foreachObjectLink(ModifierData *md, Object *ob,
 	int i;
 
 	for (i = 0; i < MOD_UVPROJECT_MAXPROJECTORS; ++i)
-		walk(userData, ob, &umd->projectors[i], IDWALK_NOP);
+		walk(userData, ob, &umd->projectors[i], IDWALK_CB_NOP);
 }
 
 static void foreachIDLink(ModifierData *md, Object *ob,
@@ -100,7 +104,7 @@ static void foreachIDLink(ModifierData *md, Object *ob,
 {
 	UVProjectModifierData *umd = (UVProjectModifierData *) md;
 
-	walk(userData, ob, (ID **)&umd->image, IDWALK_USER);
+	walk(userData, ob, (ID **)&umd->image, IDWALK_CB_USER);
 
 	foreachObjectLink(md, ob, (ObjectWalkFunc)walk, userData);
 }

@@ -54,7 +54,7 @@ void BKE_object_workob_calc_parent(struct Scene *scene, struct Object *ob, struc
 
 void BKE_object_transform_copy(struct Object *ob_tar, const struct Object *ob_src);
 struct SoftBody *copy_softbody(const struct SoftBody *sb, bool copy_caches);
-struct BulletSoftBody *copy_bulletsoftbody(struct BulletSoftBody *sb);
+struct BulletSoftBody *copy_bulletsoftbody(const struct BulletSoftBody *sb);
 struct ParticleSystem *BKE_object_copy_particlesystem(struct ParticleSystem *psys);
 void BKE_object_copy_particlesystems(struct Object *ob_dst, const struct Object *ob_src);
 void BKE_object_copy_softbody(struct Object *ob_dst, const struct Object *ob_src);
@@ -105,9 +105,10 @@ bool BKE_object_lod_is_usable(struct Object *ob, struct Scene *scene);
 struct Object *BKE_object_lod_meshob_get(struct Object *ob, struct Scene *scene);
 struct Object *BKE_object_lod_matob_get(struct Object *ob, struct Scene *scene);
 
-struct Object *BKE_object_copy_ex(struct Main *bmain, struct Object *ob, bool copy_caches);
-struct Object *BKE_object_copy(struct Main *bmain, struct Object *ob);
+struct Object *BKE_object_copy_ex(struct Main *bmain, const struct Object *ob, bool copy_caches);
+struct Object *BKE_object_copy(struct Main *bmain, const struct Object *ob);
 void BKE_object_make_local(struct Main *bmain, struct Object *ob, const bool lib_local);
+void BKE_object_make_local_ex(struct Main *bmain, struct Object *ob, const bool lib_local, const bool clear_proxy);
 bool BKE_object_is_libdata(struct Object *ob);
 bool BKE_object_obdata_is_libdata(struct Object *ob);
 
@@ -135,16 +136,9 @@ void BKE_object_where_is_calc_mat4(struct Scene *scene, struct Object *ob, float
 /* possibly belong in own moduke? */
 struct BoundBox *BKE_boundbox_alloc_unit(void);
 void BKE_boundbox_init_from_minmax(struct BoundBox *bb, const float min[3], const float max[3]);
-bool BKE_boundbox_ray_hit_check(
-        const struct BoundBox *bb,
-        const float ray_start[3], const float ray_normal[3],
-        float *r_lambda);
 void BKE_boundbox_calc_center_aabb(const struct BoundBox *bb, float r_cent[3]);
 void BKE_boundbox_calc_size_aabb(const struct BoundBox *bb, float r_size[3]);
 void BKE_boundbox_minmax(const struct BoundBox *bb, float obmat[4][4], float r_min[3], float r_max[3]);
-void BKE_boundbox_scale(struct BoundBox *bb_dst, const struct BoundBox *bb_src, float scale);
-struct BoundBox *BKE_boundbox_ensure_minimum_dimensions(
-        struct BoundBox *bb, struct BoundBox *bb_temp, const float epsilon);
 
 struct BoundBox *BKE_object_boundbox_get(struct Object *ob);
 void BKE_object_dimensions_get(struct Object *ob, float vec[3]);
@@ -195,16 +189,17 @@ void BKE_object_eval_constraints(struct EvaluationContext *eval_ctx,
                                  struct Object *ob);
 void BKE_object_eval_done(struct EvaluationContext *eval_ctx, struct Object *ob);
 
-void BKE_object_eval_modifier(struct EvaluationContext *eval_ctx,
-                              struct Scene *scene,
-                              struct Object *ob,
-                              struct ModifierData *md);
 void BKE_object_eval_uber_transform(struct EvaluationContext *eval_ctx,
                                     struct Scene *scene,
                                     struct Object *ob);
 void BKE_object_eval_uber_data(struct EvaluationContext *eval_ctx,
                                struct Scene *scene,
                                struct Object *ob);
+
+void BKE_object_eval_cloth(struct EvaluationContext *eval_ctx,
+                           struct Scene *scene,
+                           struct Object *object);
+
 
 void BKE_object_handle_data_update(struct EvaluationContext *eval_ctx,
                                    struct Scene *scene,

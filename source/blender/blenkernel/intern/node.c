@@ -46,10 +46,11 @@
 #include "DNA_world_types.h"
 #include "DNA_linestyle_types.h"
 
-#include "BLI_string.h"
-#include "BLI_math.h"
 #include "BLI_listbase.h"
+#include "BLI_math.h"
 #include "BLI_path_util.h"
+#include "BLI_string.h"
+#include "BLI_string_utils.h"
 #include "BLI_utildefines.h"
 
 #include "BLT_translation.h"
@@ -736,11 +737,14 @@ void nodeRemoveAllSockets(bNodeTree *ntree, bNode *node)
 		node_socket_free(ntree, sock, node);
 		MEM_freeN(sock);
 	}
+	BLI_listbase_clear(&node->inputs);
+
 	for (sock = node->outputs.first; sock; sock = sock_next) {
 		sock_next = sock->next;
 		node_socket_free(ntree, sock, node);
 		MEM_freeN(sock);
 	}
+	BLI_listbase_clear(&node->outputs);
 	
 	node->update |= NODE_UPDATE;
 }
@@ -917,7 +921,7 @@ static void node_socket_copy(bNodeSocket *dst, bNodeSocket *src)
 
 /* keep socket listorder identical, for copying links */
 /* ntree is the target tree */
-bNode *nodeCopyNode(struct bNodeTree *ntree, struct bNode *node)
+bNode *nodeCopyNode(bNodeTree *ntree, bNode *node)
 {
 	bNode *nnode = MEM_callocN(sizeof(bNode), "dupli node");
 	bNodeSocket *sock, *oldsock;
@@ -1196,7 +1200,9 @@ bNodeTree *ntreeAddTree(Main *bmain, const char *name, const char *idname)
  * copying for internal use (threads for eg), where you wont want it to modify the
  * scene data.
  */
-static bNodeTree *ntreeCopyTree_internal(bNodeTree *ntree, Main *bmain, bool skip_database, bool do_id_user, bool do_make_extern, bool copy_previews)
+static bNodeTree *ntreeCopyTree_internal(
+        const bNodeTree *ntree, Main *bmain,
+        bool skip_database, bool do_id_user, bool do_make_extern, bool copy_previews)
 {
 	bNodeTree *newtree;
 	bNode *node /*, *nnode */ /* UNUSED */, *last;
@@ -1295,40 +1301,13 @@ static bNodeTree *ntreeCopyTree_internal(bNodeTree *ntree, Main *bmain, bool ski
 	return newtree;
 }
 
-bNodeTree *ntreeCopyTree_ex(bNodeTree *ntree, Main *bmain, const bool do_id_user)
+bNodeTree *ntreeCopyTree_ex(const bNodeTree *ntree, Main *bmain, const bool do_id_user)
 {
 	return ntreeCopyTree_internal(ntree, bmain, false, do_id_user, true, true);
 }
-bNodeTree *ntreeCopyTree(Main *bmain, bNodeTree *ntree)
+bNodeTree *ntreeCopyTree(Main *bmain, const bNodeTree *ntree)
 {
 	return ntreeCopyTree_ex(ntree, bmain, true);
-}
-
-/* use when duplicating scenes */
-void ntreeSwitchID_ex(bNodeTree *ntree, ID *id_from, ID *id_to, const bool do_id_user)
-{
-	bNode *node;
-
-	if (id_from == id_to) {
-		/* should never happen but may as well skip if it does */
-		return;
-	}
-
-	/* for scene duplication only */
-	for (node = ntree->nodes.first; node; node = node->next) {
-		if (node->id == id_from) {
-			if (do_id_user) {
-				id_us_min(id_from);
-				id_us_plus(id_to);
-			}
-
-			node->id = id_to;
-		}
-	}
-}
-void ntreeSwitchID(bNodeTree *ntree, ID *id_from, ID *id_to)
-{
-	ntreeSwitchID_ex(ntree, id_from, id_to, true);
 }
 
 void ntreeUserIncrefID(bNodeTree *ntree)
@@ -1721,11 +1700,12 @@ static void node_free_node_ex(bNodeTree *ntree, bNode *node, bool remove_animdat
 			ntreeTexEndExecTree(ntree->execdata);
 			ntree->execdata = NULL;
 		}
-		
-		if (node->typeinfo->freefunc)
-			node->typeinfo->freefunc(node);
 	}
-	
+
+	if (node->typeinfo->freefunc) {
+		node->typeinfo->freefunc(node);
+	}
+
 	for (sock = node->inputs.first; sock; sock = nextsock) {
 		nextsock = sock->next;
 		node_socket_free(ntree, sock, node);
@@ -1851,7 +1831,7 @@ void ntreeFreeTree(bNodeTree *ntree)
 		if (tntree == ntree)
 			break;
 	if (tntree == NULL) {
-		BKE_libblock_free_data(G.main, &ntree->id);
+		BKE_libblock_free_data(&ntree->id, true);
 	}
 }
 
@@ -3195,12 +3175,20 @@ void nodeSynchronizeID(bNode *node, bool copy_to_id)
 
 void nodeLabel(bNodeTree *ntree, bNode *node, char *label, int maxlen)
 {
-	if (node->label[0] != '\0')
+	if (node->label[0] != '\0') {
 		BLI_strncpy(label, node->label, maxlen);
-	else if (node->typeinfo->labelfunc)
+	}
+	else if (node->typeinfo->labelfunc) {
 		node->typeinfo->labelfunc(ntree, node, label, maxlen);
-	else
-		BLI_strncpy(label, IFACE_(node->typeinfo->ui_name), maxlen);
+	}
+	else {
+		/* Kind of hacky and weak... Ideally would be better to use RNA here. :| */
+		const char *tmp = CTX_IFACE_(BLT_I18NCONTEXT_ID_NODETREE, node->typeinfo->ui_name);
+		if (tmp == node->typeinfo->ui_name) {
+			tmp = IFACE_(node->typeinfo->ui_name);
+		}
+		BLI_strncpy(label, tmp, maxlen);
+	}
 }
 
 static void node_type_base_defaults(bNodeType *ntype)
@@ -3591,6 +3579,7 @@ static void registerShaderNodes(void)
 	register_node_type_sh_background();
 	register_node_type_sh_bsdf_anisotropic();
 	register_node_type_sh_bsdf_diffuse();
+	register_node_type_sh_bsdf_principled();
 	register_node_type_sh_bsdf_glossy();
 	register_node_type_sh_bsdf_glass();
 	register_node_type_sh_bsdf_translucent();

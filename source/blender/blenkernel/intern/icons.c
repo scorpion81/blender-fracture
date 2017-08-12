@@ -143,7 +143,7 @@ static PreviewImage *previewimg_create_ex(size_t deferred_data_size)
 	memset(prv_img, 0, sizeof(*prv_img));  /* leave deferred data dirty */
 
 	if (deferred_data_size) {
-		prv_img->use_deferred = true;
+		prv_img->tag |= PRV_TAG_DEFFERED;
 	}
 
 	for (i = 0; i < NUM_ICON_SIZES; ++i) {
@@ -204,7 +204,7 @@ void BKE_previewimg_clear(struct PreviewImage *prv)
 	}
 }
 
-PreviewImage *BKE_previewimg_copy(PreviewImage *prv)
+PreviewImage *BKE_previewimg_copy(const PreviewImage *prv)
 {
 	PreviewImage *prv_img = NULL;
 	int i;
@@ -222,7 +222,7 @@ PreviewImage *BKE_previewimg_copy(PreviewImage *prv)
 }
 
 /** Duplicate preview image from \a id and clear icon_id, to be used by datablock copy functions. */
-void BKE_previewimg_id_copy(ID *new_id, ID *old_id)
+void BKE_previewimg_id_copy(ID *new_id, const ID *old_id)
 {
 	PreviewImage **old_prv_p = BKE_previewimg_id_get_p(old_id);
 	PreviewImage **new_prv_p = BKE_previewimg_id_get_p(new_id);
@@ -239,7 +239,7 @@ void BKE_previewimg_id_copy(ID *new_id, ID *old_id)
 	}
 }
 
-PreviewImage **BKE_previewimg_id_get_p(ID *id)
+PreviewImage **BKE_previewimg_id_get_p(const ID *id)
 {
 	switch (GS(id->name)) {
 #define ID_PRV_CASE(id_code, id_struct) case id_code: { return &((id_struct *)id)->preview; } ((void)0)
@@ -355,11 +355,14 @@ PreviewImage *BKE_previewimg_cached_thumbnail_read(
 	return prv;
 }
 
-void BKE_previewimg_cached_release(const char *name)
+void BKE_previewimg_cached_release_pointer(PreviewImage *prv)
 {
-	PreviewImage *prv = BLI_ghash_popkey(gCachedPreviews, name, MEM_freeN);
-
 	if (prv) {
+		if (prv->tag & PRV_TAG_DEFFERED_RENDERING) {
+			/* We cannot delete the preview while it is being loaded in another thread... */
+			prv->tag |= PRV_TAG_DEFFERED_DELETE;
+			return;
+		}
 		if (prv->icon_id) {
 			BKE_icon_delete(prv->icon_id);
 		}
@@ -367,11 +370,18 @@ void BKE_previewimg_cached_release(const char *name)
 	}
 }
 
+void BKE_previewimg_cached_release(const char *name)
+{
+	PreviewImage *prv = BLI_ghash_popkey(gCachedPreviews, name, MEM_freeN);
+
+	BKE_previewimg_cached_release_pointer(prv);
+}
+
 /** Handle deferred (lazy) loading/generation of preview image, if needed.
  * For now, only used with file thumbnails. */
 void BKE_previewimg_ensure(PreviewImage *prv, const int size)
 {
-	if (prv->use_deferred) {
+	if ((prv->tag & PRV_TAG_DEFFERED) != 0) {
 		const bool do_icon = ((size == ICON_SIZE_ICON) && !prv->rect[ICON_SIZE_ICON]);
 		const bool do_preview = ((size == ICON_SIZE_PREVIEW) && !prv->rect[ICON_SIZE_PREVIEW]);
 

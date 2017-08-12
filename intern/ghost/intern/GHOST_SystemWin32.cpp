@@ -111,6 +111,11 @@
 #define VK_MEDIA_PLAY_PAUSE 0xB3
 #endif // VK_MEDIA_PLAY_PAUSE
 
+// Window message newer than Windows 7
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif // WM_DPICHANGED
+
 /* Workaround for some laptop touchpads, some of which seems to
  * have driver issues which makes it so window function receives
  * the message, but PeekMessage doesn't pick those messages for
@@ -152,6 +157,27 @@ static void initRawInput()
 #undef DEVICE_COUNT
 }
 
+#ifndef DPI_ENUMS_DECLARED
+typedef enum PROCESS_DPI_AWARENESS {
+	PROCESS_DPI_UNAWARE = 0,
+	PROCESS_SYSTEM_DPI_AWARE = 1,
+	PROCESS_PER_MONITOR_DPI_AWARE = 2
+} PROCESS_DPI_AWARENESS;
+
+typedef enum MONITOR_DPI_TYPE {
+	MDT_EFFECTIVE_DPI = 0,
+	MDT_ANGULAR_DPI = 1,
+	MDT_RAW_DPI = 2,
+	MDT_DEFAULT = MDT_EFFECTIVE_DPI
+} MONITOR_DPI_TYPE;
+
+#define USER_DEFAULT_SCREEN_DPI 96
+
+#define DPI_ENUMS_DECLARED
+#endif
+typedef HRESULT(API * GHOST_WIN32_SetProcessDpiAwareness)(PROCESS_DPI_AWARENESS);
+typedef BOOL(API * GHOST_WIN32_EnableNonClientDpiScaling)(HWND);
+
 GHOST_SystemWin32::GHOST_SystemWin32()
 	: m_hasPerformanceCounter(false), m_freq(0), m_start(0)
 {
@@ -160,6 +186,18 @@ GHOST_SystemWin32::GHOST_SystemWin32()
 	m_displayManager->initialize();
 
 	m_consoleStatus = 1;
+
+	// Tell Windows we are per monitor DPI aware. This disables the default
+	// blurry scaling and enables WM_DPICHANGED to allow us to draw at proper DPI.
+	HMODULE m_shcore = ::LoadLibrary("Shcore.dll");
+	if (m_shcore) {
+		GHOST_WIN32_SetProcessDpiAwareness fpSetProcessDpiAwareness =
+			(GHOST_WIN32_SetProcessDpiAwareness) ::GetProcAddress(m_shcore, "SetProcessDpiAwareness");
+
+		if (fpSetProcessDpiAwareness) {
+			fpSetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+		}
+	}
 
 	// Check if current keyboard layout uses AltGr and save keylayout ID for
 	// specialized handling if keys like VK_OEM_*. I.e. french keylayout
@@ -712,18 +750,26 @@ GHOST_EventCursor *GHOST_SystemWin32::processCursorEvent(GHOST_TEventType type, 
 }
 
 
-GHOST_EventWheel *GHOST_SystemWin32::processWheelEvent(GHOST_WindowWin32 *window, WPARAM wParam, LPARAM lParam)
+void GHOST_SystemWin32::processWheelEvent(GHOST_WindowWin32 *window, WPARAM wParam, LPARAM lParam)
 {
-	// short fwKeys = LOWORD(wParam);			// key flags
-	int zDelta = (short) HIWORD(wParam);    // wheel rotation
-	
-	// zDelta /= WHEEL_DELTA;
-	// temporary fix below: microsoft now has added more precision, making the above division not work
-	zDelta = (zDelta <= 0) ? -1 : 1;
+	GHOST_SystemWin32 *system = (GHOST_SystemWin32 *)getSystem();
 
-	// short xPos = (short) LOWORD(lParam);	// horizontal position of pointer
-	// short yPos = (short) HIWORD(lParam);	// vertical position of pointer
-	return new GHOST_EventWheel(getSystem()->getMilliSeconds(), window, zDelta);
+	int acc = system->m_wheelDeltaAccum;
+	int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+	
+	if (acc * delta < 0) {
+		// scroll direction reversed.
+		acc = 0;
+	}
+	acc += delta;
+	int direction = (acc >= 0) ? 1 : -1;
+	acc = abs(acc);
+	
+	while (acc >= WHEEL_DELTA) {
+		system->pushEvent(new GHOST_EventWheel(system->getMilliSeconds(), window, direction));
+		acc -= WHEEL_DELTA;
+	}
+	system->m_wheelDeltaAccum = acc * direction;
 }
 
 
@@ -844,26 +890,7 @@ bool GHOST_SystemWin32::processNDOF(RAWINPUT const &raw)
 	// send motion. Mark as 'sent' so motion will always get dispatched.
 	eventSent = true;
 
-#if defined(_MSC_VER) || defined(FREE_WINDOWS64)
-	// using Microsoft compiler & header files
-	// they invented the RawInput API, so this version is (probably) correct.
-	// MinGW64 also works fine with this
 	BYTE const *data = raw.data.hid.bRawData;
-	// struct RAWHID {
-	// DWORD dwSizeHid;
-	// DWORD dwCount;
-	// BYTE  bRawData[1];
-	// };
-#else
-	// MinGW's definition (below) doesn't agree, so we need a slight
-	// workaround until it's fixed
-	BYTE const *data = &raw.data.hid.bRawData;
-	// struct RAWHID {
-	// DWORD dwSizeHid;
-	// DWORD dwCount;
-	// BYTE bRawData; // <== isn't this s'posed to be a BYTE*?
-	// };
-#endif
 
 	BYTE packetType = data[0];
 	switch (packetType) {
@@ -914,6 +941,23 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 	GHOST_ASSERT(system, "GHOST_SystemWin32::s_wndProc(): system not initialized");
 
 	if (hwnd) {
+#if 0
+		// Disabled due to bug in Intel drivers, see T51959
+		if(msg == WM_NCCREATE) {
+			// Tell Windows to automatically handle scaling of non-client areas
+			// such as the caption bar. EnableNonClientDpiScaling was introduced in Windows 10
+			HMODULE m_user32 = ::LoadLibrary("User32.dll");
+			if (m_user32) {
+				GHOST_WIN32_EnableNonClientDpiScaling fpEnableNonClientDpiScaling =
+					(GHOST_WIN32_EnableNonClientDpiScaling) ::GetProcAddress(m_user32, "EnableNonClientDpiScaling");
+
+				if (fpEnableNonClientDpiScaling) {
+					fpEnableNonClientDpiScaling(hwnd);
+				}
+			}
+		}
+#endif
+
 		GHOST_WindowWin32 *window = (GHOST_WindowWin32 *)::GetWindowLongPtr(hwnd, GWLP_USERDATA);
 		if (window) {
 			switch (msg) {
@@ -1137,14 +1181,9 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 					POINT mouse_pos = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
 					HWND mouse_hwnd = ChildWindowFromPoint(HWND_DESKTOP, mouse_pos);
 					GHOST_WindowWin32 *mouse_window = (GHOST_WindowWin32 *)::GetWindowLongPtr(mouse_hwnd, GWLP_USERDATA);
-					if (mouse_window != NULL) {
-						event = processWheelEvent(mouse_window, wParam, lParam);
-					}
-					else {
-						/* Happens when mouse is not over any of blender's windows. */
-						event = processWheelEvent(window, wParam, lParam);
-					}
-
+					
+					processWheelEvent(mouse_window ? mouse_window : window , wParam, lParam);
+					eventHandled = true;
 #ifdef BROKEN_PEEK_TOUCHPAD
 					PostMessage(hwnd, WM_USER, 0, 0);
 #endif
@@ -1203,6 +1242,7 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 					GHOST_ModifierKeys modifiers;
 					modifiers.clear();
 					system->storeModifierKeys(modifiers);
+					system->m_wheelDeltaAccum = 0;
 					event = processWindowEvent(LOWORD(wParam) ? GHOST_kEventWindowActivate : GHOST_kEventWindowDeactivate, window);
 					/* WARNING: Let DefWindowProc handle WM_ACTIVATE, otherwise WM_MOUSEWHEEL
 					 * will not be dispatched to OUR active window if we minimize one of OUR windows. */
@@ -1289,6 +1329,32 @@ LRESULT WINAPI GHOST_SystemWin32::s_wndProc(HWND hwnd, UINT msg, WPARAM wParam, 
 						event = processWindowEvent(GHOST_kEventWindowMove, window);
 					}
 
+					break;
+				case WM_DPICHANGED:
+					/* The WM_DPICHANGED message is sent when the effective dots per inch (dpi) for a window has changed.
+					* The DPI is the scale factor for a window. There are multiple events that can cause the DPI to
+					* change such as when the window is moved to a monitor with a different DPI.
+					*/
+					{
+						WORD newYAxisDPI = HIWORD(wParam);
+						WORD newXAxisDPI = LOWORD(wParam);
+						// The suggested new size and position of the window.
+						RECT* const suggestedWindowRect = (RECT*)lParam;
+
+						// Push DPI change event first
+						system->pushEvent(processWindowEvent(GHOST_kEventWindowDPIHintChanged, window));
+						system->dispatchEvents();
+						eventHandled = true;
+
+						// Then move and resize window
+						SetWindowPos(hwnd,
+							NULL,
+							suggestedWindowRect->left,
+							suggestedWindowRect->top,
+							suggestedWindowRect->right - suggestedWindowRect->left,
+							suggestedWindowRect->bottom - suggestedWindowRect->top,
+							SWP_NOZORDER | SWP_NOACTIVATE);
+					}
 					break;
 				////////////////////////////////////////////////////////////////////////
 				// Window events, ignored

@@ -187,6 +187,9 @@ static void rna_Bone_select_update(Main *UNUSED(bmain), Scene *UNUSED(scene), Po
 	}
 	
 	WM_main_add_notifier(NC_GEOM | ND_DATA, id);
+
+	/* spaces that show animation data of the selected bone need updating */
+	WM_main_add_notifier(NC_ANIMATION | ND_ANIMCHAN, id);
 }
 
 static char *rna_Bone_path(PointerRNA *ptr)
@@ -948,8 +951,7 @@ static void rna_def_armature_edit_bones(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	RNA_def_function_ui_description(func, "Add a new bone");
 	parm = RNA_def_string(func, "name", "Object", 0, "", "New name for the bone");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
-
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	/* return type */
 	parm = RNA_def_pointer(func, "bone", "EditBone", "", "Newly created edit bone");
 	RNA_def_function_return(func, parm);
@@ -960,16 +962,18 @@ static void rna_def_armature_edit_bones(BlenderRNA *brna, PropertyRNA *cprop)
 	RNA_def_function_ui_description(func, "Remove an existing bone from the armature");
 	/* target to remove*/
 	parm = RNA_def_pointer(func, "bone", "EditBone", "", "EditBone to remove");
-	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
-	RNA_def_property_clear_flag(parm, PROP_THICK_WRAP);
+	RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
+	RNA_def_parameter_clear_flags(parm, PROP_THICK_WRAP, 0);
 }
 
 static void rna_def_armature(BlenderRNA *brna)
 {
 	StructRNA *srna;
-	FunctionRNA *func;
 	PropertyRNA *prop;
-	
+
+	FunctionRNA *func;
+	PropertyRNA *parm;
+
 	static EnumPropertyItem prop_drawtype_items[] = {
 		{ARM_OCTA, "OCTAHEDRAL", 0, "Octahedral", "Display bones as octahedral shape (default)"},
 		{ARM_LINE, "STICK", 0, "Stick", "Display bones as simple 2D lines with dots"},
@@ -1005,8 +1009,8 @@ static void rna_def_armature(BlenderRNA *brna)
 
 	func = RNA_def_function(srna, "transform", "rna_Armature_transform");
 	RNA_def_function_ui_description(func, "Transform armature bones by a matrix");
-	prop = RNA_def_float_matrix(func, "matrix", 4, 4, NULL, 0.0f, 0.0f, "", "Matrix", 0.0f, 0.0f);
-	RNA_def_property_flag(prop, PROP_REQUIRED);
+	parm = RNA_def_float_matrix(func, "matrix", 4, 4, NULL, 0.0f, 0.0f, "", "Matrix", 0.0f, 0.0f);
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 
 	/* Animation Data */
 	rna_def_animdata_common(srna);

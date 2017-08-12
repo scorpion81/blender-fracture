@@ -161,13 +161,13 @@ enum {
 	UI_BUT_NODE_LINK       = (1 << 8),
 	UI_BUT_NODE_ACTIVE     = (1 << 9),
 	UI_BUT_DRAG_LOCK       = (1 << 10),
-	UI_BUT_DISABLED        = (1 << 11),
+	UI_BUT_DISABLED        = (1 << 11),  /* grayed out and uneditable */
 	UI_BUT_COLOR_LOCK      = (1 << 12),
 	UI_BUT_ANIMATED        = (1 << 13),
 	UI_BUT_ANIMATED_KEY    = (1 << 14),
 	UI_BUT_DRIVEN          = (1 << 15),
 	UI_BUT_REDALERT        = (1 << 16),
-	UI_BUT_INACTIVE        = (1 << 17),
+	UI_BUT_INACTIVE        = (1 << 17),  /* grayed out but still editable */
 	UI_BUT_LAST_ACTIVE     = (1 << 18),
 	UI_BUT_UNDO            = (1 << 19),
 	UI_BUT_IMMEDIATE       = (1 << 20),
@@ -181,7 +181,7 @@ enum {
 	UI_BUT_HAS_SEP_CHAR    = (1 << 27),  /* but->str contains UI_SEP_CHAR, used for key shortcuts */
 	UI_BUT_UPDATE_DELAY    = (1 << 28),  /* don't run updates while dragging (needed in rare cases). */
 	UI_BUT_TEXTEDIT_UPDATE = (1 << 29),  /* when widget is in textedit mode, update value on each char stroke */
-	UI_BUT_SEARCH_UNLINK   = (1 << 30),  /* show unlink for search button */
+	UI_BUT_VALUE_CLEAR     = (1 << 30),  /* show 'x' icon to clear/unlink value of text or search button */
 };
 
 #define UI_PANEL_WIDTH          340
@@ -212,12 +212,13 @@ enum {
 	UI_BUT_ALIGN_STITCH_TOP  = (1 << 18),
 	UI_BUT_ALIGN_STITCH_LEFT = (1 << 19),
 	UI_BUT_ALIGN_ALL         = (UI_BUT_ALIGN | UI_BUT_ALIGN_STITCH_TOP | UI_BUT_ALIGN_STITCH_LEFT),
+
+	UI_BUT_BOX_ITEM          = (1 << 20), /* This but is "inside" a box item (currently used to change theme colors). */
 };
 
 /* scale fixed button widths by this to account for DPI */
 
 #define UI_DPI_FAC ((U.pixelsize * (float)U.dpi) / 72.0f)
-#define UI_DPI_WINDOW_FAC (((float)U.dpi) / 72.0f)
 /* 16 to copy ICON_DEFAULT_HEIGHT */
 #define UI_DPI_ICON_SIZE ((float)16 * UI_DPI_FAC)
 
@@ -421,7 +422,7 @@ typedef void (*uiBlockCancelFunc)(struct bContext *C, void *arg1);
 
 void UI_popup_block_invoke(struct bContext *C, uiBlockCreateFunc func, void *arg);
 void UI_popup_block_invoke_ex(struct bContext *C, uiBlockCreateFunc func, void *arg, const char *opname, int opcontext);
-void UI_popup_block_ex(struct bContext *C, uiBlockCreateFunc func, uiBlockHandleFunc popup_func, uiBlockCancelFunc cancel_func, void *arg);
+void UI_popup_block_ex(struct bContext *C, uiBlockCreateFunc func, uiBlockHandleFunc popup_func, uiBlockCancelFunc cancel_func, void *arg, struct wmOperator *op);
 /* void uiPupBlockOperator(struct bContext *C, uiBlockCreateFunc func, struct wmOperator *op, int opcontext); */ /* UNUSED */
 
 void UI_popup_block_close(struct bContext *C, struct wmWindow *win, uiBlock *block);
@@ -1027,7 +1028,7 @@ bool UI_context_copy_to_selected_list(
 
 /* Helpers for Operators */
 uiBut *UI_context_active_but_get(const struct bContext *C);
-void UI_context_active_but_prop_get(
+uiBut *UI_context_active_but_prop_get(
         const struct bContext *C,
         struct PointerRNA *r_ptr, struct PropertyRNA **r_prop, int *r_index);
 void UI_context_active_but_prop_handle(struct bContext *C);
@@ -1083,7 +1084,7 @@ void UI_butstore_unregister(uiButStore *bs_handle, uiBut **but_p);
 
 
 /* Float precision helpers */
-#define UI_PRECISION_FLOAT_MAX 7
+#define UI_PRECISION_FLOAT_MAX 6
 /* For float buttons the 'step' (or a1), is scaled */
 #define UI_PRECISION_FLOAT_SCALE 0.01f
 

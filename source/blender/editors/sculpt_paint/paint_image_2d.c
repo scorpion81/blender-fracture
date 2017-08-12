@@ -797,6 +797,7 @@ static void paint_2d_ibuf_rgb_set(ImBuf *ibuf, int x, int y, const bool is_torus
 		float map_alpha = (rgb[3] == 0.0f) ? rrgbf[3] : rrgbf[3] / rgb[3];
 
 		mul_v3_v3fl(rrgbf, rgb, map_alpha);
+		rrgbf[3] = rgb[3];
 	}
 	else {
 		unsigned char straight[4];
@@ -806,6 +807,7 @@ static void paint_2d_ibuf_rgb_set(ImBuf *ibuf, int x, int y, const bool is_torus
 		rrgb[0] = straight[0];
 		rrgb[1] = straight[1];
 		rrgb[2] = straight[2];
+		rrgb[3] = straight[3];
 	}
 }
 
@@ -995,7 +997,7 @@ static void paint_2d_lift_smear(ImBuf *ibuf, ImBuf *ibufb, int *pos, short tile)
 		IMB_rectblend(ibufb, ibufb, ibuf, NULL, NULL, NULL, 0, region[a].destx, region[a].desty,
 		              region[a].destx, region[a].desty,
 		              region[a].srcx, region[a].srcy,
-		              region[a].width, region[a].height, IMB_BLEND_COPY_RGB, false);
+		              region[a].width, region[a].height, IMB_BLEND_COPY, false);
 }
 
 static ImBuf *paint_2d_lift_clone(ImBuf *ibuf, ImBuf *ibufb, int *pos)
@@ -1096,6 +1098,7 @@ static int paint_2d_op(void *state, ImBuf *ibufb, unsigned short *curveb, unsign
 	/* lift from canvas */
 	if (s->tool == PAINT_TOOL_SOFTEN) {
 		paint_2d_lift_soften(s, s->canvas, ibufb, bpos, tile);
+		blend = IMB_BLEND_INTERPOLATE;
 	}
 	else if (s->tool == PAINT_TOOL_SMEAR) {
 		if (lastpos[0] == pos[0] && lastpos[1] == pos[1])
@@ -1103,6 +1106,7 @@ static int paint_2d_op(void *state, ImBuf *ibufb, unsigned short *curveb, unsign
 
 		paint_2d_convert_brushco(ibufb, lastpos, blastpos);
 		paint_2d_lift_smear(s->canvas, ibufb, blastpos, tile);
+		blend = IMB_BLEND_INTERPOLATE;
 	}
 	else if (s->tool == PAINT_TOOL_CLONE && s->clonecanvas) {
 		liftpos[0] = pos[0] - offset[0] * s->canvas->x;
@@ -1489,7 +1493,8 @@ void paint_2d_bucket_fill(
 		float image_init[2];
 		int minx = ibuf->x, miny = ibuf->y, maxx = 0, maxy = 0;
 		float pixel_color[4];
-		float threshold_sq = br->fill_threshold * br->fill_threshold;
+		/* We are comparing to sum of three squared values (assumed in range [0,1]), so need to multiply... */
+		float threshold_sq = br->fill_threshold * br->fill_threshold * 3;
 
 		UI_view2d_region_to_view(s->v2d, mouse_init[0], mouse_init[1], &image_init[0], &image_init[1]);
 

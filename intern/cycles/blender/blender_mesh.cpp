@@ -14,22 +14,22 @@
  * limitations under the License.
  */
 
- 
-#include "mesh.h"
-#include "object.h"
-#include "scene.h"
-#include "camera.h"
+#include "render/mesh.h"
+#include "render/object.h"
+#include "render/scene.h"
+#include "render/camera.h"
 
-#include "blender_sync.h"
-#include "blender_session.h"
-#include "blender_util.h"
+#include "blender/blender_sync.h"
+#include "blender/blender_session.h"
+#include "blender/blender_util.h"
 
-#include "subd_patch.h"
-#include "subd_split.h"
+#include "subd/subd_patch.h"
+#include "subd/subd_split.h"
 
-#include "util_foreach.h"
-#include "util_logging.h"
-#include "util_math.h"
+#include "util/util_algorithm.h"
+#include "util/util_foreach.h"
+#include "util/util_logging.h"
+#include "util/util_math.h"
 
 #include "mikktspace.h"
 
@@ -50,8 +50,7 @@ enum {
  * Two triangles has vertex indices in the original Blender-side face.
  * If face is already a quad tri_b will not be initialized.
  */
-inline void face_split_tri_indices(const int num_verts,
-                                   const int face_flag,
+inline void face_split_tri_indices(const int face_flag,
                                    int tri_a[3],
                                    int tri_b[3])
 {
@@ -59,21 +58,19 @@ inline void face_split_tri_indices(const int num_verts,
 		tri_a[0] = 0;
 		tri_a[1] = 1;
 		tri_a[2] = 3;
-		if(num_verts == 4) {
-			tri_b[0] = 2;
-			tri_b[1] = 3;
-			tri_b[2] = 1;
-		}
+
+		tri_b[0] = 2;
+		tri_b[1] = 3;
+		tri_b[2] = 1;
 	}
 	else /*if(face_flag & FACE_FLAG_DIVIDE_13)*/ {
 		tri_a[0] = 0;
 		tri_a[1] = 1;
 		tri_a[2] = 2;
-		if(num_verts == 4) {
-			tri_b[0] = 0;
-			tri_b[1] = 2;
-			tri_b[2] = 3;
-		}
+
+		tri_b[0] = 0;
+		tri_b[1] = 2;
+		tri_b[2] = 3;
 	}
 }
 
@@ -250,7 +247,7 @@ static void mikk_compute_tangents(BL::Mesh& b_mesh,
 
 	for(int i = 0; i < nverts.size(); i++) {
 		int tri_a[3], tri_b[3];
-		face_split_tri_indices(nverts[i], face_flags[i], tri_a, tri_b);
+		face_split_tri_indices(face_flags[i], tri_a, tri_b);
 
 		tangent[0] = float4_to_float3(userdata.tangent[i*4 + tri_a[0]]);
 		tangent[1] = float4_to_float3(userdata.tangent[i*4 + tri_a[1]]);
@@ -292,7 +289,7 @@ static void create_mesh_volume_attribute(BL::Object& b_ob,
 
 	if(!b_domain)
 		return;
-	
+
 	Attribute *attr = mesh->attributes.add(std);
 	VoxelAttribute *volume_data = attr->data_voxel();
 	bool is_float, is_linear;
@@ -355,7 +352,7 @@ static void attr_create_vertex_color(Scene *scene,
 				int n = p->loop_total();
 				for(int i = 0; i < n; i++) {
 					float3 color = get_float3(l->data[p->loop_start() + i].color());
-					*(cdata++) = color_float_to_byte(color_srgb_to_scene_linear(color));
+					*(cdata++) = color_float_to_byte(color_srgb_to_scene_linear_v3(color));
 				}
 			}
 		}
@@ -376,14 +373,14 @@ static void attr_create_vertex_color(Scene *scene,
 
 			for(l->data.begin(c); c != l->data.end(); ++c, ++i) {
 				int tri_a[3], tri_b[3];
-				face_split_tri_indices(nverts[i], face_flags[i], tri_a, tri_b);
+				face_split_tri_indices(face_flags[i], tri_a, tri_b);
 
 				uchar4 colors[4];
-				colors[0] = color_float_to_byte(color_srgb_to_scene_linear(get_float3(c->color1())));
-				colors[1] = color_float_to_byte(color_srgb_to_scene_linear(get_float3(c->color2())));
-				colors[2] = color_float_to_byte(color_srgb_to_scene_linear(get_float3(c->color3())));
+				colors[0] = color_float_to_byte(color_srgb_to_scene_linear_v3(get_float3(c->color1())));
+				colors[1] = color_float_to_byte(color_srgb_to_scene_linear_v3(get_float3(c->color2())));
+				colors[2] = color_float_to_byte(color_srgb_to_scene_linear_v3(get_float3(c->color3())));
 				if(nverts[i] == 4) {
-					colors[3] = color_float_to_byte(color_srgb_to_scene_linear(get_float3(c->color4())));
+					colors[3] = color_float_to_byte(color_srgb_to_scene_linear_v3(get_float3(c->color4())));
 				}
 
 				cdata[0] = colors[tri_a[0]];
@@ -469,7 +466,7 @@ static void attr_create_uv_map(Scene *scene,
 
 				for(l->data.begin(t); t != l->data.end(); ++t, ++i) {
 					int tri_a[3], tri_b[3];
-					face_split_tri_indices(nverts[i], face_flags[i], tri_a, tri_b);
+					face_split_tri_indices(face_flags[i], tri_a, tri_b);
 
 					float3 uvs[4];
 					uvs[0] = get_float3(t->uv1());
@@ -559,6 +556,9 @@ static void attr_create_pointiness(Scene *scene,
 		return;
 	}
 	const int num_verts = b_mesh.vertices.length();
+	if(num_verts == 0) {
+		return;
+	}
 	/* STEP 1: Find out duplicated vertices and point duplicates to a single
 	 *         original vertex.
 	 */
@@ -587,8 +587,8 @@ static void attr_create_pointiness(Scene *scene,
 			        sorted_vert_indeices[other_sorted_vert_index];
 			const float3 &other_vert_co = mesh->verts[other_vert_index];
 			/* We are too far away now, we wouldn't have duplicate. */
-			if ((other_vert_co.x + other_vert_co.y + other_vert_co.z) -
-			    (vert_co.x + vert_co.y + vert_co.z) > 3 * FLT_EPSILON)
+			if((other_vert_co.x + other_vert_co.y + other_vert_co.z) -
+			   (vert_co.x + vert_co.y + vert_co.z) > 3 * FLT_EPSILON)
 			{
 				break;
 			}
@@ -764,9 +764,6 @@ static void create_mesh(Scene *scene,
 			generated[i++] = get_float3(v->undeformed_co())*size - loc;
 	}
 
-	/* Create needed vertex attributes. */
-	attr_create_pointiness(scene, mesh, b_mesh, subdivision);
-
 	/* create faces */
 	vector<int> nverts(numfaces);
 	vector<int> face_flags(numfaces, FACE_FLAG_NONE);
@@ -778,6 +775,15 @@ static void create_mesh(Scene *scene,
 			int n = (vi[3] == 0)? 3: 4;
 			int shader = clamp(f->material_index(), 0, used_shaders.size()-1);
 			bool smooth = f->use_smooth() || use_loop_normals;
+
+			if(use_loop_normals) {
+				BL::Array<float, 12> loop_normals = f->split_normals();
+				for(int i = 0; i < n; i++) {
+					N[vi[i]] = make_float3(loop_normals[i * 3],
+					                       loop_normals[i * 3 + 1],
+					                       loop_normals[i * 3 + 2]);
+				}
+			}
 
 			/* Create triangles.
 			 *
@@ -812,7 +818,7 @@ static void create_mesh(Scene *scene,
 			int shader = clamp(p->material_index(), 0, used_shaders.size()-1);
 			bool smooth = p->use_smooth() || use_loop_normals;
 
-			vi.reserve(n);
+			vi.resize(n);
 			for(int i = 0; i < n; i++) {
 				/* NOTE: Autosmooth is already taken care about. */
 				vi[i] = b_mesh.loops[p->loop_start() + i].vertex_index();
@@ -826,6 +832,7 @@ static void create_mesh(Scene *scene,
 	/* Create all needed attributes.
 	 * The calculate functions will check whether they're needed or not.
 	 */
+	attr_create_pointiness(scene, mesh, b_mesh, subdivision);
 	attr_create_vertex_color(scene, mesh, b_mesh, nverts, face_flags, subdivision);
 	attr_create_uv_map(scene, mesh, b_mesh, nverts, face_flags, subdivision, subdivide_uvs);
 
@@ -971,7 +978,7 @@ Mesh *BlenderSync::sync_mesh(BL::Object& b_ob,
 		else
 			used_shaders.push_back(scene->default_surface);
 	}
-	
+
 	/* test if we need to sync */
 	int requested_geometry_flags = Mesh::GEOMETRY_NONE;
 	if(render_layer.use_surfaces) {
@@ -1006,12 +1013,12 @@ Mesh *BlenderSync::sync_mesh(BL::Object& b_ob,
 	/* ensure we only sync instanced meshes once */
 	if(mesh_synced.find(mesh) != mesh_synced.end())
 		return mesh;
-	
+
 	mesh_synced.insert(mesh);
 
 	/* create derived mesh */
 	array<int> oldtriangle = mesh->triangles;
-	
+
 	/* compares curve_keys rather than strands in order to handle quick hair
 	 * adjustments in dynamic BVH - other methods could probably do this better*/
 	array<float3> oldcurve_keys = mesh->curve_keys;
@@ -1100,7 +1107,7 @@ Mesh *BlenderSync::sync_mesh(BL::Object& b_ob,
 		if(memcmp(&oldcurve_radius[0], &mesh->curve_radius[0], sizeof(float)*oldcurve_radius.size()) != 0)
 			rebuild = true;
 	}
-	
+
 	mesh->tag_update(scene, rebuild);
 
 	return mesh;
@@ -1129,7 +1136,7 @@ void BlenderSync::sync_mesh_motion(BL::Object& b_ob,
 	if(scene->need_motion() == Scene::MOTION_BLUR) {
 		if(!mesh->use_motion_blur)
 			return;
-		
+
 		/* see if this mesh needs motion data at this time */
 		vector<float> object_times = object->motion_times();
 		bool found = false;
@@ -1156,12 +1163,12 @@ void BlenderSync::sync_mesh_motion(BL::Object& b_ob,
 	}
 
 	/* skip empty meshes */
-	size_t numverts = mesh->verts.size();
-	size_t numkeys = mesh->curve_keys.size();
+	const size_t numverts = mesh->verts.size();
+	const size_t numkeys = mesh->curve_keys.size();
 
 	if(!numverts && !numkeys)
 		return;
-	
+
 	/* skip objects without deforming modifiers. this is not totally reliable,
 	 * would need a more extensive check to see which objects are animated */
 	BL::Mesh b_mesh(PointerRNA_NULL);
@@ -1215,13 +1222,12 @@ void BlenderSync::sync_mesh_motion(BL::Object& b_ob,
 
 	/* TODO(sergey): Perform preliminary check for number of verticies. */
 	if(numverts) {
-		/* find attributes */
+		/* Find attributes. */
 		Attribute *attr_mP = mesh->attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
 		Attribute *attr_mN = mesh->attributes.find(ATTR_STD_MOTION_VERTEX_NORMAL);
 		Attribute *attr_N = mesh->attributes.find(ATTR_STD_VERTEX_NORMAL);
 		bool new_attribute = false;
-
-		/* add new attributes if they don't exist already */
+		/* Add new attributes if they don't exist already. */
 		if(!attr_mP) {
 			attr_mP = mesh->attributes.add(ATTR_STD_MOTION_VERTEX_POSITION);
 			if(attr_N)
@@ -1229,22 +1235,21 @@ void BlenderSync::sync_mesh_motion(BL::Object& b_ob,
 
 			new_attribute = true;
 		}
-
-		/* load vertex data from mesh */
+		/* Load vertex data from mesh. */
 		float3 *mP = attr_mP->data_float3() + time_index*numverts;
 		float3 *mN = (attr_mN)? attr_mN->data_float3() + time_index*numverts: NULL;
-
+		/* NOTE: We don't copy more that existing amount of vertices to prevent
+		 * possible memory corruption.
+		 */
 		BL::Mesh::vertices_iterator v;
 		int i = 0;
-
 		for(b_mesh.vertices.begin(v); v != b_mesh.vertices.end() && i < numverts; ++v, ++i) {
 			mP[i] = get_float3(v->co());
 			if(mN)
 				mN[i] = get_float3(v->normal());
 		}
-
-		/* in case of new attribute, we verify if there really was any motion */
 		if(new_attribute) {
+			/* In case of new attribute, we verify if there really was any motion. */
 			if(b_mesh.vertices.length() != numverts ||
 			   memcmp(mP, &mesh->verts[0], sizeof(float3)*numverts) == 0)
 			{
@@ -1267,11 +1272,20 @@ void BlenderSync::sync_mesh_motion(BL::Object& b_ob,
 				 * they had no motion, but we need them anyway now */
 				float3 *P = &mesh->verts[0];
 				float3 *N = (attr_N)? attr_N->data_float3(): NULL;
-
 				for(int step = 0; step < time_index; step++) {
 					memcpy(attr_mP->data_float3() + step*numverts, P, sizeof(float3)*numverts);
 					if(attr_mN)
 						memcpy(attr_mN->data_float3() + step*numverts, N, sizeof(float3)*numverts);
+				}
+			}
+		}
+		else {
+			if(b_mesh.vertices.length() != numverts) {
+				VLOG(1) << "Topology differs, discarding motion blur for object "
+				        << b_ob.name() << " at time " << time_index;
+				memcpy(mP, &mesh->verts[0], sizeof(float3)*numverts);
+				if(mN != NULL) {
+					memcpy(mN, attr_N->data_float3(), sizeof(float3)*numverts);
 				}
 			}
 		}
@@ -1286,4 +1300,3 @@ void BlenderSync::sync_mesh_motion(BL::Object& b_ob,
 }
 
 CCL_NAMESPACE_END
-

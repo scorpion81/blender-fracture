@@ -24,13 +24,15 @@
 #define __ABC_EXPORTER_H__
 
 #include <Alembic/Abc/All.h>
-#include <fstream>
 #include <map>
 #include <set>
 #include <vector>
 
+#include "abc_util.h"
+
 class AbcObjectWriter;
 class AbcTransformWriter;
+class ArchiveWriter;
 
 struct EvaluationContext;
 struct Main;
@@ -41,14 +43,15 @@ struct ExportSettings {
 	ExportSettings();
 
 	Scene *scene;
+	SimpleLogger logger;
 
 	bool selected_only;
 	bool visible_layers_only;
 	bool renderable_only;
 
 	double frame_start, frame_end;
-	double frame_step_xform;
-	double frame_step_shape;
+	double frame_samples_xform;
+	double frame_samples_shape;
 	double shutter_open;
 	double shutter_close;
 	float global_scale;
@@ -60,12 +63,18 @@ struct ExportSettings {
 	bool export_vcols;
 	bool export_face_sets;
 	bool export_vweigths;
+	bool export_hair;
+	bool export_particles;
 
 	bool apply_subdiv;
 	bool use_subdiv_schema;
 	bool export_child_hairs;
 	bool export_ogawa;
 	bool pack_uv;
+	bool triangulate;
+
+	int quad_method;
+	int ngon_method;
 
 	bool do_convert_axis;
 	float convert_matrix[3][3];
@@ -76,13 +85,16 @@ class AbcExporter {
 
 	const char *m_filename;
 
-	std::ofstream m_out_file;
-	Alembic::Abc::OArchive m_archive;
 	unsigned int m_trans_sampling_index, m_shape_sampling_index;
 
 	Scene *m_scene;
 
-	std::map<std::string, AbcTransformWriter *> m_xforms;
+	ArchiveWriter *m_writer;
+
+	/* mapping from name to transform writer */
+	typedef std::map<std::string, AbcTransformWriter *> m_xforms_type;
+	m_xforms_type m_xforms;
+
 	std::vector<AbcObjectWriter *> m_shapes;
 
 public:
@@ -91,20 +103,22 @@ public:
 
 	void operator()(Main *bmain, float &progress, bool &was_canceled);
 
-private:
-	void getShutterSamples(double step, bool time_relative, std::vector<double> &samples);
+protected:
+	void getShutterSamples(unsigned int nr_of_samples,
+	                       bool time_relative,
+	                       std::vector<double> &samples);
+	void getFrameSet(unsigned int nr_of_samples, std::set<double> &frames);
 
+private:
 	Alembic::Abc::TimeSamplingPtr createTimeSampling(double step);
 
-	void getFrameSet(double step, std::set<double> &frames);
-
 	void createTransformWritersHierarchy(EvaluationContext *eval_ctx);
-	void createTransformWritersFlat();
-	void createTransformWriter(Object *ob,  Object *parent, Object *dupliObParent);
+	AbcTransformWriter * createTransformWriter(Object *ob,  Object *parent, Object *dupliObParent);
 	void exploreTransform(EvaluationContext *eval_ctx, Object *ob, Object *parent, Object *dupliObParent = NULL);
 	void exploreObject(EvaluationContext *eval_ctx, Object *ob, Object *dupliObParent);
 	void createShapeWriters(EvaluationContext *eval_ctx);
 	void createShapeWriter(Object *ob, Object *dupliObParent);
+	void createParticleSystemsWriters(Object *ob, AbcTransformWriter *xform);
 
 	AbcTransformWriter *getXForm(const std::string &name);
 

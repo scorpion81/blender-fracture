@@ -166,7 +166,7 @@ struct ImBuf *IMB_makeSingleUser(struct ImBuf *ibuf);
  *
  * \attention Defined in allocimbuf.c
  */
-struct ImBuf *IMB_dupImBuf(struct ImBuf *ibuf1);
+struct ImBuf *IMB_dupImBuf(const struct ImBuf *ibuf1);
 
 /**
  *
@@ -205,6 +205,7 @@ typedef enum IMB_BlendMode {
 	IMB_BLEND_SATURATION = 21,
 	IMB_BLEND_LUMINOSITY = 22,
 	IMB_BLEND_COLOR	= 23,
+	IMB_BLEND_INTERPOLATE = 24,
 
 	IMB_BLEND_COPY = 1000,
 	IMB_BLEND_COPY_RGB = 1001,

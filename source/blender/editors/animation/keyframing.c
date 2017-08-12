@@ -1073,10 +1073,11 @@ short insert_keyframe(ReportList *reports, ID *id, bAction *act, const char grou
 				/* for Loc/Rot/Scale and also Color F-Curves, the color of the F-Curve in the Graph Editor,
 				 * is determined by the array index for the F-Curve
 				 */
-				if (ELEM(RNA_property_subtype(prop), PROP_TRANSLATION, PROP_XYZ, PROP_EULER, PROP_COLOR, PROP_COORDS)) {
+				PropertySubType prop_subtype = RNA_property_subtype(prop);
+				if (ELEM(prop_subtype, PROP_TRANSLATION, PROP_XYZ, PROP_EULER, PROP_COLOR, PROP_COORDS)) {
 					fcu->color_mode = FCURVE_COLOR_AUTO_RGB;
 				}
-				else if (RNA_property_subtype(prop), PROP_QUATERNION) {
+				else if (ELEM(prop_subtype, PROP_QUATERNION)) {
 					fcu->color_mode = FCURVE_COLOR_AUTO_YRGB;
 				}
 			}
@@ -1771,8 +1772,10 @@ static int insert_key_button_exec(bContext *C, wmOperator *op)
 	flag = ANIM_get_keyframing_flags(scene, 1);
 	
 	/* try to insert keyframe using property retrieved from UI */
-	but = UI_context_active_but_get(C);
-	UI_context_active_but_prop_get(C, &ptr, &prop, &index);
+	if (!(but = UI_context_active_but_prop_get(C, &ptr, &prop, &index))) {
+		/* pass event on if no active button found */
+		return (OPERATOR_CANCELLED | OPERATOR_PASS_THROUGH);
+	}
 	
 	if ((ptr.id.data && ptr.data && prop) && RNA_property_animateable(&ptr, prop)) {
 		if (ptr.type == &RNA_NlaStrip) {
@@ -1873,7 +1876,10 @@ static int delete_key_button_exec(bContext *C, wmOperator *op)
 	const bool all = RNA_boolean_get(op->ptr, "all");
 	
 	/* try to insert keyframe using property retrieved from UI */
-	UI_context_active_but_prop_get(C, &ptr, &prop, &index);
+	if (!UI_context_active_but_prop_get(C, &ptr, &prop, &index)) {
+		/* pass event on if no active button found */
+		return (OPERATOR_CANCELLED | OPERATOR_PASS_THROUGH);
+	}
 
 	if (ptr.id.data && ptr.data && prop) {
 		if (ptr.type == &RNA_NlaStrip) {
@@ -1973,7 +1979,10 @@ static int clear_key_button_exec(bContext *C, wmOperator *op)
 	const bool all = RNA_boolean_get(op->ptr, "all");
 
 	/* try to insert keyframe using property retrieved from UI */
-	UI_context_active_but_prop_get(C, &ptr, &prop, &index);
+	if (!UI_context_active_but_prop_get(C, &ptr, &prop, &index)) {
+		/* pass event on if no active button found */
+		return (OPERATOR_CANCELLED | OPERATOR_PASS_THROUGH);
+	}
 
 	if (ptr.id.data && ptr.data && prop) {
 		path = RNA_path_from_ID_to_property(&ptr, prop);

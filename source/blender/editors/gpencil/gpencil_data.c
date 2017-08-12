@@ -42,6 +42,7 @@
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
 #include "BLI_math.h"
+#include "BLI_string_utils.h"
 
 #include "BLT_translation.h"
 
@@ -84,7 +85,8 @@
 static int gp_data_add_exec(bContext *C, wmOperator *op)
 {
 	bGPdata **gpd_ptr = ED_gpencil_data_get_pointers(C, NULL);
-	
+	ToolSettings *ts = CTX_data_tool_settings(C);
+
 	if (gpd_ptr == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "Nowhere for grease pencil data to go");
 		return OPERATOR_CANCELLED;
@@ -95,6 +97,15 @@ static int gp_data_add_exec(bContext *C, wmOperator *op)
 		
 		id_us_min(&gpd->id);
 		*gpd_ptr = BKE_gpencil_data_addnew(DATA_("GPencil"));
+
+		/* if not exist brushes, create a new set */
+		if (ts) {
+			if (BLI_listbase_is_empty(&ts->gp_brushes)) {
+				/* create new brushes */
+				BKE_gpencil_brush_init_presets(ts);
+			}
+		}
+
 	}
 	
 	/* notifiers */
@@ -108,7 +119,7 @@ void GPENCIL_OT_data_add(wmOperatorType *ot)
 	/* identifiers */
 	ot->name = "Grease Pencil Add New";
 	ot->idname = "GPENCIL_OT_data_add";
-	ot->description = "Add new Grease Pencil datablock";
+	ot->description = "Add new Grease Pencil data-block";
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* callbacks */
@@ -156,7 +167,7 @@ void GPENCIL_OT_data_unlink(wmOperatorType *ot)
 	/* identifiers */
 	ot->name = "Grease Pencil Unlink";
 	ot->idname = "GPENCIL_OT_data_unlink";
-	ot->description = "Unlink active Grease Pencil datablock";
+	ot->description = "Unlink active Grease Pencil data-block";
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* callbacks */
@@ -174,7 +185,8 @@ void GPENCIL_OT_data_unlink(wmOperatorType *ot)
 static int gp_layer_add_exec(bContext *C, wmOperator *op)
 {
 	bGPdata **gpd_ptr = ED_gpencil_data_get_pointers(C, NULL);
-	
+	ToolSettings *ts = CTX_data_tool_settings(C);
+
 	/* if there's no existing Grease-Pencil data there, add some */
 	if (gpd_ptr == NULL) {
 		BKE_report(op->reports, RPT_ERROR, "Nowhere for grease pencil data to go");
@@ -183,6 +195,14 @@ static int gp_layer_add_exec(bContext *C, wmOperator *op)
 	if (*gpd_ptr == NULL)
 		*gpd_ptr = BKE_gpencil_data_addnew(DATA_("GPencil"));
 	
+	/* if not exist brushes, create a new set */
+	if (ts) {
+		if (BLI_listbase_is_empty(&ts->gp_brushes)) {
+			/* create new brushes */
+			BKE_gpencil_brush_init_presets(ts);
+		}
+	}
+
 	/* add new layer now */
 	BKE_gpencil_layer_addnew(*gpd_ptr, DATA_("GP_Layer"), true);
 	
@@ -197,7 +217,7 @@ void GPENCIL_OT_layer_add(wmOperatorType *ot)
 	/* identifiers */
 	ot->name = "Add New Layer";
 	ot->idname = "GPENCIL_OT_layer_add";
-	ot->description = "Add new Grease Pencil layer for the active Grease Pencil datablock";
+	ot->description = "Add new Grease Pencil layer for the active Grease Pencil data-block";
 	
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
@@ -272,20 +292,10 @@ static int gp_layer_move_exec(bContext *C, wmOperator *op)
 	if (ELEM(NULL, gpd, gpl))
 		return OPERATOR_CANCELLED;
 	
-	/* up or down? */
-	if (direction == GP_LAYER_MOVE_UP) {
-		/* up */
-		BLI_remlink(&gpd->layers, gpl);
-		BLI_insertlinkbefore(&gpd->layers, gpl->prev, gpl);
+	BLI_assert(ELEM(direction, -1, 0, 1)); /* we use value below */
+	if (BLI_listbase_link_move(&gpd->layers, gpl, direction)) {
+		WM_event_add_notifier(C, NC_GPENCIL | ND_DATA | NA_EDITED, NULL);
 	}
-	else {
-		/* down */
-		BLI_remlink(&gpd->layers, gpl);
-		BLI_insertlinkafter(&gpd->layers, gpl->next, gpl);
-	}
-	
-	/* notifiers */
-	WM_event_add_notifier(C, NC_GPENCIL | ND_DATA | NA_EDITED, NULL);
 	
 	return OPERATOR_FINISHED;
 }
@@ -761,14 +771,12 @@ static int gp_stroke_arrange_exec(bContext *C, wmOperator *op)
 			/* some stroke is already at front*/
 			if ((direction == GP_STROKE_MOVE_TOP) || (direction == GP_STROKE_MOVE_UP)) {
 				if (gps == gpf->strokes.last) {
-					BKE_report(op->reports, RPT_ERROR, "Some selected stroke is already on top");
 					return OPERATOR_CANCELLED;
 				}
 			}
 			/* some stroke is already at botom */
 			if ((direction == GP_STROKE_MOVE_BOTTOM) || (direction == GP_STROKE_MOVE_DOWN)) {
 				if (gps == gpf->strokes.first) {
-					BKE_report(op->reports, RPT_ERROR, "Some selected stroke is already on bottom");
 					return OPERATOR_CANCELLED;
 				}
 			}
@@ -784,23 +792,21 @@ static int gp_stroke_arrange_exec(bContext *C, wmOperator *op)
 			for (LinkData *link = selected.first; link; link = link->next) {
 				gps = link->data;
 				BLI_remlink(&gpf->strokes, gps);
-				BLI_insertlinkafter(&gpf->strokes, gpf->strokes.last, gps);
+				BLI_addtail(&gpf->strokes, gps);
 			}
 			break;
 		/* Bring Forward */
 		case GP_STROKE_MOVE_UP:
 			for (LinkData *link = selected.last; link; link = link->prev) {
 				gps = link->data;
-				BLI_remlink(&gpf->strokes, gps);
-				BLI_insertlinkafter(&gpf->strokes, gps->next, gps);
+				BLI_listbase_link_move(&gpf->strokes, gps, 1);
 			}
 			break;
-			/* Send Backward */
+		/* Send Backward */
 		case GP_STROKE_MOVE_DOWN:
 			for (LinkData *link = selected.first; link; link = link->next) {
 				gps = link->data;
-				BLI_remlink(&gpf->strokes, gps);
-				BLI_insertlinkbefore(&gpf->strokes, gps->prev, gps);
+				BLI_listbase_link_move(&gpf->strokes, gps, -1);
 			}
 			break;
 		/* Send to Back */
@@ -808,7 +814,7 @@ static int gp_stroke_arrange_exec(bContext *C, wmOperator *op)
 			for (LinkData *link = selected.last; link; link = link->prev) {
 				gps = link->data;
 				BLI_remlink(&gpf->strokes, gps);
-				BLI_insertlinkbefore(&gpf->strokes, gpf->strokes.first, gps);
+				BLI_addhead(&gpf->strokes, gps);
 			}
 			break;
 		default:
@@ -993,7 +999,7 @@ void GPENCIL_OT_brush_add(wmOperatorType *ot)
 	/* identifiers */
 	ot->name = "Add Brush";
 	ot->idname = "GPENCIL_OT_brush_add";
-	ot->description = "Add new Grease Pencil drawing brush for the active Grease Pencil datablock";
+	ot->description = "Add new Grease Pencil drawing brush for the active Grease Pencil data-block";
 
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
@@ -1351,7 +1357,7 @@ void GPENCIL_OT_palette_add(wmOperatorType *ot)
 	/* identifiers */
 	ot->name = "Add Palette";
 	ot->idname = "GPENCIL_OT_palette_add";
-	ot->description = "Add new Grease Pencil palette for the active Grease Pencil datablock";
+	ot->description = "Add new Grease Pencil palette for the active Grease Pencil data-block";
 
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
@@ -1568,7 +1574,7 @@ void GPENCIL_OT_palettecolor_add(wmOperatorType *ot)
 	/* identifiers */
 	ot->name = "Add Palette Color";
 	ot->idname = "GPENCIL_OT_palettecolor_add";
-	ot->description = "Add new Grease Pencil palette color for the active Grease Pencil datablock";
+	ot->description = "Add new Grease Pencil palette color for the active Grease Pencil data-block";
 
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 

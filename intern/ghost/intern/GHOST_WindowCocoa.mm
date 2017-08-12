@@ -528,10 +528,11 @@ GHOST_WindowCocoa::GHOST_WindowCocoa(
 	GHOST_TUns32 height,
 	GHOST_TWindowState state,
 	GHOST_TDrawingContextType type,
-	const bool stereoVisual, const GHOST_TUns16 numOfAASamples
+	const bool stereoVisual, const GHOST_TUns16 numOfAASamples, bool is_debug
 ) :
 	GHOST_Window(width, height, state, stereoVisual, false, numOfAASamples),
-	m_customCursor(0)
+	m_customCursor(0),
+	m_debug_context(is_debug)
 {
 	m_systemCocoa = systemCocoa;
 	m_fullScreen = false;
@@ -1115,7 +1116,7 @@ GHOST_Context *GHOST_WindowCocoa::newDrawingContext(GHOST_TDrawingContextType ty
 			m_openGLView,
 			0, // profile bit
 			0, 0,
-			GHOST_OPENGL_CGL_CONTEXT_FLAGS,
+			m_debug_context,
 			GHOST_OPENGL_CGL_RESET_NOTIFICATION_STRATEGY);
 #else
 #  error
@@ -1369,9 +1370,6 @@ GHOST_TSuccess GHOST_WindowCocoa::setWindowCursorGrab(GHOST_TGrabCursorMode mode
 			//Make window key if it wasn't to get the mouse move events
 			[m_window makeKeyWindow];
 			
-			//Dissociate cursor position even for warp mode, to allow mouse acceleration to work even when warping the cursor
-			err = CGAssociateMouseAndMouseCursorPosition(false) == kCGErrorSuccess ? GHOST_kSuccess : GHOST_kFailure;
-			
 			[pool drain];
 		}
 	}
@@ -1381,7 +1379,6 @@ GHOST_TSuccess GHOST_WindowCocoa::setWindowCursorGrab(GHOST_TGrabCursorMode mode
 			setWindowCursorVisibility(true);
 		}
 		
-		err = CGAssociateMouseAndMouseCursorPosition(true) == kCGErrorSuccess ? GHOST_kSuccess : GHOST_kFailure;
 		/* Almost works without but important otherwise the mouse GHOST location can be incorrect on exit */
 		setCursorGrabAccum(0, 0);
 		m_cursorGrabBounds.m_l= m_cursorGrabBounds.m_r= -1; /* disable */

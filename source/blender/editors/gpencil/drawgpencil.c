@@ -66,6 +66,7 @@
 #include "ED_gpencil.h"
 #include "ED_screen.h"
 #include "ED_view3d.h"
+#include "ED_space_api.h"
 
 #include "UI_interface_icons.h"
 #include "UI_resources.h"
@@ -74,7 +75,6 @@
 /* GREASE PENCIL DRAWING */
 
 /* ----- General Defines ------ */
-
 /* flags for sflag */
 typedef enum eDrawStrokeFlags {
 	GP_DRAWDATA_NOSTATUS    = (1 << 0),   /* don't draw status info */
@@ -528,15 +528,15 @@ static void gp_draw_stroke_fill(
 	}
 	else {
 		/* As an initial implementation, we use the OpenGL filled polygon drawing
-		* here since it's the easiest option to implement for this case. It does
-		* come with limitations (notably for concave shapes), though it shouldn't
-		* be much of an issue in most cases.
-		*
-		* We keep this legacy implementation around despite now having the high quality
-		* fills, as this is necessary for keeping everything working nicely for files
-		* created using old versions of Blender which may have depended on the artifacts
-		* the old fills created.
-		*/
+		 * here since it's the easiest option to implement for this case. It does
+		 * come with limitations (notably for concave shapes), though it shouldn't
+		 * be much of an issue in most cases.
+		 *
+		 * We keep this legacy implementation around despite now having the high quality
+		 * fills, as this is necessary for keeping everything working nicely for files
+		 * created using old versions of Blender which may have depended on the artifacts
+		 * the old fills created.
+		 */
 		bGPDspoint *pt;
 
 		glBegin(GL_POLYGON);
@@ -701,24 +701,25 @@ static void gp_draw_stroke_2d(bGPDspoint *points, int totpoints, short thickness
 	 */
 	{
 		bGPDspoint *pt1, *pt2;
-		float pm[2];
+		float s0[2], s1[2];     /* segment 'center' points */
+		float pm[2];  /* normal from previous segment. */
 		int i;
 		float fpt[3];
 		
 		glShadeModel(GL_FLAT);
 		glBegin(GL_QUADS);
-		
+
+		/* get x and y coordinates from first point */
+		mul_v3_m4v3(fpt, diff_mat, &points->x);
+		gp_calc_2d_stroke_fxy(fpt, sflag, offsx, offsy, winx, winy, s0);
+
 		for (i = 0, pt1 = points, pt2 = points + 1; i < (totpoints - 1); i++, pt1++, pt2++) {
-			float s0[2], s1[2];     /* segment 'center' points */
 			float t0[2], t1[2];     /* tessellated coordinates */
 			float m1[2], m2[2];     /* gradient and normal */
 			float mt[2], sc[2];     /* gradient for thickness, point for end-cap */
 			float pthick;           /* thickness at segment point */
 
-			/* get x and y coordinates from points */
-			mul_v3_m4v3(fpt, diff_mat, &pt1->x);
-			gp_calc_2d_stroke_fxy(fpt, sflag, offsx, offsy, winx, winy, s0);
-
+			/* get x and y coordinates from point2 (point1 has already been computed in previous iteration). */
 			mul_v3_m4v3(fpt, diff_mat, &pt2->x);
 			gp_calc_2d_stroke_fxy(fpt, sflag, offsx, offsy, winx, winy, s1);
 			
@@ -846,6 +847,8 @@ static void gp_draw_stroke_2d(bGPDspoint *points, int totpoints, short thickness
 				glVertex2fv(t0);
 			}
 			
+			/* store computed point2 coordinates as point1 ones of next segment. */
+			copy_v2_v2(s0, s1);
 			/* store stroke's 'natural' normal for next stroke to use */
 			copy_v2_v2(pm, m2);
 		}
@@ -1338,6 +1341,39 @@ static void gp_draw_onionskins(
 	
 }
 
+/* draw interpolate strokes (used only while operator is running) */
+void ED_gp_draw_interpolation(tGPDinterpolate *tgpi, const int type)
+{
+	tGPDinterpolate_layer *tgpil;
+	float diff_mat[4][4];
+	float color[4];
+
+	int offsx = 0;
+	int offsy = 0;
+	int winx = tgpi->ar->winx;
+	int winy = tgpi->ar->winy;
+
+	UI_GetThemeColor3fv(TH_GP_VERTEX_SELECT, color);
+	color[3] = 0.6f;
+	int dflag = 0; 
+	/* if 3d stuff, enable flags */
+	if (type == REGION_DRAW_POST_VIEW) {
+		dflag |= (GP_DRAWDATA_ONLY3D | GP_DRAWDATA_NOSTATUS);
+	}
+
+	/* turn on alpha-blending */
+	glEnable(GL_BLEND);
+	for (tgpil = tgpi->ilayers.first; tgpil; tgpil = tgpil->next) {
+		/* calculate parent position */
+		ED_gpencil_parent_location(tgpil->gpl, diff_mat);
+		if (tgpil->interFrame) {
+			gp_draw_strokes(tgpi->gpd, tgpil->interFrame, offsx, offsy, winx, winy, dflag, false,
+				tgpil->gpl->thickness, 1.0f, color, true, true, diff_mat);
+		}
+	}
+	glDisable(GL_BLEND);
+}
+
 /* loop over gpencil data layers, drawing them */
 static void gp_draw_data_layers(
         bGPDbrush *brush, float alpha, bGPdata *gpd,
@@ -1386,8 +1422,16 @@ static void gp_draw_data_layers(
 
 #undef GP_DRAWFLAG_APPLY
 		
-		/* draw 'onionskins' (frame left + right) */
-		if ((gpl->flag & GP_LAYER_ONIONSKIN) && !(dflag & GP_DRAWDATA_NO_ONIONS)) {
+		/* Draw 'onionskins' (frame left + right)
+		 *   - It is only possible to show these if the option is enabled
+		 *   - The "no onions" flag prevents ghosts from appearing during animation playback/scrubbing
+		 *     and in renders
+		 *   - The per-layer "always show" flag however overrides the playback/render restriction,
+		 *     allowing artists to selectively turn onionskins on/off during playback
+		 */
+		if ((gpl->flag & GP_LAYER_ONIONSKIN) && 
+		    ((dflag & GP_DRAWDATA_NO_ONIONS) == 0 || (gpl->flag & GP_LAYER_GHOST_ALWAYS))) 
+		{
 			/* Drawing method - only immediately surrounding (gstep = 0),
 			 * or within a frame range on either side (gstep > 0)
 			 */
@@ -1521,8 +1565,17 @@ static void gp_draw_data_all(Scene *scene, bGPdata *gpd, int offsx, int offsy, i
                              int cfra, int dflag, const char spacetype)
 {
 	bGPdata *gpd_source = NULL;
-	
+	ToolSettings *ts;
+	bGPDbrush *brush = NULL;
 	if (scene) {
+		ts = scene->toolsettings;
+		brush = BKE_gpencil_brush_getactive(ts);
+		/* if no brushes, create default set */
+		if (brush == NULL) {
+			BKE_gpencil_brush_init_presets(ts);
+			brush = BKE_gpencil_brush_getactive(ts);
+		}
+
 		if (spacetype == SPACE_VIEW3D) {
 			gpd_source = (scene->gpd ? scene->gpd : NULL);
 		}
@@ -1530,23 +1583,18 @@ static void gp_draw_data_all(Scene *scene, bGPdata *gpd, int offsx, int offsy, i
 			/* currently drawing only gpencil data from either clip or track, but not both - XXX fix logic behind */
 			gpd_source = (scene->clip->gpd ? scene->clip->gpd : NULL);
 		}
-		
+
 		if (gpd_source) {
-			ToolSettings *ts = scene->toolsettings;
-			bGPDbrush *brush = BKE_gpencil_brush_getactive(ts);
 			if (brush != NULL) {
 				gp_draw_data(brush, ts->gp_sculpt.alpha, gpd_source,
 				             offsx, offsy, winx, winy, cfra, dflag);
 			}
-			
 		}
 	}
 	
 	/* scene/clip data has already been drawn, only object/track data is drawn here
 	 * if gpd_source == gpd, we don't have any object/track data and we can skip */
 	if (gpd_source == NULL || (gpd_source && gpd_source != gpd)) {
-		ToolSettings *ts = scene->toolsettings;
-		bGPDbrush *brush = BKE_gpencil_brush_getactive(ts);
 		if (brush != NULL) {
 			gp_draw_data(brush, ts->gp_sculpt.alpha, gpd,
 			             offsx, offsy, winx, winy, cfra, dflag);

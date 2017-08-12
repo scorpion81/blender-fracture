@@ -18,6 +18,7 @@
 
 # <pep8 compliant>
 import bpy
+import math
 from bpy.types import Header, Menu, Panel
 from bl_ui.properties_paint_common import (
         UnifiedPaintPanel,
@@ -259,6 +260,20 @@ class IMAGE_MT_uvs_showhide(Menu):
         layout.operator("uv.hide", text="Hide Unselected").unselected = True
 
 
+class IMAGE_MT_uvs_proportional(Menu):
+    bl_label = "Proportional Editing"
+
+    def draw(self, context):
+        layout = self.layout
+
+        layout.props_enum(context.tool_settings, "proportional_edit")
+
+        layout.separator()
+
+        layout.label("Falloff:")
+        layout.props_enum(context.tool_settings, "proportional_edit_falloff")
+
+
 class IMAGE_MT_uvs_transform(Menu):
     bl_label = "Transform"
 
@@ -360,8 +375,7 @@ class IMAGE_MT_uvs(Menu):
 
         layout.separator()
 
-        layout.prop_menu_enum(toolsettings, "proportional_edit")
-        layout.prop_menu_enum(toolsettings, "proportional_edit_falloff")
+        layout.menu("IMAGE_MT_uvs_proportional")
 
         layout.separator()
 
@@ -603,7 +617,6 @@ class IMAGE_PT_game_properties(Panel):
         ima = sima.image
 
         split = layout.split()
-
         col = split.column()
         col.prop(ima, "use_animation")
         sub = col.column(align=True)
@@ -612,17 +625,21 @@ class IMAGE_PT_game_properties(Panel):
         sub.prop(ima, "frame_end", text="End")
         sub.prop(ima, "fps", text="Speed")
 
+        col = split.column()
         col.prop(ima, "use_tiles")
         sub = col.column(align=True)
         sub.active = ima.use_tiles or ima.use_animation
         sub.prop(ima, "tiles_x", text="X")
         sub.prop(ima, "tiles_y", text="Y")
 
+        split = layout.split()
         col = split.column()
         col.label(text="Clamp:")
         col.prop(ima, "use_clamp_x", text="X")
         col.prop(ima, "use_clamp_y", text="Y")
-        col.separator()
+
+        col = split.column()
+        col.label(text="Mapping:")
         col.prop(ima, "mapping", expand=True)
 
 
@@ -687,6 +704,12 @@ class IMAGE_PT_view_properties(Panel):
             sub.active = uvedit.show_stretch
             sub.row().prop(uvedit, "draw_stretch_type", expand=True)
 
+            col = layout.column()
+            col.prop(uvedit, "show_other_objects")
+            row = col.row()
+            row.active = uvedit.show_other_objects
+            row.prop(uvedit, "other_uv_filter", text="Filter")
+
         if show_render and ima:
             layout.separator()
             render_slot = ima.render_slots.active
@@ -708,9 +731,71 @@ class IMAGE_PT_tools_transform_uvs(Panel, UVToolsPanel):
         col.operator("transform.translate")
         col.operator("transform.rotate")
         col.operator("transform.resize", text="Scale")
-        col.separator()
-
         col.operator("transform.shear")
+
+
+class IMAGE_PT_tools_align_uvs(Panel, UVToolsPanel):
+    bl_label = "UV Align"
+
+    @classmethod
+    def poll(cls, context):
+        sima = context.space_data
+        return sima.show_uvedit and not context.tool_settings.use_uv_sculpt
+
+    def draw(self, context):
+        layout = self.layout
+        layout.operator_context = 'EXEC_REGION_WIN'
+
+        split = layout.split()
+        col = split.column(align=True)
+        col.operator("transform.mirror", text="Mirror X").constraint_axis[0] = True
+        col.operator("transform.mirror", text="Mirror Y").constraint_axis[1] = True
+        col = split.column(align=True)
+        col.operator("transform.rotate", text="Rotate +90°").value = math.pi / 2
+        col.operator("transform.rotate", text="Rotate  - 90°").value = math.pi / -2
+
+        split = layout.split()
+        col = split.column(align=True)
+        col.operator("uv.align", text="Straighten").axis = 'ALIGN_S'
+        col.operator("uv.align", text="Straighten X").axis = 'ALIGN_T'
+        col.operator("uv.align", text="Straighten Y").axis = 'ALIGN_U'
+        col = split.column(align=True)
+        col.operator("uv.align", text="Align Auto").axis = 'ALIGN_AUTO'
+        col.operator("uv.align", text="Align X").axis = 'ALIGN_X'
+        col.operator("uv.align", text="Align Y").axis = 'ALIGN_Y'
+
+
+class IMAGE_PT_tools_uvs(Panel, UVToolsPanel):
+    bl_label = "UV Tools"
+
+    @classmethod
+    def poll(cls, context):
+        sima = context.space_data
+        return sima.show_uvedit and not context.tool_settings.use_uv_sculpt
+
+    def draw(self, context):
+        layout = self.layout
+
+        col = layout.column(align=True)
+        row = col.row(align=True)
+        row.operator("uv.weld")
+        row.operator("uv.stitch")
+        col.operator("uv.remove_doubles")
+        col.operator("uv.average_islands_scale")
+        col.operator("uv.pack_islands")
+        col.operator("mesh.faces_mirror_uv")
+        col.operator("uv.minimize_stretch")
+
+        layout.label(text="UV Unwrap:")
+        row = layout.row(align=True)
+        row.operator("uv.pin").clear = False
+        row.operator("uv.pin", text="Unpin").clear = True
+        col = layout.column(align=True)
+        row = col.row(align=True)
+        row.operator("uv.mark_seam", text="Mark Seam").clear = False
+        row.operator("uv.mark_seam", text="Clear Seam").clear = True
+        col.operator("uv.seams_from_islands", text="Mark Seams from Islands")
+        col.operator("uv.unwrap")
 
 
 class IMAGE_PT_paint(Panel, ImagePaintPanel):
@@ -1081,6 +1166,29 @@ class IMAGE_PT_tools_mask(MASK_PT_tools, Panel):
 # --- end mask ---
 
 
+class IMAGE_PT_options_uvs(Panel, UVToolsPanel):
+    bl_label = "UV Options"
+    bl_category = "Options"
+
+    @classmethod
+    def poll(cls, context):
+        sima = context.space_data
+        return sima.show_uvedit
+
+    def draw(self, context):
+        layout = self.layout
+
+        sima = context.space_data
+        uv = sima.uv_editor
+        toolsettings = context.tool_settings
+
+        col = layout.column(align=True)
+        col.prop(toolsettings, "use_uv_sculpt")
+        col.prop(uv, "use_live_unwrap")
+        col.prop(uv, "use_snap_to_pixels")
+        col.prop(uv, "lock_bounds")
+
+
 class ImageScopesPanel:
     @classmethod
     def poll(cls, context):
@@ -1223,5 +1331,62 @@ class IMAGE_PT_tools_grease_pencil_brushcurves(GreasePencilBrushCurvesPanel, Pan
     bl_space_type = 'IMAGE_EDITOR'
 
 
+classes = (
+    IMAGE_MT_view,
+    IMAGE_MT_select,
+    IMAGE_MT_brush,
+    IMAGE_MT_image,
+    IMAGE_MT_image_invert,
+    IMAGE_MT_uvs,
+    IMAGE_MT_uvs_showhide,
+    IMAGE_MT_uvs_proportional,
+    IMAGE_MT_uvs_transform,
+    IMAGE_MT_uvs_snap,
+    IMAGE_MT_uvs_mirror,
+    IMAGE_MT_uvs_weldalign,
+    IMAGE_MT_uvs_select_mode,
+    IMAGE_HT_header,
+    MASK_MT_editor_menus,
+    IMAGE_PT_mask,
+    IMAGE_PT_mask_layers,
+    IMAGE_PT_mask_display,
+    IMAGE_PT_active_mask_spline,
+    IMAGE_PT_active_mask_point,
+    IMAGE_PT_image_properties,
+    IMAGE_PT_game_properties,
+    IMAGE_PT_view_properties,
+    IMAGE_PT_tools_transform_uvs,
+    IMAGE_PT_tools_align_uvs,
+    IMAGE_PT_tools_uvs,
+    IMAGE_PT_options_uvs,
+    IMAGE_PT_paint,
+    IMAGE_PT_tools_brush_overlay,
+    IMAGE_PT_tools_brush_texture,
+    IMAGE_PT_tools_mask,
+    IMAGE_PT_tools_mask_texture,
+    IMAGE_PT_tools_brush_tool,
+    IMAGE_PT_paint_stroke,
+    IMAGE_PT_paint_curve,
+    IMAGE_PT_tools_imagepaint_symmetry,
+    IMAGE_PT_tools_brush_appearance,
+    IMAGE_PT_tools_paint_options,
+    IMAGE_UV_sculpt,
+    IMAGE_UV_sculpt_curve,
+    IMAGE_PT_view_histogram,
+    IMAGE_PT_view_waveform,
+    IMAGE_PT_view_vectorscope,
+    IMAGE_PT_sample_line,
+    IMAGE_PT_scope_sample,
+    IMAGE_PT_grease_pencil,
+    IMAGE_PT_grease_pencil_palettecolor,
+    IMAGE_PT_tools_grease_pencil_draw,
+    IMAGE_PT_tools_grease_pencil_edit,
+    IMAGE_PT_tools_grease_pencil_sculpt,
+    IMAGE_PT_tools_grease_pencil_brush,
+    IMAGE_PT_tools_grease_pencil_brushcurves,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

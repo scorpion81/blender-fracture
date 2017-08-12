@@ -132,7 +132,7 @@ static void bm_face_calc_poly_center_mean_vertex_cos(
  */
 void BM_face_calc_tessellation(
         const BMFace *f, const bool use_fixed_quad,
-        BMLoop **r_loops, unsigned int (*r_index)[3])
+        BMLoop **r_loops, uint (*r_index)[3])
 {
 	BMLoop *l_first = BM_FACE_FIRST_LOOP(f);
 	BMLoop *l_iter;
@@ -196,7 +196,7 @@ void BM_face_calc_point_in_face(const BMFace *f, float r_co[3])
 		 * but without this we can't be sure the point is inside a concave face. */
 		const int tottri = f->len - 2;
 		BMLoop **loops = BLI_array_alloca(loops, f->len);
-		unsigned int  (*index)[3] = BLI_array_alloca(index, tottri);
+		uint (*index)[3] = BLI_array_alloca(index, tottri);
 		int j;
 		int j_best = 0;  /* use as fallback when unset */
 		float area_best  = -1.0f;
@@ -225,24 +225,16 @@ void BM_face_calc_point_in_face(const BMFace *f, float r_co[3])
  */
 float BM_face_calc_area(const BMFace *f)
 {
+	/* inline 'area_poly_v3' logic, avoid creating a temp array */
 	const BMLoop *l_iter, *l_first;
-	float (*verts)[3] = BLI_array_alloca(verts, f->len);
-	float area;
-	unsigned int i = 0;
+	float n[3];
 
+	zero_v3(n);
 	l_iter = l_first = BM_FACE_FIRST_LOOP(f);
 	do {
-		copy_v3_v3(verts[i++], l_iter->v->co);
+		add_newell_cross_v3_v3v3(n, l_iter->v->co, l_iter->next->v->co);
 	} while ((l_iter = l_iter->next) != l_first);
-
-	if (f->len == 3) {
-		area = area_tri_v3(verts[0], verts[1], verts[2]);
-	}
-	else {
-		area = area_poly_v3((const float (*)[3])verts, f->len);
-	}
-
-	return area;
+	return len_v3(n) * 0.5f;
 }
 
 /**
@@ -583,11 +575,11 @@ void BM_face_calc_center_mean_weighted(const BMFace *f, float r_cent[3])
  * Rotates a polygon so that it's
  * normal is pointing towards the mesh Z axis
  */
-void poly_rotate_plane(const float normal[3], float (*verts)[3], const unsigned int nverts)
+void poly_rotate_plane(const float normal[3], float (*verts)[3], const uint nverts)
 {
 	float mat[3][3];
 	float co[3];
-	unsigned int i;
+	uint i;
 
 	co[2] = 0.0f;
 
@@ -852,7 +844,7 @@ void BM_face_normal_flip_ex(
         BMesh *bm, BMFace *f,
         const int cd_loop_mdisp_offset, const bool use_loop_mdisp_flip)
 {
-	bmesh_loop_reverse(bm, f, cd_loop_mdisp_offset, use_loop_mdisp_flip);
+	bmesh_kernel_loop_reverse(bm, f, cd_loop_mdisp_offset, use_loop_mdisp_flip);
 	negate_v3(f->no);
 }
 
@@ -949,7 +941,7 @@ void BM_face_triangulate(
 
 	{
 		BMLoop **loops = BLI_array_alloca(loops, f->len);
-		unsigned int (*tris)[3] = BLI_array_alloca(tris, f->len);
+		uint (*tris)[3] = BLI_array_alloca(tris, f->len);
 		const int totfilltri = f->len - 2;
 		const int last_tri = f->len - 3;
 		int i;
@@ -1433,7 +1425,7 @@ void BM_mesh_calc_tessellation(BMesh *bm, BMLoop *(*looptris)[3], int *r_looptri
 
 			float axis_mat[3][3];
 			float (*projverts)[2];
-			unsigned int (*tris)[3];
+			uint (*tris)[3];
 
 			const int totfilltri = efa->len - 2;
 
@@ -1459,7 +1451,7 @@ void BM_mesh_calc_tessellation(BMesh *bm, BMLoop *(*looptris)[3], int *r_looptri
 
 			for (j = 0; j < totfilltri; j++) {
 				BMLoop **l_ptr = looptris[i++];
-				unsigned int *tri = tris[j];
+				uint *tri = tris[j];
 
 				l_ptr[0] = l_arr[tri[0]];
 				l_ptr[1] = l_arr[tri[1]];

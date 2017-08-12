@@ -142,6 +142,9 @@ set(GENSRC_CFLAGS)
 if(CMAKE_COMPILER_IS_GNUCC OR (CMAKE_C_COMPILER_ID MATCHES "Clang"))
 	set(GENSRC_CFLAGS "-Wno-missing-prototypes")
 endif()
+if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+	set(GENSRC_CFLAGS "${GENSRC_CFLAGS} -Wno-missing-variable-declarations")
+endif()
 
 if(GENSRC_CFLAGS)
 	set_source_files_properties(${GENSRC} PROPERTIES COMPILE_FLAGS "${GENSRC_CFLAGS}")
@@ -178,9 +181,6 @@ set(INC_SYS
 
 if(WITH_CYCLES)
 	add_definitions(-DWITH_CYCLES)
-	if(WITH_CYCLES_DEBUG)
-		add_definitions(-DWITH_CYCLES_DEBUG)
-	endif()
 endif()
 
 if(WITH_PYTHON)

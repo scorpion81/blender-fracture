@@ -32,6 +32,7 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_bitmap.h"
+#include "BLI_bitmap_draw_2d.h"
 #include "BLI_listbase.h"
 #include "BLI_linklist.h"
 #include "BLI_linklist_stack.h"
@@ -294,7 +295,7 @@ bool EDBM_backbuf_border_mask_init(ViewContext *vc, const int mcords[][2], short
 	lasso_mask_data.px = dr_mask;
 	lasso_mask_data.width = (xmax - xmin) + 1;
 
-	fill_poly_v2i_n(
+	BLI_bitmap_draw_2d_poly_v2i_n(
 	       xmin, ymin, xmax + 1, ymax + 1,
 	       mcords, tot,
 	       edbm_mask_lasso_px_cb, &lasso_mask_data);
@@ -445,6 +446,9 @@ BMVert *EDBM_vert_find_nearest_ex(
 		unsigned int index;
 		BMVert *eve;
 		
+		/* No afterqueue (yet), so we check it now, otherwise the bm_xxxofs indices are bad. */
+		ED_view3d_backbuf_validate(vc);
+
 		index = ED_view3d_backbuf_sample_rect(
 		        vc, vc->mval, dist_px, bm_wireoffs, 0xFFFFFF, &dist_test);
 		eve = index ? BM_vert_at_index_find_or_table(bm, index - 1) : NULL;
@@ -629,7 +633,8 @@ BMEdge *EDBM_edge_find_nearest_ex(
 		float dist_test = 0.0f;
 		unsigned int index;
 		BMEdge *eed;
-		
+
+		/* No afterqueue (yet), so we check it now, otherwise the bm_xxxofs indices are bad. */
 		ED_view3d_backbuf_validate(vc);
 
 		index = ED_view3d_backbuf_sample_rect(vc, vc->mval, dist_px, bm_solidoffs, bm_wireoffs, &dist_test);

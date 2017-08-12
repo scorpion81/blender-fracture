@@ -344,6 +344,78 @@ void BLI_insertlinkbefore(ListBase *listbase, void *vnextlink, void *vnewlink)
 
 
 /**
+ * Insert a link in place of another, without changing it's position in the list.
+ *
+ * Puts `vnewlink` in the position of `vreplacelink`, removing `vreplacelink`.
+ * - `vreplacelink` *must* be in the list.
+ * - `vnewlink` *must not* be in the list.
+ */
+void BLI_insertlinkreplace(ListBase *listbase, void *vreplacelink, void *vnewlink)
+{
+	Link *l_old = vreplacelink;
+	Link *l_new = vnewlink;
+
+	/* update adjacent links */
+	if (l_old->next != NULL) {
+		l_old->next->prev = l_new;
+	}
+	if (l_old->prev != NULL) {
+		l_old->prev->next = l_new;
+	}
+
+	/* set direct links */
+	l_new->next = l_old->next;
+	l_new->prev = l_old->prev;
+
+	 /* update list */
+	if (listbase->first == l_old) {
+		listbase->first = l_new;
+	}
+	if (listbase->last == l_old) {
+		listbase->last = l_new;
+	}
+}
+
+/**
+ * Reinsert \a vlink relative to its current position but offset by \a step. Doesn't move
+ * item if new position would exceed list (could optionally move to head/tail).
+ *
+ * \param step: Absolute value defines step size, sign defines direction. E.g pass -1
+ *              to move \a vlink before previous, or 1 to move behind next.
+ * \return If position of \a vlink has changed.
+ */
+bool BLI_listbase_link_move(ListBase *listbase, void *vlink, int step)
+{
+	Link *link = vlink;
+	Link *hook = link;
+	const bool is_up = step < 0;
+
+	if (step == 0) {
+		return false;
+	}
+	BLI_assert(BLI_findindex(listbase, link) != -1);
+
+	/* find link to insert before/after */
+	for (int i = 0; i < ABS(step); i++) {
+		hook = is_up ? hook->prev : hook->next;
+		if (!hook) {
+			return false;
+		}
+	}
+
+	/* reinsert link */
+	BLI_remlink(listbase, vlink);
+	if (is_up) {
+		BLI_insertlinkbefore(listbase, hook, vlink);
+	}
+	else {
+		BLI_insertlinkafter(listbase, hook, vlink);
+	}
+	return true;
+}
+
+
+/**
  * Removes and disposes of the entire contents of listbase using direct free(3).
  */
 void BLI_freelist(ListBase *listbase)
@@ -592,7 +664,7 @@ void *BLI_rfindptr(const ListBase *listbase, const void *ptr, const int offset)
 }
 
 /**
- * Returns the 1-based index of the first element of listbase which contains the specified
+ * Returns the 0-based index of the first element of listbase which contains the specified
  * null-terminated string at the specified offset, or -1 if not found.
  */
 int BLI_findstringindex(const ListBase *listbase, const char *id, const int offset)

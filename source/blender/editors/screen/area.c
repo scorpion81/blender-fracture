@@ -1367,9 +1367,12 @@ static void region_subwindow(wmWindow *win, ARegion *ar, bool activate)
 static void ed_default_handlers(wmWindowManager *wm, ScrArea *sa, ListBase *handlers, int flag)
 {
 	/* note, add-handler checks if it already exists */
-	
+
 	/* XXX it would be good to have boundbox checks for some of these... */
 	if (flag & ED_KEYMAP_UI) {
+		wmKeyMap *keymap = WM_keymap_find(wm->defaultconf, "User Interface", 0, 0);
+		WM_event_add_keymap_handler(handlers, keymap);
+
 		/* user interface widgets */
 		UI_region_handlers_add(handlers);
 	}
@@ -1746,7 +1749,7 @@ int ED_area_header_switchbutton(const bContext *C, uiBlock *block, int yco)
 
 	RNA_pointer_create(&(scr->id), &RNA_Area, sa, &areaptr);
 
-	uiDefButR(block, UI_BTYPE_MENU, 0, "", xco, yco, 1.5 * U.widget_unit, U.widget_unit,
+	uiDefButR(block, UI_BTYPE_MENU, 0, "", xco, yco, 1.6 * U.widget_unit, U.widget_unit,
 	          &areaptr, "type", 0, 0.0f, 0.0f, 0.0f, 0.0f, "");
 
 	return xco + 1.7 * U.widget_unit;

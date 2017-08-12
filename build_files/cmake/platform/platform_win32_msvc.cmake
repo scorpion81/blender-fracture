@@ -33,8 +33,14 @@ endmacro()
 macro(windows_find_package package_name
 	)
 	if(WITH_WINDOWS_FIND_MODULES)
-		find_package( ${package_name})
+		find_package(${package_name})
 	endif(WITH_WINDOWS_FIND_MODULES)
+endmacro()
+
+macro(find_package_wrapper)
+	if(WITH_WINDOWS_FIND_MODULES)
+		find_package(${ARGV})
+	endif()
 endmacro()
 
 add_definitions(-DWIN32)
@@ -110,9 +116,8 @@ set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} /NODEFAULTLIB:msvcrt.lib /NODEFAUL
 set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} /ignore:4049 /ignore:4217 /ignore:4221")
 set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4221")
 
-# MSVC only, Mingw doesnt need
 if(CMAKE_CL_64)
-	set(PLATFORM_LINKFLAGS "/MACHINE:X64 /OPT:NOREF ${PLATFORM_LINKFLAGS}")
+	set(PLATFORM_LINKFLAGS "/MACHINE:X64 ${PLATFORM_LINKFLAGS}")
 else()
 	set(PLATFORM_LINKFLAGS "/MACHINE:IX86 /LARGEADDRESSAWARE ${PLATFORM_LINKFLAGS}")
 endif()
@@ -129,8 +134,10 @@ if(NOT DEFINED LIBDIR)
 		message(STATUS "32 bit compiler detected.")
 		set(LIBDIR_BASE "windows")
 	endif()
-
-	if(MSVC_VERSION EQUAL 1900)
+	if(MSVC_VERSION EQUAL 1910)
+		message(STATUS "Visual Studio 2017 detected.")
+		set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/${LIBDIR_BASE}_vc14)
+	elseif(MSVC_VERSION EQUAL 1900)
 		message(STATUS "Visual Studio 2015 detected.")
 		set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/${LIBDIR_BASE}_vc14)
 	else()
@@ -430,6 +437,7 @@ if(WITH_ALEMBIC)
 	set(ALEMBIC_INCLUDE_DIRS ${ALEMBIC_INCLUDE_DIR})
 	set(ALEMBIC_LIBPATH ${ALEMBIC}/lib)
 	set(ALEMBIC_LIBRARIES optimized alembic debug alembic_d)
+	set(ALEMBIC_FOUND 1)
 endif()
 
 if(WITH_MOD_CLOTH_ELTOPO)
@@ -444,32 +452,28 @@ if(WITH_MOD_CLOTH_ELTOPO)
 endif()
 
 if(WITH_OPENSUBDIV OR WITH_CYCLES_OPENSUBDIV)
-    set(OPENSUBDIV_INCLUDE_DIR ${LIBDIR}/opensubdiv/include)
-    set(OPENSUBDIV_LIBPATH ${LIBDIR}/opensubdiv/lib)
-    set(OPENSUBDIV_LIBRARIES    optimized ${OPENSUBDIV_LIBPATH}/osdCPU.lib 
-                                optimized ${OPENSUBDIV_LIBPATH}/osdGPU.lib
-                                debug ${OPENSUBDIV_LIBPATH}/osdCPU_d.lib 
-                                debug ${OPENSUBDIV_LIBPATH}/osdGPU_d.lib
-                                )
-    set(OPENSUBDIV_HAS_OPENMP TRUE)
+	set(OPENSUBDIV_INCLUDE_DIR ${LIBDIR}/opensubdiv/include)
+	set(OPENSUBDIV_LIBPATH ${LIBDIR}/opensubdiv/lib)
+	set(OPENSUBDIV_LIBRARIES
+		optimized ${OPENSUBDIV_LIBPATH}/osdCPU.lib
+		optimized ${OPENSUBDIV_LIBPATH}/osdGPU.lib
+		debug ${OPENSUBDIV_LIBPATH}/osdCPU_d.lib
+		debug ${OPENSUBDIV_LIBPATH}/osdGPU_d.lib
+	)
+	set(OPENSUBDIV_HAS_OPENMP TRUE)
 	set(OPENSUBDIV_HAS_TBB FALSE)
 	set(OPENSUBDIV_HAS_OPENCL TRUE)
 	set(OPENSUBDIV_HAS_CUDA FALSE)
 	set(OPENSUBDIV_HAS_GLSL_TRANSFORM_FEEDBACK TRUE)
 	set(OPENSUBDIV_HAS_GLSL_COMPUTE TRUE)
-    windows_find_package(OpenSubdiv)
+	windows_find_package(OpenSubdiv)
 endif()
 
 if(WITH_SDL)
 	set(SDL ${LIBDIR}/sdl)
 	set(SDL_INCLUDE_DIR ${SDL}/include)
 	set(SDL_LIBPATH ${SDL}/lib)
-	# MinGW TODO: Update MinGW to SDL2
-	if(NOT CMAKE_COMPILER_IS_GNUCC)
-		set(SDL_LIBRARY SDL2)
-	else()
-		set(SDL_LIBRARY SDL)
-	endif()
+	set(SDL_LIBRARY SDL2)
 endif()
 
 # Audio IO
@@ -485,14 +489,14 @@ endif()
 # used in many places so include globally, like OpenGL
 blender_include_dirs_sys("${PTHREADS_INCLUDE_DIRS}")
 
-#find signtool  
-SET(ProgramFilesX86_NAME "ProgramFiles(x86)") #env dislikes the ( ) 
+#find signtool
+set(ProgramFilesX86_NAME "ProgramFiles(x86)") #env dislikes the ( )
 find_program(SIGNTOOL_EXE signtool
-HINTS
-  "$ENV{${ProgramFilesX86_NAME}}/Windows Kits/10/bin/x86/"
-  "$ENV{ProgramFiles}/Windows Kits/10/bin/x86/"
-  "$ENV{${ProgramFilesX86_NAME}}/Windows Kits/8.1/bin/x86/"
-  "$ENV{ProgramFiles}/Windows Kits/8.1/bin/x86/"
-  "$ENV{${ProgramFilesX86_NAME}}/Windows Kits/8.0/bin/x86/"
-  "$ENV{ProgramFiles}/Windows Kits/8.0/bin/x86/"
+	HINTS
+		"$ENV{${ProgramFilesX86_NAME}}/Windows Kits/10/bin/x86/"
+		"$ENV{ProgramFiles}/Windows Kits/10/bin/x86/"
+		"$ENV{${ProgramFilesX86_NAME}}/Windows Kits/8.1/bin/x86/"
+		"$ENV{ProgramFiles}/Windows Kits/8.1/bin/x86/"
+		"$ENV{${ProgramFilesX86_NAME}}/Windows Kits/8.0/bin/x86/"
+		"$ENV{ProgramFiles}/Windows Kits/8.0/bin/x86/"
 )

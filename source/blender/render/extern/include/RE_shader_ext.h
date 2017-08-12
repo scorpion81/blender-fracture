@@ -178,6 +178,7 @@ typedef struct ShadeInput {
 	
 	unsigned int lay;
 	int layflag, passflag, combinedflag;
+	short object_pass_index;
 	struct Group *light_override;
 	struct Material *mat_override;
 
@@ -218,6 +219,8 @@ int multitex_nodes(struct Tex *tex, float texvec[3], float dxt[3], float dyt[3],
 float RE_lamp_get_data(struct ShadeInput *shi, struct Object *lamp_obj, float col[4], float lv[3], float *dist, float shadow[4]);
 void RE_instance_get_particle_info(struct ObjectInstanceRen *obi, float *index, float *age, float *lifetime, float co[3], float *size, float vel[3], float angvel[3]);
 
+float RE_fresnel_dielectric(float incoming[3], float normal[3], float eta);
+
 /* shaded view and bake */
 struct Render;
 struct Image;
@@ -238,6 +241,9 @@ enum {
 };
 
 const float (*RE_object_instance_get_matrix(struct ObjectInstanceRen *obi, int matrix_id))[4];
+
+float RE_object_instance_get_object_pass_index(struct ObjectInstanceRen *obi);
+float RE_object_instance_get_random_id(struct ObjectInstanceRen *obi);
 
 enum {
 	RE_VIEW_MATRIX,

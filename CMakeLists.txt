@@ -32,7 +32,7 @@ if(${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
 	if(NOT DEFINED WITH_IN_SOURCE_BUILD)
 		message(FATAL_ERROR
 			"CMake generation for blender is not allowed within the source directory!"
-			"\n Remove the CMakeCache.txt file and try again from another folder, e.g.:"
+			"\n Remove \"${CMAKE_SOURCE_DIR}/CMakeCache.txt\" and try again from another folder, e.g.:"
 			"\n "
 			"\n rm CMakeCache.txt"
 			"\n cd .."
@@ -58,7 +58,9 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/build_files/cmake/Modules")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/build_files/cmake/platform")
 
 # avoid having empty buildtype
-set(CMAKE_BUILD_TYPE_INIT "Release")
+if(NOT DEFINED CMAKE_BUILD_TYPE_INIT)
+	set(CMAKE_BUILD_TYPE_INIT "Release")
+endif()
 
 # quiet output for Makefiles, 'make -s' helps too
 # set_property(GLOBAL PROPERTY RULE_MESSAGES OFF)
@@ -192,7 +194,7 @@ endif()
 #-----------------------------------------------------------------------------
 # Options
 
-# First platform spesific non-cached vars
+# First platform specific non-cached vars
 if(UNIX AND NOT APPLE)
 	set(WITH_X11 ON)
 endif()
@@ -229,7 +231,7 @@ mark_as_advanced(BUILDINFO_OVERRIDE_TIME)
 
 option(WITH_IK_ITASC      "Enable ITASC IK solver (only disable for development & for incompatible C++ compilers)" ON)
 option(WITH_IK_SOLVER     "Enable Legacy IK solver (only disable for development)" ON)
-option(WITH_FFTW3         "Enable FFTW3 support (Used for smoke and audio effects)" ${_init_FFTW3})
+option(WITH_FFTW3         "Enable FFTW3 support (Used for smoke, ocean sim, and audio effects)" ${_init_FFTW3})
 option(WITH_BULLET        "Enable Bullet (Physics Engine)" ON)
 option(WITH_SYSTEM_BULLET "Use the systems bullet library (currently unsupported due to missing features in upstream!)" )
 mark_as_advanced(WITH_SYSTEM_BULLET)
@@ -334,7 +336,7 @@ option(WITH_ALEMBIC             "Enable Alembic Support" OFF)
 option(WITH_ALEMBIC_HDF5        "Enable Legacy Alembic Support (not officially supported)" OFF)
 
 if(APPLE)
-	option(WITH_CODEC_QUICKTIME     "Enable Quicktime Support" ON)
+	option(WITH_CODEC_QUICKTIME     "Enable Quicktime Support" OFF)
 endif()
 
 # 3D format support
@@ -344,9 +346,9 @@ option(WITH_OPENCOLLADA   "Enable OpenCollada Support (http://www.opencollada.or
 # Sound output
 option(WITH_SDL           "Enable SDL for sound and joystick support" ${_init_SDL})
 option(WITH_OPENAL        "Enable OpenAL Support (http://www.openal.org)" ON)
-option(WITH_JACK          "Enable Jack Support (http://www.jackaudio.org)" ${_init_JACK})
+option(WITH_JACK          "Enable JACK Support (http://www.jackaudio.org)" ${_init_JACK})
 if(UNIX AND NOT APPLE)
-	option(WITH_JACK_DYNLOAD  "Enable runtime dynamic Jack libraries loading" OFF)
+	option(WITH_JACK_DYNLOAD  "Enable runtime dynamic JACK libraries loading" OFF)
 endif()
 if(UNIX AND NOT APPLE)
 	option(WITH_SDL_DYNLOAD  "Enable runtime dynamic SDL libraries loading" OFF)
@@ -363,6 +365,12 @@ endif()
 option(WITH_LIBMV         "Enable Libmv structure from motion library" ON)
 option(WITH_LIBMV_SCHUR_SPECIALIZATIONS "Enable fixed-size schur specializations." OFF)
 mark_as_advanced(WITH_LIBMV_SCHUR_SPECIALIZATIONS)
+
+# Logging/unbit test libraries.
+option(WITH_SYSTEM_GFLAGS   "Use system-wide Gflags instead of a bundled one" OFF)
+option(WITH_SYSTEM_GLOG     "Use system-wide Glog instead of a bundled one" OFF)
+mark_as_advanced(WITH_SYSTEM_GFLAGS)
+mark_as_advanced(WITH_SYSTEM_GLOG)
 
 # Freestyle
 option(WITH_FREESTYLE     "Enable Freestyle (advanced edges rendering)" ON)
@@ -510,22 +518,30 @@ mark_as_advanced(WITH_C11)
 option(WITH_CXX11 "Build with C++11 standard enabled, for development use only!" ${_cxx11_init})
 mark_as_advanced(WITH_CXX11)
 
+# Compiler toolchain
+if(CMAKE_COMPILER_IS_GNUCC)
+	option(WITH_LINKER_GOLD "Use ld.gold linker which is usually faster than ld.bfd" ON)
+	mark_as_advanced(WITH_LINKER_GOLD)
+endif()
+
 # Dependency graph
 option(WITH_LEGACY_DEPSGRAPH "Build Blender with legacy dependency graph" ON)
 mark_as_advanced(WITH_LEGACY_DEPSGRAPH)
 
-# Use hardcoded paths or find_package to find externals
-option(WITH_WINDOWS_FIND_MODULES "Use find_package to locate libraries" OFF)
-mark_as_advanced(WITH_WINDOWS_FIND_MODULES)
+if(WIN32)
+	# Use hardcoded paths or find_package to find externals
+	option(WITH_WINDOWS_FIND_MODULES "Use find_package to locate libraries" OFF)
+	mark_as_advanced(WITH_WINDOWS_FIND_MODULES)
 
-option(WITH_WINDOWS_CODESIGN "Use signtool to sign the final binary." OFF)
-mark_as_advanced(WITH_WINDOWS_CODESIGN)
+	option(WITH_WINDOWS_CODESIGN "Use signtool to sign the final binary." OFF)
+	mark_as_advanced(WITH_WINDOWS_CODESIGN)
 
-set(WINDOWS_CODESIGN_PFX CACHE FILEPATH  "Path to pfx file to use for codesigning.")
-mark_as_advanced(WINDOWS_CODESIGN_PFX)
+	set(WINDOWS_CODESIGN_PFX CACHE FILEPATH  "Path to pfx file to use for codesigning.")
+	mark_as_advanced(WINDOWS_CODESIGN_PFX)
 
-set(WINDOWS_CODESIGN_PFX_PASSWORD CACHE STRING  "password for pfx file used for codesigning.")
-mark_as_advanced(WINDOWS_CODESIGN_PFX_PASSWORD)
+	set(WINDOWS_CODESIGN_PFX_PASSWORD CACHE STRING  "password for pfx file used for codesigning.")
+	mark_as_advanced(WINDOWS_CODESIGN_PFX_PASSWORD)
+endif()
 
 # avoid using again
 option_defaults_clear()
@@ -553,95 +569,7 @@ endif()
 # Apple
 
 if(APPLE)
-	# require newer cmake on osx because of version handling,
-	# older cmake cannot handle 2 digit subversion!
-	cmake_minimum_required(VERSION 3.0.0)
-
-	if(NOT CMAKE_OSX_ARCHITECTURES)
-		set(CMAKE_OSX_ARCHITECTURES x86_64 CACHE STRING
-			"Choose the architecture you want to build Blender for: i386, x86_64 or ppc"
-			FORCE)
-	endif()
-
-	if(NOT DEFINED OSX_SYSTEM)
-		execute_process(
-		        COMMAND xcodebuild -version -sdk macosx SDKVersion
-		        OUTPUT_VARIABLE OSX_SYSTEM
-		        OUTPUT_STRIP_TRAILING_WHITESPACE)
-	endif()
-
-	# workaround for incorrect cmake xcode lookup for developer previews - XCODE_VERSION does not
-	# take xcode-select path into account but would always look  into /Applications/Xcode.app
-	# while dev versions are named Xcode<version>-DP<preview_number>
-	execute_process(
-	        COMMAND xcode-select --print-path
-	        OUTPUT_VARIABLE XCODE_CHECK OUTPUT_STRIP_TRAILING_WHITESPACE)
-	string(REPLACE "/Contents/Developer" "" XCODE_BUNDLE ${XCODE_CHECK}) # truncate to bundlepath in any case
-	
-	if(${CMAKE_GENERATOR} MATCHES "Xcode")
-	
-		# earlier xcode has no bundled developer dir, no sense in getting xcode path from
-		if(${XCODE_VERSION} VERSION_GREATER 4.2) 
-			# reduce to XCode name without dp extension
-			string(SUBSTRING "${XCODE_CHECK}" 14 6 DP_NAME) 
-			if(${DP_NAME} MATCHES Xcode5)
-				set(XCODE_VERSION 5)
-			endif()
-		endif()
-
-		##### cmake incompatibility with xcode  4.3 and higher #####
-		if(${XCODE_VERSION} MATCHES '') # cmake fails due looking for xcode in the wrong path, thus will be empty var
-			message(FATAL_ERROR "Xcode 4.3 and higher must be used with cmake 2.8-8 or higher")
-		endif()
-		### end cmake incompatibility with xcode 4.3 and higher ###
-		
-		if(${XCODE_VERSION} VERSION_EQUAL 4 OR ${XCODE_VERSION} VERSION_GREATER 4 AND ${XCODE_VERSION} VERSION_LESS 4.3)
-			# Xcode 4 defaults to the Apple LLVM Compiler.
-			# Override the default compiler selection because Blender only compiles with gcc up to xcode 4.2
-			set(CMAKE_XCODE_ATTRIBUTE_GCC_VERSION "com.apple.compilers.llvmgcc42")
-			message(STATUS "Setting compiler to: " ${CMAKE_XCODE_ATTRIBUTE_GCC_VERSION})
-		endif()
-	else() # unix makefile generator does not fill XCODE_VERSION var, so we get it with a command
-		execute_process(COMMAND xcodebuild -version OUTPUT_VARIABLE XCODE_VERS_BUILD_NR)
-		string(SUBSTRING "${XCODE_VERS_BUILD_NR}" 6 3 XCODE_VERSION) # truncate away build-nr
-		unset(XCODE_VERS_BUILD_NR)
-	endif()
-
-	message(STATUS "Detected OS X ${OSX_SYSTEM} and Xcode ${XCODE_VERSION} at ${XCODE_BUNDLE}")
-
-	if(${XCODE_VERSION} VERSION_LESS 4.3)
-		# use guaranteed existing sdk
-		set(CMAKE_OSX_SYSROOT /Developer/SDKs/MacOSX${OSX_SYSTEM}.sdk CACHE PATH "" FORCE)
-	else()
-		# note: xcode-select path could be ambigous,
-		# cause /Applications/Xcode.app/Contents/Developer or /Applications/Xcode.app would be allowed
-		# so i use a selfcomposed bundlepath here  
-		set(OSX_SYSROOT_PREFIX ${XCODE_BUNDLE}/Contents/Developer/Platforms/MacOSX.platform)
-		message(STATUS "OSX_SYSROOT_PREFIX: " ${OSX_SYSROOT_PREFIX})
-		set(OSX_DEVELOPER_PREFIX /Developer/SDKs/MacOSX${OSX_SYSTEM}.sdk) # use guaranteed existing sdk
-		set(CMAKE_OSX_SYSROOT ${OSX_SYSROOT_PREFIX}/${OSX_DEVELOPER_PREFIX} CACHE PATH "" FORCE)
-		if(${CMAKE_GENERATOR} MATCHES "Xcode")
-			# to silence sdk not found warning, just overrides CMAKE_OSX_SYSROOT
-			set(CMAKE_XCODE_ATTRIBUTE_SDKROOT macosx${OSX_SYSTEM})
-		endif()
-	endif()
-
-	if(OSX_SYSTEM MATCHES 10.9)
-		# make sure syslibs and headers are looked up in sdk ( expecially for 10.9 openGL atm. )
-		set(CMAKE_FIND_ROOT_PATH ${CMAKE_OSX_SYSROOT})
-	endif()
-
-	if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-		# 10.6 is our min. target, if you use higher sdk, weak linking happens
-		set(CMAKE_OSX_DEPLOYMENT_TARGET "10.6" CACHE STRING "" FORCE)
-	endif()
-	
-	if(NOT ${CMAKE_GENERATOR} MATCHES "Xcode")
-		# force CMAKE_OSX_DEPLOYMENT_TARGET for makefiles, will not work else ( cmake bug ? )
-		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
-		add_definitions("-DMACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}")
-	endif()
+	include(platform_apple_xcode)
 endif()
 
 
@@ -701,7 +629,7 @@ if(NOT WITH_BOOST)
 	macro(set_and_warn
 		_setting _val)
 		if(${${_setting}})
-			message(STATUS "'WITH_BOOST' is disabled: forceing 'set(${_setting} ${_val})'")
+			message(STATUS "'WITH_BOOST' is disabled: forcing 'set(${_setting} ${_val})'")
 		endif()
 		set(${_setting} ${_val})
 	endmacro()
@@ -721,7 +649,7 @@ elseif(WITH_CYCLES OR WITH_OPENIMAGEIO OR WITH_AUDASPACE OR WITH_INTERNATIONAL O
 	# Keep enabled
 else()
 	# New dependency graph needs either Boost or C++11 for function bindings.
-	if(NOT USE_CXX11)
+	if(NOT WITH_CXX11)
 		# Enabled but we don't need it
 		set(WITH_BOOST OFF)
 	endif()
@@ -811,6 +739,10 @@ if(WITH_AUDASPACE)
 	endif()
 endif()
 
+if(APPLE)
+	apple_check_quicktime()
+endif()
+
 #-----------------------------------------------------------------------------
 # Check for valid directories
 # ... a partial checkout may cause this.
@@ -845,7 +777,7 @@ endif()
 # linux only, not cached
 set(WITH_BINRELOC OFF)
 
-# MAXOSX only, set to avoid uninitialized
+# MACOSX only, set to avoid uninitialized
 set(EXETYPE "")
 
 # C/C++ flags
@@ -902,7 +834,7 @@ if(WITH_X11)
 	if(WITH_X11_ALPHA)
 		find_library(X11_Xrender_LIB Xrender  ${X11_LIB_SEARCH_PATH})
 		mark_as_advanced(X11_Xrender_LIB)
-		if (X11_Xrender_LIB)
+		if(X11_Xrender_LIB)
 			list(APPEND PLATFORM_LINKLIBS ${X11_Xrender_LIB})
 		else()
 			set(WITH_X11_ALPHA OFF)
@@ -988,16 +920,16 @@ endif()
 if(MSVC)
 	# for some reason this fails on msvc
 	add_definitions(-D__LITTLE_ENDIAN__)
-	
-# OSX-Note: as we do crosscompiling with specific set architecture,
-# endianess-detection and autosetting is counterproductive
+
+# OSX-Note: as we do cross-compiling with specific set architecture,
+# endianess-detection and auto-setting is counterproductive
 # so we just set endianess according CMAKE_OSX_ARCHITECTURES
 
 elseif(CMAKE_OSX_ARCHITECTURES MATCHES i386 OR CMAKE_OSX_ARCHITECTURES MATCHES x86_64)
 	add_definitions(-D__LITTLE_ENDIAN__)
-elseif(CMAKE_OSX_ARCHITECTURES MATCHES ppc OR CMAKE_OSX_ARCHITECTURES MATCHES ppc64)		
+elseif(CMAKE_OSX_ARCHITECTURES MATCHES ppc OR CMAKE_OSX_ARCHITECTURES MATCHES ppc64)
 	add_definitions(-D__BIG_ENDIAN__)
-	
+
 else()
 	include(TestBigEndian)
 	test_big_endian(_SYSTEM_BIG_ENDIAN)
@@ -1292,15 +1224,42 @@ endif()
 # Configure GLog/GFlags
 
 if(WITH_LIBMV OR WITH_GTESTS OR (WITH_CYCLES AND WITH_CYCLES_LOGGING))
-	set(GLOG_DEFINES
-		-DGOOGLE_GLOG_DLL_DECL=
-	)
+	if(WITH_SYSTEM_GFLAGS)
+		find_package(Gflags)
+		if(NOT GFLAGS_FOUND)
+			message(FATAL_ERROR "System wide Gflags is requested but was not found")
+		endif()
+		# FindGflags does not define this, and we are not even sure what to use here.
+		set(GFLAGS_DEFINES)
+	else()
+		set(GFLAGS_DEFINES
+			-DGFLAGS_DLL_DEFINE_FLAG=
+			-DGFLAGS_DLL_DECLARE_FLAG=
+			-DGFLAGS_DLL_DECL=
+		)
+		set(GFLAGS_NAMESPACE "gflags")
+		set(GFLAGS_LIBRARIES extern_gflags)
+		set(GFLAGS_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/extern/gflags/src")
+	endif()
 
-	set(GFLAGS_DEFINES
-		-DGFLAGS_DLL_DEFINE_FLAG=
-		-DGFLAGS_DLL_DECLARE_FLAG=
-		-DGFLAGS_DLL_DECL=
-	)
+	if(WITH_SYSTEM_GLOG)
+		find_package(Glog)
+		if(NOT GLOG_FOUND)
+			message(FATAL_ERROR "System wide Glog is requested but was not found")
+		endif()
+		# FindGlog does not define this, and we are not even sure what to use here.
+		set(GLOG_DEFINES)
+	else()
+		set(GLOG_DEFINES
+			-DGOOGLE_GLOG_DLL_DECL=
+		)
+		set(GLOG_LIBRARIES extern_glog)
+		if(WIN32)
+			set(GLOG_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/extern/glog/src/windows)
+		else()
+			set(GLOG_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/extern/glog/src)
+		endif()
+	endif()
 endif()
 
 #-----------------------------------------------------------------------------
@@ -1424,9 +1383,19 @@ if(CMAKE_COMPILER_IS_GNUCC)
 		ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_MISSING_DECLARATIONS -Wmissing-declarations)
 	endif()
 
+	# Use 'ATTR_FALLTHROUGH' macro to suppress.
+	if(CMAKE_COMPILER_IS_GNUCC AND (NOT "${CMAKE_C_COMPILER_VERSION}" VERSION_LESS "7.0"))
+		ADD_CHECK_C_COMPILER_FLAG(C_WARNINGS C_WARN_IMPLICIT_FALLTHROUGH -Wimplicit-fallthrough=5)
+		ADD_CHECK_CXX_COMPILER_FLAG(CXX_WARNINGS CXX_WARN_IMPLICIT_FALLTHROUGH -Wimplicit-fallthrough=5)
+	endif()
+
 	# flags to undo strict flags
 	ADD_CHECK_C_COMPILER_FLAG(CC_REMOVE_STRICT_FLAGS C_WARN_NO_DEPRECATED_DECLARATIONS -Wno-deprecated-declarations)
 	ADD_CHECK_C_COMPILER_FLAG(CC_REMOVE_STRICT_FLAGS C_WARN_NO_UNUSED_PARAMETER        -Wno-unused-parameter)
+
+	if(CMAKE_COMPILER_IS_GNUCC AND (NOT "${CMAKE_C_COMPILER_VERSION}" VERSION_LESS "7.0"))
+		ADD_CHECK_C_COMPILER_FLAG(CC_REMOVE_STRICT_FLAGS C_WARN_NO_IMPLICIT_FALLTHROUGH    -Wno-implicit-fallthrough)
+	endif()
 
 	if(NOT APPLE)
 		ADD_CHECK_C_COMPILER_FLAG(CC_REMOVE_STRICT_FLAGS C_WARN_NO_ERROR_UNUSED_BUT_SET_VARIABLE -Wno-error=unused-but-set-variable)
@@ -1551,7 +1520,7 @@ if(WITH_CXX11)
 	if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID MATCHES "Clang")
 		# TODO(sergey): Do we want c++11 or gnu-c++11 here?
 		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-	elseif(MSVC12)
+	elseif(MSVC)
 		# Nothing special is needed, C++11 features are available by default.
 	else()
 		message(FATAL_ERROR "Compiler ${CMAKE_C_COMPILER_ID} is not supported for C++11 build yet")
@@ -1582,7 +1551,7 @@ endif()
 set(CMAKE_C_FLAGS "${C_WARNINGS} ${CMAKE_C_FLAGS} ${PLATFORM_CFLAGS}")
 set(CMAKE_CXX_FLAGS "${CXX_WARNINGS} ${CMAKE_CXX_FLAGS} ${PLATFORM_CFLAGS}")
 
-# defined above, platform spesific but shared names
+# defined above, platform specific but shared names
 mark_as_advanced(
 	CYCLES_OSL
 	OSL_LIB_EXEC

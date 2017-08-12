@@ -7,14 +7,17 @@
 
 Submodules:
 
-* :mod:`bmesh.ops`
-* :mod:`bmesh.types`
-* :mod:`bmesh.utils`
-* :mod:`bmesh.geometry`
+.. toctree::
+   :maxdepth: 1
+
+   bmesh.ops.rst
+   bmesh.types.rst
+   bmesh.utils.rst
+   bmesh.geometry.rst
 
 
-Intro
------
+Introduction
+------------
 
 This API gives access the blenders internal mesh editing api, featuring geometry connectivity data and
 access to editing operations such as split, separate, collapse and dissolve.
@@ -23,7 +26,7 @@ The features exposed closely follow the C API,
 giving python access to the functions used by blenders own mesh editing tools.
 
 For an overview of BMesh data types and how they reference each other see:
-`BMesh Design Document <http://wiki.blender.org/index.php/Dev:2.6/Source/Modeling/BMesh/Design>`_ .
+`BMesh Design Document <https://wiki.blender.org/index.php/Dev:Source/Modeling/BMesh/Design>`_ .
 
 
 .. note::
@@ -31,12 +34,11 @@ For an overview of BMesh data types and how they reference each other see:
    **Disk** and **Radial** data is not exposed by the python api since this is for internal use only.
 
 
-.. warning::
-
-   TODO items are...
+.. warning:: TODO items are...
 
    * add access to BMesh **walkers**
    * add custom-data manipulation functions add/remove/rename.
+
 
 Example Script
 --------------

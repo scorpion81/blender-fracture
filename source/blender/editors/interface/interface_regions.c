@@ -73,38 +73,6 @@
 #define MENU_PADDING		(int)(0.2f * UI_UNIT_Y)
 #define MENU_BORDER			(int)(0.3f * U.widget_unit)
 
-static int rna_property_enum_step(const bContext *C, PointerRNA *ptr, PropertyRNA *prop, int direction)
-{
-	EnumPropertyItem *item_array;
-	int totitem;
-	bool free;
-	int value;
-	int i, i_init;
-	int step = (direction < 0) ? -1 : 1;
-	int step_tot = 0;
-
-	RNA_property_enum_items((bContext *)C, ptr, prop, &item_array, &totitem, &free);
-	value = RNA_property_enum_get(ptr, prop);
-	i = RNA_enum_from_value(item_array, value);
-	i_init = i;
-
-	do {
-		i = mod_i(i + step, totitem);
-		if (item_array[i].identifier[0]) {
-			step_tot += step;
-		}
-	} while ((i != i_init) && (step_tot != direction));
-
-	if (i != i_init) {
-		value = item_array[i].value;
-	}
-
-	if (free) {
-		MEM_freeN(item_array);
-	}
-
-	return value;
-}
 
 bool ui_but_menu_step_poll(const uiBut *but)
 {
@@ -122,7 +90,8 @@ int ui_but_menu_step(uiBut *but, int direction)
 			return but->menu_step_func(but->block->evil_C, direction, but->poin);
 		}
 		else {
-			return rna_property_enum_step(but->block->evil_C, &but->rnapoin, but->rnaprop, direction);
+			const int curval = RNA_property_enum_get(&but->rnapoin, but->rnaprop);
+			return RNA_property_enum_step(but->block->evil_C, &but->rnapoin, but->rnaprop, curval, direction);
 		}
 	}
 
@@ -484,20 +453,30 @@ static uiTooltipData *ui_tooltip_data_from_button(bContext *C, uiBut *but)
 		}
 
 		MEM_freeN(str);
+	}
 
-		/* second check if we are disabled - why */
-		if (but->flag & UI_BUT_DISABLED) {
-			const char *poll_msg;
+	/* button is disabled, we may be able to tell user why */
+	if (but->flag & UI_BUT_DISABLED) {
+		const char *disabled_msg = NULL;
+
+		/* if operator poll check failed, it can give pretty precise info why */
+		if (but->optype) {
 			CTX_wm_operator_poll_msg_set(C, NULL);
 			WM_operator_poll_context(C, but->optype, but->opcontext);
-			poll_msg = CTX_wm_operator_poll_msg_get(C);
-			if (poll_msg) {
-				BLI_snprintf(data->lines[data->totline], sizeof(data->lines[0]), TIP_("Disabled: %s"), poll_msg);
-				data->format[data->totline].color_id = UI_TIP_LC_ALERT;
-				data->totline++;
-			}
+			disabled_msg = CTX_wm_operator_poll_msg_get(C);
+		}
+		/* alternatively, buttons can store some reasoning too */
+		else if (but->disabled_info) {
+			disabled_msg = TIP_(but->disabled_info);
+		}
+
+		if (disabled_msg && disabled_msg[0]) {
+			BLI_snprintf(data->lines[data->totline], sizeof(data->lines[0]), TIP_("Disabled: %s"), disabled_msg);
+			data->format[data->totline].color_id = UI_TIP_LC_ALERT;
+			data->totline++;
 		}
 	}
+
 	if ((U.flag & USER_TOOLTIPS_PYTHON) == 0 && !but->optype && rna_struct.strinfo) {
 		if (rna_prop.strinfo) {
 			/* Struct and prop */
@@ -872,7 +851,7 @@ static void ui_searchbox_select(bContext *C, ARegion *ar, uiBut *but, int step)
 		}
 		else {
 			/* only let users step into an 'unset' state for unlink buttons */
-			data->active = (but->flag & UI_BUT_SEARCH_UNLINK) ? -1 : 0;
+			data->active = (but->flag & UI_BUT_VALUE_CLEAR) ? -1 : 0;
 		}
 	}
 	
@@ -943,8 +922,8 @@ bool ui_searchbox_apply(uiBut *but, ARegion *ar)
 
 		return true;
 	}
-	else if (but->flag & UI_BUT_SEARCH_UNLINK) {
-		/* It is valid for _UNLINK flavor to have no active element (it's a valid way to unlink). */
+	else if (but->flag & UI_BUT_VALUE_CLEAR) {
+		/* It is valid for _VALUE_CLEAR flavor to have no active element (it's a valid way to unlink). */
 		but->editstr[0] = '\0';
 
 		return true;
@@ -1713,6 +1692,28 @@ static void ui_block_region_draw(const bContext *C, ARegion *ar)
 		UI_block_draw(C, block);
 }
 
+/**
+ * Use to refresh centered popups on screen resizing (for splash).
+ */
+static void ui_block_region_popup_window_listener(
+        bScreen *UNUSED(sc), ScrArea *UNUSED(sa), ARegion *ar, wmNotifier *wmn)
+{
+	switch (wmn->category) {
+		case NC_WINDOW:
+		{
+			switch (wmn->action) {
+				case NA_EDITED:
+				{
+					/* window resize */
+					ED_region_tag_refresh_ui(ar);
+					break;
+				}
+			}
+			break;
+		}
+	}
+}
+
 static void ui_popup_block_clip(wmWindow *window, uiBlock *block)
 {
 	uiBut *bt;
@@ -2024,6 +2025,11 @@ uiPopupBlockHandle *ui_popup_block_create(
 	block = ui_popup_block_refresh(C, handle, butregion, but);
 	handle = block->handle;
 
+	/* keep centered on window resizing */
+	if ((block->bounds_type == UI_BLOCK_BOUNDS_POPUP_CENTER) && handle->can_refresh) {
+		type.listener = ui_block_region_popup_window_listener;
+	}
+
 	return handle;
 }
 
@@ -2093,9 +2099,11 @@ static void ui_update_color_picker_buts_rgb(uiBlock *block, ColorPicker *cpicker
 			continue;
 
 		if (bt->rnaprop) {
-			
 			ui_but_v3_set(bt, rgb);
 			
+			/* original button that created the color picker already does undo
+			 * push, so disable it on RNA buttons in the color picker block */
+			UI_but_flag_disable(bt, UI_BUT_UNDO);
 		}
 		else if (STREQ(bt->str, "Hex: ")) {
 			float rgb_gamma[3];
@@ -2944,8 +2952,8 @@ uiPieMenu *UI_pie_menu_begin(struct bContext *C, const char *title, int icon, co
 	pie->block_radial->puphash = ui_popup_menu_hash(title);
 	pie->block_radial->flag |= UI_BLOCK_RADIAL;
 
-	/* if pie is spawned by a left click, it is always assumed to be click style */
-	if (event->type == LEFTMOUSE) {
+	/* if pie is spawned by a left click, release or click event, it is always assumed to be click style */
+	if (event->type == LEFTMOUSE || ELEM(event->val, KM_RELEASE, KM_CLICK)) {
 		pie->block_radial->pie_data.flags |= UI_PIE_CLICK_STYLE;
 		pie->block_radial->pie_data.event = EVENT_NONE;
 		win->lock_pie_event = EVENT_NONE;
@@ -3306,7 +3314,7 @@ void UI_popup_block_invoke(bContext *C, uiBlockCreateFunc func, void *arg)
 	UI_popup_block_invoke_ex(C, func, arg, NULL, WM_OP_INVOKE_DEFAULT);
 }
 
-void UI_popup_block_ex(bContext *C, uiBlockCreateFunc func, uiBlockHandleFunc popup_func, uiBlockCancelFunc cancel_func, void *arg)
+void UI_popup_block_ex(bContext *C, uiBlockCreateFunc func, uiBlockHandleFunc popup_func, uiBlockCancelFunc cancel_func, void *arg, wmOperator *op)
 {
 	wmWindow *window = CTX_wm_window(C);
 	uiPopupBlockHandle *handle;
@@ -3315,6 +3323,7 @@ void UI_popup_block_ex(bContext *C, uiBlockCreateFunc func, uiBlockHandleFunc po
 	handle->popup = true;
 	handle->retvalue = 1;
 
+	handle->popup_op = op;
 	handle->popup_arg = arg;
 	handle->popup_func = popup_func;
 	handle->cancel_func = cancel_func;

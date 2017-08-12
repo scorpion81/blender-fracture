@@ -102,7 +102,7 @@ ccl_device_inline float area_light_sample(float3 P,
 		float cu = 1.0f / sqrtf(fu * fu + b0sq) * (fu > 0.0f ? 1.0f : -1.0f);
 		cu = clamp(cu, -1.0f, 1.0f);
 		/* Compute xu. */
-		float xu = -(cu * z0) / sqrtf(1.0f - cu * cu);
+		float xu = -(cu * z0) / max(sqrtf(1.0f - cu * cu), 1e-7f);
 		xu = clamp(xu, x0, x1);
 		/* Compute yv. */
 		float z0sq = z0 * z0;
@@ -767,7 +767,7 @@ ccl_device void object_transform_light_sample(KernelGlobals *kg, LightSample *ls
 {
 #ifdef __INSTANCING__
 	/* instance transform */
-	if(!(kernel_tex_fetch(__object_flag, object) & SD_TRANSFORM_APPLIED)) {
+	if(!(kernel_tex_fetch(__object_flag, object) & SD_OBJECT_TRANSFORM_APPLIED)) {
 #  ifdef __OBJECT_MOTION__
 		Transform itfm;
 		Transform tfm = object_fetch_transform_motion_test(kg, object, time, &itfm);

@@ -32,6 +32,7 @@ extern "C" {
 #include "DNA_mesh_types.h"
 #include "DNA_object_types.h"
 
+#include "BKE_cdderivedmesh.h"
 #include "BKE_lattice.h"
 #include "BKE_mesh.h"
 #include "BKE_object.h"
@@ -150,18 +151,35 @@ bool AbcPointsReader::valid() const
 	return m_schema.valid();
 }
 
-void AbcPointsReader::readObjectData(Main *bmain, float time)
+bool AbcPointsReader::accepts_object_type(const Alembic::AbcCoreAbstract::ObjectHeader &alembic_header,
+                                          const Object *const ob,
+                                          const char **err_str) const
+{
+	if (!Alembic::AbcGeom::IPoints::matches(alembic_header)) {
+		*err_str = "Object type mismatch, Alembic object path pointed to Points when importing, but not any more.";
+		return false;
+	}
+
+	if (ob->type != OB_MESH) {
+		*err_str = "Object type mismatch, Alembic object path points to Points.";
+		return false;
+	}
+
+	return true;
+}
+
+void AbcPointsReader::readObjectData(Main *bmain, const Alembic::Abc::ISampleSelector &sample_sel)
 {
 	Mesh *mesh = BKE_mesh_add(bmain, m_data_name.c_str());
 
-	const ISampleSelector sample_sel(time);
-	m_sample = m_schema.getValue(sample_sel);
+	DerivedMesh *dm = CDDM_from_mesh(mesh);
+	DerivedMesh *ndm = this->read_derivedmesh(dm, sample_sel, 0, NULL);
 
-	const P3fArraySamplePtr &positions = m_sample.getPositions();
-	utils::mesh_add_verts(mesh, positions->size());
+	if (ndm != dm) {
+		dm->release(dm);
+	}
 
-	CDStreamConfig config = create_config(mesh);
-	read_points_sample(m_schema, sample_sel, config, time);
+	DM_to_mesh(ndm, mesh, m_object, CD_MASK_MESH, true);
 
 	if (m_settings->validate_meshes) {
 		BKE_mesh_validate(mesh, false, false);
@@ -177,8 +195,7 @@ void AbcPointsReader::readObjectData(Main *bmain, float time)
 
 void read_points_sample(const IPointsSchema &schema,
                         const ISampleSelector &selector,
-                        CDStreamConfig &config,
-                        float time)
+                        CDStreamConfig &config)
 {
 	Alembic::AbcGeom::IPointsSchema::Sample sample = schema.getValue(selector);
 
@@ -188,7 +205,8 @@ void read_points_sample(const IPointsSchema &schema,
 	N3fArraySamplePtr vnormals;
 
 	if (has_property(prop, "N")) {
-		const IN3fArrayProperty &normals_prop = IN3fArrayProperty(prop, "N", time);
+		const Alembic::Util::uint32_t itime = static_cast<Alembic::Util::uint32_t>(selector.getRequestedTime());
+		const IN3fArrayProperty &normals_prop = IN3fArrayProperty(prop, "N", itime);
 
 		if (normals_prop) {
 			vnormals = normals_prop.getValue(selector);
@@ -196,4 +214,25 @@ void read_points_sample(const IPointsSchema &schema,
 	}
 
 	read_mverts(config.mvert, positions, vnormals);
+}
+
+DerivedMesh *AbcPointsReader::read_derivedmesh(DerivedMesh *dm,
+                                               const ISampleSelector &sample_sel,
+                                               int /*read_flag*/,
+                                               const char ** /*err_str*/)
+{
+	const IPointsSchema::Sample sample = m_schema.getValue(sample_sel);
+
+	const P3fArraySamplePtr &positions = sample.getPositions();
+
+	DerivedMesh *new_dm = NULL;
+
+	if (dm->getNumVerts(dm) != positions->size()) {
+		new_dm = CDDM_new(positions->size(), 0, 0, 0, 0);
+	}
+
+	CDStreamConfig config = get_config(new_dm ? new_dm : dm);
+	read_points_sample(m_schema, sample_sel, config);
+
+	return new_dm ? new_dm : dm;
 }

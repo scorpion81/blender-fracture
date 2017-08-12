@@ -50,6 +50,7 @@
 #include "BKE_idcode.h"
 #include "BKE_idprop.h"
 #include "BKE_fcurve.h"
+#include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_report.h"
 
@@ -79,9 +80,11 @@ void RNA_init(void)
 		if (!srna->cont.prophash) {
 			srna->cont.prophash = BLI_ghash_str_new("RNA_init gh");
 
-			for (prop = srna->cont.properties.first; prop; prop = prop->next)
-				if (!(prop->flag & PROP_BUILTIN))
+			for (prop = srna->cont.properties.first; prop; prop = prop->next) {
+				if (!(prop->flag_internal & PROP_INTERN_BUILTIN)) {
 					BLI_ghash_insert(srna->cont.prophash, (void *)prop->identifier, prop);
+				}
+			}
 		}
 	}
 }
@@ -378,6 +381,7 @@ static bool rna_idproperty_verify_valid(PointerRNA *ptr, PropertyRNA *prop, IDPr
 				return false;
 			break;
 		case IDP_GROUP:
+		case IDP_ID:
 			if (prop->type != PROP_POINTER)
 				return false;
 			break;
@@ -393,7 +397,8 @@ static PropertyRNA *typemap[IDP_NUMTYPES] = {
 	(PropertyRNA *)&rna_PropertyGroupItem_int,
 	(PropertyRNA *)&rna_PropertyGroupItem_float,
 	NULL, NULL, NULL,
-	(PropertyRNA *)&rna_PropertyGroupItem_group, NULL,
+	(PropertyRNA *)&rna_PropertyGroupItem_group,
+	(PropertyRNA *)&rna_PropertyGroupItem_id,
 	(PropertyRNA *)&rna_PropertyGroupItem_double,
 	(PropertyRNA *)&rna_PropertyGroupItem_idp_array
 };
@@ -585,6 +590,21 @@ bool RNA_struct_idprops_register_check(const StructRNA *type)
 	return (type->flag & STRUCT_NO_IDPROPERTIES) == 0;
 }
 
+bool RNA_struct_idprops_datablock_allowed(const StructRNA *type)
+{
+	return (type->flag & (STRUCT_NO_DATABLOCK_IDPROPERTIES | STRUCT_NO_IDPROPERTIES)) == 0;
+}
+
+/**
+ * Whether given type implies datablock usage by IDProperties.
+ * This is used to prevent classes allowed to have IDProperties, but not datablock ones, to indirectly use some
+ * (e.g. by assigning an IDP_GROUP containing some IDP_ID pointers...).
+ */
+bool RNA_struct_idprops_contains_datablock(const StructRNA *type)
+{
+	return (type->flag & (STRUCT_CONTAINS_DATABLOCK_IDPROPERTIES | STRUCT_ID)) != 0;
+}
+
 /* remove an id-property */
 bool RNA_struct_idprops_unset(PointerRNA *ptr, const char *identifier)
 {
@@ -626,8 +646,11 @@ PropertyRNA *RNA_struct_find_property(PointerRNA *ptr, const char *identifier)
 		/* id prop lookup, not so common */
 		PropertyRNA *r_prop = NULL;
 		PointerRNA r_ptr; /* only support single level props */
-		if (RNA_path_resolve(ptr, identifier, &r_ptr, &r_prop) && (r_ptr.type == ptr->type) && (r_ptr.data == ptr->data))
+		if (RNA_path_resolve_property(ptr, identifier, &r_ptr, &r_prop) &&
+		    (r_ptr.type == ptr->type) && (r_ptr.data == ptr->data))
+		{
 			return r_prop;
+		}
 	}
 	else {
 		/* most common case */
@@ -822,6 +845,11 @@ PropertyUnit RNA_property_unit(PropertyRNA *prop)
 int RNA_property_flag(PropertyRNA *prop)
 {
 	return rna_ensure_property(prop)->flag;
+}
+
+bool RNA_property_builtin(PropertyRNA *prop)
+{
+	return (rna_ensure_property(prop)->flag_internal & PROP_INTERN_BUILTIN) != 0;
 }
 
 void *RNA_property_py_data_get(PropertyRNA *prop)
@@ -1194,13 +1222,20 @@ int RNA_property_pointer_poll(PointerRNA *ptr, PropertyRNA *prop, PointerRNA *va
 
 	if (prop->type == PROP_POINTER) {
 		PointerPropertyRNA *pprop = (PointerPropertyRNA *)prop;
-		if (pprop->poll)
-			return pprop->poll(ptr, *value);
+
+		if (pprop->poll) {
+			if (rna_idproperty_check(&prop, ptr)) {
+				return ((PropPointerPollFuncPy) pprop->poll)(ptr, *value, prop);
+			}
+			else {
+				return pprop->poll(ptr, *value);
+			}
+		}
 
 		return 1;
 	}
 
-	printf("%s %s: is not a pointer property.\n", __func__, prop->identifier);
+	printf("%s: %s is not a pointer property.\n", __func__, prop->identifier);
 	return 0;
 }
 
@@ -1619,20 +1654,56 @@ bool RNA_property_editable(PointerRNA *ptr, PropertyRNA *prop)
 {
 	ID *id = ptr->id.data;
 	int flag;
+	const char *dummy_info;
 
 	prop = rna_ensure_property(prop);
-	flag = prop->editable ? prop->editable(ptr) : prop->flag;
+	flag = prop->editable ? prop->editable(ptr, &dummy_info) : prop->flag;
+
 	return ((flag & PROP_EDITABLE) &&
 	        (flag & PROP_REGISTER) == 0 &&
 	        (!id || !ID_IS_LINKED_DATABLOCK(id) || (prop->flag & PROP_LIB_EXCEPTION)));
 }
 
-bool RNA_property_editable_flag(PointerRNA *ptr, PropertyRNA *prop)
+/**
+ * Version of #RNA_property_editable that tries to return additional info in \a r_info that can be exposed in UI.
+ */
+bool RNA_property_editable_info(PointerRNA *ptr, PropertyRNA *prop, const char **r_info)
 {
+	ID *id = ptr->id.data;
 	int flag;
 
 	prop = rna_ensure_property(prop);
-	flag = prop->editable ? prop->editable(ptr) : prop->flag;
+	*r_info = "";
+
+	/* get flag */
+	if (prop->editable) {
+		flag = prop->editable(ptr, r_info);
+	}
+	else {
+		flag = prop->flag;
+		if ((flag & PROP_EDITABLE) == 0 || (flag & PROP_REGISTER)) {
+			*r_info = "This property is for internal use only and can't be edited.";
+		}
+	}
+
+	/* property from linked data-block */
+	if (id && ID_IS_LINKED_DATABLOCK(id) && (prop->flag & PROP_LIB_EXCEPTION) == 0) {
+		if (!(*r_info)[0]) {
+			*r_info = "Can't edit this property from a linked data-block.";
+		}
+		return false;
+	}
+
+	return ((flag & PROP_EDITABLE) && (flag & PROP_REGISTER) == 0);
+}
+
+bool RNA_property_editable_flag(PointerRNA *ptr, PropertyRNA *prop)
+{
+	int flag;
+	const char *dummy_info;
+
+	prop = rna_ensure_property(prop);
+	flag = prop->editable ? prop->editable(ptr, &dummy_info) : prop->flag;
 	return (flag & PROP_EDITABLE) != 0;
 }
 
@@ -1647,9 +1718,11 @@ bool RNA_property_editable_index(PointerRNA *ptr, PropertyRNA *prop, int index)
 	prop = rna_ensure_property(prop);
 
 	flag = prop->flag;
-	
-	if (prop->editable)
-		flag &= prop->editable(ptr);
+
+	if (prop->editable) {
+		const char *dummy_info;
+		flag &= prop->editable(ptr, &dummy_info);
+	}
 
 	if (prop->itemeditable)
 		flag &= prop->itemeditable(ptr, index);
@@ -2873,6 +2946,45 @@ void *RNA_property_enum_py_data_get(PropertyRNA *prop)
 	return eprop->py_data;
 }
 
+/**
+ * Get the value of the item that is \a step items away from \a from_value.
+ *
+ * \param from_value: Item value to start stepping from.
+ * \param step: Absolute value defines step size, sign defines direction.
+ *              E.g to get the next item, pass 1, for the previous -1.
+ */
+int RNA_property_enum_step(const bContext *C, PointerRNA *ptr, PropertyRNA *prop, int from_value, int step)
+{
+	EnumPropertyItem *item_array;
+	int totitem;
+	bool free;
+	int result_value = from_value;
+	int i, i_init;
+	int single_step = (step < 0) ? -1 : 1;
+	int step_tot = 0;
+
+	RNA_property_enum_items((bContext *)C, ptr, prop, &item_array, &totitem, &free);
+	i = RNA_enum_from_value(item_array, from_value);
+	i_init = i;
+
+	do {
+		i = mod_i(i + single_step, totitem);
+		if (item_array[i].identifier[0]) {
+			step_tot += single_step;
+		}
+	} while ((i != i_init) && (step_tot != step));
+
+	if (i != i_init) {
+		result_value = item_array[i].value;
+	}
+
+	if (free) {
+		MEM_freeN(item_array);
+	}
+
+	return result_value;
+}
+
 PointerRNA RNA_property_pointer_get(PointerRNA *ptr, PropertyRNA *prop)
 {
 	PointerPropertyRNA *pprop = (PointerPropertyRNA *)prop;
@@ -2882,6 +2994,10 @@ PointerRNA RNA_property_pointer_get(PointerRNA *ptr, PropertyRNA *prop)
 
 	if ((idprop = rna_idproperty_check(&prop, ptr))) {
 		pprop = (PointerPropertyRNA *)prop;
+
+		if (RNA_struct_is_ID(pprop->type)) {
+			return rna_pointer_inherit_refine(ptr, pprop->type, IDP_Id(idprop));
+		}
 
 		/* for groups, data is idprop itself */
 		if (pprop->typef)
@@ -2905,22 +3021,32 @@ PointerRNA RNA_property_pointer_get(PointerRNA *ptr, PropertyRNA *prop)
 
 void RNA_property_pointer_set(PointerRNA *ptr, PropertyRNA *prop, PointerRNA ptr_value)
 {
-	/*IDProperty *idprop;*/
-
+	PointerPropertyRNA *pprop = (PointerPropertyRNA *)prop;
 	BLI_assert(RNA_property_type(prop) == PROP_POINTER);
 
-	if ((/*idprop = */ rna_idproperty_check(&prop, ptr))) {
-		/* not supported */
-		/* rna_idproperty_touch(idprop); */
+	/* Check types */
+	if (ptr_value.type != NULL && !RNA_struct_is_a(ptr_value.type, pprop->type)) {
+		printf("%s: expected %s type, not %s.\n", __func__, pprop->type->identifier, ptr_value.type->identifier);
+		return;
 	}
-	else {
-		PointerPropertyRNA *pprop = (PointerPropertyRNA *)prop;
 
-		if (pprop->set &&
-		    !((prop->flag & PROP_NEVER_NULL) && ptr_value.data == NULL) &&
-		    !((prop->flag & PROP_ID_SELF_CHECK) && ptr->id.data == ptr_value.id.data))
-		{
-			pprop->set(ptr, ptr_value);
+	/* RNA */
+	if (pprop->set &&
+	    !((prop->flag & PROP_NEVER_NULL) && ptr_value.data == NULL) &&
+	    !((prop->flag & PROP_ID_SELF_CHECK) && ptr->id.data == ptr_value.id.data))
+	{
+		pprop->set(ptr, ptr_value);
+	}
+	/* IDProperty */
+	else if (prop->flag & PROP_EDITABLE) {
+		IDPropertyTemplate val = {0};
+		IDProperty *group;
+
+		val.id = ptr_value.data;
+
+		group = RNA_struct_idprops(ptr, true);
+		if (group) {
+			IDP_ReplaceInGroup(group, IDP_New(IDP_ID, &val, prop->identifier));
 		}
 	}
 }
@@ -3030,7 +3156,7 @@ void RNA_property_collection_skip(CollectionPropertyIterator *iter, int num)
 	CollectionPropertyRNA *cprop = (CollectionPropertyRNA *)rna_ensure_property(iter->prop);
 	int i;
 
-	if (num > 1 && (iter->idprop || (cprop->property.flag & PROP_RAW_ARRAY))) {
+	if (num > 1 && (iter->idprop || (cprop->property.flag_internal & PROP_INTERN_RAW_ARRAY))) {
 		/* fast skip for array */
 		ArrayIterator *internal = &iter->internal.array;
 
@@ -3372,7 +3498,7 @@ int RNA_property_collection_raw_array(PointerRNA *ptr, PropertyRNA *prop, Proper
 
 	BLI_assert(RNA_property_type(prop) == PROP_COLLECTION);
 
-	if (!(prop->flag & PROP_RAW_ARRAY) || !(itemprop->flag & PROP_RAW_ACCESS))
+	if (!(prop->flag_internal & PROP_INTERN_RAW_ARRAY) || !(itemprop->flag_internal & PROP_INTERN_RAW_ACCESS))
 		return 0;
 
 	RNA_property_collection_begin(ptr, prop, &iter);
@@ -5463,6 +5589,9 @@ static char *rna_pointer_as_string__bldata(PointerRNA *ptr)
 		return BLI_strdup("None");
 	}
 	else if (RNA_struct_is_ID(ptr->type)) {
+		if (ptr->id.data == NULL) {
+			return BLI_strdup("None");
+		}
 		return RNA_path_full_ID_py(ptr->id.data);
 	}
 	else {
@@ -5470,9 +5599,13 @@ static char *rna_pointer_as_string__bldata(PointerRNA *ptr)
 	}
 }
 
-char *RNA_pointer_as_string(bContext *C, PointerRNA *UNUSED(ptr), PropertyRNA *prop_ptr, PointerRNA *ptr_prop)
+char *RNA_pointer_as_string(bContext *C, PointerRNA *ptr, PropertyRNA *prop_ptr, PointerRNA *ptr_prop)
 {
-	if (RNA_property_flag(prop_ptr) & PROP_IDPROPERTY) {
+	IDProperty *prop;
+	if (ptr_prop->data == NULL) {
+		return BLI_strdup("None");
+	}
+	else if ((prop = rna_idproperty_check(&prop_ptr, ptr)) && prop->type != IDP_ID) {
 		return RNA_pointer_as_string_id(C, ptr_prop);
 	}
 	else {
@@ -5493,15 +5626,16 @@ char *RNA_pointer_as_string_keywords_ex(bContext *C, PointerRNA *ptr,
 	DynStr *dynstr = BLI_dynstr_new();
 	char *cstring, *buf;
 	bool first_iter = true;
-	int flag;
+	int flag, flag_parameter;
 
 	RNA_PROP_BEGIN (ptr, propptr, iterprop)
 	{
 		prop = propptr.data;
 
 		flag = RNA_property_flag(prop);
+		flag_parameter = RNA_parameter_flag(prop);
 
-		if (as_function && (flag & PROP_OUTPUT)) {
+		if (as_function && (flag_parameter & PARM_OUTPUT)) {
 			continue;
 		}
 
@@ -5515,7 +5649,7 @@ char *RNA_pointer_as_string_keywords_ex(bContext *C, PointerRNA *ptr,
 			continue;
 		}
 
-		if (as_function && (flag & PROP_REQUIRED)) {
+		if (as_function && (prop->flag_parameter & PARM_REQUIRED)) {
 			/* required args don't have useful defaults */
 			BLI_dynstr_appendf(dynstr, first_iter ? "%s" : ", %s", arg_name);
 			first_iter = false;
@@ -5836,6 +5970,11 @@ const ListBase *RNA_function_defined_parameters(FunctionRNA *func)
 
 /* Utility */
 
+int RNA_parameter_flag(PropertyRNA *prop)
+{
+	return (int)rna_ensure_property(prop)->flag_parameter;
+}
+
 ParameterList *RNA_parameter_list_create(ParameterList *parms, PointerRNA *UNUSED(ptr), FunctionRNA *func)
 {
 	PropertyRNA *parm;
@@ -5849,7 +5988,7 @@ ParameterList *RNA_parameter_list_create(ParameterList *parms, PointerRNA *UNUSE
 	for (parm = func->cont.properties.first; parm; parm = parm->next) {
 		alloc_size += rna_parameter_size(parm);
 
-		if (parm->flag & PROP_OUTPUT)
+		if (parm->flag_parameter & PARM_OUTPUT)
 			parms->ret_count++;
 		else
 			parms->arg_count++;
@@ -5872,7 +6011,7 @@ ParameterList *RNA_parameter_list_create(ParameterList *parms, PointerRNA *UNUSE
 			data_alloc->array = NULL;
 		}
 		
-		if (!(parm->flag & PROP_REQUIRED) && !(parm->flag & PROP_DYNAMIC)) {
+		if (!(parm->flag_parameter & PARM_REQUIRED) && !(parm->flag & PROP_DYNAMIC)) {
 			switch (parm->type) {
 				case PROP_BOOLEAN:
 					if (parm->arraydimension) memcpy(data, ((BoolPropertyRNA *)parm)->defaultarray, size);
@@ -6296,7 +6435,7 @@ static int rna_function_parameter_parse(PointerRNA *ptr, PropertyRNA *prop, Prop
 
 			ptype = RNA_property_pointer_type(ptr, prop);
 
-			if (prop->flag & PROP_RNAPTR) {
+			if (prop->flag_parameter & PARM_RNAPTR) {
 				*((PointerRNA *)dest) = *((PointerRNA *)src);
 				break;
 			}
@@ -6307,7 +6446,7 @@ static int rna_function_parameter_parse(PointerRNA *ptr, PropertyRNA *prop, Prop
 				        tid, fid, pid, RNA_struct_identifier(ptype), RNA_struct_identifier(srna));
 				return -1;
 			}
- 
+
 			*((void **)dest) = *((void **)src);
 
 			break;
@@ -6366,7 +6505,7 @@ int RNA_function_call_direct_va(bContext *C, ReportList *reports, PointerRNA *pt
 	ParameterIterator iter;
 	PropertyRNA *pret, *parm;
 	PropertyType type;
-	int i, ofs, flen, flag, len, alen, err = 0;
+	int i, ofs, flen, flag_parameter, len, alen, err = 0;
 	const char *tid, *fid, *pid = NULL;
 	char ftype;
 	void **retdata = NULL;
@@ -6383,20 +6522,20 @@ int RNA_function_call_direct_va(bContext *C, ReportList *reports, PointerRNA *pt
 
 	for (i = 0, ofs = 0; iter.valid; RNA_parameter_list_next(&iter), i++) {
 		parm = iter.parm;
-		flag = RNA_property_flag(parm);
+		flag_parameter = RNA_parameter_flag(parm);
 
 		if (parm == pret) {
 			retdata = iter.data;
 			continue;
 		}
-		else if (flag & PROP_OUTPUT) {
+		else if (flag_parameter & PARM_OUTPUT) {
 			continue;
 		}
 
 		pid = RNA_property_identifier(parm);
 
 		if (ofs >= flen || format[ofs] == 'N') {
-			if (flag & PROP_REQUIRED) {
+			if (parm->flag_parameter & PARM_REQUIRED) {
 				err = -1;
 				fprintf(stderr, "%s.%s: missing required parameter %s\n", tid, fid, pid);
 				break;

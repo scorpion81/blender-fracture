@@ -38,6 +38,7 @@ class MESH_MT_vertex_group_specials(Menu):
         layout.operator("object.vertex_group_mirror", text="Mirror Vertex Group (Topology)", icon='ARROW_LEFTRIGHT').use_topology = True
         layout.operator("object.vertex_group_remove_from", icon='X', text="Remove from All Groups").use_all_groups = True
         layout.operator("object.vertex_group_remove_from", icon='X', text="Clear Active Group").use_all_verts = True
+        layout.operator("object.vertex_group_remove", icon='X', text="Delete All Unlocked Groups").all_unlocked = True
         layout.operator("object.vertex_group_remove", icon='X', text="Delete All Groups").all = True
         layout.separator()
         layout.operator("object.vertex_group_lock", icon='LOCKED', text="Lock All").action = 'LOCK'
@@ -391,5 +392,24 @@ class DATA_PT_custom_props_mesh(MeshButtonsPanel, PropertyPanel, Panel):
     _property_type = bpy.types.Mesh
 
 
+classes = (
+    MESH_MT_vertex_group_specials,
+    MESH_MT_shape_key_specials,
+    MESH_UL_vgroups,
+    MESH_UL_shape_keys,
+    MESH_UL_uvmaps_vcols,
+    DATA_PT_context_mesh,
+    DATA_PT_normals,
+    DATA_PT_texture_space,
+    DATA_PT_vertex_groups,
+    DATA_PT_shape_keys,
+    DATA_PT_uv_texture,
+    DATA_PT_vertex_colors,
+    DATA_PT_customdata,
+    DATA_PT_custom_props_mesh,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

@@ -76,6 +76,8 @@ typedef struct bMotionPath {
 	int start_frame;            /* for drawing paths, the start frame number */
 	int end_frame;              /* for drawing paths, the end frame number */
 	
+	float color[3];	            /* optional custom color */
+	int line_thickness;         /* line thickness */
 	int flag;                   /* baking settings - eMotionPath_Flag */
 } bMotionPath;
 
@@ -84,7 +86,11 @@ typedef enum eMotionPath_Flag {
 	/* (for bones) path represents the head of the bone */
 	MOTIONPATH_FLAG_BHEAD       = (1 << 0),
 	/* motion path is being edited */
-	MOTIONPATH_FLAG_EDIT        = (1 << 1)
+	MOTIONPATH_FLAG_EDIT        = (1 << 1),
+	/* Custom colors */
+	MOTIONPATH_FLAG_CUSTOM      = (1 << 2),
+	/* Draw lines or only points */
+	MOTIONPATH_FLAG_LINES       = (1 << 3)   
 } eMotionPath_Flag;
 
 /* Visualization General --------------------------- */
@@ -508,7 +514,7 @@ typedef enum eActionGroup_Flag {
 	AGRP_MODIFIERS_OFF = (1 << 7),
 	
 	AGRP_TEMP       = (1 << 30),
-	AGRP_MOVED      = (1 << 31)
+	AGRP_MOVED      = (1u << 31)
 } eActionGroup_Flag;
 
 
@@ -751,7 +757,7 @@ typedef enum ACHAN_FLAG {
 	ACHAN_EXPANDED  = (1 << 4),
 	ACHAN_SHOWIPO   = (1 << 5),
 	ACHAN_SHOWCONS  = (1 << 6),
-	ACHAN_MOVED     = (1 << 31)
+	ACHAN_MOVED     = (1u << 31)
 } ACHAN_FLAG; 
 
 #endif  /* __DNA_ACTION_TYPES_H__ */

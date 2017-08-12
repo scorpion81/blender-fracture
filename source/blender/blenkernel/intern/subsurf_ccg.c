@@ -2820,13 +2820,13 @@ static void ccgDM_drawMappedFacesGLSL(DerivedMesh *dm,
 		int matnr = -1;
 		int do_draw = 0;
 
-#define PASSATTRIB(dx, dy, vert) {                                                  \
-	if (attribs.totorco)                                                        \
-		index = getFaceIndex(ss, f, S, x + dx, y + dy, edgeSize, gridSize); \
-	else                                                                        \
-		index = 0;                                                          \
-	DM_draw_attrib_vertex(&attribs, a, index, vert, ((a) * 4) + vert);          \
-	DM_draw_attrib_vertex_uniforms(&attribs);                                   \
+#define PASSATTRIB(dx, dy, vert) {                                           \
+    if (attribs.totorco)                                                     \
+        index = getFaceIndex(ss, f, S, x + dx, y + dy, edgeSize, gridSize);  \
+    else                                                                     \
+        index = 0;                                                           \
+    DM_draw_attrib_vertex(&attribs, a, index, vert, ((a) * 4) + vert);       \
+    DM_draw_attrib_vertex_uniforms(&attribs);                                \
 } (void)0
 
 		totpoly = ccgSubSurf_getNumFaces(ss);
@@ -3261,13 +3261,13 @@ static void ccgDM_drawMappedFacesMat(DerivedMesh *dm,
 
 	matnr = -1;
 
-#define PASSATTRIB(dx, dy, vert) {                                                   \
-	if (attribs.totorco)                                                         \
-		index = getFaceIndex(ss, f, S, x + dx, y + dy, edgeSize, gridSize);  \
-	else                                                                         \
-		index = 0;                                                           \
-	DM_draw_attrib_vertex(&attribs, a, index, vert, ((a) * 4) + vert);           \
-	DM_draw_attrib_vertex_uniforms(&attribs);                                    \
+#define PASSATTRIB(dx, dy, vert) {                                           \
+    if (attribs.totorco)                                                     \
+        index = getFaceIndex(ss, f, S, x + dx, y + dy, edgeSize, gridSize);  \
+    else                                                                     \
+        index = 0;                                                           \
+    DM_draw_attrib_vertex(&attribs, a, index, vert, ((a) * 4) + vert);       \
+    DM_draw_attrib_vertex_uniforms(&attribs);                                \
 } (void)0
 
 	totface = ccgSubSurf_getNumFaces(ss);
@@ -4474,46 +4474,46 @@ static void ccgDM_recalcTessellation(DerivedMesh *UNUSED(dm))
 	/* Nothing to do: CCG handles creating its own tessfaces */
 }
 
-static void ccgDM_recalcLoopTri(DerivedMesh *UNUSED(dm))
+static void ccgDM_recalcLoopTri(DerivedMesh *dm)
 {
-	/* Nothing to do: CCG tessellation is known,
-	 * allocate and fill in with ccgDM_getLoopTriArray */
+	BLI_rw_mutex_lock(&loops_cache_rwlock, THREAD_LOCK_WRITE);
+	MLoopTri *mlooptri;
+	const int tottri = dm->numPolyData * 2;
+	int i, poly_index;
+
+	DM_ensure_looptri_data(dm);
+	mlooptri = dm->looptris.array;
+
+	BLI_assert(poly_to_tri_count(dm->numPolyData, dm->numLoopData) == dm->looptris.num);
+	BLI_assert(tottri == dm->looptris.num);
+
+	for (i = 0, poly_index = 0; i < tottri; i += 2, poly_index += 1) {
+		MLoopTri *lt;
+		lt = &mlooptri[i];
+		/* quad is (0, 3, 2, 1) */
+		lt->tri[0] = (poly_index * 4) + 0;
+		lt->tri[1] = (poly_index * 4) + 2;
+		lt->tri[2] = (poly_index * 4) + 3;
+		lt->poly = poly_index;
+
+		lt = &mlooptri[i + 1];
+		lt->tri[0] = (poly_index * 4) + 0;
+		lt->tri[1] = (poly_index * 4) + 1;
+		lt->tri[2] = (poly_index * 4) + 2;
+		lt->poly = poly_index;
+	}
+	BLI_rw_mutex_unlock(&loops_cache_rwlock);
 }
 
 static const MLoopTri *ccgDM_getLoopTriArray(DerivedMesh *dm)
 {
-	BLI_rw_mutex_lock(&loops_cache_rwlock, THREAD_LOCK_WRITE);
 	if (dm->looptris.array) {
 		BLI_assert(poly_to_tri_count(dm->numPolyData, dm->numLoopData) == dm->looptris.num);
 	}
 	else {
-		MLoopTri *mlooptri;
-		const int tottri = dm->numPolyData * 2;
-		int i, poly_index;
-
-		DM_ensure_looptri_data(dm);
-		mlooptri = dm->looptris.array;
-
-		BLI_assert(poly_to_tri_count(dm->numPolyData, dm->numLoopData) == dm->looptris.num);
-		BLI_assert(tottri == dm->looptris.num);
-
-		for (i = 0, poly_index = 0; i < tottri; i += 2, poly_index += 1) {
-			MLoopTri *lt;
-			lt = &mlooptri[i];
-			/* quad is (0, 3, 2, 1) */
-			lt->tri[0] = (poly_index * 4) + 0;
-			lt->tri[1] = (poly_index * 4) + 2;
-			lt->tri[2] = (poly_index * 4) + 3;
-			lt->poly = poly_index;
-
-			lt = &mlooptri[i + 1];
-			lt->tri[0] = (poly_index * 4) + 0;
-			lt->tri[1] = (poly_index * 4) + 1;
-			lt->tri[2] = (poly_index * 4) + 2;
-			lt->poly = poly_index;
-		}
+		dm->recalcLoopTri(dm);
 	}
-	BLI_rw_mutex_unlock(&loops_cache_rwlock);
+
 	return dm->looptris.array;
 }
 

@@ -264,10 +264,16 @@ typedef struct RigidBodyCon {
 	float spring_stiffness_x;
 	float spring_stiffness_y;
 	float spring_stiffness_z;
+	float spring_stiffness_ang_x;
+	float spring_stiffness_ang_y;
+	float spring_stiffness_ang_z;
 	/* amount of velocity lost over time */
 	float spring_damping_x;
 	float spring_damping_y;
 	float spring_damping_z;
+	float spring_damping_ang_x;
+	float spring_damping_ang_y;
+	float spring_damping_ang_z;
 
 	/* motor settings */
 	float motor_lin_target_velocity;	/* linear velocity the motor tries to hold */
@@ -403,14 +409,16 @@ typedef enum eRigidBodyCon_Flag {
 	/* motors */
 	RBC_FLAG_USE_MOTOR_LIN				= (1 << 14),
 	RBC_FLAG_USE_MOTOR_ANG				= (1 << 15),
+	/* angular springs */
+	RBC_FLAG_USE_SPRING_ANG_X			= (1 << 16),
+	RBC_FLAG_USE_SPRING_ANG_Y			= (1 << 17),
+	RBC_FLAG_USE_SPRING_ANG_Z			= (1 << 18),
 	/* prevent multiple removal and crash with kinematic deactivation */
-	RBC_FLAG_USE_KINEMATIC_DEACTIVATION = (1 << 16),
-
+	RBC_FLAG_USE_KINEMATIC_DEACTIVATION = (1 << 19),
 	/* mark this constraint to be able to go into "plastic" mode */
-	RBC_FLAG_USE_PLASTIC				= (1 << 17),
+	RBC_FLAG_USE_PLASTIC				= (1 << 20),
 	/* mark already active plastic constraints */
-	RBC_FLAG_PLASTIC_ACTIVE				= (1 << 18),
-
+	RBC_FLAG_PLASTIC_ACTIVE				= (1 << 21),
 } eRigidBodyCon_Flag;
 
 /* ******************************** */

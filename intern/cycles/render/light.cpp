@@ -14,19 +14,19 @@
  * limitations under the License.
  */
 
-#include "background.h"
-#include "device.h"
-#include "integrator.h"
-#include "film.h"
-#include "light.h"
-#include "mesh.h"
-#include "object.h"
-#include "scene.h"
-#include "shader.h"
+#include "render/background.h"
+#include "device/device.h"
+#include "render/integrator.h"
+#include "render/film.h"
+#include "render/light.h"
+#include "render/mesh.h"
+#include "render/object.h"
+#include "render/scene.h"
+#include "render/shader.h"
 
-#include "util_foreach.h"
-#include "util_progress.h"
-#include "util_logging.h"
+#include "util/util_foreach.h"
+#include "util/util_progress.h"
+#include "util/util_logging.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -57,9 +57,9 @@ static void shade_background_pixels(Device *device, DeviceScene *dscene, int res
 
 	device->const_copy_to("__data", &dscene->data, sizeof(dscene->data));
 
-	device->mem_alloc(d_input, MEM_READ_ONLY);
+	device->mem_alloc("shade_background_pixels_input", d_input, MEM_READ_ONLY);
 	device->mem_copy_to(d_input);
-	device->mem_alloc(d_output, MEM_WRITE_ONLY);
+	device->mem_alloc("shade_background_pixels_output", d_output, MEM_WRITE_ONLY);
 
 	DeviceTask main_task(DeviceTask::SHADER);
 	main_task.shader_input = d_input.device_pointer;
@@ -224,6 +224,10 @@ void LightManager::disable_ineffective_light(Device *device, Scene *scene)
 
 bool LightManager::object_usable_as_light(Object *object) {
 	Mesh *mesh = object->mesh;
+	/* Skip objects with NaNs */
+	if (!object->bounds.valid()) {
+		return false;
+	}
 	/* Skip if we are not visible for BSDFs. */
 	if(!(object->visibility & (PATH_RAY_DIFFUSE|PATH_RAY_GLOSSY|PATH_RAY_TRANSMIT))) {
 		return false;

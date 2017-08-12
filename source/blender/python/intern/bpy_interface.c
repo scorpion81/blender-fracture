@@ -480,11 +480,20 @@ static bool python_script_exec(
 			 * object, but as written in the Python/C API Ref Manual, chapter 2,
 			 * 'FILE structs for different C libraries can be different and
 			 * incompatible'.
-			 * So now we load the script file data to a buffer */
+			 * So now we load the script file data to a buffer.
+			 *
+			 * Note on use of 'globals()', it's important not copy the dictionary because
+			 * tools may inspect 'sys.modules["__main__"]' for variables defined in the code
+			 * where using a copy of 'globals()' causes code execution
+			 * to leave the main namespace untouched. see: T51444
+			 *
+			 * This leaves us with the problem of variables being included,
+			 * currently this is worked around using 'dict.__del__' it's ugly but works.
+			 */
 			{
 				const char *pystring =
-				        "ns = globals().copy()\n"
-				        "with open(__file__, 'rb') as f: exec(compile(f.read(), __file__, 'exec'), ns)";
+				        "with open(__file__, 'rb') as f:"
+				        "exec(compile(f.read(), __file__, 'exec'), globals().__delitem__('f') or globals())";
 
 				fclose(fp);
 
@@ -572,21 +581,23 @@ void BPY_DECREF_RNA_INVALIDATE(void *pyob_ptr)
 /**
  * \return success
  */
-bool BPY_execute_string_as_number(bContext *C, const char *expr, double *value, const bool verbose)
+bool BPY_execute_string_as_number(bContext *C, const char *expr, const bool verbose, double *r_value)
 {
 	PyGILState_STATE gilstate;
 	bool ok = true;
 
-	if (!value || !expr) return -1;
+	if (!r_value || !expr) {
+		return -1;
+	}
 
 	if (expr[0] == '\0') {
-		*value = 0.0;
+		*r_value = 0.0;
 		return ok;
 	}
 
 	bpy_context_set(C, &gilstate);
 
-	ok = PyC_RunString_AsNumber(expr, value, "<blender button>");
+	ok = PyC_RunString_AsNumber(expr, "<blender button>", r_value);
 
 	if (ok == false) {
 		if (verbose) {
@@ -601,6 +612,42 @@ bool BPY_execute_string_as_number(bContext *C, const char *expr, double *value, 
 
 	return ok;
 }
+
+/**
+ * \return success
+ */
+bool BPY_execute_string_as_string(bContext *C, const char *expr, const bool verbose, char **r_value)
+{
+	PyGILState_STATE gilstate;
+	bool ok = true;
+
+	if (!r_value || !expr) {
+		return -1;
+	}
+
+	if (expr[0] == '\0') {
+		*r_value = NULL;
+		return ok;
+	}
+
+	bpy_context_set(C, &gilstate);
+
+	ok = PyC_RunString_AsString(expr, "<blender button>", r_value);
+
+	if (ok == false) {
+		if (verbose) {
+			BPy_errors_to_report_ex(CTX_wm_reports(C), false, false);
+		}
+		else {
+			PyErr_Clear();
+		}
+	}
+
+	bpy_context_clear(C, &gilstate);
+
+	return ok;
+}
+
 
 bool BPY_execute_string_ex(bContext *C, const char *expr, bool use_eval)
 {
@@ -822,6 +869,7 @@ static void bpy_module_delay_init(PyObject *bpy_proxy)
 
 	BLI_strncpy(filename_abs, filename_rel, sizeof(filename_abs));
 	BLI_path_cwd(filename_abs, sizeof(filename_abs));
+	Py_DECREF(filename_obj);
 
 	argv[0] = filename_abs;
 	argv[1] = NULL;

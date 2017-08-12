@@ -263,6 +263,7 @@ extern StructRNA RNA_GPencilLayer;
 extern StructRNA RNA_GPencilPalette;
 extern StructRNA RNA_GPencilPaletteColor;
 extern StructRNA RNA_GPencilBrush;
+extern StructRNA RNA_GPencilInterpolateSettings;
 extern StructRNA RNA_GPencilStroke;
 extern StructRNA RNA_GPencilStrokePoint;
 extern StructRNA RNA_GPencilSculptSettings;
@@ -598,6 +599,7 @@ extern StructRNA RNA_StucciTexture;
 extern StructRNA RNA_SubsurfModifier;
 extern StructRNA RNA_SunLamp;
 extern StructRNA RNA_SurfaceCurve;
+extern StructRNA RNA_SurfaceDeformModifier;
 extern StructRNA RNA_SurfaceModifier;
 extern StructRNA RNA_TexMapping;
 extern StructRNA RNA_Text;
@@ -766,6 +768,8 @@ void RNA_struct_blender_type_set(StructRNA *srna, void *blender_type);
 struct IDProperty *RNA_struct_idprops(PointerRNA *ptr, bool create);
 bool RNA_struct_idprops_check(StructRNA *srna);
 bool RNA_struct_idprops_register_check(const StructRNA *type);
+bool RNA_struct_idprops_datablock_allowed(const StructRNA *type);
+bool RNA_struct_idprops_contains_datablock(const StructRNA *type);
 bool RNA_struct_idprops_unset(PointerRNA *ptr, const char *identifier);
 
 PropertyRNA *RNA_struct_find_property(PointerRNA *ptr, const char *identifier);
@@ -794,6 +798,7 @@ PropertyType RNA_property_type(PropertyRNA *prop);
 PropertySubType RNA_property_subtype(PropertyRNA *prop);
 PropertyUnit RNA_property_unit(PropertyRNA *prop);
 int RNA_property_flag(PropertyRNA *prop);
+bool RNA_property_builtin(PropertyRNA *prop);
 void *RNA_property_py_data_get(PropertyRNA *prop);
 
 int  RNA_property_array_length(PointerRNA *ptr, PropertyRNA *prop);
@@ -857,6 +862,7 @@ StructRNA *RNA_property_pointer_type(PointerRNA *ptr, PropertyRNA *prop);
 int RNA_property_pointer_poll(PointerRNA *ptr, PropertyRNA *prop, PointerRNA *value);
 
 bool RNA_property_editable(PointerRNA *ptr, PropertyRNA *prop);
+bool RNA_property_editable_info(PointerRNA *ptr, PropertyRNA *prop, const char **r_info);
 bool RNA_property_editable_index(PointerRNA *ptr, PropertyRNA *prop, int index);
 bool RNA_property_editable_flag(PointerRNA *ptr, PropertyRNA *prop); /* without lib check, only checks the flag */
 bool RNA_property_animateable(PointerRNA *ptr, PropertyRNA *prop);
@@ -917,6 +923,7 @@ int RNA_property_enum_get(PointerRNA *ptr, PropertyRNA *prop);
 void RNA_property_enum_set(PointerRNA *ptr, PropertyRNA *prop, int value);
 int RNA_property_enum_get_default(PointerRNA *ptr, PropertyRNA *prop);
 void *RNA_property_enum_py_data_get(PropertyRNA *prop);
+int RNA_property_enum_step(const struct bContext *C, PointerRNA *ptr, PropertyRNA *prop, int from_value, int step);
 
 PointerRNA RNA_property_pointer_get(PointerRNA *ptr, PropertyRNA *prop);
 void RNA_property_pointer_set(PointerRNA *ptr, PropertyRNA *prop, PointerRNA ptr_value);
@@ -1140,6 +1147,8 @@ PropertyRNA *RNA_function_find_parameter(PointerRNA *ptr, FunctionRNA *func, con
 const struct ListBase *RNA_function_defined_parameters(FunctionRNA *func);
 
 /* Utility */
+
+int RNA_parameter_flag(PropertyRNA *prop);
 
 ParameterList *RNA_parameter_list_create(ParameterList *parms, PointerRNA *ptr, FunctionRNA *func);
 void RNA_parameter_list_free(ParameterList *parms);

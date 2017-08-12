@@ -129,10 +129,11 @@ enum {
 	G_DEBUG_GPU_MEM =   (1 << 10), /* gpu memory in status bar */
 	G_DEBUG_DEPSGRAPH_NO_THREADS = (1 << 11),  /* single threaded depsgraph */
 	G_DEBUG_GPU =        (1 << 12), /* gpu debug */
+	G_DEBUG_IO = (1 << 13),   /* IO Debugging (for Collada, ...)*/
 };
 
 #define G_DEBUG_ALL  (G_DEBUG | G_DEBUG_FFMPEG | G_DEBUG_PYTHON | G_DEBUG_EVENTS | G_DEBUG_WM | G_DEBUG_JOBS | \
-                      G_DEBUG_FREESTYLE | G_DEBUG_DEPSGRAPH | G_DEBUG_GPU_MEM)
+                      G_DEBUG_FREESTYLE | G_DEBUG_DEPSGRAPH | G_DEBUG_GPU_MEM | G_DEBUG_IO)
 
 
 /* G.fileflags */
@@ -186,11 +187,6 @@ enum {
  * written had. */
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
 #  error Either __BIG_ENDIAN__ or __LITTLE_ENDIAN__ must be defined.
-#endif
-
-/* there is really no good place for this */
-#if defined(FREE_WINDOWS) && ((__GNUC__ < 4) || ((__GNUC__ == 4) && (__GNUC_MINOR__ < 6)))
-#  error "Mingw requires GCC 4.6 minimum"
 #endif
 
 #define L_ENDIAN    1

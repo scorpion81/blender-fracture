@@ -363,8 +363,8 @@ void ED_vgroup_parray_remove_zero(MDeformVert **dvert_array, const int dvert_tot
 /* matching index only */
 bool ED_vgroup_array_copy(Object *ob, Object *ob_from)
 {
-	MDeformVert **dvert_array_from, **dvf;
-	MDeformVert **dvert_array, **dv;
+	MDeformVert **dvert_array_from = NULL, **dvf;
+	MDeformVert **dvert_array = NULL, **dv;
 	int dvert_tot_from;
 	int dvert_tot;
 	int i;
@@ -375,26 +375,30 @@ bool ED_vgroup_array_copy(Object *ob, Object *ob_from)
 	if (ob == ob_from)
 		return true;
 
-	ED_vgroup_parray_alloc(ob_from->data, &dvert_array_from, &dvert_tot_from, false);
-	ED_vgroup_parray_alloc(ob->data, &dvert_array, &dvert_tot, false);
-
-	if ((dvert_array == NULL) && (dvert_array_from != NULL) && BKE_object_defgroup_data_create(ob->data)) {
+	/* in case we copy vgroup between two objects using same data, we only have to care about object side of things. */
+	if (ob->data != ob_from->data) {
+		ED_vgroup_parray_alloc(ob_from->data, &dvert_array_from, &dvert_tot_from, false);
 		ED_vgroup_parray_alloc(ob->data, &dvert_array, &dvert_tot, false);
-		new_vgroup = true;
-	}
 
-	if (dvert_tot == 0 || (dvert_tot != dvert_tot_from) || dvert_array_from == NULL || dvert_array == NULL) {
-
-		if (dvert_array) MEM_freeN(dvert_array);
-		if (dvert_array_from) MEM_freeN(dvert_array_from);
-
-		if (new_vgroup == true) {
-			/* free the newly added vgroup since it wasn't compatible */
-			BKE_object_defgroup_remove_all(ob);
+		if ((dvert_array == NULL) && (dvert_array_from != NULL) && BKE_object_defgroup_data_create(ob->data)) {
+			ED_vgroup_parray_alloc(ob->data, &dvert_array, &dvert_tot, false);
+			new_vgroup = true;
 		}
 
-		/* if true: both are 0 and nothing needs changing, consider this a success */
-		return (dvert_tot == dvert_tot_from);
+		if (dvert_tot == 0 || (dvert_tot != dvert_tot_from) || dvert_array_from == NULL || dvert_array == NULL) {
+			if (dvert_array)
+				MEM_freeN(dvert_array);
+			if (dvert_array_from)
+				MEM_freeN(dvert_array_from);
+
+			if (new_vgroup == true) {
+				/* free the newly added vgroup since it wasn't compatible */
+				BKE_object_defgroup_remove_all(ob);
+			}
+
+			/* if true: both are 0 and nothing needs changing, consider this a success */
+			return (dvert_tot == dvert_tot_from);
+		}
 	}
 
 	/* do the copy */
@@ -412,21 +416,22 @@ bool ED_vgroup_array_copy(Object *ob, Object *ob_from)
 		MEM_freeN(remap);
 	}
 
-	dvf = dvert_array_from;
-	dv = dvert_array;
+	if (dvert_array_from != NULL && dvert_array != NULL) {
+		dvf = dvert_array_from;
+		dv = dvert_array;
 
-	for (i = 0; i < dvert_tot; i++, dvf++, dv++) {
-		if ((*dv)->dw)
-			MEM_freeN((*dv)->dw);
+		for (i = 0; i < dvert_tot; i++, dvf++, dv++) {
+			MEM_SAFE_FREE((*dv)->dw);
+			*(*dv) = *(*dvf);
 
-		*(*dv) = *(*dvf);
+			if ((*dv)->dw) {
+				(*dv)->dw = MEM_dupallocN((*dv)->dw);
+			}
+		}
 
-		if ((*dv)->dw)
-			(*dv)->dw = MEM_dupallocN((*dv)->dw);
+		MEM_freeN(dvert_array);
+		MEM_freeN(dvert_array_from);
 	}
-
-	MEM_freeN(dvert_array);
-	MEM_freeN(dvert_array_from);
 
 	return true;
 }
@@ -886,7 +891,7 @@ static float get_vert_def_nr(Object *ob, const int def_nr, const int vertnum)
 			const int cd_dvert_offset = CustomData_get_offset(&em->bm->vdata, CD_MDEFORMVERT);
 			/* warning, this lookup is _not_ fast */
 
-			if (cd_dvert_offset != -1) {
+			if (cd_dvert_offset != -1 && vertnum < em->bm->totvert) {
 				BMVert *eve;
 				BM_mesh_elem_table_ensure(em->bm, BM_VERT);
 				eve = BM_vert_at_index(em->bm, vertnum);
@@ -2604,6 +2609,8 @@ static int vertex_group_remove_exec(bContext *C, wmOperator *op)
 
 	if (RNA_boolean_get(op->ptr, "all"))
 		BKE_object_defgroup_remove_all(ob);
+	else if (RNA_boolean_get(op->ptr, "all_unlocked"))
+		BKE_object_defgroup_remove_all_ex(ob, true);
 	else
 		vgroup_delete_active(ob);
 
@@ -2633,6 +2640,7 @@ void OBJECT_OT_vertex_group_remove(wmOperatorType *ot)
 
 	/* properties */
 	RNA_def_boolean(ot->srna, "all", 0, "All", "Remove all vertex groups");
+	RNA_def_boolean(ot->srna, "all_unlocked", 0, "All Unlocked", "Remove all unlocked vertex groups");
 }
 
 static int vertex_group_assign_exec(bContext *C, wmOperator *UNUSED(op))
@@ -3633,7 +3641,8 @@ static int vgroup_move_exec(bContext *C, wmOperator *op)
 	Object *ob = ED_object_context(C);
 	bDeformGroup *def;
 	char *name_array;
-	int dir = RNA_enum_get(op->ptr, "direction"), ret;
+	int dir = RNA_enum_get(op->ptr, "direction");
+	int ret = OPERATOR_FINISHED;
 
 	def = BLI_findlink(&ob->defbase, ob->actdef - 1);
 	if (!def) {
@@ -3642,27 +3651,16 @@ static int vgroup_move_exec(bContext *C, wmOperator *op)
 
 	name_array = vgroup_init_remap(ob);
 
-	if (dir == 1) { /*up*/
-		void *prev = def->prev;
+	if (BLI_listbase_link_move(&ob->defbase, def, dir)) {
+		ret = vgroup_do_remap(ob, name_array, op);
 
-		BLI_remlink(&ob->defbase, def);
-		BLI_insertlinkbefore(&ob->defbase, prev, def);
+		if (ret != OPERATOR_CANCELLED) {
+			DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+			WM_event_add_notifier(C, NC_GEOM | ND_VERTEX_GROUP, ob);
+		}
 	}
-	else { /*down*/
-		void *next = def->next;
-
-		BLI_remlink(&ob->defbase, def);
-		BLI_insertlinkafter(&ob->defbase, next, def);
-	}
-
-	ret = vgroup_do_remap(ob, name_array, op);
 
 	if (name_array) MEM_freeN(name_array);
-
-	if (ret != OPERATOR_CANCELLED) {
-		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
-		WM_event_add_notifier(C, NC_GEOM | ND_VERTEX_GROUP, ob);
-	}
 
 	return ret;
 }
@@ -3670,8 +3668,8 @@ static int vgroup_move_exec(bContext *C, wmOperator *op)
 void OBJECT_OT_vertex_group_move(wmOperatorType *ot)
 {
 	static EnumPropertyItem vgroup_slot_move[] = {
-		{1, "UP", 0, "Up", ""},
-		{-1, "DOWN", 0, "Down", ""},
+		{-1, "UP", 0, "Up", ""},
+		{1, "DOWN", 0, "Down", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -3687,7 +3685,8 @@ void OBJECT_OT_vertex_group_move(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
-	RNA_def_enum(ot->srna, "direction", vgroup_slot_move, 0, "Direction", "Direction to move, UP or DOWN");
+	RNA_def_enum(ot->srna, "direction", vgroup_slot_move, 0, "Direction",
+	             "Direction to move the active vertex group towards");
 }
 
 static void vgroup_copy_active_to_sel_single(Object *ob, const int def_nr)

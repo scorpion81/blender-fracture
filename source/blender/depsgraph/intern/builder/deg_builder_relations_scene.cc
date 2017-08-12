@@ -38,20 +38,20 @@
 
 #include "MEM_guardedalloc.h"
 
-extern "C" {
-#include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
+#include "BLI_blenlib.h"
 
+extern "C" {
 #include "DNA_node_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
 #include "BKE_main.h"
 #include "BKE_node.h"
+} /* extern "C" */
 
 #include "DEG_depsgraph.h"
 #include "DEG_depsgraph_build.h"
-} /* extern "C" */
 
 #include "intern/builder/deg_builder.h"
 #include "intern/builder/deg_builder_pchanmap.h"
@@ -69,18 +69,6 @@ namespace DEG {
 
 void DepsgraphRelationBuilder::build_scene(Main *bmain, Scene *scene)
 {
-	/* LIB_TAG_DOIT is used to indicate whether node for given ID was already
-	 * created or not.
-	 */
-	BKE_main_id_tag_all(bmain, LIB_TAG_DOIT, false);
-	/* XXX nested node trees are not included in tag-clearing above,
-	 * so we need to do this manually.
-	 */
-	FOREACH_NODETREE(bmain, nodetree, id) {
-		if (id != (ID *)nodetree)
-			nodetree->id.tag &= ~LIB_TAG_DOIT;
-	} FOREACH_NODETREE_END
-
 	if (scene->set) {
 		build_scene(bmain, scene->set);
 	}
@@ -88,26 +76,7 @@ void DepsgraphRelationBuilder::build_scene(Main *bmain, Scene *scene)
 	/* scene objects */
 	LINKLIST_FOREACH (Base *, base, &scene->base) {
 		Object *ob = base->object;
-
-		/* object itself */
 		build_object(bmain, scene, ob);
-
-		/* object that this is a proxy for */
-		if (ob->proxy) {
-			ob->proxy->proxy_from = ob;
-			build_object(bmain, scene, ob->proxy);
-			/* TODO(sergey): This is an inverted relation, matches old depsgraph
-			 * behavior and need to be investigated if it still need to be inverted.
-			 */
-			ComponentKey ob_pose_key(&ob->id, DEPSNODE_TYPE_EVAL_POSE);
-			ComponentKey proxy_pose_key(&ob->proxy->id, DEPSNODE_TYPE_EVAL_POSE);
-			add_relation(ob_pose_key, proxy_pose_key, DEPSREL_TYPE_TRANSFORM, "Proxy");
-		}
-
-		/* Object dupligroup. */
-		if (ob->dup_group) {
-			build_group(bmain, scene, ob, ob->dup_group);
-		}
 	}
 
 	/* rigidbody */
@@ -132,7 +101,7 @@ void DepsgraphRelationBuilder::build_scene(Main *bmain, Scene *scene)
 
 	/* grease pencil */
 	if (scene->gpd) {
-		build_gpencil(&scene->id, scene->gpd);
+		build_gpencil(scene->gpd);
 	}
 
 	/* Masks. */

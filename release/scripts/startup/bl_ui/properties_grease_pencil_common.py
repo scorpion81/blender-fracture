@@ -52,9 +52,18 @@ def gpencil_stroke_placement_settings(context, layout):
         row.active = getattr(ts, propname) in {'SURFACE', 'STROKE'}
         row.prop(ts, "use_gpencil_stroke_endpoints")
 
+        if context.scene.tool_settings.gpencil_stroke_placement_view3d == 'CURSOR':
+            row = col.row(align=True)
+            row.label("Lock axis:")
+            row = col.row(align=True)
+            row.prop(ts.gpencil_sculpt, "lockaxis", expand=True)
+
 
 def gpencil_active_brush_settings_simple(context, layout):
     brush = context.active_gpencil_brush
+    if brush is None:
+        layout.label("No Active Brush")
+        return
 
     col = layout.column()
     col.label("Active Brush:      ")
@@ -105,6 +114,12 @@ class GreasePencilDrawingToolsPanel:
         row = col.row(align=True)
         row.operator("gpencil.draw", icon='LINE_DATA', text="Line").mode = 'DRAW_STRAIGHT'
         row.operator("gpencil.draw", icon='MESH_DATA', text="Poly").mode = 'DRAW_POLY'
+
+        col.separator()
+
+        sub = col.column(align=True)
+        sub.operator("gpencil.blank_frame_add", icon='NEW')
+        sub.operator("gpencil.active_frames_delete_all", icon='X', text="Delete Frame(s)")
 
         sub = col.column(align=True)
         sub.prop(context.tool_settings, "use_gpencil_additive_drawing", text="Additive Drawing")
@@ -216,8 +231,13 @@ class GreasePencilStrokeEditPanel:
         col.operator_menu_enum("gpencil.stroke_arrange", text="Arrange Strokes...", property="direction")
         col.operator("gpencil.stroke_change_color", text="Move to Color")
 
+        if is_3d_view:
+            layout.separator()
+
+
         layout.separator()
         col = layout.column(align=True)
+        col.operator("gpencil.stroke_subdivide", text="Subdivide")
         col.operator("gpencil.stroke_join", text="Join").type = 'JOIN'
         col.operator("gpencil.stroke_join", text="Join & Copy").type = 'JOINCOPY'
         col.operator("gpencil.stroke_flip", text="Flip Direction")
@@ -228,7 +248,57 @@ class GreasePencilStrokeEditPanel:
 
         if is_3d_view:
             layout.separator()
-            layout.operator("gpencil.reproject")
+            layout.operator_menu_enum("gpencil.reproject", text="Reproject Strokes...", property="type")
+
+
+class GreasePencilInterpolatePanel:
+    bl_space_type = 'VIEW_3D'
+    bl_label = "Interpolate"
+    bl_category = "Grease Pencil"
+    bl_region_type = 'TOOLS'
+    bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context):
+        if context.gpencil_data is None:
+            return False
+        elif context.space_data.type != 'VIEW_3D':
+            return False
+
+        gpd = context.gpencil_data
+        return bool(context.editable_gpencil_strokes) and bool(gpd.use_stroke_edit_mode)
+
+    @staticmethod
+    def draw(self, context):
+        layout = self.layout
+        settings = context.tool_settings.gpencil_interpolate
+
+        col = layout.column(align=True)
+        col.operator("gpencil.interpolate", text="Interpolate")
+        col.operator("gpencil.interpolate_sequence", text="Sequence")
+        col.operator("gpencil.interpolate_reverse", text="Remove Breakdowns")
+
+        col = layout.column(align=True)
+        col.label(text="Options:")
+        col.prop(settings, "interpolate_all_layers")
+        col.prop(settings, "interpolate_selected_only")
+
+        col = layout.column(align=True)
+        col.label(text="Sequence Options:")
+        col.prop(settings, "type")
+        if settings.type == 'CUSTOM':
+            box = layout.box()
+            # TODO: Options for loading/saving curve presets?
+            box.template_curve_mapping(settings, "interpolation_curve", brush=True)
+        elif settings.type != 'LINEAR':
+            col.prop(settings, "easing")
+
+            if settings.type == 'BACK':
+                layout.prop(settings, "back")
+            elif setting.type == 'ELASTIC':
+                sub = layout.column(align=True)
+                sub.prop(settings, "amplitude")
+                sub.prop(settings, "period")
 
 
 class GreasePencilBrushPanel:
@@ -483,6 +553,7 @@ class GPENCIL_PIE_settings_palette(Menu):
         # W - Stroke draw settings
         col = pie.column(align=True)
         if palcolor is not None:
+            col.enabled = not palcolor.lock
             col.label(text="Stroke")
             col.prop(palcolor, "color", text="")
             col.prop(palcolor, "alpha", text="", slider=True)
@@ -490,6 +561,7 @@ class GPENCIL_PIE_settings_palette(Menu):
         # E - Fill draw settings
         col = pie.column(align=True)
         if palcolor is not None:
+            col.enabled = not palcolor.lock
             col.label(text="Fill")
             col.prop(palcolor, "fill_color", text="")
             col.prop(palcolor, "fill_alpha", text="", slider=True)
@@ -644,6 +716,28 @@ class GPENCIL_MT_snap(Menu):
         layout.operator("view3d.snap_cursor_to_grid", text="Cursor to Grid")
 
 
+class GPENCIL_MT_gpencil_edit_specials(Menu):
+    bl_label = "GPencil Specials"
+
+    def draw(self, context):
+        layout = self.layout
+        is_3d_view = context.space_data.type == 'VIEW_3D'
+
+        layout.operator_context = 'INVOKE_REGION_WIN'
+
+        layout.operator("gpencil.stroke_subdivide", text="Subdivide")
+
+        layout.separator()
+
+        layout.operator("gpencil.stroke_join", text="Join").type = 'JOIN'
+        layout.operator("gpencil.stroke_join", text="Join & Copy").type = 'JOINCOPY'
+        layout.operator("gpencil.stroke_flip", text="Flip Direction")
+
+        if is_3d_view:
+            layout.separator()
+            layout.operator("gpencil.reproject")
+
+
 ###############################
 
 
@@ -671,6 +765,7 @@ class GPENCIL_UL_palettecolor(UIList):
 
             split = layout.split(percentage=0.25)
             row = split.row(align=True)
+            row.enabled = not palcolor.lock
             row.prop(palcolor, "color", text="", emboss=palcolor.is_stroke_visible)
             row.prop(palcolor, "fill_color", text="", emboss=palcolor.is_fill_visible)
             split.prop(palcolor, "name", text="", emboss=False)
@@ -766,6 +861,7 @@ class GPENCIL_MT_palettecolor_specials(Menu):
         layout.separator()
 
         layout.operator("gpencil.palettecolor_select", icon='COLOR', text="Select Strokes")
+        layout.operator("gpencil.stroke_change_color", icon='MAN_TRANS', text="Move to Color")
 
 
 class GreasePencilDataPanel:
@@ -788,9 +884,9 @@ class GreasePencilDataPanel:
 
         # Owner Selector
         if context.space_data.type == 'VIEW_3D':
-            layout.prop(context.tool_settings, "grease_pencil_source", expand=True)
+            layout.row().prop(context.tool_settings, "grease_pencil_source", expand=True)
         elif context.space_data.type == 'CLIP_EDITOR':
-            layout.prop(context.space_data, "grease_pencil_source", expand=True)
+            layout.row().prop(context.space_data, "grease_pencil_source", expand=True)
 
         # Grease Pencil data selector
         layout.template_ID(gpd_owner, "grease_pencil", new="gpencil.data_add", unlink="gpencil.data_unlink")
@@ -858,6 +954,7 @@ class GreasePencilDataPanel:
         col = split.column()
         subcol = col.column(align=True)
         subcol.label("Tint")
+        subcol.enabled = not gpl.lock
         subcol.prop(gpl, "tint_color", text="")
         subcol.prop(gpl, "tint_factor", text="Factor", slider=True)
 
@@ -866,7 +963,7 @@ class GreasePencilDataPanel:
         row.prop(gpl, "line_change", text="Thickness Change", slider=True)
         row.operator("gpencil.stroke_apply_thickness", icon='STYLUS_PRESSURE', text="")
 
-        # Parenting 
+        # Parenting
         if context.space_data.type == 'VIEW_3D':
             col = split.column(align=True)
             col.label(text="Parent:")
@@ -900,7 +997,10 @@ class GreasePencilDataPanel:
 
         row = col.row()
         row.prop(gpl, "use_onion_skinning")
-        row.prop(gpl, "use_ghost_custom_colors", text="", icon='COLOR')
+        sub = row.row(align=True)
+        icon = 'RESTRICT_RENDER_OFF' if gpl.use_ghosts_always else 'RESTRICT_RENDER_ON'
+        sub.prop(gpl, "use_ghosts_always", text="", icon=icon)
+        sub.prop(gpl, "use_ghost_custom_colors", text="", icon='COLOR')
 
         split = col.split(percentage=0.5)
         split.active = gpl.use_onion_skinning
@@ -995,14 +1095,14 @@ class GreasePencilPaletteColorPanel:
 
         # Column 1 - Stroke
         col = split.column(align=True)
-        col.active = not pcolor.lock
+        col.enabled = not pcolor.lock
         col.label(text="Stroke:")
         col.prop(pcolor, "color", text="")
         col.prop(pcolor, "alpha", slider=True)
 
         # Column 2 - Fill
         col = split.column(align=True)
-        col.active = not pcolor.lock
+        col.enabled = not pcolor.lock
         col.label(text="Fill:")
         col.prop(pcolor, "fill_color", text="")
         col.prop(pcolor, "fill_alpha", text="Opacity", slider=True)
@@ -1055,3 +1155,24 @@ class GreasePencilToolsPanel:
         layout.separator()
 
         gpencil_stroke_placement_settings(context, layout)
+
+
+classes = (
+    GPENCIL_PIE_tool_palette,
+    GPENCIL_PIE_settings_palette,
+    GPENCIL_PIE_tools_more,
+    GPENCIL_PIE_sculpt,
+    GPENCIL_MT_snap,
+    GPENCIL_MT_gpencil_edit_specials,
+    GPENCIL_UL_brush,
+    GPENCIL_UL_palettecolor,
+    GPENCIL_UL_layer,
+    GPENCIL_MT_layer_specials,
+    GPENCIL_MT_brush_specials,
+    GPENCIL_MT_palettecolor_specials,
+)
+
+if __name__ == "__main__":  # only for live edit.
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

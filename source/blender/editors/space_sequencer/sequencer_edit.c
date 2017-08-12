@@ -566,7 +566,7 @@ int seq_effect_find_selected(Scene *scene, Sequence *activeseq, int type, Sequen
 			}
 			if (seq1 == NULL) seq1 = seq2;
 			if (seq3 == NULL) seq3 = seq2;
-			/* fall-through */
+			ATTR_FALLTHROUGH;
 		case 2:
 			if (seq1 == NULL || seq2 == NULL) {
 				*error_str = N_("2 selected sequence strips are needed");
@@ -3356,6 +3356,9 @@ static int sequencer_swap_data_exec(bContext *C, wmOperator *op)
 	if (seq_act->sound) BKE_sound_add_scene_sound_defaults(scene, seq_act);
 	if (seq_other->sound) BKE_sound_add_scene_sound_defaults(scene, seq_other);
 
+	BKE_sequence_invalidate_cache(scene, seq_act);
+	BKE_sequence_invalidate_cache(scene, seq_other);
+
 	WM_event_add_notifier(C, NC_SCENE | ND_SEQUENCER, scene);
 
 	return OPERATOR_FINISHED;
@@ -3513,7 +3516,7 @@ static int sequencer_enable_proxies_exec(bContext *C, wmOperator *op)
 	bool proxy_50 = RNA_boolean_get(op->ptr, "proxy_50");
 	bool proxy_75 = RNA_boolean_get(op->ptr, "proxy_75");
 	bool proxy_100 = RNA_boolean_get(op->ptr, "proxy_100");
-	bool override = RNA_boolean_get(op->ptr, "override");
+	bool overwrite = RNA_boolean_get(op->ptr, "overwrite");
 	bool turnon = true;
 
 	if (ed == NULL || !(proxy_25 || proxy_50 || proxy_75 || proxy_100)) {
@@ -3549,7 +3552,7 @@ static int sequencer_enable_proxies_exec(bContext *C, wmOperator *op)
 				else 
 					seq->strip->proxy->build_size_flags &= ~SEQ_PROXY_IMAGE_SIZE_100;
 				
-				if (!override)
+				if (!overwrite)
 					seq->strip->proxy->build_flags |= SEQ_PROXY_SKIP_EXISTING;
 				else 
 					seq->strip->proxy->build_flags &= ~SEQ_PROXY_SKIP_EXISTING;
@@ -3581,7 +3584,7 @@ void SEQUENCER_OT_enable_proxies(wmOperatorType *ot)
 	RNA_def_boolean(ot->srna, "proxy_50", false, "50%", "");
 	RNA_def_boolean(ot->srna, "proxy_75", false, "75%", "");
 	RNA_def_boolean(ot->srna, "proxy_100", false, "100%", "");
-	RNA_def_boolean(ot->srna, "override", false, "Override", "");
+	RNA_def_boolean(ot->srna, "overwrite", false, "Overwrite", "");
 }
 
 /* change ops */

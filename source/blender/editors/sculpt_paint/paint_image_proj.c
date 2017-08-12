@@ -371,6 +371,8 @@ typedef struct ProjPaintState {
 	 */
 	const MLoopUV **dm_mloopuv;
 	const MLoopUV **dm_mloopuv_clone;    /* other UV map, use for cloning between layers */
+
+	bool use_colormanagement;
 } ProjPaintState;
 
 typedef union pixelPointer {
@@ -1623,7 +1625,12 @@ static ProjPixel *project_paint_uvpixel_init(
 						unsigned char rgba_ub[4];
 						float rgba[4];
 						project_face_pixel(lt_other_tri_uv, ibuf_other, w, rgba_ub, NULL);
-						srgb_to_linearrgb_uchar4(rgba, rgba_ub);
+						if (ps->use_colormanagement) {
+							srgb_to_linearrgb_uchar4(rgba, rgba_ub);
+						}
+						else {
+							rgba_uchar_to_float(rgba, rgba_ub);
+						}
 						straight_to_premul_v4_v4(((ProjPixelClone *)projPixel)->clonepx.f, rgba);
 					}
 				}
@@ -1632,7 +1639,12 @@ static ProjPixel *project_paint_uvpixel_init(
 						float rgba[4];
 						project_face_pixel(lt_other_tri_uv, ibuf_other, w, NULL, rgba);
 						premul_to_straight_v4(rgba);
-						linearrgb_to_srgb_uchar3(((ProjPixelClone *)projPixel)->clonepx.ch, rgba);
+						if (ps->use_colormanagement) {
+							linearrgb_to_srgb_uchar3(((ProjPixelClone *)projPixel)->clonepx.ch, rgba);
+						}
+						else {
+							rgb_float_to_uchar(((ProjPixelClone *)projPixel)->clonepx.ch, rgba);
+						}
 						((ProjPixelClone *)projPixel)->clonepx.ch[3] =  rgba[3] * 255;
 					}
 					else { /* char to char */
@@ -3700,8 +3712,12 @@ static void project_paint_prepare_all_faces(
 				}
 
 				/* don't allow using the same inage for painting and stencilling */
-				if (slot->ima == ps->stencil_ima)
+				if (slot->ima == ps->stencil_ima) {
+					/* While this shouldn't be used, face-winding reads all polys.
+					 * It's less trouble to set all faces to valid UV's, avoiding NULL checks all over. */
+					ps->dm_mloopuv[lt->poly] = mloopuv_base;
 					continue;
+				}
 				
 				tpage = slot->ima;
 			}
@@ -4279,7 +4295,7 @@ static void do_projectpaint_soften_f(ProjPaintState *ps, ProjPixel *projPixel, f
 				return;
 		}
 		else {
-			blend_color_interpolate_float(rgba, rgba, projPixel->pixel.f_pt, mask);
+			blend_color_interpolate_float(rgba, projPixel->pixel.f_pt, rgba, mask);
 		}
 
 		BLI_linklist_prepend_arena(softenPixels, (void *)projPixel, softenArena);
@@ -4359,7 +4375,12 @@ static void do_projectpaint_draw(
 	if (ps->is_texbrush) {
 		mul_v3_v3v3(rgb, texrgb, ps->paint_color_linear);
 		/* TODO(sergey): Support texture paint color space. */
-		linearrgb_to_srgb_v3_v3(rgb, rgb);
+		if (ps->use_colormanagement) {
+			linearrgb_to_srgb_v3_v3(rgb, rgb);
+		}
+		else {
+			copy_v3_v3(rgb, rgb);
+		}
 	}
 	else {
 		copy_v3_v3(rgb, ps->paint_color);
@@ -4733,6 +4754,9 @@ static void *do_projectpaint_thread(void *ph_v)
 							copy_v3_v3(texrgb, texrgba);
 							mask *= texrgba[3];
 						}
+						else {
+							zero_v3(texrgb);
+						}
 
 						/* extra mask for normal, layer stencil, .. */
 						mask *= ((float)projPixel->mask) * (1.0f / 65535.0f);
@@ -4957,11 +4981,21 @@ static void paint_proj_stroke_ps(
 	/* handle gradient and inverted stroke color here */
 	if (ps->tool == PAINT_TOOL_DRAW) {
 		paint_brush_color_get(scene, brush, false, ps->mode == BRUSH_STROKE_INVERT, distance, pressure,  ps->paint_color, NULL);
-		srgb_to_linearrgb_v3_v3(ps->paint_color_linear, ps->paint_color);
+		if (ps->use_colormanagement) {
+			srgb_to_linearrgb_v3_v3(ps->paint_color_linear, ps->paint_color);
+		}
+		else {
+			copy_v3_v3(ps->paint_color_linear, ps->paint_color);
+		}
 	}
 	else if (ps->tool == PAINT_TOOL_FILL) {
 		copy_v3_v3(ps->paint_color, BKE_brush_color_get(scene, brush));
-		srgb_to_linearrgb_v3_v3(ps->paint_color_linear, ps->paint_color);
+		if (ps->use_colormanagement) {
+			srgb_to_linearrgb_v3_v3(ps->paint_color_linear, ps->paint_color);
+		}
+		else {
+			copy_v3_v3(ps->paint_color_linear, ps->paint_color);
+		}
 	}
 	else if (ps->tool == PAINT_TOOL_MASK) {
 		ps->stencil_value = brush->weight;
@@ -5112,7 +5146,9 @@ static void project_state_init(bContext *C, Object *ob, ProjPaintState *ps, int 
 	ps->normal_angle_inner__cos = cosf(ps->normal_angle_inner);
 
 	ps->dither = settings->imapaint.dither;
-	
+
+	ps->use_colormanagement = BKE_scene_check_color_management_enabled(CTX_data_scene(C));
+
 	return;
 }
 
@@ -5682,21 +5718,16 @@ static bool proj_paint_add_slot(bContext *C, wmOperator *op)
 			/* successful creation of mtex layer, now create set */
 			if (mtex) {
 				int type = MAP_COL;
-				int type_id = 0;
+				char imagename_buff[MAX_ID_NAME - 2];
+				const char *imagename = DATA_("Diffuse Color");
 
 				if (op) {
-					int i;
 					type = RNA_enum_get(op->ptr, "type");
-
-					for (i = 0; i < ARRAY_SIZE(layer_type_items); i++) {
-						if (layer_type_items[i].value == type) {
-							type_id = i;
-							break;
-						}
-					}
+					RNA_string_get(op->ptr, "name", imagename_buff);
+					imagename = imagename_buff;
 				}
 
-				mtex->tex = BKE_texture_add(bmain, DATA_(layer_type_items[type_id].name));
+				mtex->tex = BKE_texture_add(bmain, imagename);
 				mtex->mapto = type;
 
 				if (mtex->tex) {
@@ -5783,7 +5814,7 @@ void PAINT_OT_add_texture_paint_slot(wmOperatorType *ot)
 	/* properties */
 	prop = RNA_def_enum(ot->srna, "type", layer_type_items, 0, "Type", "Merge method to use");
 	RNA_def_property_flag(prop, PROP_HIDDEN);
-	RNA_def_string(ot->srna, "name", IMA_DEF_NAME, MAX_ID_NAME - 2, "Name", "Image datablock name");
+	RNA_def_string(ot->srna, "name", IMA_DEF_NAME, MAX_ID_NAME - 2, "Name", "Image data-block name");
 	prop = RNA_def_int(ot->srna, "width", 1024, 1, INT_MAX, "Width", "Image width", 1, 16384);
 	RNA_def_property_subtype(prop, PROP_PIXEL);
 	prop = RNA_def_int(ot->srna, "height", 1024, 1, INT_MAX, "Height", "Image height", 1, 16384);

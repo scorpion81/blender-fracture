@@ -874,21 +874,18 @@ static void widget_draw_icon(
 		float ofs = 1.0f / aspect;
 		
 		if (but->drawflag & UI_BUT_ICON_LEFT) {
-			if (but->block->flag & UI_BLOCK_LOOP) {
-				if (but->type == UI_BTYPE_SEARCH_MENU)
-					xs = rect->xmin + 4.0f * ofs;
-				else
-					xs = rect->xmin + ofs;
-			}
-			else {
+			/* special case - icon_only pie buttons */
+			if (ui_block_is_pie_menu(but->block) && but->type != UI_BTYPE_MENU && but->str && but->str[0] == '\0')
+				xs = rect->xmin + 2.0f * ofs;
+			else if (but->dt == UI_EMBOSS_NONE || but->type == UI_BTYPE_LABEL)
+				xs = rect->xmin + 2.0f * ofs;
+			else
 				xs = rect->xmin + 4.0f * ofs;
-			}
-			ys = (rect->ymin + rect->ymax - height) / 2.0f;
 		}
 		else {
 			xs = (rect->xmin + rect->xmax - height) / 2.0f;
-			ys = (rect->ymin + rect->ymax - height) / 2.0f;
 		}
+		ys = (rect->ymin + rect->ymax - height) / 2.0f;
 
 		/* force positions to integers, for zoom levels near 1. draws icons crisp. */
 		if (aspect > 0.95f && aspect < 1.05f) {
@@ -1508,10 +1505,10 @@ static void widget_draw_text(uiFontStyle *fstyle, uiWidgetColors *wcol, uiBut *b
 /* draws text and icons for buttons */
 static void widget_draw_text_icon(uiFontStyle *fstyle, uiWidgetColors *wcol, uiBut *but, rcti *rect)
 {
+	const uiButExtraIconType extra_icon_type = ui_but_icon_extra_get(but);
 	const bool show_menu_icon = ui_but_draw_menu_icon(but);
 	float alpha = (float)wcol->text[3] / 255.0f;
 	char password_str[UI_MAX_DRAW_STR];
-	uiButExtraIconType extra_icon_type;
 
 	ui_but_text_password_hide(password_str, but, false);
 
@@ -1554,11 +1551,15 @@ static void widget_draw_text_icon(uiFontStyle *fstyle, uiWidgetColors *wcol, uiB
 	/* Icons on the left with optional text label on the right */
 	else if (but->flag & UI_HAS_ICON || show_menu_icon) {
 		const BIFIconID icon = (but->flag & UI_HAS_ICON) ? but->icon + but->iconadd : ICON_NONE;
-		const float icon_size = ICON_SIZE_FROM_BUTRECT(rect);
+		const float icon_size = ICON_DEFAULT_WIDTH_SCALE;
 
 		/* menu item - add some more padding so menus don't feel cramped. it must
 		 * be part of the button so that this area is still clickable */
-		if (ui_block_is_menu(but->block))
+		if (ui_block_is_pie_menu(but->block)) {
+			if (but->dt == UI_EMBOSS_RADIAL)
+				rect->xmin += 0.3f * U.widget_unit;
+		}
+		else if (ui_block_is_menu(but->block))
 			rect->xmin += 0.3f * U.widget_unit;
 
 		widget_draw_icon(but, icon, alpha, rect, show_menu_icon);
@@ -1577,16 +1578,14 @@ static void widget_draw_text_icon(uiFontStyle *fstyle, uiWidgetColors *wcol, uiB
 		rect->xmax -= (UI_TEXT_MARGIN_X * U.widget_unit) / but->block->aspect;
 	}
 
-	/* unlink icon for this button type */
-	if ((but->type == UI_BTYPE_SEARCH_MENU) &&
-	    ((extra_icon_type = ui_but_icon_extra_get(but)) != UI_BUT_ICONEXTRA_NONE))
-	{
+	/* extra icons, e.g. 'x' icon to clear text or icon for eyedropper */
+	if (extra_icon_type != UI_BUT_ICONEXTRA_NONE) {
 		rcti temp = *rect;
 
 		temp.xmin = temp.xmax - (BLI_rcti_size_y(rect) * 1.08f);
 
-		if (extra_icon_type == UI_BUT_ICONEXTRA_UNLINK) {
-			widget_draw_icon(but, ICON_X, alpha, &temp, false);
+		if (extra_icon_type == UI_BUT_ICONEXTRA_CLEAR) {
+			widget_draw_icon(but, ICON_PANEL_CLOSE, alpha, &temp, false);
 		}
 		else if (extra_icon_type == UI_BUT_ICONEXTRA_EYEDROPPER) {
 			widget_draw_icon(but, ICON_EYEDROPPER, alpha, &temp, false);
@@ -3656,11 +3655,15 @@ void ui_draw_but(const bContext *C, ARegion *ar, uiStyle *style, uiBut *but, rct
 
 		switch (but->type) {
 			case UI_BTYPE_LABEL:
-				if (but->block->flag & UI_BLOCK_LOOP)
-					widget_draw_text_icon(&style->widgetlabel, &tui->wcol_menu_back, but, rect);
-				else {
-					wt = widget_type(UI_WTYPE_LABEL);
-					fstyle = &style->widgetlabel;
+				wt = widget_type(UI_WTYPE_LABEL);
+				fstyle = &style->widgetlabel;
+				if (but->drawflag & UI_BUT_BOX_ITEM) {
+					wt->wcol_theme = &tui->wcol_box;
+					wt->state = widget_state;
+				}
+				else if (but->block->flag & UI_BLOCK_LOOP) {
+					wt->wcol_theme = &tui->wcol_menu_back;
+					wt->state = widget_state;
 				}
 				break;
 
