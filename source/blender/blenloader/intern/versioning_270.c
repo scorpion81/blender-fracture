@@ -1685,6 +1685,42 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 		for (Mesh *me = main->mesh.first; me; me = me->id.next) {
 			CustomData_set_layer_name(&me->vdata, CD_MDEFORMVERT, 0, "");
 		}
+
+		for (Object *ob = main->object.first; ob != NULL; ob = ob->id.next) {
+			/*initialize older blends to useful values */
+			FractureModifierData *fmd = (FractureModifierData* )modifiers_findByType(ob, eModifierType_Fracture);
+			if (fmd != NULL)
+			{
+				for (RigidBodyShardCon *rbsc = fmd->meshConstraints.first; rbsc != NULL; rbsc =  rbsc->next)
+				{
+					/* before 2.79, the FM constraint flag values were different, so adapt this here */
+					if (rbsc->flag & RBC_FLAG_USE_SPRING_ANG_X)
+					{
+						rbsc->flag &= ~RBC_FLAG_USE_SPRING_ANG_X;
+						rbsc->flag |= RBC_FLAG_USE_KINEMATIC_DEACTIVATION;
+					}
+
+					if (rbsc->flag & RBC_FLAG_USE_SPRING_ANG_Y)
+					{
+						rbsc->flag &= ~RBC_FLAG_USE_SPRING_ANG_Y;
+						rbsc->flag |= RBC_FLAG_USE_PLASTIC;
+					}
+
+					if (rbsc->flag & RBC_FLAG_USE_SPRING_ANG_Z)
+					{
+						rbsc->flag &= ~RBC_FLAG_USE_SPRING_ANG_Z;
+						rbsc->flag |= RBC_FLAG_PLASTIC_ACTIVE;
+					}
+
+					rbsc->spring_stiffness_ang_x = 10.0;
+					rbsc->spring_stiffness_ang_y = 10.0;
+					rbsc->spring_stiffness_ang_z = 10.0;
+					rbsc->spring_damping_ang_x = 0.5;
+					rbsc->spring_damping_ang_y = 0.5;
+					rbsc->spring_damping_ang_z = 0.5;
+				}
+			}
+		}
 	}
 }
 
