@@ -100,6 +100,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, float ctime);
 static bool restoreKinematic(RigidBodyWorld *rbw);
 static void DM_mesh_boundbox(DerivedMesh *bm, float r_loc[3], float r_size[3]);
+static void test_deactivate_rigidbody(RigidBodyOb *rbo);
 
 #endif
 
@@ -2234,9 +2235,10 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	// RB_TODO deal with interpolated, old and baked results
 	bool can_simulate = (ctime == rbw->ltime + 1) && !(cache->flag & PTCACHE_BAKED);
 
-	if (cache->flag & PTCACHE_OUTDATED || cache->last_exact == 0) {
+	//why this ? this breaks the working old behavior... so deactivating it here again
+	/*if (cache->flag & PTCACHE_OUTDATED || cache->last_exact == 0) {
 		rbw->ltime = cache->startframe;
-	}
+	}*/
 
 	if (BKE_ptcache_read(&pid, ctime, can_simulate)) {
 		BKE_ptcache_validate(cache, (int)ctime);
@@ -3824,7 +3826,7 @@ static bool do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 			if ((mi_compare == mi) && antiValid && activate)
 			{
 				if (rbo->physics_object) {
-					BKE_deactivateRigidbody(rbo);
+					test_deactivate_rigidbody(rbo);
 				}
 			}
 		}
@@ -3843,7 +3845,7 @@ static bool do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 
 		if (rbo && antiValid && activate)
 		{
-			BKE_deactivateRigidbody(rbo);
+			test_deactivate_rigidbody(rbo);
 		}
 	}
 
@@ -4495,19 +4497,30 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 	}
 }
 
-void BKE_deactivateRigidbody(RigidBodyOb *rbo)
+static void test_deactivate_rigidbody(RigidBodyOb *rbo)
 {
 	//make kinematic again (un-trigger)
 	//printf("Untrigger\n");
 	//if (rbo->physics_object)
-	{
-		//RB_body_set_kinematic_state(rbo->physics_object, true);
-		//RB_body_set_mass(rbo->physics_object, 0.0f);
-		//rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
-		//RB_body_deactivate(rbo->physics_object);
-		rbo->flag |= RBO_FLAG_KINEMATIC;
-		rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
-		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+	if (rbo->physics_object) {
+		float lin_vel[3], ang_vel[3];
+
+		RB_body_get_linear_velocity(rbo->physics_object, lin_vel);
+		RB_body_get_angular_velocity(rbo->physics_object, ang_vel);
+
+		if (((len_squared_v3(lin_vel) < (rbo->lin_sleep_thresh * rbo->lin_sleep_thresh))) ||
+		   ((len_squared_v3(ang_vel) < (rbo->ang_sleep_thresh * rbo->ang_sleep_thresh))))
+		{
+			//RB_body_set_kinematic_state(rbo->physics_object, true);
+			//RB_body_set_mass(rbo->physics_object, 0.0f);
+			//rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+			//RB_body_deactivate(rbo->physics_object);
+
+			rbo->flag |= RBO_FLAG_KINEMATIC;
+			rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+			rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+		}
 	}
 }
 
