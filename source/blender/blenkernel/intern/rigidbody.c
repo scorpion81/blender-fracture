@@ -1085,9 +1085,15 @@ RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short ty
 		rbc->spring_damping_x = con->spring_damping_x;
 		rbc->spring_damping_y = con->spring_damping_y;
 		rbc->spring_damping_z = con->spring_damping_z;
+		rbc->spring_damping_ang_x = con->spring_damping_ang_x;
+		rbc->spring_damping_ang_y = con->spring_damping_ang_y;
+		rbc->spring_damping_ang_z = con->spring_damping_ang_z;
 		rbc->spring_stiffness_x = con->spring_stiffness_x;
 		rbc->spring_stiffness_y = con->spring_stiffness_y;
 		rbc->spring_stiffness_z = con->spring_stiffness_z;
+		rbc->spring_stiffness_ang_x = con->spring_stiffness_ang_x;
+		rbc->spring_stiffness_ang_y = con->spring_stiffness_ang_y;
+		rbc->spring_stiffness_ang_z = con->spring_stiffness_ang_z;
 
 		rbc->motor_lin_max_impulse = con->motor_lin_max_impulse;
 		rbc->motor_lin_target_velocity = con->motor_lin_target_velocity;
@@ -1115,9 +1121,15 @@ RigidBodyCon *BKE_rigidbody_create_constraint(Scene *scene, Object *ob, short ty
 		rbc->spring_damping_x = 0.5f;
 		rbc->spring_damping_y = 0.5f;
 		rbc->spring_damping_z = 0.5f;
+		rbc->spring_damping_ang_x = 0.5f;
+		rbc->spring_damping_ang_y = 0.5f;
+		rbc->spring_damping_ang_z = 0.5f;
 		rbc->spring_stiffness_x = 10.0f;
 		rbc->spring_stiffness_y = 10.0f;
 		rbc->spring_stiffness_z = 10.0f;
+		rbc->spring_stiffness_ang_x = 10.0f;
+		rbc->spring_stiffness_ang_y = 10.0f;
+		rbc->spring_stiffness_ang_z = 10.0f;
 
 		rbc->motor_lin_max_impulse = 1.0f;
 		rbc->motor_lin_target_velocity = 1.0f;
