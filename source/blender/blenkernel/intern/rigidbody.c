@@ -101,6 +101,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 static bool restoreKinematic(RigidBodyWorld *rbw);
 static void DM_mesh_boundbox(DerivedMesh *bm, float r_loc[3], float r_size[3]);
 static void test_deactivate_rigidbody(RigidBodyOb *rbo);
+static float box_volume(float size[3]);
 
 #endif
 
@@ -2603,6 +2604,24 @@ static void DM_mesh_boundbox(DerivedMesh *bm, float r_loc[3], float r_size[3])
 	r_size[2] = (max[2] - min[2]) / 2.0f;
 }
 
+static float box_volume(float size[3])
+{
+	float volume = 0.0001f;
+
+	volume = size[0] * size[1] * size[2];
+	if (size[0] == 0) {
+		volume = size[1] * size[2];
+	}
+	else if (size[1] == 0) {
+		volume = size[0] * size[2];
+	}
+	else if (size[2] == 0) {
+		volume = size[0] * size[1];
+	}
+
+	return volume;
+}
+
 /* helper function to calculate volume of rigidbody object */
 float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo, Object* ob)
 {
@@ -2622,6 +2641,7 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo, Object* ob)
 	 */
 	/* XXX: all dimensions are auto-determined now... later can add stored settings for this*/
 	DM_mesh_boundbox(dm, loc, size);
+	mul_v3_fl(size, 2.0f);
 
 	/* also take object scale into account */
 	if (ob)
@@ -2661,37 +2681,34 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo, Object* ob)
 		 * NOTE: this may overestimate the volume, but other methods are overkill
 		 */
 		case RB_SHAPE_BOX:
-		case RB_SHAPE_CONVEXH:
-		case RB_SHAPE_TRIMESH:
-			mul_v3_fl(size, 2.0f);
-
-			volume = size[0] * size[1] * size[2];
-			if (size[0] == 0) {
-				volume = size[1] * size[2];
-			}
-			else if (size[1] == 0) {
-				volume = size[0] * size[2];
-			}
-			else if (size[2] == 0) {
-				volume = size[0] * size[1];
-			}
+			volume = box_volume(size);
 			break;
 
-		/*case RB_SHAPE_CONVEXH:
+		case RB_SHAPE_CONVEXH:
 		case RB_SHAPE_TRIMESH:
 		{
-			MVert *mvert = dm->getVertArray(dm);
-			int totvert = dm->getNumVerts(dm);
-			MLoopTri *mlooptri = dm->getLoopTriArray(dm);
-			int tottri = dm->getNumLoopTri(dm);
-			MLoop *mloop = dm->getLoopArray(dm);
+			if (!ob) {
+				/* for quick shard mass (re)calculation approximate,
+				 * else for many shards on complex geometries this becomes
+				 * very slow */
+				volume = box_volume(size);
+			}
+			else
+			{
+				//for initial mass calculation take exact values
+				MVert *mvert = dm->getVertArray(dm);
+				int totvert = dm->getNumVerts(dm);
+				const MLoopTri *mlooptri = dm->getLoopTriArray(dm);
+				int tottri = dm->getNumLoopTri(dm);
+				MLoop *mloop = dm->getLoopArray(dm);
 
-			BKE_mesh_calc_volume(mvert, totvert, mlooptri, tottri, mloop, &volume, NULL);
+				BKE_mesh_calc_volume(mvert, totvert, mlooptri, tottri, mloop, &volume, NULL);
 
-			if (volume == 0.0f)
-				volume = 0.00001f;
-			break;*/
-		//}
+				if (volume == 0.0f)
+					volume = 0.00001f;
+			}
+			break;
+		}
 
 #if 0 // XXX: not defined yet
 		case RB_SHAPE_COMPOUND:
