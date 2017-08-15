@@ -4043,18 +4043,20 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	fake_dynamic_collide(ob1, ob2, mi1, mi2, rbw);
 	fake_dynamic_collide(ob2, ob1, mi2, mi1, rbw);
 
-	validOb = ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0) || ((ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0);
-	validOb = validOb || ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0) || ((mi2 && mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
-	validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || ((ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0);
-	validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || ((mi2 && mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
-
-	if (validOb)
+	if (activate)
 	{
-		//always allow when atleast one object is not kinematic
-		check_activate = true;
+		validOb = ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0) || ((ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0);
+		validOb = validOb || ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0) || ((mi2 && mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
+		validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || ((ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0);
+		validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || ((mi2 && mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
+
+		validOb = validOb && (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) && check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2)));
+	}
+	else {
+		validOb = (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) && check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2)));
 	}
 
-	return check_activate && check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) && check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2));
+	return activate ? validOb : check_activate || validOb;
 }
 
 static bool can_break(Object* collider, Object* ob, bool limit)

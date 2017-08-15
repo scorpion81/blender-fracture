@@ -926,12 +926,17 @@ bool CollisionFilterDispatcher::needsCollision(const btCollisionObject *body0, c
 	rbRigidBody *rb0 = (rbRigidBody *)((btFractureBody *)body0)->getUserPointer();
 	rbRigidBody *rb1 = (rbRigidBody *)((btFractureBody *)body1)->getUserPointer();
 
-	if (this->filterCallback)
+	if (((btRigidBody*)body0)->checkCollideWithOverride(body1))
 	{
-		return this->filterCallback->check_collision(rb0, rb1, true, true);
+		if (this->filterCallback)
+		{
+			return this->filterCallback->check_collision(rb0, rb1, true, true);
+		}
+
+		return true;
 	}
 
-	return true;
+	return false;
 }
 
 //yuck, but need a handle for the world somewhere for collision callback...
