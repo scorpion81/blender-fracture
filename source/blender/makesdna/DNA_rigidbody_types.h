@@ -119,7 +119,7 @@ typedef struct RigidBodyOb {
 	int col_groups;			/* Collision groups that determines wich rigid bodies can collide with each other */
 	int meshisland_index;	/* determines "offset" inside an objects meshisland list, -1 for regular rigidbodies */
 	short mesh_source;		/* (eRigidBody_MeshSource) mesh source for mesh based collision shapes */
-	short pad;
+	short is_fractured;
 	char pad2[4];
 	
 	/* Physics Parameters */

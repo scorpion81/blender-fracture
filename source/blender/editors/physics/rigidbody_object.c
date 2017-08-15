@@ -547,7 +547,7 @@ static int rigidbody_objects_calc_mass_exec(bContext *C, wmOperator *op)
 			if (ob->type == OB_MESH) {
 				/* if we have a mesh, determine its volume */
 				dm_ob = CDDM_from_mesh(ob->data);
-				volume = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object);
+				volume = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object, ob);
 			}
 			else {
 				float dim[3];

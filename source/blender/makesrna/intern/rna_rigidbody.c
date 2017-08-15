@@ -311,7 +311,7 @@ static char *rna_RigidBodyOb_path(PointerRNA *ptr)
 	RigidBodyOb* rbo = ptr->data;
 	Object* ob = ptr->id.data;
 	ModifierData *md = modifiers_findByType(ob, eModifierType_Fracture);
-	if (md && rbo->meshisland_index > -1)
+	if (md && rbo->is_fractured)
 	{
 		char name_esc[sizeof(md->name) * 2];
 		BLI_strescape(name_esc, md->name, sizeof(name_esc));

@@ -1719,6 +1719,18 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 					rbsc->spring_damping_ang_y = 0.5;
 					rbsc->spring_damping_ang_z = 0.5;
 				}
+
+				for (MeshIsland *mi = fmd->meshIslands.first; mi != NULL; mi = mi->next)
+				{
+					//set this new flag to distinguish between regular and fractured rigidbodies,
+					//its the same struct otherwise
+					mi->rigidbody->is_fractured = true;
+				}
+			}
+
+			if (ob->rigidbody_object)
+			{
+				ob->rigidbody_object->is_fractured = false;
 			}
 		}
 	}

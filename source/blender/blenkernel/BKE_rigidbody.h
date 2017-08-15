@@ -97,7 +97,7 @@ void BKE_rigidbody_calc_center_of_mass(struct Object *ob, float r_center[3]);
 struct RigidBodyWorld *BKE_rigidbody_get_world(struct Scene *scene);
 void BKE_rigidbody_remove_object(struct Scene *scene, struct Object *ob);
 void BKE_rigidbody_remove_constraint(struct Scene *scene, struct Object *ob);
-float BKE_rigidbody_calc_volume(struct DerivedMesh *dm, struct RigidBodyOb *rbo);
+float BKE_rigidbody_calc_volume(struct DerivedMesh *dm, struct RigidBodyOb *rbo, Object *ob);
 void BKE_rigidbody_calc_shard_mass(struct Object* ob, struct MeshIsland* mi, struct DerivedMesh* dm);
 void BKE_rigidbody_calc_threshold(float max_con_mass, struct FractureModifierData* rmd, struct RigidBodyShardCon *con);
 float BKE_rigidbody_calc_max_con_mass(struct Object* ob);

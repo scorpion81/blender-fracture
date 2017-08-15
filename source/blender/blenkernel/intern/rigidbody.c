@@ -980,6 +980,7 @@ RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type, M
 		rbo->shape = mi->rigidbody->shape;
 		rbo->mesh_source = mi->rigidbody->mesh_source;
 		rbo->meshisland_index = mi->rigidbody->meshisland_index;
+		rbo->is_fractured = true;
 		copy_v3_v3(rbo->pos, mi->rigidbody->pos);
 		copy_qt_qt(rbo->orn, mi->rigidbody->orn);
 		//mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
@@ -1019,6 +1020,7 @@ RigidBodyOb *BKE_rigidbody_create_object(Scene *scene, Object *ob, short type, M
 		mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
 
 		rbo->meshisland_index = -1;
+		rbo->is_fractured = false;
 	}
 
 	zero_v3(rbo->lin_vel);
@@ -2602,10 +2604,11 @@ static void DM_mesh_boundbox(DerivedMesh *bm, float r_loc[3], float r_size[3])
 }
 
 /* helper function to calculate volume of rigidbody object */
-float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo)
+float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo, Object* ob)
 {
 	float loc[3]  = {0.0f, 0.0f, 0.0f};
 	float size[3]  = {1.0f, 1.0f, 1.0f};
+	float scale[3] = {1.0f, 1.0f, 1.0f};
 	float radius = 1.0f;
 	float height = 1.0f;
 
@@ -2619,6 +2622,13 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo)
 	 */
 	/* XXX: all dimensions are auto-determined now... later can add stored settings for this*/
 	DM_mesh_boundbox(dm, loc, size);
+
+	/* also take object scale into account */
+	if (ob)
+	{
+		mat4_to_size(scale, ob->obmat);
+		mul_v3_v3(size, scale);
+	}
 
 	if (ELEM(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
 		/* take radius as largest x/y dimension, and height as z-dimension */
@@ -2653,6 +2663,8 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo)
 		case RB_SHAPE_BOX:
 		case RB_SHAPE_CONVEXH:
 		case RB_SHAPE_TRIMESH:
+			mul_v3_fl(size, 2.0f);
+
 			volume = size[0] * size[1] * size[2];
 			if (size[0] == 0) {
 				volume = size[1] * size[2];
@@ -2702,7 +2714,7 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland *mi, DerivedMesh *orig
 		if (ob->type == OB_MESH) {
 			/* if we have a mesh, determine its volume */
 			dm_ob = CDDM_from_mesh(ob->data);
-			vol_ob = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object);
+			vol_ob = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object, ob);
 		}
 		else {
 			/* else get object boundbox as last resort */
@@ -2713,14 +2725,14 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland *mi, DerivedMesh *orig
 	}
 	else
 	{
-		vol_ob = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object);
+		vol_ob = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object, ob);
 	}
 
 	mass_ob = ob->rigidbody_object->mass;
 
 	if (vol_ob > 0) {
 		dm_mi = mi->physics_mesh;
-		vol_mi = BKE_rigidbody_calc_volume(dm_mi, mi->rigidbody);
+		vol_mi = BKE_rigidbody_calc_volume(dm_mi, mi->rigidbody, NULL);
 		mass_mi = (vol_mi / vol_ob) * mass_ob;
 		mi->rigidbody->mass = mass_mi;
 	}
