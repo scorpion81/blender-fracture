@@ -80,6 +80,7 @@ struct Shard *BKE_custom_data_to_shard(struct Shard *s, struct DerivedMesh *dm);
 /* utility functions */
 bool BKE_fracture_shard_center_median(struct Shard *shard, float cent[3]);
 bool BKE_fracture_shard_center_centroid(struct Shard *shard, float cent[3]);
+bool BKE_fracture_shard_center_centroid_area(struct Shard *shard, float cent[3]);
 float BKE_shard_calc_minmax(struct Shard *shard);
 
 void BKE_fracmesh_free(struct FracMesh *fm, bool doCustomData);

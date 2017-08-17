@@ -4288,7 +4288,7 @@ static void do_reset_automerge(FractureModifierData* fmd)
 		RigidBodyWorld *rbw = sc->rigidbody_world;
 		int frame = (int)BKE_scene_frame_get(sc);
 		int start = (rbw && rbw->pointcache ) ? MAX2(rbw->pointcache->startframe, sc->r.sfra) : sc->r.sfra;
-		if (frame == start) {
+		if (frame == start || frame > fmd->last_frame + 1 || frame < fmd->last_frame - 1) {
 			reset_automerge(fmd);
 		}
 	}
@@ -4946,11 +4946,17 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	if (fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)
 	{
 		bool init = false;
+
+		//just track the frames for resetting automerge data when jumping
+		int frame = (int)BKE_scene_frame_get(fmd->modifier.scene);
+
 		//deactivate multiple settings for now, not working properly XXX TODO (also deactivated in RNA and python)
 		final_dm = do_prefractured(fmd, ob, pack_dm);
 
 		if (init)
 			fmd->shard_count = 10;
+
+		fmd->last_frame = frame;
 	}
 	else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 	{

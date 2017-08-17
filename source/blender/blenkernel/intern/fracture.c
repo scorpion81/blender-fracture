@@ -313,16 +313,15 @@ bool BKE_fracture_shard_center_centroid(Shard *shard, float r_cent[3])
 		mul_v3_fl(r_cent, 0.25f / total_volume);
 	}
 
-	/* this can happen for non-manifold objects, fallback to median */
-	if (UNLIKELY(!is_finite_v3(r_cent))) {
-		return BKE_fracture_shard_center_median(shard, r_cent);
+	/* this can happen for non-manifold objects, first fallback to old area based method, then fallback to median there */
+	if (!is_finite_v3(r_cent) || total_volume < 0.000001f) {
+		return BKE_fracture_shard_center_centroid_area(shard, r_cent);
 	}
 
 	copy_v3_v3(shard->centroid, r_cent);
 	return (shard->totpoly != 0);
 }
 
-#if 0
 /* note, results won't be correct if polygon is non-planar */
 /* copied from mesh_evaluate.c */
 static float mesh_calc_poly_planar_area_centroid(
@@ -358,7 +357,7 @@ static float mesh_calc_poly_planar_area_centroid(
 
 // old method, keep for now in case new has different results
 /* modified from BKE_mesh_center_centroid */
-bool BKE_fracture_shard_center_centroid(Shard *shard, float cent[3])
+bool BKE_fracture_shard_center_centroid_area(Shard *shard, float cent[3])
 {
 	int i = shard->totpoly;
 	MPoly *mpoly;
@@ -390,7 +389,6 @@ bool BKE_fracture_shard_center_centroid(Shard *shard, float cent[3])
 
 	return (shard->totpoly != 0);
 }
-#endif
 
 void BKE_shard_free(Shard *s, bool doCustomData)
 {

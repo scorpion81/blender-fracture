@@ -2573,11 +2573,13 @@ void BKE_rigidbody_calc_threshold(float max_con_mass, FractureModifierData *rmd,
 
 static int DM_mesh_minmax(DerivedMesh *dm, float r_min[3], float r_max[3])
 {
-	MVert *v;
-	int i = 0;
-	for (i = 0; i < dm->numVertData; i++) {
-		v = CDDM_get_vert(dm, i);
-		minmax_v3v3_v3(r_min, r_max, v->co);
+	MVert *mvert;
+	int i = 0, totvert;
+
+	mvert = dm->getVertArray(dm);
+	totvert = dm->getNumVerts(dm);
+	for (i = 0; i < totvert; i++) {
+		minmax_v3v3_v3(r_min, r_max, mvert[i].co);
 	}
 
 	return (dm->numVertData != 0);
@@ -2609,15 +2611,18 @@ static float box_volume(float size[3])
 	float volume = 0.0001f;
 
 	volume = size[0] * size[1] * size[2];
-	if (size[0] == 0) {
+	if (size[0] < 0.000001f) {
 		volume = size[1] * size[2];
 	}
-	else if (size[1] == 0) {
+	else if (size[1] < 0.000001f) {
 		volume = size[0] * size[2];
 	}
-	else if (size[2] == 0) {
+	else if (size[2] < 0.000001f) {
 		volume = size[0] * size[1];
 	}
+
+	if (volume == 0.0f)
+		volume = 0.0001f;
 
 	return volume;
 }
@@ -2704,8 +2709,11 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo, Object* ob)
 
 				BKE_mesh_calc_volume(mvert, totvert, mlooptri, tottri, mloop, &volume, NULL);
 
-				if (volume == 0.0f)
-					volume = 0.00001f;
+				if (volume < 0.000001f)
+				{
+					//fallback to boxvolume in case we get crap here
+					volume = box_volume(size);
+				}
 			}
 			break;
 		}
