@@ -2608,21 +2608,18 @@ static void DM_mesh_boundbox(DerivedMesh *bm, float r_loc[3], float r_size[3])
 
 static float box_volume(float size[3])
 {
-	float volume = 0.0001f;
+	float volume;
 
 	volume = size[0] * size[1] * size[2];
-	if (size[0] < 0.000001f) {
+	if (volume == 0 && size[0] == 0) {
 		volume = size[1] * size[2];
 	}
-	else if (size[1] < 0.000001f) {
+	else if (volume == 0 && size[1] == 0) {
 		volume = size[0] * size[2];
 	}
-	else if (size[2] < 0.000001f) {
+	else if (volume == 0 && size[2] == 0) {
 		volume = size[0] * size[1];
 	}
-
-	if (volume == 0.0f)
-		volume = 0.0001f;
 
 	return volume;
 }
@@ -2709,11 +2706,8 @@ float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo, Object* ob)
 
 				BKE_mesh_calc_volume(mvert, totvert, mlooptri, tottri, mloop, &volume, NULL);
 
-				if (volume < 0.000001f)
-				{
-					//fallback to boxvolume in case we get crap here
+				if (volume == 0.0f)
 					volume = box_volume(size);
-				}
 			}
 			break;
 		}
