@@ -100,7 +100,7 @@ static void free_shards(FractureModifierData *fmd);
 
 typedef struct SharedVertGroup {
 	struct SharedVertGroup* next, *prev;
-	int index;
+	int index, excession_frame;
 	bool exceeded, deltas_set, moved;
 	float rest_co[3];
 	float delta[3];
@@ -109,7 +109,7 @@ typedef struct SharedVertGroup {
 
 typedef struct SharedVert {
 	struct SharedVert* next, *prev;
-	int index;
+	int index, excession_frame;
 	bool exceeded, deltas_set, moved;
 	float rest_co[3];
 	float delta[3];
@@ -3188,12 +3188,14 @@ static void reset_automerge(FractureModifierData *fmd)
 
 	for (vg = fmd->shared_verts.first; vg; vg = vg->next) {
 		vg->exceeded = false;
+		//vg->excession_frame = -1;
 		//vg->moved = false;
 		zero_v3(vg->delta);
 		vg->deltas_set = false;
 
 		for (sv = vg->verts.first; sv; sv = sv->next)
 		{
+			//sv->excession_frame = -1;
 			sv->exceeded = false;
 			//sv->moved = false;
 			zero_v3(sv->delta);
@@ -3232,6 +3234,8 @@ static void handle_vertex(FractureModifierData *fmd, BMesh* bm, SharedVert *sv, 
 	bool do_calc_delta = fmd->keep_distort;
 	float dist = fmd->autohide_dist;
 	BMEdge *e = NULL;
+	Scene *sc = fmd->modifier.scene;
+	int frame = sc ? (int)BKE_scene_frame_get(sc) : 1;
 
 	BMVert *v = bm->vtable[sv->index];
 
@@ -3242,7 +3246,7 @@ static void handle_vertex(FractureModifierData *fmd, BMesh* bm, SharedVert *sv, 
 
 	if ((len_squared_v3v3(co, v->co) <= fmd->automerge_dist * fmd->automerge_dist))
 	{
-		if (!sv->exceeded)
+		if (!sv->exceeded || frame < sv->excession_frame)
 		{
 			copy_v3_v3(v->co, co);
 			copy_v3_v3(v->no, no);
@@ -3250,6 +3254,11 @@ static void handle_vertex(FractureModifierData *fmd, BMesh* bm, SharedVert *sv, 
 	}
 	else {
 		sv->exceeded = true;
+
+		if (sv->excession_frame == -1)
+		{
+			sv->excession_frame = frame;
+		}
 
 		if (!sv->deltas_set) {
 			sub_v3_v3v3(sv->delta, co, v->co);
@@ -4044,6 +4053,7 @@ static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm, 
 			gvert->exceeded = false;
 			gvert->deltas_set = false;
 			gvert->moved = false;
+			gvert->excession_frame = -1;
 			zero_v3(gvert->delta);
 			copy_v3_v3(gvert->rest_co, mvert[i].co);
 
@@ -4061,6 +4071,7 @@ static void make_shared_vert_groups(FractureModifierData* fmd, DerivedMesh* dm, 
 						svert->exceeded = false;
 						svert->deltas_set = false;
 						svert->moved = false;
+						svert->excession_frame = -1;
 						zero_v3(svert->delta);
 						copy_v3_v3(svert->rest_co, mvert[index].co);
 						BLI_addtail(&gvert->verts, svert);
@@ -4288,7 +4299,7 @@ static void do_reset_automerge(FractureModifierData* fmd)
 		RigidBodyWorld *rbw = sc->rigidbody_world;
 		int frame = (int)BKE_scene_frame_get(sc);
 		int start = (rbw && rbw->pointcache ) ? MAX2(rbw->pointcache->startframe, sc->r.sfra) : sc->r.sfra;
-		if (frame == start || frame > fmd->last_frame + 1 || frame < fmd->last_frame - 1) {
+		if (frame == start) { // || frame > fmd->last_frame + 1 || frame < fmd->last_frame - 1) {
 			reset_automerge(fmd);
 		}
 	}
