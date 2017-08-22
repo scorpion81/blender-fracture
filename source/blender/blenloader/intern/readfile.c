@@ -5468,7 +5468,7 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 				Shard *sh = NULL;
 				sh = shards[i]; //skip "empty" shards
-				while (sh->shard_id < mi->id)
+				while (sh && (sh->shard_id < mi->id))
 				{
 					if (sh->next) {
 						sh = sh->next;

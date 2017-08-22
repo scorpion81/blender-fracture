@@ -339,7 +339,7 @@ static bool do_other_output(DerivedMesh** other_dm, Shard** other, DerivedMesh**
 		output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
 		memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
 	#endif
-		BKE_fracture_shard_center_centroid(*other, (*other)->centroid);
+		BKE_fracture_shard_center_centroid_area(*other, (*other)->centroid);
 
 		/* free the temp derivedmesh */
 		(*other_dm)->needsFree = 1;
@@ -401,7 +401,7 @@ static Shard *do_output_shard_dm(DerivedMesh** output_dm, Shard *child, int num_
 		output_s->raw_volume = child->raw_volume;
 	}
 
-	BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
+	BKE_fracture_shard_center_centroid_area(output_s, output_s->centroid);
 
 	/* free the temp derivedmesh */
 	(*output_dm)->needsFree = 1;
@@ -687,7 +687,7 @@ static Shard *do_output_shard(BMesh* bm_parent, Shard *child, char uv_layer[64])
 		output_s->neighbor_count = child->neighbor_count;
 		output_s->neighbor_ids = MEM_mallocN(sizeof(int) * child->neighbor_count, __func__);
 		memcpy(output_s->neighbor_ids, child->neighbor_ids, sizeof(int) * child->neighbor_count);
-		BKE_fracture_shard_center_centroid(output_s, output_s->centroid);
+		BKE_fracture_shard_center_centroid_area(output_s, output_s->centroid);
 		copy_v3_v3(output_s->raw_centroid, child->raw_centroid);
 		output_s->raw_volume = child->raw_volume;
 

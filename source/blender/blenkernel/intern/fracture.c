@@ -561,7 +561,7 @@ Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, MEdge
 	shard->flag = SHARD_INTACT;
 	BKE_shard_calc_minmax(shard);
 
-	BKE_fracture_shard_center_centroid(shard, shard->centroid);
+	BKE_fracture_shard_center_centroid_area(shard, shard->centroid);
 	copy_v3_v3(shard->raw_centroid, shard->centroid);
 	zero_v3(shard->impact_loc);
 	shard->impact_size[0] = 1.0f;
