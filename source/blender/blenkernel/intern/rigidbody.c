@@ -5337,6 +5337,13 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 		Object *ob = go->ob;
 		FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 
+		if ((fmd && fmd->fracture_mode != MOD_FRACTURE_DYNAMIC && !(rbw->pointcache->flag & PTCACHE_BAKED)))
+		{
+			//also purge distortion cache here too (called from cache reset
+			fmd->distortion_cached = false;
+			fmd->refresh_autohide = true;
+		}
+
 		if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			//Scene *scene = fmd->modifier.scene;

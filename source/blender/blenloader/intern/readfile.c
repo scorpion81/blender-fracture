@@ -5294,8 +5294,6 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 	fmd->visible_mesh = NULL;
 	fmd->dm = NULL;
 	fmd->visible_mesh_cached = NULL;
-	fmd->shared_verts.first = NULL;
-	fmd->shared_verts.last = NULL;
 
 	/*HARDCODING this for now, until we can version it properly, say with 2.75 ? */
 	if (fd->fileversion < 275) {
@@ -5331,6 +5329,35 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 	if (!DNA_struct_elem_find(fd->filesdna, "FractureModifierData", "int", "constraint_type"))
 	{
 		fmd->constraint_type = RBC_TYPE_FIXED;
+	}
+
+	//if there is no cached distortion element, there is none, set false
+	if (!DNA_struct_elem_find(fd->filesdna, "FractureModifierData", "int", "distortion_cached"))
+	{
+		fmd->distortion_cached = false;
+	}
+
+	//instead of version number, check just for existence of shared verts in DNA
+	if (DNA_struct_elem_find(fd->filesdna, "FractureModifierData", "ListBase", "shared_verts"))
+	{
+		SharedVertGroup *vg;
+		link_list(fd, &fmd->shared_verts);
+		for (vg = fmd->shared_verts.first; vg; vg = vg->next)
+		{
+			link_list(fd, &vg->verts);
+		}
+
+		if (BLI_listbase_is_empty(&fmd->shared_verts))
+		{
+			fmd->distortion_cached = false;
+		}
+		else {
+			fmd->distortion_cached = true;
+		}
+	}
+	else {
+		fmd->shared_verts.first = NULL;
+		fmd->shared_verts.last = NULL;
 	}
 
 	if (fm == NULL || fmd->dm_group) {

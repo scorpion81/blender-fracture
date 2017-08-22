@@ -92,6 +92,25 @@ typedef struct FracMesh {
 	int last_expected_shards;
 } FracMesh;
 
+typedef struct SharedVertGroup {
+	struct SharedVertGroup *next, *prev;
+	float rest_co[3];
+	float delta[3];
+	int index, excession_frame;
+	int exceeded, deltas_set, moved;
+	char pad[4];
+	ListBase verts;
+} SharedVertGroup;
+
+typedef struct SharedVert {
+	struct SharedVert *next, *prev;
+	float rest_co[3];
+	float delta[3];
+	int index, excession_frame;
+	int exceeded, deltas_set, moved;
+	char pad[4];
+} SharedVert;
+
 #ifdef __cplusplus
 }
 #endif

@@ -1798,6 +1798,7 @@ typedef struct FractureModifierData {
 	int explo_shared;
 	int refresh_images;
 	int update_dynamic;
+	int distortion_cached;
 
 	/* internal values */
 	float max_vol;
@@ -1813,7 +1814,7 @@ typedef struct FractureModifierData {
 	short mat_ofs_intersect;
 	short mat_ofs_difference;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

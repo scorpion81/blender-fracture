@@ -1919,6 +1919,7 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 			MeshIsland *mi;
 			Shard *s;
 			RigidBodyShardCon *con;
+			SharedVertGroup *vg;
 			bool mode = fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED ||
 			            fmd->fracture_mode == MOD_FRACTURE_EXTERNAL;
 
@@ -1929,6 +1930,16 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 					if (mode)
 					{
 						writestruct(wd, DATA, FracMesh, 1, fm);
+
+						for (vg = fmd->shared_verts.first; vg; vg = vg->next)
+						{
+							SharedVert *sv;
+							writestruct(wd, DATA, SharedVertGroup, 1, vg);
+							for (sv = vg->verts.first; sv; sv = sv->next)
+							{
+								writestruct(wd, DATA, SharedVert, 1, sv);
+							}
+						}
 
 						for (s = fm->shard_map.first; s; s = s->next) {
 							write_shard(wd, s);

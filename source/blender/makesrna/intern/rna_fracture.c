@@ -344,6 +344,7 @@ static void rna_FractureModifier_autohide_dist_set(PointerRNA *ptr, float value)
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	rmd->autohide_dist = value;
 	rmd->refresh_autohide = true;
+	rmd->distortion_cached = false;
 }
 
 static void rna_FractureModifier_automerge_dist_set(PointerRNA *ptr, float value)
@@ -351,6 +352,7 @@ static void rna_FractureModifier_automerge_dist_set(PointerRNA *ptr, float value
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	rmd->automerge_dist = value;
 	rmd->refresh_autohide = true;
+	rmd->distortion_cached = false;
 }
 
 static void rna_FractureModifier_cluster_breaking_angle_set(PointerRNA *ptr, float value)
@@ -599,6 +601,18 @@ static void rna_FractureModifier_autohide_filter_group_set(PointerRNA* ptr, Poin
 	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
 	rmd->autohide_filter_group = value.data;
 	//rmd->reset_shards = true;
+}
+
+static void rna_FractureModifier_keep_distort_set(PointerRNA* ptr, int value)
+{
+	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
+	rmd->keep_distort = value;
+}
+
+static void rna_FractureModifier_do_merge_set(PointerRNA* ptr, int value)
+{
+	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
+	rmd->do_merge = value;
 }
 
 static void rna_Modifier_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
@@ -942,7 +956,7 @@ void RNA_def_fracture(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "automerge_dist", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "automerge_dist");
-	//RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_automerge_dist_set", NULL);
+	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_automerge_dist_set", NULL);
 	RNA_def_property_range(prop, 0.0f, 10.0f);
 	RNA_def_property_ui_text(prop, "Automerge Distance",
  "Distance between faces below which vertices of both faces should be merged; (costs performance, use with smooth objects and fix normals to better hide cracks)");
@@ -1298,14 +1312,14 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "keep_distort", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "keep_distort", false);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_FractureModifier_keep_distort_set");
 	RNA_def_property_ui_text(prop, "Keep Distortion", "Whether or not to make the distortion on torn merged shards persistent.");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update_and_keep");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "do_merge", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "do_merge", false);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_FractureModifier_do_merge_set");
 	RNA_def_property_ui_text(prop, "Perform Merge", "Whether or not to actually weld the prepared automerge geometry.");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update_and_keep");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "deform_angle", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "deform_angle");

@@ -98,23 +98,6 @@ static void reset_automerge(FractureModifierData *fmd);
 static void do_refresh_automerge(FractureModifierData *fmd);
 static void free_shards(FractureModifierData *fmd);
 
-typedef struct SharedVertGroup {
-	struct SharedVertGroup* next, *prev;
-	int index, excession_frame;
-	bool exceeded, deltas_set, moved;
-	float rest_co[3];
-	float delta[3];
-	ListBase verts;
-} SharedVertGroup;
-
-typedef struct SharedVert {
-	struct SharedVert* next, *prev;
-	int index, excession_frame;
-	bool exceeded, deltas_set, moved;
-	float rest_co[3];
-	float delta[3];
-} SharedVert;
-
 //TODO XXX Make BKE
 static FracMesh* copy_fracmesh(FracMesh* fm)
 {
@@ -265,6 +248,7 @@ static void initData(ModifierData *md)
 	fmd->pack_storage.last = NULL;
 
 	fmd->deform_weakening = 0.0f;
+	fmd->distortion_cached = false;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1804,6 +1788,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->deform_distance_weighted = rmd->deform_distance_weighted;
 	trmd->cluster_deform_distance = rmd->cluster_deform_distance;
 	trmd->deform_weakening = rmd->deform_weakening;
+	trmd->distortion_cached = rmd->distortion_cached;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
@@ -3236,24 +3221,20 @@ static void handle_vertex(FractureModifierData *fmd, BMesh* bm, SharedVert *sv, 
 	BMEdge *e = NULL;
 	Scene *sc = fmd->modifier.scene;
 	int frame = sc ? (int)BKE_scene_frame_get(sc) : 1;
-
 	BMVert *v = bm->vtable[sv->index];
+	bool exceeded = (frame >= sv->excession_frame) && (sv->excession_frame > -1);
 
 	if ((len_squared_v3v3(co, v->co) > (dist * dist)))
 	{
 		sv->moved = true;
 	}
 
-	if ((len_squared_v3v3(co, v->co) <= fmd->automerge_dist * fmd->automerge_dist))
+	if ((len_squared_v3v3(co, v->co) <= fmd->automerge_dist * fmd->automerge_dist) && !exceeded)
 	{
-		if (!sv->exceeded || frame < sv->excession_frame)
-		{
-			copy_v3_v3(v->co, co);
-			copy_v3_v3(v->no, no);
-		}
+		copy_v3_v3(v->co, co);
+		copy_v3_v3(v->no, no);
 	}
 	else {
-		sv->exceeded = true;
 
 		if (sv->excession_frame == -1)
 		{
@@ -3267,7 +3248,7 @@ static void handle_vertex(FractureModifierData *fmd, BMesh* bm, SharedVert *sv, 
 		}
 	}
 
-	if (sv->exceeded)
+	if (exceeded)
 	{
 		BMIter iter;
 		if (do_calc_delta && sv->deltas_set)
@@ -3286,6 +3267,8 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 {
 	SharedVert *sv;
 	SharedVertGroup *vg;
+	Scene *sc = fmd->modifier.scene;
+	int frame = sc ? BKE_scene_frame_get(sc) : 1;
 
 	int cd_edge_crease_offset = CustomData_get_offset(&bm->edata, CD_CREASE);
 	if (cd_edge_crease_offset == -1) {
@@ -3305,7 +3288,9 @@ static void prepare_automerge(FractureModifierData *fmd, BMesh *bm)
 
 		for (sv = vg->verts.first; sv; sv = sv->next)
 		{
-			if (!sv->exceeded) {
+			bool exceeded = (frame >= sv->excession_frame) && (sv->excession_frame > -1);
+			if (!exceeded)
+			{
 				v2 = bm->vtable[sv->index];
 				add_v3_v3(co, v2->co);
 				add_v3_v3(no, v2->no);
@@ -4113,13 +4098,16 @@ static void free_shared_vert_group(SharedVertGroup *vg)
 
 static void free_shared_verts(ListBase* lb)
 {
-	SharedVertGroup *vg;
+	SharedVertGroup *vg = lb->first;
 
-	while (lb->first)
+	while (vg)
 	{
-		vg = lb->first;
+		SharedVertGroup *next;
+		next = vg->next;
+
 		BLI_remlink(lb, vg);
 		free_shared_vert_group(vg);
+		vg = next;
 	}
 
 	lb->first = NULL;
@@ -4128,6 +4116,7 @@ static void free_shared_verts(ListBase* lb)
 
 static void do_refresh_automerge(FractureModifierData* fmd)
 {
+	printf("GAH, refreshing automerge\n");
 	free_shared_verts(&fmd->shared_verts);
 
 	/* in case of re-using existing islands this one might become invalid for automerge, so force fallback */
@@ -4292,6 +4281,7 @@ static void do_island_index_map(FractureModifierData *fmd)
 	}
 }
 
+#if 0
 static void do_reset_automerge(FractureModifierData* fmd)
 {
 	if (fmd->modifier.scene && fmd->modifier.scene->rigidbody_world) {
@@ -4304,6 +4294,7 @@ static void do_reset_automerge(FractureModifierData* fmd)
 		}
 	}
 }
+#endif
 
 
 static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm, char names [][66], int count)
@@ -4368,12 +4359,12 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 	if (fmd->refresh_autohide) {
 		do_refresh_autohide(fmd, ob);
 
-		if (fmd->autohide_dist > 0) {
+		if (fmd->autohide_dist > 0 && !fmd->distortion_cached) {
 			do_refresh_automerge(fmd);
 		}
 	}
 
-	do_reset_automerge(fmd);
+//	do_reset_automerge(fmd);
 
 	if (fmd->refresh_constraints) {
 		do_island_index_map(fmd);
@@ -5022,14 +5013,17 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 					make_face_pairs(fmd, fmd->dm, ob);
 
 
-					free_shared_verts(&fmd->shared_verts);
-					make_shared_vert_groups(fmd, fmd->dm, &fmd->shared_verts);
+					if (!fmd->distortion_cached)
+					{
+						free_shared_verts(&fmd->shared_verts);
+						make_shared_vert_groups(fmd, fmd->dm, &fmd->shared_verts);
+					}
 				}
 
 				fmd->refresh_autohide = false;
 			}
 
-			do_reset_automerge(fmd);
+//			do_reset_automerge(fmd);
 
 			if (fmd->autohide_dist > 0 || fmd->automerge_dist > 0)
 			{
