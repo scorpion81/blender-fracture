@@ -440,7 +440,13 @@ void TickDiscreteDynamicsWorld::debugDrawWorld(draw_string str_callback)
 static const char* val_to_str(rbConstraint* con, int precision, int *length)
 {
 	std::ostringstream oss;
-	oss << std::fixed << std::setprecision(precision) << con->id << ":" << con->con->getAppliedImpulse() << ":" << con->con->getBreakingImpulseThreshold();
+	btScalar threshold = con->con->getBreakingImpulseThreshold();
+	if (threshold == FLT_MAX)
+	{
+		threshold = -1;
+	}
+
+	oss << std::fixed << std::setprecision(precision) << con->id << ":" << con->con->getAppliedImpulse() << ":" << threshold;
 	*length = oss.str().length();
 	const char *ret = strdup(oss.str().c_str());
 	return ret;

@@ -846,25 +846,24 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, Object *target
 	if (target && target->rigidbody_object)
 	{
 		rbo = BKE_rigidbody_copy_object(target);
-		//mat4_to_loc_quat(rbo->pos, rbo->orn, target->obmat);
-
+		mat4_to_loc_quat(rbo->pos, rbo->orn, target->obmat);
 	}
 	else
 	{
 		/* regular FM case */
 		rbo = BKE_rigidbody_copy_object(ob);
 		rbo->type = mi->ground_weight > 0.01f ? RBO_TYPE_PASSIVE : RBO_TYPE_ACTIVE;
+
+		/* set initial transform */
+		mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
+		mat4_to_size(size, ob->obmat);
+
+		//add initial "offset" (centroid), maybe subtract ob->obmat ?? (not sure)
+		copy_v3_v3(centr, mi->centroid);
+		mul_v3_v3(centr, size);
+		mul_qt_v3(rbo->orn, centr);
+		add_v3_v3(rbo->pos, centr);
 	}
-
-	/* set initial transform */
-	mat4_to_loc_quat(rbo->pos, rbo->orn, ob->obmat);
-	mat4_to_size(size, ob->obmat);
-
-	//add initial "offset" (centroid), maybe subtract ob->obmat ?? (not sure)
-	copy_v3_v3(centr, mi->centroid);
-	mul_v3_v3(centr, size);
-	mul_qt_v3(rbo->orn, centr);
-	add_v3_v3(rbo->pos, centr);
 
 	/* return this object */
 	return rbo;
@@ -5198,25 +5197,28 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 					mul_v3_v3(centr, size);
 					mul_qt_v3(rbo->orn, centr);
 					add_v3_v3(rbo->pos, centr);
+
+					if (mode)
+					{
+						mul_qt_qtqt(rbo->orn, rbo->orn, mi->rot);
+					}
 				}
 
-				//frame = (int)BKE_scene_frame_get(md->scene);
-				//print_v3("RBO POS:", rbo->pos);
-#if 0
-				if (mode)
-				{
-					float rot[4];
-					copy_qt_qt(rot, mi->rot);
-					mul_qt_qtqt(rot, rot, rbo->orn);
-					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, fmd, (int)ctime);
-				}
-				else
-				{
-					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, fmd, (int)ctime);
-				}
-#endif
 				if ((ob->rigidbody_object->type == RBO_TYPE_ACTIVE) && (rbo->type == RBO_TYPE_ACTIVE || rbo->flag & RBO_FLAG_KINEMATIC)) {
-					BKE_rigidbody_update_cell(mi, ob, rbo->pos, rbo->orn, fmd, (int)ctime);
+
+					float quat[4];
+
+					if (mode)
+					{
+						float iquat[4];
+						invert_qt_qt(iquat, mi->rot);
+						mul_qt_qtqt(quat, rbo->orn, iquat);
+					}
+					else {
+						copy_qt_qt(quat, rbo->orn);
+					}
+
+					BKE_rigidbody_update_cell(mi, ob, rbo->pos, quat, fmd, (int)ctime);
 				}
 			}
 

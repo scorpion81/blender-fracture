@@ -2780,7 +2780,7 @@ static void fracture_update_shards(FractureModifierData *fmd, Shard *s)
 	fm->shard_count++;
 }
 
-static MeshIsland* fracture_shard_to_island(FractureModifierData *fmd, Shard *s, int vertstart)
+static MeshIsland* fracture_shard_to_island(FractureModifierData *fmd, Shard *s, int vertstart, float quat[4])
 {
 	MeshIsland *mi;
 	int k = 0, j = 0, totvert;
@@ -2852,6 +2852,8 @@ static MeshIsland* fracture_shard_to_island(FractureModifierData *fmd, Shard *s,
 
 		/* then eliminate centroid in vertex coords*/
 		sub_v3_v3(mv->co, s->centroid);
+
+		mul_qt_v3(quat, mv->co);
 	}
 
 	copy_v3_v3(mi->centroid, s->centroid);
@@ -3160,7 +3162,7 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 	Shard *s;
 	int vertstart = 0;
 	short totcol = 0, totdef = 0;
-	float loc[3], quat[4];
+	float loc[3], quat[4], iquat[4];
 
 	if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL || own->type != OB_MESH || !own->data)
 		return NULL;
@@ -3180,7 +3182,8 @@ MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own,
 	fmd->frac_mesh->progress_counter += s->totvert;
 
 	//hrm need to rebuild ALL islands since vertex refs are bonkers now after mesh has changed
-	mi = fracture_shard_to_island(fmd, s, vertstart);
+	invert_qt_qt(iquat, quat);
+	mi = fracture_shard_to_island(fmd, s, vertstart, iquat);
 
 	copy_qt_qt(mi->rot, quat);
 	copy_v3_v3(mi->centroid, loc);
