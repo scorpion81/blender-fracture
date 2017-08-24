@@ -2720,6 +2720,10 @@ static Object* do_convert_meshisland_to_object(MeshIsland *mi, Scene* scene, Gro
 			add_v3_v3(loc, mi->rigidbody->pos);
 			copy_v3_v3(size, s->impact_size);
 
+			if (mode) {
+				mul_qt_qtqt(rot, rot, mi->rot);
+			}
+
 			copy_v3_v3(ob_new->size, size);
 			copy_v3_v3(ob_new->loc, loc);
 			copy_qt_qt(ob_new->quat, rot);
@@ -3326,6 +3330,10 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 						rot[2] = mi->rots[x*4+2];
 						rot[3] = mi->rots[x*4+3];
 
+						if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL) {
+							mul_qt_qtqt(rot, rot, mi->rot);
+						}
+
 						if (i >= start + 1)
 						{
 							//taken from rigidbody.py
@@ -3334,6 +3342,7 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 							//	obj.rotation_quaternion = -q2
 							//else:
 							//	obj.rotation_quaternion = q2
+
 							if (dot_qtqt(prevrot, rot) < 0.0) {
 								negate_v4(rot);
 							}
@@ -3469,6 +3478,11 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 		add_v3_v3(ob_new->loc, diff);
 
 		copy_qt_qt(ob_new->quat, ob->quat);
+
+		if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL) {
+			mul_qt_qtqt(ob_new->quat, ob_new->quat, mi->rot);
+		}
+
 		copy_v3_v3(ob_new->rot, ob->rot);
 		copy_v3_v3(ob_new->size, ob->size);
 	}
