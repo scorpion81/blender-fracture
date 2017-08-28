@@ -2453,6 +2453,11 @@ static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle, b
 
 	if (exact)
 	{
+		float iquat1[4], iquat2[4];
+		invert_qt_qt(iquat1, con->mi1->rot);
+		invert_qt_qt(iquat2, con->mi2->rot);
+		mul_qt_qtqt(q1, q1, iquat1);
+		mul_qt_qtqt(q2, q2, iquat2);
 		rotation_between_quats_to_quat(qdiff, q1, q2);
 		normalize_qt(qdiff);
 		*angle = 2.0f * saacos(qdiff[0]);
