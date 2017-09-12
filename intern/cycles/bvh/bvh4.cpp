@@ -242,21 +242,23 @@ void BVH4::pack_unaligned_node(int idx,
 		 * so kernel might safely assume there are always 4 child nodes.
 		 */
 
-		data[1][i] = 1.0f;
+		const float inf = FLT_MAX / 1000.0f;
+
+		data[1][i] = inf;
 		data[2][i] = 0.0f;
 		data[3][i] = 0.0f;
 
 		data[4][i] = 0.0f;
-		data[5][i] = 0.0f;
+		data[5][i] = inf;
 		data[6][i] = 0.0f;
 
 		data[7][i] = 0.0f;
 		data[8][i] = 0.0f;
-		data[9][i] = 0.0f;
+		data[9][i] = inf;
 
-		data[10][i] = -FLT_MAX;
-		data[11][i] = -FLT_MAX;
-		data[12][i] = -FLT_MAX;
+		data[10][i] = -inf;
+		data[11][i] = -inf;
+		data[12][i] = -inf;
 
 		data[13][i] = __int_as_float(0);
 	}
