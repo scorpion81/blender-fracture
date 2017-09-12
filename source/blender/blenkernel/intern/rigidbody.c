@@ -292,124 +292,6 @@ static DerivedMesh *rigidbody_get_mesh(Object *ob)
 	}
 }
 
-/* create collision shape of mesh - convex hull */
-static rbCollisionShape *rigidbody_get_shape_convexhull_from_mesh(Object *ob, float margin, bool *can_embed)
-{
-	rbCollisionShape *shape = NULL;
-	DerivedMesh *dm = NULL;
-	MVert *mvert = NULL;
-	int totvert = 0;
-
-	if (ob->type == OB_MESH && ob->data) {
-		dm = rigidbody_get_mesh(ob);
-		mvert   = (dm) ? dm->getVertArray(dm) : NULL;
-		totvert = (dm) ? dm->getNumVerts(dm) : 0;
-	}
-	else {
-		printf("ERROR: cannot make Convex Hull collision shape for non-Mesh object\n");
-	}
-
-	if (totvert) {
-		shape = RB_shape_new_convex_hull((float *)mvert, sizeof(MVert), totvert, margin, can_embed);
-	}
-	else {
-		printf("ERROR: no vertices to define Convex Hull collision shape with\n");
-	}
-
-	if (dm && ob->rigidbody_object->mesh_source == RBO_MESH_BASE)
-		dm->release(dm);
-
-	return shape;
-}
-
-/* create collision shape of mesh - triangulated mesh
- * returns NULL if creation fails.
- */
-static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh(Object *ob)
-{
-	rbCollisionShape *shape = NULL;
-
-	if (ob->type == OB_MESH) {
-		DerivedMesh *dm = NULL;
-		MVert *mvert;
-		const MLoopTri *looptri;
-		int totvert;
-		int tottri;
-		const MLoop *mloop;
-		
-		dm = rigidbody_get_mesh(ob);
-
-		/* ensure mesh validity, then grab data */
-		if (dm == NULL)
-			return NULL;
-
-		mvert   = dm->getVertArray(dm);
-		totvert = dm->getNumVerts(dm);
-		looptri = dm->getLoopTriArray(dm);
-		tottri = dm->getNumLoopTri(dm);
-		mloop = dm->getLoopArray(dm);
-
-		/* sanity checking - potential case when no data will be present */
-		if ((totvert == 0) || (tottri == 0)) {
-			printf("WARNING: no geometry data converted for Mesh Collision Shape (ob = %s)\n", ob->id.name + 2);
-		}
-		else {
-			rbMeshData *mdata;
-			int i;
-
-			/* init mesh data for collision shape */
-			mdata = RB_trimesh_data_new(tottri, totvert);
-			
-			RB_trimesh_add_vertices(mdata, (float *)mvert, totvert, sizeof(MVert));
-
-			/* loop over all faces, adding them as triangles to the collision shape
-			 * (so for some faces, more than triangle will get added)
-			 */
-			if (mvert && looptri) {
-				for (i = 0; i < tottri; i++) {
-					/* add first triangle - verts 1,2,3 */
-					const MLoopTri *lt = &looptri[i];
-					int vtri[3];
-
-					vtri[0] = mloop[lt->tri[0]].v;
-					vtri[1] = mloop[lt->tri[1]].v;
-					vtri[2] = mloop[lt->tri[2]].v;
-
-					RB_trimesh_add_triangle_indices(mdata, i, UNPACK3(vtri));
-				}
-			}
-			
-			RB_trimesh_finish(mdata);
-
-			/* construct collision shape
-			 *
-			 * These have been chosen to get better speed/accuracy tradeoffs with regards
-			 * to limitations of each:
-			 *    - BVH-Triangle Mesh: for passive objects only. Despite having greater
-			 *                         speed/accuracy, they cannot be used for moving objects.
-			 *    - GImpact Mesh:      for active objects. These are slower and less stable,
-			 *                         but are more flexible for general usage.
-			 */
-			if (ob->rigidbody_object->type == RBO_TYPE_PASSIVE) {
-				shape = RB_shape_new_trimesh(mdata);
-			}
-			else {
-				shape = RB_shape_new_gimpact_mesh(mdata);
-			}
-		}
-
-		/* cleanup temp data */
-		if (ob->rigidbody_object->mesh_source == RBO_MESH_BASE) {
-			dm->release(dm);
-		}
-	}
-	else {
-		printf("ERROR: cannot make Triangular Mesh collision shape for non-Mesh object\n");
-	}
-
-	return shape;
-}
-
 /* Create new physics sim collision shape for object and store it,
  * or remove the existing one first and replace...
  */
@@ -487,7 +369,7 @@ static void rigidbody_validate_sim_shape(Object *ob, bool rebuild)
 			if (!(rbo->flag & RBO_FLAG_USE_MARGIN) && has_volume)
 				hull_margin = 0.04f;
 			if (ob->type == OB_MESH && ob->data) {
-			new_shape = rigidbody_get_shape_convexhull_from_mesh(ob, hull_margin, &can_embed);
+				new_shape = rigidbody_get_shape_convexhull_from_mesh((Mesh *)ob->data, hull_margin, &can_embed);
 			}
 			else {
 				printf("ERROR: cannot make Convex Hull collision shape for non-Mesh object\n");
@@ -511,107 +393,6 @@ static void rigidbody_validate_sim_shape(Object *ob, bool rebuild)
 		rbo->physics_shape = new_shape;
 		RB_shape_set_margin(rbo->physics_shape, RBO_GET_MARGIN(rbo));
 	}
-}
-
-/* --------------------- */
-
-/* helper function to calculate volume of rigidbody object */
-// TODO: allow a parameter to specify method used to calculate this?
-void BKE_rigidbody_calc_volume(Object *ob, float *r_vol)
-{
-	RigidBodyOb *rbo = ob->rigidbody_object;
-
-	float size[3]  = {1.0f, 1.0f, 1.0f};
-	float radius = 1.0f;
-	float height = 1.0f;
-
-	float volume = 0.0f;
-
-	/* if automatically determining dimensions, use the Object's boundbox
-	 *	- assume that all quadrics are standing upright on local z-axis
-	 *	- assume even distribution of mass around the Object's pivot
-	 *	  (i.e. Object pivot is centralized in boundbox)
-	 *	- boundbox gives full width
-	 */
-	// XXX: all dimensions are auto-determined now... later can add stored settings for this
-	BKE_object_dimensions_get(ob, size);
-
-	if (ELEM(rbo->shape, RB_SHAPE_CAPSULE, RB_SHAPE_CYLINDER, RB_SHAPE_CONE)) {
-		/* take radius as largest x/y dimension, and height as z-dimension */
-		radius = MAX2(size[0], size[1]) * 0.5f;
-		height = size[2];
-	}
-	else if (rbo->shape == RB_SHAPE_SPHERE) {
-		/* take radius to the largest dimension to try and encompass everything */
-		radius = max_fff(size[0], size[1], size[2]) * 0.5f;
-	}
-
-	/* calculate volume as appropriate  */
-	switch (rbo->shape) {
-		case RB_SHAPE_BOX:
-			volume = size[0] * size[1] * size[2];
-			break;
-
-		case RB_SHAPE_SPHERE:
-			volume = 4.0f / 3.0f * (float)M_PI * radius * radius * radius;
-			break;
-
-		/* for now, assume that capsule is close enough to a cylinder... */
-		case RB_SHAPE_CAPSULE:
-		case RB_SHAPE_CYLINDER:
-			volume = (float)M_PI * radius * radius * height;
-			break;
-
-		case RB_SHAPE_CONE:
-			volume = (float)M_PI / 3.0f * radius * radius * height;
-			break;
-
-		case RB_SHAPE_CONVEXH:
-		case RB_SHAPE_TRIMESH:
-		{
-			if (ob->type == OB_MESH) {
-				DerivedMesh *dm = rigidbody_get_mesh(ob);
-				MVert *mvert;
-				const MLoopTri *lt = NULL;
-				int totvert, tottri = 0;
-				const MLoop *mloop = NULL;
-				
-				/* ensure mesh validity, then grab data */
-				if (dm == NULL)
-					return;
-			
-				mvert   = dm->getVertArray(dm);
-				totvert = dm->getNumVerts(dm);
-				lt = dm->getLoopTriArray(dm);
-				tottri = dm->getNumLoopTri(dm);
-				mloop = dm->getLoopArray(dm);
-				
-				if (totvert > 0 && tottri > 0) {
-					BKE_mesh_calc_volume(mvert, totvert, lt, tottri, mloop, &volume, NULL);
-				}
-				
-				/* cleanup temp data */
-				if (ob->rigidbody_object->mesh_source == RBO_MESH_BASE) {
-					dm->release(dm);
-				}
-			}
-			else {
-				/* rough estimate from boundbox as fallback */
-				/* XXX could implement other types of geometry here (curves, etc.) */
-				volume = size[0] * size[1] * size[2];
-			}
-			break;
-		}
-
-#if 0 // XXX: not defined yet
-		case RB_SHAPE_COMPOUND:
-			volume = 0.0f;
-			break;
-#endif
-	}
-
-	/* return the volume calculated */
-	if (r_vol) *r_vol = volume;
 }
 
 void BKE_rigidbody_calc_center_of_mass(Object *ob, float r_center[3])
@@ -2214,7 +1995,7 @@ static void rigidbody_update_simulation_post_step(RigidBodyWorld *rbw)
 
 		/* handle regular rigidbodies */
 		if (ob && ob->rigidbody_object && !modFound) {
-			RigidBodyOb *rbo = ob->rigidbody_object;
+			rbo = ob->rigidbody_object;
 			/* reset kinematic state for transformed objects */
 			if (rbo && (ob->flag & SELECT) && (G.moving & G_TRANSFORM_OBJ)) {
 				RB_body_set_kinematic_state(rbo->physics_object, rbo->flag & RBO_FLAG_KINEMATIC || rbo->flag & RBO_FLAG_DISABLED);
@@ -2921,7 +2702,7 @@ static float box_volume(float size[3])
 }
 
 /* helper function to calculate volume of rigidbody object */
-float BKE_rigidbody_calc_volume(DerivedMesh *dm, RigidBodyOb *rbo, Object* ob)
+float BKE_rigidbody_calc_volume_dm(DerivedMesh *dm, RigidBodyOb *rbo, Object* ob)
 {
 	float loc[3]  = {0.0f, 0.0f, 0.0f};
 	float size[3]  = {1.0f, 1.0f, 1.0f};
@@ -3029,7 +2810,7 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland *mi, DerivedMesh *orig
 		if (ob->type == OB_MESH) {
 			/* if we have a mesh, determine its volume */
 			dm_ob = CDDM_from_mesh(ob->data);
-			vol_ob = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object, ob);
+			vol_ob = BKE_rigidbody_calc_volume_dm(dm_ob, ob->rigidbody_object, ob);
 		}
 		else {
 			/* else get object boundbox as last resort */
@@ -3040,14 +2821,14 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland *mi, DerivedMesh *orig
 	}
 	else
 	{
-		vol_ob = BKE_rigidbody_calc_volume(dm_ob, ob->rigidbody_object, ob);
+		vol_ob = BKE_rigidbody_calc_volume_dm(dm_ob, ob->rigidbody_object, ob);
 	}
 
 	mass_ob = ob->rigidbody_object->mass;
 
 	if (vol_ob > 0) {
 		dm_mi = mi->physics_mesh;
-		vol_mi = BKE_rigidbody_calc_volume(dm_mi, mi->rigidbody, NULL);
+		vol_mi = BKE_rigidbody_calc_volume_dm(dm_mi, mi->rigidbody, NULL);
 		mass_mi = (vol_mi / vol_ob) * mass_ob;
 		mi->rigidbody->mass = mass_mi;
 	}
@@ -3314,7 +3095,7 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh_shard(MeshIsland 
 		if (dm == NULL)
 			return NULL;
 
-		DM_ensure_looptri(dm);
+		//DM_ensure_looptri(dm);
 
 		mvert   = dm->getVertArray(dm);
 		totvert = dm->getNumVerts(dm);

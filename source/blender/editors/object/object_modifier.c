@@ -3534,7 +3534,7 @@ static bool convert_modifier_to_keyframes(FractureModifierData* fmd, Group* gr, 
 #endif
 
 	parent = BKE_object_add(G.main, scene, OB_EMPTY, name);
-	BKE_mesh_center_centroid(ob->data, obloc);
+	BKE_mesh_center_of_surface(ob->data, obloc);
 	copy_v3_v3(parent->loc, ob->loc);
 	sub_v3_v3v3(diff, obloc, parent->loc);
 	//MEM_freeN((void*)name);
