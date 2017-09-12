@@ -2426,7 +2426,10 @@ static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), Mes
 					con->flag |= RBC_FLAG_PLASTIC_ACTIVE;
 				}
 
-				RB_constraint_set_enabled(con->physics_constraint, false);
+				if (con->breaking_threshold >= 0)
+				{
+					RB_constraint_set_enabled(con->physics_constraint, false);
+				}
 			}
 		}
 	}
