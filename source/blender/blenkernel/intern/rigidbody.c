@@ -1823,6 +1823,11 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 	/* NOTE: no other settings need to be explicitly updated here,
 	 * since RNA setters take care of the rest :)
 	 */
+
+	// per-object constant linear force //
+	if (rbo->type == RBO_TYPE_ACTIVE){
+		RB_body_apply_central_force(rbo->physics_object, rbo->apply_force);
+	}
 }
 
 /* Updates and validates world, bodies and shapes.

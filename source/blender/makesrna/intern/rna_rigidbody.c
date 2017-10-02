@@ -1313,6 +1313,12 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "rotation", PROP_FLOAT, PROP_QUATERNION);
 	RNA_def_property_float_sdna(prop, NULL, "orn");
 	RNA_def_property_ui_text(prop, "Rotation", "Quaternion rotation of the rigidbody object");
+	//directly apply force
+	prop = RNA_def_property(srna, "apply_force", PROP_FLOAT, PROP_TRANSLATION);
+	RNA_def_property_float_sdna(prop, NULL, "apply_force");
+	RNA_def_property_ui_text(prop, "Linear Force", "linear force applied to the rigidbody object");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_reset");
+
 }
 
 static void rna_def_rigidbody_constraint(BlenderRNA *brna)
