@@ -2547,15 +2547,21 @@ static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle, b
 	}
 }
 
-void BKE_rigidbody_start_dist_angle(RigidBodyShardCon *con, bool exact)
+void BKE_rigidbody_start_dist_angle(RigidBodyShardCon *con, bool exact, bool both)
 {
 	/* store starting angle and distance per constraint*/
 	float dist, angle;
 	calc_dist_angle(con, &dist, &angle, exact);
 
-	//printf("Start Values(dist, angle) %f %f %f %f\n", con->start_dist, con->start_angle, dist, angle);
-	con->start_dist = dist;
-	con->start_angle = angle;
+	if (both)
+	{
+		con->start_dist = dist;
+		con->start_angle = angle;
+		//printf("Start Values(dist, angle) %f %f %f %f\n", con->start_dist, con->start_angle, dist, angle);
+	}
+
+	con->start_dist_deform = dist;
+	con->start_angle_deform = angle;
 }
 
 float BKE_rigidbody_calc_max_con_mass(Object *ob)
@@ -4648,17 +4654,17 @@ static void test_deactivate_rigidbody(RigidBodyOb *rbo)
 
 static void deform_constraint(FractureModifierData *fmd, Object *ob, RigidBodyShardCon* rbsc, RigidBodyWorld *rbw)
 {
-	float thresh;
+	float thresh = RB_constraint_get_breaking_threshold(rbsc->physics_constraint);
 	float weakening = 1.0f - fmd->deform_weakening;
 
 	RB_dworld_remove_constraint(rbw->physics_world, rbsc->physics_constraint);
 
-	BKE_rigidbody_start_dist_angle(rbsc, true);
+	BKE_rigidbody_start_dist_angle(rbsc, true, false);
 	//rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
 	BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
 	//set_constraint_index(fmd, rbsc);
 
-	thresh = RB_constraint_get_breaking_threshold(rbsc->physics_constraint);
+	//thresh = RB_constraint_get_breaking_threshold(rbsc->physics_constraint);
 	RB_constraint_set_breaking_threshold(rbsc->physics_constraint, thresh * weakening);
 
 	RB_body_deactivate(rbsc->mi1->rigidbody->physics_object);
@@ -4893,8 +4899,8 @@ static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, Rigid
 		if (rbsc->physics_constraint && RB_constraint_is_enabled(rbsc->physics_constraint))
 		{
 			calc_dist_angle(rbsc, &dist, &angle, false);
-			anglediff = fabs(angle - rbsc->start_angle);
-			distdiff = fabs(dist - rbsc->start_dist);
+			anglediff = fabs(angle - rbsc->start_angle_deform);
+			distdiff = fabs(dist - rbsc->start_dist_deform);
 
 			/* handle deform */
 			handle_deform_angle(fmd, ob, rbsc, rbw, anglediff, weight, deform_angle);
@@ -5107,7 +5113,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				/* World has been rebuilt so rebuild constraint */
 				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
 				BKE_rigidbody_start_dist_angle(rbsc, fmd->fracture_mode == MOD_FRACTURE_EXTERNAL ||
-				                               (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->is_dynamic_external));
+				                               (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->is_dynamic_external), true);
 				//TODO ensure evaluation on transform change too
 			}
 

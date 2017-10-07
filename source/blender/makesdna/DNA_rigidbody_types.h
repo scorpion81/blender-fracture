@@ -313,6 +313,8 @@ typedef struct RigidBodyShardCon {
 	float breaking_dist;
 	float plastic_angle;
 	float plastic_dist;
+	float start_angle_deform;
+	float start_dist_deform;
 
 	float orn[4];
 	float pos[3];
