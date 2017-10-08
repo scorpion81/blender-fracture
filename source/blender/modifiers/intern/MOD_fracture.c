@@ -1405,7 +1405,7 @@ static short do_materials(FractureModifierData *fmd, Object* obj)
 		BLI_strncpy(name, obj->id.name + 2, strlen(obj->id.name));
 		if (*totmat == 0)
 		{
-			/*create both materials*/
+			/*create both materials if no material is present*/
 			Material* mat_inner;
 			char *matname = BLI_strdupcat(name, "_Outer");
 			Material* mat_outer = find_material(matname);
@@ -1423,9 +1423,11 @@ static short do_materials(FractureModifierData *fmd, Object* obj)
 			matname = NULL;
 
 			fmd->inner_material = mat_inner;
+			mat_index = 1;
 		}
-		else if (*totmat == 1)
+		else if (*totmat > 0)
 		{
+			/* append inner material to the stack if materials are present */
 			char* matname = BLI_strdupcat(name, "_Inner");
 			Material* mat_inner = find_material(matname);
 			BKE_object_material_slot_add(obj);
@@ -1434,15 +1436,8 @@ static short do_materials(FractureModifierData *fmd, Object* obj)
 			matname = NULL;
 
 			fmd->inner_material = mat_inner;
+			mat_index = *totmat;
 		}
-		else /*use 2nd material slot*/
-		{
-			Material* mat_inner = give_current_material(obj, 2);
-
-			fmd->inner_material = mat_inner;
-		}
-
-		mat_index = 2;
 	}
 
 	return mat_index;
