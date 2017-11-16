@@ -4513,14 +4513,16 @@ static void activateCluster(MeshIsland *mi, int particle_index, RigidBodyWorld *
 	for (i = 0; i < mi->participating_constraint_count; i++)
 	{
 		con = mi->participating_constraints[i];
-		if (con->physics_constraint && con->mi1->particle_index == particle_index || particle_index == -1) {
+		if (con->physics_constraint && con->mi1->particle_index == particle_index) /*|| particle_index == -1)*/
+		{
 			if (con->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) {
 				activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
 				activateCluster(con->mi1, particle_index, rbw, ob);
 			}
 		}
 
-		if (con->physics_constraint && con->mi2->particle_index == particle_index || particle_index == -1) {
+		if (con->physics_constraint && con->mi2->particle_index == particle_index) /*|| particle_index == -1)*/
+		{
 			if (con->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) {
 				activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
 				activateCluster(con->mi2, particle_index, rbw, ob);
@@ -5383,7 +5385,7 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 			triggered = go->ob->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION;
 
 			FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
-			if (fmd && kinematic && triggered)
+			if (fmd && triggered)
 			{
 				MeshIsland* mi;
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
@@ -5391,7 +5393,15 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 					if (mi->rigidbody)
 					{
 						mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC_REBUILD;
-						mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
+						if (kinematic)
+						{
+							mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
+						}
+						else
+						{
+							//might happen if being hit by a stop trigger, remove kinematic here in this case
+							mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC;
+						}
 						mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 						did_it = true;
 					}
