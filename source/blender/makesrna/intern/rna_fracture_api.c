@@ -561,7 +561,7 @@ static void rna_MeshIsland_cluster_index_set(PointerRNA *ptr, int value)
 
 		if (con->mi1 == mi)
 		{
-			if (con->mi2->particle_index != mi->particle_index)
+			if (con->mi2->particle_index == mi->particle_index)
 			{
 				con->breaking_threshold = fmd->cluster_breaking_threshold; //TODO check against original constraint fn
 			}
@@ -577,7 +577,7 @@ static void rna_MeshIsland_cluster_index_set(PointerRNA *ptr, int value)
 		}
 		else if (con->mi2 == mi)
 		{
-			if (con->mi1->particle_index != mi->particle_index)
+			if (con->mi1->particle_index == mi->particle_index)
 			{
 				con->breaking_threshold = fmd->cluster_breaking_threshold; //TODO check against original constraint fn
 			}
