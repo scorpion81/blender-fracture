@@ -544,6 +544,95 @@ static char *rna_MeshConstraint_path(PointerRNA *ptr)
 	}
 }
 
+static void rna_MeshIsland_cluster_index_set(PointerRNA *ptr, int value)
+{
+	MeshIsland *mi = (MeshIsland *)ptr->data;
+	Object* ob = ptr->id.data;
+	FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
+	int i = 0;
+
+	mi->particle_index = value;
+
+#ifdef WITH_BULLET
+	for (i = 0; i < mi->participating_constraint_count; i++)
+	{
+		RigidBodyShardCon* con = mi->participating_constraints[i];
+		float thresh = fmd->breaking_threshold;
+
+		if (con->mi1 == mi)
+		{
+			if (con->mi2->particle_index != mi->particle_index)
+			{
+				con->breaking_threshold = fmd->cluster_breaking_threshold; //TODO check against original constraint fn
+			}
+			else {
+				if (fmd->thresh_defgrp_name[0]) {
+					/* modify maximum threshold by minimum weight */
+					con->breaking_threshold = thresh * MIN2(con->mi1->thresh_weight, con->mi2->thresh_weight);
+				}
+				else {
+					con->breaking_threshold = thresh;
+				}
+			}
+		}
+		else if (con->mi2 == mi)
+		{
+			if (con->mi1->particle_index != mi->particle_index)
+			{
+				con->breaking_threshold = fmd->cluster_breaking_threshold; //TODO check against original constraint fn
+			}
+			else {
+				if (fmd->thresh_defgrp_name[0]) {
+					/* modify maximum threshold by minimum weight */
+					con->breaking_threshold = thresh * MIN2(con->mi1->thresh_weight, con->mi2->thresh_weight);
+				}
+				else {
+					con->breaking_threshold = thresh;
+				}
+			}
+		}
+	}
+#endif
+}
+
+static void rna_MeshIslandVertexGroup_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
+{
+	FractureModifierData *fmd = (FractureModifierData*)ptr->data;
+	DerivedMesh* dm = fmd->visible_mesh_cached;
+
+	if (dm)
+	{
+		MDeformVert *dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
+		int totvert = dm->getNumVerts(dm);
+		rna_iterator_array_begin(iter, (void *)dvert, sizeof(MDeformVert), totvert, 0, NULL);
+	}
+	else {
+		rna_iterator_array_begin(iter, NULL, 0, 0, 0, NULL);
+	}
+}
+
+static void rna_MeshIslandVertexGroupElement_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
+{
+	MDeformVert* dvert = (MDeformVert*)ptr->data;
+	rna_iterator_array_begin(iter, (void *)dvert->dw, sizeof(MDeformWeight), dvert->totweight, 0, NULL);
+}
+
+static int rna_MeshIslandVertex_index_get(PointerRNA *ptr)
+{
+	Object* ob = (Object*)ptr->id.data;
+	FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
+	DerivedMesh* dm = fmd->visible_mesh_cached;
+	if (dm)
+	{
+		MVert *vert = (MVert *)ptr->data;
+		MVert *mv = dm->getVertArray(dm);
+		return (int)(vert - mv);
+	}
+	else {
+		return -1;
+	}
+}
+
 #endif
 
 static void rna_def_mesh_island_vertex(BlenderRNA* brna)
@@ -567,6 +656,10 @@ static void rna_def_mesh_island_vertex(BlenderRNA* brna)
 	RNA_def_property_float_funcs(prop, "rna_MeshVertex_normal_get", "rna_MeshVertex_normal_set", NULL);
 	RNA_def_property_ui_text(prop, "Normal", "Vertex Normal");*/
 
+	prop = RNA_def_property(srna, "index", PROP_INT, PROP_NONE);
+	RNA_def_property_int_funcs(prop, "rna_MeshIslandVertex_index_get", NULL, NULL);
+	RNA_def_property_ui_text(prop, "index", "Index of this vertex in global fracture modifier derived mesh");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 }
 
 static void rna_def_mesh_island_vertices(BlenderRNA* brna, PropertyRNA* cprop)
@@ -613,6 +706,18 @@ static void rna_def_mesh_island(BlenderRNA *brna)
 
 	rna_def_mesh_island_vertices(brna, prop);
 	rna_def_mesh_island_vertex(brna);
+
+	prop = RNA_def_property(srna, "constraints", PROP_COLLECTION, PROP_NONE);
+	RNA_def_property_collection_sdna(prop, NULL, "participating_constraints", "participating_constraint_count");
+	RNA_def_property_struct_type(prop, "MeshConstraint");
+	RNA_def_property_ui_text(prop, "Constraints", "Constraints where this mesh island participates in");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+
+	prop = RNA_def_property(srna, "cluster_index", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "particle_index");
+	RNA_def_property_int_funcs(prop, NULL, "rna_MeshIsland_cluster_index_set", NULL);
+	RNA_def_property_ui_text(prop, "Cluster Index", "To which cluster this mesh island belongs.");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 static void rna_def_mesh_constraint(BlenderRNA *brna)
@@ -1123,6 +1228,50 @@ static void rna_def_fracture_meshconstraints(BlenderRNA *brna, PropertyRNA *cpro
 	RNA_def_function_ui_description(func, "Delete all mesh constraints from fracture modifier");
 }
 
+
+
+static void rna_def_mesh_vertex_group_element(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna = RNA_def_struct(brna, "MeshIslandVertexGroupElement", NULL);
+	RNA_def_struct_sdna(srna, "MDeformWeight");
+	//RNA_def_struct_path_func(srna, "rna_MeshVertexGroupElement_path");
+	RNA_def_struct_ui_text(srna, "Vertex Group Element", "Weight value of a vertex in a vertex group");
+	//RNA_def_struct_ui_icon(srna, ICON_GROUP_VERTEX);
+
+	prop = RNA_def_property(srna, "group", PROP_INT, PROP_UNSIGNED);
+	RNA_def_property_int_sdna(prop, NULL, "def_nr");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "Group Index", "");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "weight", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_ui_text(prop, "Weight", "Vertex Weight");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+}
+
+static void rna_def_mesh_vertex_group(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna = RNA_def_struct(brna, "MeshIslandVertexGroup", NULL);
+	RNA_def_struct_sdna(srna, "MDeformVert");
+	//RNA_def_struct_path_func(srna, "rna_MeshVertexGroup_path");
+	RNA_def_struct_ui_text(srna, "Vertex Group", "Weights of all vertex groups this deform vert is in");
+
+	prop = RNA_def_property(srna, "weights", PROP_COLLECTION, PROP_NONE);
+	rna_def_mesh_vertex_group_element(brna);
+
+	RNA_def_property_collection_funcs(prop, "rna_MeshIslandVertexGroupElement_begin", "rna_iterator_array_next",
+	                                  "rna_iterator_array_end", "rna_iterator_array_get", NULL, NULL, NULL, NULL);
+	RNA_def_property_struct_type(prop, "MeshIslandVertexGroupElement");
+	RNA_def_property_ui_text(prop, "weights", "Array of weights");
+}
+
 void RNA_api_fracture(BlenderRNA *brna, StructRNA *srna)
 {
 	PropertyRNA *prop;
@@ -1145,5 +1294,11 @@ void RNA_api_fracture(BlenderRNA *brna, StructRNA *srna)
 	RNA_def_property_ui_text(prop, "Mesh Constraints", "A connection between two Mesh Islands inside the modifier");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 	rna_def_fracture_meshconstraints(brna, prop);
-}
 
+	rna_def_mesh_vertex_group(brna);
+	prop = RNA_def_property(srna, "vertex_groups", PROP_COLLECTION, PROP_NONE);
+	RNA_def_property_collection_funcs(prop, "rna_MeshIslandVertexGroup_begin", "rna_iterator_array_next",
+	                                  "rna_iterator_array_end", "rna_iterator_array_get", NULL, NULL, NULL, NULL);
+	RNA_def_property_struct_type(prop, "MeshIslandVertexGroup");
+	RNA_def_property_ui_text(prop, "vertex_groups", "Global fracture modifier vertex group array");
+}
