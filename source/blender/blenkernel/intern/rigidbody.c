@@ -1757,9 +1757,9 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 			RB_body_set_loc_rot(rbo->physics_object, loc, rot);
 		}
 	}
-	/* update influence of effectors - but don't do it on an effector */
+	/* update influence of effectors - but don't do it on an effector (why not ?)*/
 	/* only dynamic bodies need effector update */
-	else if (rbo->type == RBO_TYPE_ACTIVE && ((ob->pd == NULL) || (ob->pd->forcefield == PFIELD_NULL))) {
+	else if (rbo->type == RBO_TYPE_ACTIVE /* && ((ob->pd == NULL) || (ob->pd->forcefield == PFIELD_NULL))*/) {
 		EffectorWeights *effector_weights = rbw->effector_weights;
 		EffectedPoint epoint;
 		ListBase *effectors;
