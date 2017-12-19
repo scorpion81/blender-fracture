@@ -144,6 +144,8 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             box.label("Fracture Point Source:")
             col = box.column()
             col.prop(md, "point_source")
+            if 'GRID' in md.point_source:
+                col.prop(md, "grid_resolution")
             if 'GREASE_PENCIL' in md.point_source:
                 col.prop(md, "use_greasepencil_edges")
                 col.prop(md, "grease_offset")

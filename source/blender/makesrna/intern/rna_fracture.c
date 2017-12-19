@@ -693,6 +693,7 @@ void RNA_def_fracture(BlenderRNA *brna)
 		{MOD_FRACTURE_EXTRA_VERTS, "EXTRA_VERTS", 0, "Extra Vertices", "Use vertices of group objects as point cloud"},
 		{MOD_FRACTURE_GREASEPENCIL, "GREASE_PENCIL", 0, "Grease Pencil", "Use grease pencil points as point cloud"},
 		{MOD_FRACTURE_UNIFORM, "UNIFORM", 0, "Uniform", "Use a random uniform pointcloud generated over the bounding box"},
+		{MOD_FRACTURE_GRID, "GRID", 0, "Grid", "Use a grid pointcloud generated over the bounding box"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -1400,6 +1401,15 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Deform Weakening Factor",
 	                         "Multiplies the breaking threshold in each iteration with 1.0 - factor in order to weaken it at deform, 0 to disable");
 	RNA_def_property_ui_range(prop, 0.0f, 1.0f, 0.0001f, 6);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "grid_resolution", PROP_INT, PROP_XYZ);
+	RNA_def_property_int_sdna(prop, NULL, "grid_resolution");
+	RNA_def_property_range(prop, 1, 10000);
+	RNA_def_property_array(prop, 3);
+	RNA_def_property_int_default(prop, 10);
+	RNA_def_property_ui_text(prop, "Grid resolution", "How many grid cells per Bounding Box Axis");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 

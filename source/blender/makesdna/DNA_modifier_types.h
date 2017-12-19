@@ -1534,6 +1534,7 @@ enum {
 	MOD_FRACTURE_EXTRA_PARTICLES = (1 << 3),
 	MOD_FRACTURE_GREASEPENCIL    = (1 << 4),
 	MOD_FRACTURE_UNIFORM         = (1 << 5),
+	MOD_FRACTURE_GRID            = (1 << 6),
 };
 
 enum {
@@ -1729,6 +1730,7 @@ typedef struct FractureModifierData {
 	int boolean_solver;
 	int dynamic_percentage;
 	int constraint_type;
+	int grid_resolution[3];
 
 	float breaking_angle;
 	float breaking_distance;
@@ -1816,7 +1818,7 @@ typedef struct FractureModifierData {
 	short mat_ofs_intersect;
 	short mat_ofs_difference;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

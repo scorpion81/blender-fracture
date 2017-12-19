@@ -7415,12 +7415,16 @@ static void draw_rigidbody_shape(Object *ob)
 	BoundBox *bb = NULL;
 	float size[3], vec[8][3];
 	DerivedMesh *dm = ob->derivedFinal;
+	FractureModifierData *fmd = modifiers_findByType(ob, eModifierType_Fracture);
 
 	if (ob->type == OB_MESH) {
 		bb = BKE_mesh_boundbox_get(ob);
 	}
 
 	if (bb == NULL)
+		return;
+
+	if (fmd)
 		return;
 
 	switch (ob->rigidbody_object->shape) {

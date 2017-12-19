@@ -249,6 +249,10 @@ static void initData(ModifierData *md)
 
 	fmd->deform_weakening = 0.0f;
 	fmd->distortion_cached = false;
+
+	fmd->grid_resolution[0] = 10;
+	fmd->grid_resolution[1] = 10;
+	fmd->grid_resolution[2] = 10;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1290,6 +1294,66 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 		}
 	}
 
+	if (emd->point_source & MOD_FRACTURE_GRID)
+	{
+		float cent[3], bmin[3], bmax[3];
+		int x, y, z;
+
+		if (emd->grid_resolution[0] < 1)
+		{	//sanity check
+			emd->grid_resolution[0] = 1;
+		}
+
+		if (emd->grid_resolution[1] < 1)
+		{	//sanity check
+			emd->grid_resolution[1] = 1;
+		}
+
+		if (emd->grid_resolution[2] < 1)
+		{	//sanity check
+			emd->grid_resolution[2] = 1;
+		}
+
+		//just draw over bbox
+		INIT_MINMAX(min, max);
+		//for limit impact we need entire container always, because we need to determine secondary impacts on the shards at their original pos
+		if (!BKE_get_shard_minmax(emd->frac_mesh, id, min, max, fracmesh))
+			return points; //id 0 should be entire mesh
+
+		//arrange shards according to their original centroid (parent centroid sum) position in shard-space (else they are centered at 0, 0, 0)
+		arrange_shard(emd, id, false, cent);
+		add_v3_v3v3(bmax, max, cent);
+		add_v3_v3v3(bmin, min, cent);
+
+		//centroid of grid cells is
+		for (x = 0; x < emd->grid_resolution[0]; ++x) {
+			for (y = 0; y < emd->grid_resolution[1]; ++y) {
+				for (z = 0; z < emd->grid_resolution[2]; ++z) {
+					float co[3];
+					co[0] = min[0] + (max[0] - min[0]) * ((float)x + 0.5f)/(float)emd->grid_resolution[0];
+					co[1] = min[1] + (max[1] - min[1]) * ((float)y + 0.5f)/(float)emd->grid_resolution[1];
+					co[2] = min[2] + (max[2] - min[2]) * ((float)z + 0.5f)/(float)emd->grid_resolution[2];
+
+					if (id > 0 && emd->cutter_group == NULL)
+					{
+						if (in_bbox(co, bmin, bmax))
+						{
+							points.points = MEM_reallocN(points.points, sizeof(FracPoint) * (points.totpoints + 1));
+							copy_v3_v3(points.points[points.totpoints].co, co);
+							points.totpoints++;
+						}
+					}
+					else
+					{
+						points.points = MEM_reallocN(points.points, sizeof(FracPoint) * (points.totpoints + 1));
+						copy_v3_v3(points.points[points.totpoints].co, co);
+						points.totpoints++;
+					}
+				}
+			}
+		}
+	}
+
 	MEM_freeN(go);
 	return points;
 }
@@ -1784,6 +1848,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->cluster_deform_distance = rmd->cluster_deform_distance;
 	trmd->deform_weakening = rmd->deform_weakening;
 	trmd->distortion_cached = rmd->distortion_cached;
+
+	copy_v3_v3_int(trmd->grid_resolution, rmd->grid_resolution);
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?

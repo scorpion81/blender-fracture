@@ -1125,7 +1125,6 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	}
 
 	unit_m4(obmat);
-
 	do_prepare_cells(fm, cells, expected_shards, algorithm, p, &centroid, &dm_parent, &bm_parent, &tempshards, &tempresults, override_count, fmd);
 
 	if (fm->last_shard_tree)
