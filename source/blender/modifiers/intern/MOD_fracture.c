@@ -253,6 +253,8 @@ static void initData(ModifierData *md)
 	fmd->grid_resolution[0] = 10;
 	fmd->grid_resolution[1] = 10;
 	fmd->grid_resolution[2] = 10;
+
+	fmd->use_centroids = false;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1850,6 +1852,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->distortion_cached = rmd->distortion_cached;
 
 	copy_v3_v3_int(trmd->grid_resolution, rmd->grid_resolution);
+	trmd->use_centroids = rmd->use_centroids;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
@@ -3422,7 +3425,23 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 	int del_faces = 0;
 	bool do_merge = fmd->do_merge;
 
-	DM_to_bmesh_ex(dm, bm, true);
+	if (fmd->use_centroids)
+	{
+		MeshIsland *mi;
+		//only add verts where centroids are...
+		float imat[4][4];
+		invert_m4_m4(imat, ob->obmat);
+
+		for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+		{
+			float co[3];
+			mul_v3_m4v3(co, imat, mi->rigidbody->pos);
+			BM_vert_create(bm, co, NULL, BM_CREATE_NOP);
+		}
+	}
+	else {
+		DM_to_bmesh_ex(dm, bm, true);
+	}
 
 	BM_mesh_elem_index_ensure(bm, BM_FACE | BM_VERT);
 	BM_mesh_elem_table_ensure(bm, BM_FACE | BM_VERT);
@@ -3430,7 +3449,7 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 
 	//BM_mesh_elem_hflag_disable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
 
-	//if (fmd->automerge_dist > 0)
+	if (!fmd->use_centroids)
 	{
 		Scene* sc = fmd->modifier.scene;
 		RigidBodyWorld *rbw = sc ? sc->rigidbody_world : NULL;
@@ -3943,7 +3962,7 @@ static DerivedMesh *output_dm(FractureModifierData* fmd, DerivedMesh *dm, Object
 			}
 		}
 
-		if (fmd->autohide_dist > 0 || fmd->automerge_dist > 0)
+		if (fmd->autohide_dist > 0 || fmd->automerge_dist > 0 || fmd->use_centroids)
 		{
 			//printf("Autohide \n");
 			dm_final = do_autoHide(fmd, fmd->visible_mesh_cached, ob);

@@ -1796,6 +1796,7 @@ typedef struct FractureModifierData {
 	int do_merge;
 	int deform_angle_weighted;
 	int deform_distance_weighted;
+	int use_centroids;
 
 	/* internal flags */
 	int use_experimental;
@@ -1818,7 +1819,7 @@ typedef struct FractureModifierData {
 	short mat_ofs_intersect;
 	short mat_ofs_difference;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {
