@@ -255,6 +255,7 @@ static void initData(ModifierData *md)
 	fmd->grid_resolution[2] = 10;
 
 	fmd->use_centroids = false;
+	fmd->use_vertices = false;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1853,6 +1854,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 
 	copy_v3_v3_int(trmd->grid_resolution, rmd->grid_resolution);
 	trmd->use_centroids = rmd->use_centroids;
+	trmd->use_vertices = rmd->use_vertices;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
@@ -3415,6 +3417,21 @@ static void optimize_automerge(FractureModifierData *fmd)
 	printf("remaining | removed groups: %d | %d\n", count, removed);
 }
 
+static void centroids_to_verts(FractureModifierData* fmd, BMesh* bm, Object* ob)
+{
+	MeshIsland *mi;
+	//only add verts where centroids are...
+	float imat[4][4];
+	invert_m4_m4(imat, ob->obmat);
+
+	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+	{
+		float co[3];
+		mul_v3_m4v3(co, imat, mi->rigidbody->pos);
+		BM_vert_create(bm, co, NULL, BM_CREATE_NOP);
+	}
+}
+
 static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Object *ob)
 {
 	int totpoly = dm->getNumPolys(dm);
@@ -3425,19 +3442,9 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 	int del_faces = 0;
 	bool do_merge = fmd->do_merge;
 
-	if (fmd->use_centroids)
+	if (fmd->use_centroids && !fmd->use_vertices)
 	{
-		MeshIsland *mi;
-		//only add verts where centroids are...
-		float imat[4][4];
-		invert_m4_m4(imat, ob->obmat);
-
-		for (mi = fmd->meshIslands.first; mi; mi = mi->next)
-		{
-			float co[3];
-			mul_v3_m4v3(co, imat, mi->rigidbody->pos);
-			BM_vert_create(bm, co, NULL, BM_CREATE_NOP);
-		}
+		centroids_to_verts(fmd, bm, ob);
 	}
 	else {
 		DM_to_bmesh_ex(dm, bm, true);
@@ -3500,6 +3507,16 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 	if (del_faces == 0) {
 		/*fallback if you want to merge verts but use no filling method, whose faces could be hidden (and you dont have any selection then) */
 		BM_mesh_elem_hflag_enable_all(bm, BM_FACE | BM_EDGE | BM_VERT , BM_ELEM_SELECT, false);
+	}
+
+	if (fmd->use_vertices)
+	{	//only output verts
+		BMO_op_callf(bm, (BMO_FLAG_DEFAULTS & ~BMO_FLAG_RESPECT_HIDE), "delete geom=%aef context=%i", DEL_EDGESFACES);
+
+		if (fmd->use_centroids)
+		{
+			centroids_to_verts(fmd, bm, ob);
+		}
 	}
 
 	if (fmd->automerge_dist > 0 && do_merge) {

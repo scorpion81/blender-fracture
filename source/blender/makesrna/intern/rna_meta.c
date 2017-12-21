@@ -337,7 +337,7 @@ static void rna_def_metaball(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "threshold", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "thresh");
-	RNA_def_property_range(prop, 0.0f, 5.0f);
+	RNA_def_property_range(prop, 0.0f, 100.0f);
 	RNA_def_property_ui_text(prop, "Threshold", "Influence of meta elements");
 	RNA_def_property_update(prop, 0, "rna_MetaBall_update_data");
 

@@ -283,9 +283,10 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
         row.prop(md, "keep_distort")
         row.prop(md, "do_merge")
         row = layout.row()
-        row.prop(md, "fix_normals")
         row.prop(md, "use_centroids")
+        row.prop(md, "use_vertices")
         row = layout.row()
+        row.prop(md, "fix_normals")
         row.prop(md, "nor_range")
 
         col = layout.column(align=True)
