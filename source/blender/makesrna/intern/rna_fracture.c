@@ -1416,7 +1416,7 @@ void RNA_def_fracture(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_centroids", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "use_centroids", false);
 	RNA_def_property_ui_text(prop, "Use Centroids", "Only output the meshisland centroids as vertices");
-	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	RNA_api_fracture(brna, srna);
 }
