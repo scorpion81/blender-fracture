@@ -348,7 +348,7 @@ static void rigidbody_validate_sim_shape(Object *ob, bool rebuild)
 			break;
 
 		case RB_SHAPE_SPHERE:
-			new_shape = RB_shape_new_sphere(radius);
+			new_shape = RB_shape_new_sphere(radius + RBO_GET_MARGIN(rbo));
 			break;
 
 		case RB_SHAPE_CAPSULE:
@@ -3331,7 +3331,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 			break;
 
 		case RB_SHAPE_SPHERE:
-			new_shape = RB_shape_new_sphere(radius);
+			new_shape = RB_shape_new_sphere(radius + RBO_GET_MARGIN(rbo));
 			break;
 
 		case RB_SHAPE_CAPSULE:
