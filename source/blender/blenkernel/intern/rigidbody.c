@@ -2317,7 +2317,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			BKE_ptcache_id_reset(scene, &pid, PTCACHE_RESET_OUTDATED);
 		}
 
-		BKE_rigidbody_update_ob_array(rbw, false);
+		BKE_rigidbody_update_ob_array(rbw, rbw->pointcache->flag & PTCACHE_BAKED);
 	}
 
 	/* try to read from cache */
