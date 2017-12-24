@@ -112,12 +112,8 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
                 col.prop(md, "boolean_double_threshold")
         col = layout.column(align=True)
         col.prop(md, "shard_count")
-        col.prop(md, "cluster_count")
         col.prop(md, "point_seed")
-        layout.prop(md, "cluster_group")
-        col = layout.column(align=True)
-        col.prop(md, "constraint_type")
-        col.prop(md, "cluster_constraint_type")
+
         if md.frac_algorithm in {'BOOLEAN', 'BISECT_FILL', 'BISECT_FAST_FILL', 'BOOLEAN_FRACTAL'}:
             col = layout.column()
             col.prop(md, "inner_material")
@@ -132,8 +128,9 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             row.prop(md, "physics_mesh_scale")
         row = layout.row()
         row.prop(md, "shards_to_islands")
-        row.prop(md, "auto_execute")
         row.prop(md, "use_smooth")
+        row = layout.row()
+        row.prop(md, "auto_execute")
         row = layout.row(align=True)
         row.prop(md, "splinter_axis")
         layout.prop(md, "splinter_length")
@@ -201,10 +198,18 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
         row = layout.row()
         row.prop(md, "use_compounds")
 
-        layout.prop(md, "constraint_target")
+        col = layout.column(align=True)
+        col.prop(md, "constraint_target")
+        col.prop(md, "constraint_type")
         col = layout.column(align=True)
         col.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
         col.prop(md, "contact_dist")
+
+        layout.label("Constraint Cluster Settings")
+        layout.prop(md, "cluster_count")
+        col = layout.column(align=True)
+        col.prop(md, "cluster_group")
+        col.prop(md, "cluster_constraint_type", text="Cluster Type")
 
         if md.use_compounds:
             layout.label("Compound Breaking Settings")
@@ -237,15 +242,17 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             row.prop(md, "breaking_distance", text="Distance")
             row.prop(md, "cluster_breaking_distance", text="Cluster Distance")
 
-            row = col.row(align=True)
-            row.prop(md, "breaking_percentage_weighted")
-            row.prop(md, "breaking_angle_weighted")
-            row.prop(md, "breaking_distance_weighted")
-
             col = layout.column(align=True)
             col.prop(md, "solver_iterations_override")
             col.prop(md, "cluster_solver_iterations_override")
-            layout.prop(md, "use_mass_dependent_thresholds")
+
+            row = layout.row(align=True)
+            row.prop(md, "breaking_angle_weighted")
+            row.prop(md, "breaking_distance_weighted")
+
+            row = layout.row(align=True)
+            row.prop(md, "breaking_percentage_weighted")
+            row.prop(md, "use_mass_dependent_thresholds", text="Mass Dependent Thresholds")
 
         if not md.use_compounds:
             layout.label("Constraint Deform Settings")
@@ -258,13 +265,10 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             row.prop(md, "deform_distance", text="Deforming Distance")
             row.prop(md, "cluster_deform_distance", text="Cluster Deforming Distance")
 
-            row = col.row(align=True)
+            col.prop(md, "deform_weakening")
+            row = layout.row(align=True)
             row.prop(md, "deform_angle_weighted")
             row.prop(md, "deform_distance_weighted")
-
-            col.prop(md, "deform_weakening")
-
-
 
 
 class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
