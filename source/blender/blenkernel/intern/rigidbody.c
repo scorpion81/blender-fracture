@@ -43,6 +43,7 @@
 #include "BLI_callbacks.h"
 #include "BLI_math.h"
 #include "BLI_kdtree.h"
+#include "BLI_rand.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
@@ -3283,7 +3284,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 	float hull_margin = 0.0f;
 	bool can_embed = true;
 	bool has_volume;
-	float min[3], max[3];
+	float min[3], max[3], margin;
 
 	/* sanity check */
 	if (rbo == NULL)
@@ -3322,6 +3323,9 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 
 		/* take radius to the largest dimension to try and encompass everything */
 		radius = max_fff(size[0], size[1], size[2]) * 0.5f;
+
+		if (rbo->flag & RBO_FLAG_RANDOM_MARGIN)
+			radius = (BLI_frand() * radius) + 0.001f;
 	}
 
 	/* create new shape */
@@ -3331,7 +3335,8 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 			break;
 
 		case RB_SHAPE_SPHERE:
-			new_shape = RB_shape_new_sphere(radius + RBO_GET_MARGIN(rbo));
+			margin = RBO_GET_MARGIN(rbo);
+			new_shape = RB_shape_new_sphere(radius + margin);
 			break;
 
 		case RB_SHAPE_CAPSULE:
@@ -3364,10 +3369,15 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 	}
 	/* assign new collision shape if creation was successful */
 	if (new_shape) {
+		margin = RBO_GET_MARGIN(rbo);
 		if (rbo->physics_shape)
 			RB_shape_delete(rbo->physics_shape);
 		rbo->physics_shape = new_shape;
-		RB_shape_set_margin(rbo->physics_shape, RBO_GET_MARGIN(rbo));
+
+		if ((rbo->flag & RBO_FLAG_RANDOM_MARGIN) && (rbo->shape != RB_SHAPE_SPHERE))
+			margin = (BLI_frand() * 0.5 - 1) * margin;
+
+		RB_shape_set_margin(rbo->physics_shape, margin);
 	}
 	else { /* otherwise fall back to box shape */
 		rbo->shape = RB_SHAPE_BOX;
@@ -4020,9 +4030,24 @@ static void fake_dynamic_collide(Object *ob1, Object *ob2, MeshIsland *mi1, Mesh
 }
 
 static bool check_constraint_island(FractureModifierData* fmd, MeshIsland *mi1, MeshIsland *mi2)
-{
-	if (mi1 && mi2 && !fmd->use_compounds && !fmd->use_constraint_collision) {
-		return mi1->constraint_index != mi2->constraint_index;
+{	
+	if (mi1 && mi2 && !fmd->use_compounds && (!fmd->use_constraint_collision || fmd->use_self_collision)) {
+
+		float dist_sq = len_squared_v3v3(mi1->centroid, mi2->centroid);
+		bool is_near = len_squared_v3v3(mi1->rigidbody->pos, mi2->rigidbody->pos) < dist_sq;
+
+		if (mi1->rigidbody->physics_shape)
+		{
+			RB_shape_set_margin(mi1->rigidbody->physics_shape, is_near ? 0.0f : RBO_GET_MARGIN(mi1->rigidbody));
+		}
+
+		if (mi2->rigidbody->physics_shape)
+		{
+			RB_shape_set_margin(mi2->rigidbody->physics_shape, is_near ? 0.0f : RBO_GET_MARGIN(mi2->rigidbody));
+		}
+
+		return ((mi1->constraint_index != mi2->constraint_index) ||
+		       (fmd->use_self_collision && is_near));
 	}
 
 	return true;

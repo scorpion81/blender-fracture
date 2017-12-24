@@ -1280,8 +1280,8 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	
 	prop = RNA_def_property(srna, "collision_margin", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "margin");
-	RNA_def_property_range(prop, -1.0f, 1.0f);
-	RNA_def_property_ui_range(prop, -1.0f, 1.0f, 0.01, 3);
+	RNA_def_property_range(prop, -1.0f, 10.0f);
+	RNA_def_property_ui_range(prop, -1.0f, 10.0f, 0.01, 3);
 	RNA_def_property_float_default(prop, 0.04f);
 	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyOb_collision_margin_set", NULL);
 	RNA_def_property_ui_text(prop, "Collision Margin",
@@ -1313,6 +1313,13 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "rotation", PROP_FLOAT, PROP_QUATERNION);
 	RNA_def_property_float_sdna(prop, NULL, "orn");
 	RNA_def_property_ui_text(prop, "Rotation", "Quaternion rotation of the rigidbody object");
+
+	prop = RNA_def_property(srna, "use_random_margin", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_RANDOM_MARGIN);
+	RNA_def_property_boolean_default(prop, false);
+	RNA_def_property_ui_text(prop, "Randomize Margin",
+	                         "Randomize the custom collision margin for better packing when shapes stack up");
+	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_shape_reset");
 }
 
 static void rna_def_rigidbody_constraint(BlenderRNA *brna)

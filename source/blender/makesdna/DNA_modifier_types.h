@@ -1778,6 +1778,7 @@ typedef struct FractureModifierData {
 	int use_smooth;
 	int use_greasepencil_edges;
 	int use_constraint_collision;
+	int use_self_collision;
 
 	int shards_to_islands;
 	int execute_threaded;
@@ -1820,7 +1821,7 @@ typedef struct FractureModifierData {
 	short mat_ofs_intersect;
 	short mat_ofs_difference;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

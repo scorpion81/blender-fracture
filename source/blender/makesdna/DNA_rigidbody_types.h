@@ -189,6 +189,8 @@ typedef enum eRigidBodyOb_Flag {
 	RBO_FLAG_PLASTIC_DISSOLVE = (1 << 15),
 	/* anti (stop) trigger flag, make simulated objects kinematic again */
 	RBO_FLAG_ANTI_TRIGGER = (1 << 16),
+	/* randomize margin for better packing (especially for spheres */
+	RBO_FLAG_RANDOM_MARGIN = (1 << 17)
 
 } eRigidBodyOb_Flag;
 

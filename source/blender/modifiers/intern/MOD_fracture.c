@@ -256,6 +256,7 @@ static void initData(ModifierData *md)
 
 	fmd->use_centroids = false;
 	fmd->use_vertices = false;
+	fmd->use_self_collision = false;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1855,6 +1856,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	copy_v3_v3_int(trmd->grid_resolution, rmd->grid_resolution);
 	trmd->use_centroids = rmd->use_centroids;
 	trmd->use_vertices = rmd->use_vertices;
+	trmd->use_self_collision = rmd->use_self_collision;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
@@ -3979,7 +3981,7 @@ static DerivedMesh *output_dm(FractureModifierData* fmd, DerivedMesh *dm, Object
 			}
 		}
 
-		if (fmd->autohide_dist > 0 || fmd->automerge_dist > 0 || fmd->use_centroids)
+		if (fmd->autohide_dist > 0 || fmd->automerge_dist > 0 || fmd->use_centroids || fmd->use_vertices)
 		{
 			//printf("Autohide \n");
 			dm_final = do_autoHide(fmd, fmd->visible_mesh_cached, ob);
