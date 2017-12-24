@@ -4046,7 +4046,9 @@ static bool check_constraint_island(FractureModifierData* fmd, MeshIsland *mi1, 
 			RB_shape_set_margin(mi2->rigidbody->physics_shape, is_near ? 0.0f : RBO_GET_MARGIN(mi2->rigidbody));
 		}
 
-		return ((mi1->constraint_index != mi2->constraint_index) ||
+		return (((mi1->constraint_index != mi2->constraint_index) ||
+		        ((mi1->constraint_index == mi2->constraint_index) &&
+		        (mi1->particle_index != mi2->particle_index))) &&
 		       (fmd->use_self_collision && is_near));
 	}
 

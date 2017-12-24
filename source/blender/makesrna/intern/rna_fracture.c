@@ -617,6 +617,20 @@ static void rna_FractureModifier_do_merge_set(PointerRNA* ptr, int value)
 	rmd->do_merge = value;
 }
 
+static void rna_FractureModifier_cluster_count_set(PointerRNA* ptr, int value)
+{
+	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
+	rmd->cluster_count = value;
+	rmd->refresh_constraints = true;
+}
+
+static void rna_FractureModifier_cluster_group_set(PointerRNA* ptr, PointerRNA value)
+{
+	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
+	rmd->cluster_group = value.data;
+	rmd->refresh_constraints = true;
+}
+
 static void rna_Modifier_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
 {
 	ModifierData* md = ptr->data;
@@ -750,6 +764,8 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_struct_ui_icon(srna, ICON_MOD_EXPLODE);
 
 	prop = RNA_def_property(srna, "cluster_count", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "cluster_count");
+	RNA_def_property_int_funcs(prop, NULL, "rna_FractureModifier_cluster_count_set", NULL);
 	RNA_def_property_range(prop, 0, 100000);
 	RNA_def_property_ui_text(prop, "Cluster Count", "Amount of clusters built from existing shards, 0 for none");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
@@ -1062,7 +1078,7 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_boolean_funcs(prop, NULL, "rna_FractureModifier_use_breaking_set");
 	RNA_def_property_ui_text(prop, "Breakable",
 	                         "Constraints can be broken if it receives an impulse above the threshold");
-	//RNA_def_property_update(prop, /*NC_OBJECT | ND_POINTCACHE*/ 0, "rna_Modifier_update");
+	RNA_def_property_update(prop, /*NC_OBJECT | ND_POINTCACHE*/ 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_smooth", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "use_smooth", false);
@@ -1106,6 +1122,8 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "cluster_group", PROP_POINTER, PROP_NONE);
+	RNA_def_property_pointer_sdna(prop, NULL, "cluster_group");
+	RNA_def_property_pointer_funcs(prop, NULL, "rna_FractureModifier_cluster_group_set", NULL, NULL);
 	RNA_def_property_ui_text(prop, "Cluster Group", "Centroids of objects in this group determine where cluster centers will be");
 	RNA_def_property_flag(prop, PROP_EDITABLE);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
