@@ -52,11 +52,16 @@
 #include "BKE_scene.h"
 #include "BKE_displist.h"
 #include "BKE_mball_tessellate.h"  /* own include */
+#include "BKE_cdderivedmesh.h"
 
 #include "BLI_strict_flags.h"
 
 /* experimental (faster) normal calculation */
 // #define USE_ACCUM_NORMAL
+
+struct MVert;
+struct MLoop;
+struct MPoly;
 
 /* Data types */
 
@@ -1323,4 +1328,270 @@ void BKE_mball_polygonize(EvaluationContext *eval_ctx, Scene *scene, Object *ob,
 	}
 
 	freepolygonize(&process);
+}
+
+static void init_meta_dm(PROCESS* process, DerivedMesh *dm, float stiffness, float radius, float size[3])
+{
+	float quat[4];
+	unsigned int i;
+	int totvert = dm->getNumVerts(dm), j;
+	MVert* mvert = dm->getVertArray(dm);
+
+	unit_qt(quat);
+
+	/* make main array */
+	for (j = 0; j < totvert; j++, mvert++)
+	{
+		//float size[3] = {1.0f, 1.0f, 1.0f};
+		float expx, expy, expz;
+		float tempmin[3], tempmax[3];
+
+		MetaElem *new_ml;
+
+		/* make a copy because of duplicates */
+		new_ml = BLI_memarena_alloc(process->pgn_elements, sizeof(MetaElem));
+		new_ml->bb = BLI_memarena_alloc(process->pgn_elements, sizeof(BoundBox));
+		new_ml->mat = BLI_memarena_alloc(process->pgn_elements, 4 * 4 * sizeof(float));
+		new_ml->imat = BLI_memarena_alloc(process->pgn_elements, 4 * 4 * sizeof(float));
+
+		//init new_ml
+		new_ml->type = MB_BALL;
+		new_ml->flag = MB_SCALE_RAD;
+		/* too big stiffness seems only ugly due to linear interpolation
+		 * no need to have possibility for too big stiffness */
+		//if (ml->s > 10.0f) new_ml->s = 10.0f;
+		//else new_ml->s = ml->s;
+		new_ml->s = stiffness;
+
+		/* if metaball is negative, set stiffness negative */
+		//if (new_ml->flag & MB_NEGATIVE) new_ml->s = -new_ml->s;
+
+		/* Translation of MetaElem */
+		/*unit_m4(pos);
+		pos[3][0] = mvert->co[0];
+		pos[3][1] = mvert->co[1];
+		pos[3][2] = mvert->co[2];*/
+
+		new_ml->x = mvert->co[0];
+		new_ml->y = mvert->co[1];
+		new_ml->z = mvert->co[2];
+
+		/* Rotation of MetaElem is stored in quat */
+		//quat_to_mat4(rot, quat);
+		loc_quat_size_to_mat4((float(*)[4])new_ml->mat, mvert->co, quat, size);
+		invert_m4_m4((float(*)[4])new_ml->imat,(float(*)[4])new_ml->mat);
+
+#if 0
+		/* basis object space -> world -> ml object space -> position -> rotation -> ml local space */
+		mul_m4_series((float(*)[4])new_ml->mat, obinv, bob->obmat, pos, rot);
+		/* ml local space -> basis object space */
+		invert_m4_m4((float(*)[4])new_ml->imat, (float(*)[4])new_ml->mat);
+#endif
+
+		/* rad2 is inverse of squared radius */
+		new_ml->rad = radius;
+		new_ml->rad2 = 1 / (radius * radius);
+
+		/* initial dimensions = radius */
+		expx = radius;
+		expy = radius;
+		expz = radius;
+
+		new_ml->expx = expx;
+		new_ml->expy = expy;
+		new_ml->expz = expz;
+
+#if 0
+		switch (ml->type) {
+			case MB_BALL:
+				break;
+			case MB_CUBE: /* cube is "expanded" by expz, expy and expx */
+				expz += ml->expz;
+				ATTR_FALLTHROUGH;
+			case MB_PLANE: /* plane is "expanded" by expy and expx */
+				expy += ml->expy;
+				ATTR_FALLTHROUGH;
+			case MB_TUBE: /* tube is "expanded" by expx */
+				expx += ml->expx;
+				break;
+			case MB_ELIPSOID: /* ellipsoid is "stretched" by exp* */
+				expx *= ml->expx;
+				expy *= ml->expy;
+				expz *= ml->expz;
+				break;
+		}
+#endif
+
+		/* untransformed Bounding Box of MetaElem */
+		/* TODO, its possible the elem type has been changed and the exp* values can use a fallback */
+		copy_v3_fl3(new_ml->bb->vec[0], -expx, -expy, -expz);  /* 0 */
+		copy_v3_fl3(new_ml->bb->vec[1], +expx, -expy, -expz);  /* 1 */
+		copy_v3_fl3(new_ml->bb->vec[2], +expx, +expy, -expz);  /* 2 */
+		copy_v3_fl3(new_ml->bb->vec[3], -expx, +expy, -expz);  /* 3 */
+		copy_v3_fl3(new_ml->bb->vec[4], -expx, -expy, +expz);  /* 4 */
+		copy_v3_fl3(new_ml->bb->vec[5], +expx, -expy, +expz);  /* 5 */
+		copy_v3_fl3(new_ml->bb->vec[6], +expx, +expy, +expz);  /* 6 */
+		copy_v3_fl3(new_ml->bb->vec[7], -expx, +expy, +expz);  /* 7 */
+
+		/* transformation of Metalem bb */
+		for (i = 0; i < 8; i++)
+			mul_m4_v3((float(*)[4])new_ml->mat, new_ml->bb->vec[i]);
+
+		/* find max and min of transformed bb */
+		INIT_MINMAX(tempmin, tempmax);
+		for (i = 0; i < 8; i++) {
+			DO_MINMAX(new_ml->bb->vec[i], tempmin, tempmax);
+		}
+
+		/* set only point 0 and 6 - AABB of Metaelem */
+		copy_v3_v3(new_ml->bb->vec[0], tempmin);
+		copy_v3_v3(new_ml->bb->vec[6], tempmax);
+
+		/* add new_ml to mainb[] */
+		if (UNLIKELY(process->totelem == process->mem)) {
+			process->mem = process->mem * 2 + 10;
+			process->mainb = MEM_reallocN(process->mainb, sizeof(MetaElem *) * process->mem);
+		}
+		process->mainb[process->totelem++] = new_ml;
+	}
+
+	/* compute AABB of all Metaelems */
+	if (process->totelem > 0) {
+		copy_v3_v3(process->allbb.min, process->mainb[0]->bb->vec[0]);
+		copy_v3_v3(process->allbb.max, process->mainb[0]->bb->vec[6]);
+		for (i = 1; i < process->totelem; i++)
+			make_box_union(process->mainb[i]->bb, &process->allbb, &process->allbb);
+	}
+}
+
+void BKE_dm_from_metaball(DispList *dl, DerivedMesh *dm)
+{
+	MVert *mvert;
+	MLoop *mloop, *allloop;
+	MPoly *mpoly;
+	const float *nors, *verts;
+	int a, *index;
+
+	if (dl == NULL) return;
+
+	if (dl->type == DL_INDEX4) {
+		//mvert = CustomData_add_layer(&dm->vertData, CD_MVERT, CD_CALLOC, NULL, dl->nr);
+		//allloop = mloop = CustomData_add_layer(&dm->loopData, CD_MLOOP, CD_CALLOC, NULL, dl->parts * 4);
+		//mpoly = CustomData_add_layer(&dm->polyData, CD_MPOLY, CD_CALLOC, NULL, dl->parts);
+
+		//dm->numVertData = dl->nr;
+		//dm->numPolyData = dl->parts;
+		mvert = dm->getVertArray(dm);
+		allloop = mloop = dm->getLoopArray(dm);
+		mpoly = dm->getPolyArray(dm);
+
+		a = dl->nr;
+		nors = dl->nors;
+		verts = dl->verts;
+		while (a--) {
+			copy_v3_v3(mvert->co, verts);
+			normal_float_to_short_v3(mvert->no, nors);
+			mvert++;
+			nors += 3;
+			verts += 3;
+		}
+
+		a = dl->parts;
+		index = dl->index;
+		while (a--) {
+			int count = index[2] != index[3] ? 4 : 3;
+
+			mloop[0].v = (unsigned int)index[0];
+			mloop[1].v = (unsigned int)index[1];
+			mloop[2].v = (unsigned int) index[2];
+			if (count == 4)
+				mloop[3].v = (unsigned int)index[3];
+
+			mpoly->totloop = count;
+			mpoly->loopstart = (int)(mloop - allloop);
+			//mpoly->flag = ME_SMOOTH;
+
+
+			mpoly++;
+			mloop += count;
+			dm->numLoopData += count;
+			index += 4;
+		}
+
+		CDDM_calc_normals(dm);
+		CDDM_calc_edges(dm);
+	}
+}
+
+
+DerivedMesh* BKE_repolygonize_dm(DerivedMesh *dm, float thresh, float basesize[3], float wiresize, float rendersize, bool render)
+{
+	DerivedMesh *result = NULL;
+	DispList *dl;
+	unsigned int a;
+	PROCESS process = {0};
+	process.thresh = thresh;
+
+	if      (process.thresh < 0.001f) process.converge_res = 16;
+	else if (process.thresh < 0.01f)  process.converge_res = 8;
+	else if (process.thresh < 0.1f)   process.converge_res = 4;
+	else                              process.converge_res = 2;
+
+	//if ((!render) && (mb->flag == MB_UPDATE_NEVER)) return;
+	//if ((G.moving & (G_TRANSFORM_OBJ | G_TRANSFORM_EDIT)) && mb->flag == MB_UPDATE_FAST) return;
+
+	if (render) {
+		process.size = rendersize;
+	}
+	else {
+		process.size = wiresize;
+		/*if ((G.moving & (G_TRANSFORM_OBJ | G_TRANSFORM_EDIT)) && mb->flag == MB_UPDATE_HALFRES) {
+			process.size *= 2.0f;
+		}*/
+	}
+
+	process.delta = process.size * 0.001f;
+
+	process.pgn_elements = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, "Metaball memarena");
+
+	/* initialize from DM */
+	init_meta_dm(&process, dm, 2.0f, 2.0f, basesize);
+
+	if (process.totelem > 0) {
+		build_bvh_spatial(&process, &process.metaball_bvh, 0, process.totelem, &process.allbb);
+
+		/* don't polygonize metaballs with too high resolution (base mball to small)
+		 * note: Eps was 0.0001f but this was giving problems for blood animation for durian, using 0.00001f */
+		if (basesize[0] > 0.00001f * (process.allbb.max[0] - process.allbb.min[0]) ||
+		    basesize[1] > 0.00001f * (process.allbb.max[1] - process.allbb.min[1]) ||
+		    basesize[2] > 0.00001f * (process.allbb.max[2] - process.allbb.min[2]))
+		{
+			polygonize(&process);
+
+			/* add resulting surface to displist */
+			if (process.curindex) {
+				dl = MEM_callocN(sizeof(DispList), "mballdisp");
+				dl->type = DL_INDEX4;
+				dl->nr = (int)process.curvertex;
+				dl->parts = (int)process.curindex;
+
+				dl->index = (int *)process.indices;
+
+				for (a = 0; a < process.curvertex; a++) {
+					normalize_v3(process.no[a]);
+				}
+
+				dl->verts = (float *)process.co;
+				dl->nors = (float *)process.no;
+
+				result = CDDM_new(dl->nr, 0, 0, dl->parts * 4, dl->parts);
+				BKE_dm_from_metaball(dl, result);
+				BKE_displist_elem_free(dl);
+			}
+		}
+	}
+
+	freepolygonize(&process);
+
+	return result;
 }

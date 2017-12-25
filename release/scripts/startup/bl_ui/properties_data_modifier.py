@@ -1119,18 +1119,31 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
         layout.prop(md, "mode")
 
-        row = layout.row()
-        row.prop(md, "octree_depth")
-        row.prop(md, "scale")
 
-        if md.mode == 'SHARP':
-            layout.prop(md, "sharpness")
+        if md.mode == 'METABALL':
+            row = layout.row()
+            col = row.column(align=True)
+            col.prop(md, "mball_size")
+            col = row.column(align=True)
+            col.label("Display Parameters:")
+            col.prop(md, "mball_threshold")
+            col.prop(md, "mball_resolution")
+            col.prop(md, "mball_render_resolution")
+            layout.prop(md, "use_smooth_shade")
 
-        layout.prop(md, "use_smooth_shade")
-        layout.prop(md, "use_remove_disconnected")
-        row = layout.row()
-        row.active = md.use_remove_disconnected
-        row.prop(md, "threshold")
+        else:
+            row = layout.row()
+            row.prop(md, "octree_depth")
+            row.prop(md, "scale")
+
+            if md.mode == 'SHARP':
+                layout.prop(md, "sharpness")
+
+            layout.prop(md, "use_smooth_shade")
+            layout.prop(md, "use_remove_disconnected")
+            row = layout.row()
+            row.active = md.use_remove_disconnected
+            row.prop(md, "threshold")
 
     @staticmethod
     def vertex_weight_mask(layout, ob, md):

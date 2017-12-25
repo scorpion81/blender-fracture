@@ -26,11 +26,17 @@
 struct EvaluationContext;
 struct Object;
 struct Scene;
+struct DerivedMesh;
+struct DispList;
 
 void BKE_mball_polygonize(
         struct EvaluationContext *eval_ctx, struct Scene *scene,
         struct Object *ob, struct ListBase *dispbase);
 
 void BKE_mball_cubeTable_free(void);
+
+struct DerivedMesh* BKE_repolygonize_dm(struct DerivedMesh *dm, float thresh, float basesize[3], float wiresize, float rendersize, bool render);
+
+void BKE_dm_from_metaball(struct DispList *dl, struct DerivedMesh *dm);
 
 #endif  /* __BKE_MBALL_TESSELLATE_H__ */

@@ -1230,6 +1230,8 @@ typedef enum RemeshModifierMode {
 	MOD_REMESH_MASS_POINT     = 1,
 	/* keeps sharp edges */
 	MOD_REMESH_SHARP_FEATURES = 2,
+	/* turns vertices into metaballs */
+	MOD_REMESH_MBALL          = 3,
 } RemeshModifierMode;
 
 typedef struct RemeshModifierData {
@@ -1242,6 +1244,12 @@ typedef struct RemeshModifierData {
 	float scale;
 
 	float hermite_num;
+
+	/*mball related params*/
+	float rendersize;
+	float wiresize;
+	float thresh;
+	float basesize[3];
 
 	/* octree depth */
 	char depth;

@@ -3850,6 +3850,8 @@ static void rna_def_modifier_remesh(BlenderRNA *brna)
 		{MOD_REMESH_MASS_POINT, "SMOOTH", 0, "Smooth", "Output a smooth surface with no sharp-features detection"},
 		{MOD_REMESH_SHARP_FEATURES, "SHARP", 0, "Sharp",
 		                            "Output a surface that reproduces sharp edges and corners from the input mesh"},
+		{MOD_REMESH_MBALL, "METABALL", 0, "Metaball",
+		                            "Output a surface that consists of metaballs based from the vertices of the input mesh"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -3904,6 +3906,36 @@ static void rna_def_modifier_remesh(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_smooth_shade", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_REMESH_SMOOTH_SHADING);
 	RNA_def_property_ui_text(prop, "Smooth Shading", "Output faces with smooth shading rather than flat shaded");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	/*mball remesh related */
+	prop = RNA_def_property(srna, "mball_resolution", PROP_FLOAT, PROP_DISTANCE);
+	RNA_def_property_float_sdna(prop, NULL, "wiresize");
+	RNA_def_property_range(prop, 0.005f, 10000.0f);
+	RNA_def_property_ui_range(prop, 0.05f, 1000.0f, 2.5f, 3);
+	RNA_def_property_ui_text(prop, "Wire Size", "Polygonization resolution in the 3D viewport");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "mball_render_resolution", PROP_FLOAT, PROP_DISTANCE);
+	RNA_def_property_float_sdna(prop, NULL, "rendersize");
+	RNA_def_property_range(prop, 0.005f, 10000.0f);
+	RNA_def_property_ui_range(prop, 0.025f, 1000.0f, 2.5f, 3);
+	RNA_def_property_ui_text(prop, "Render Size", "Polygonization resolution in rendering");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "mball_threshold", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "thresh");
+	RNA_def_property_range(prop, 0.0f, 100.0f);
+	RNA_def_property_ui_text(prop, "Threshold", "Influence of meta elements");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "mball_size", PROP_FLOAT, PROP_XYZ);
+	RNA_def_property_float_sdna(prop, NULL, "basesize");
+	RNA_def_property_ui_range(prop, 0.001f, 10.0f, 0.1f, 3);
+	RNA_def_property_range(prop, 0.001f, 100.0f);
+	RNA_def_property_array(prop, 3);
+	RNA_def_property_ui_text(prop, "Size",
+	                         "The base size of each metaball element");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

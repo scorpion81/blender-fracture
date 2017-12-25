@@ -32,6 +32,7 @@
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_DerivedMesh.h"
+#include "BKE_mball_tessellate.h"
 
 #include "DNA_meshdata_types.h"
 #include "DNA_modifier_types.h"
@@ -57,6 +58,11 @@ static void initData(ModifierData *md)
 	rmd->flag = MOD_REMESH_FLOOD_FILL;
 	rmd->mode = MOD_REMESH_SHARP_FEATURES;
 	rmd->threshold = 1;
+
+	rmd->basesize[0] = rmd->basesize[1] = rmd->basesize[2] = 1.0f;
+	rmd->thresh = 0.6f;
+	rmd->wiresize = 0.4f;
+	rmd->rendersize = 0.2f;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -145,7 +151,7 @@ static void dualcon_add_quad(void *output_v, const int vert_indices[4])
 static DerivedMesh *applyModifier(ModifierData *md,
                                   Object *UNUSED(ob),
                                   DerivedMesh *dm,
-                                  ModifierApplyFlag UNUSED(flag))
+                                  ModifierApplyFlag flag)
 {
 	RemeshModifierData *rmd;
 	DualConOutput *output;
@@ -155,49 +161,56 @@ static DerivedMesh *applyModifier(ModifierData *md,
 	DualConMode mode = 0;
 
 	rmd = (RemeshModifierData *)md;
-
-	init_dualcon_mesh(&input, dm);
-
-	if (rmd->flag & MOD_REMESH_FLOOD_FILL)
-		flags |= DUALCON_FLOOD_FILL;
-
-	switch (rmd->mode) {
-		case MOD_REMESH_CENTROID:
-			mode = DUALCON_CENTROID;
-			break;
-		case MOD_REMESH_MASS_POINT:
-			mode = DUALCON_MASS_POINT;
-			break;
-		case MOD_REMESH_SHARP_FEATURES:
-			mode = DUALCON_SHARP_FEATURES;
-			break;
-	}
 	
-	output = dualcon(&input,
-	                 dualcon_alloc_output,
-	                 dualcon_add_vert,
-	                 dualcon_add_quad,
-	                 flags,
-	                 mode,
-	                 rmd->threshold,
-	                 rmd->hermite_num,
-	                 rmd->scale,
-	                 rmd->depth);
-	result = output->dm;
-	MEM_freeN(output);
+	if (rmd->mode != MOD_REMESH_MBALL)
+	{
+		init_dualcon_mesh(&input, dm);
 
-	if (rmd->flag & MOD_REMESH_SMOOTH_SHADING) {
+		if (rmd->flag & MOD_REMESH_FLOOD_FILL)
+			flags |= DUALCON_FLOOD_FILL;
+
+		switch (rmd->mode) {
+			case MOD_REMESH_CENTROID:
+				mode = DUALCON_CENTROID;
+				break;
+			case MOD_REMESH_MASS_POINT:
+				mode = DUALCON_MASS_POINT;
+				break;
+			case MOD_REMESH_SHARP_FEATURES:
+				mode = DUALCON_SHARP_FEATURES;
+				break;
+		}
+
+		output = dualcon(&input,
+						 dualcon_alloc_output,
+						 dualcon_add_vert,
+						 dualcon_add_quad,
+						 flags,
+						 mode,
+						 rmd->threshold,
+						 rmd->hermite_num,
+						 rmd->scale,
+						 rmd->depth);
+		result = output->dm;
+		MEM_freeN(output);
+
+		CDDM_calc_edges(result);
+		result->dirty |= DM_DIRTY_NORMALS;
+	}
+	else {
+		result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, flag & MOD_APPLY_RENDER);
+	}
+
+	if (result && (rmd->flag & MOD_REMESH_SMOOTH_SHADING)) {
 		MPoly *mpoly = CDDM_get_polys(result);
 		int i, totpoly = result->getNumPolys(result);
-		
+
 		/* Apply smooth shading to output faces */
 		for (i = 0; i < totpoly; i++) {
 			mpoly[i].flag |= ME_SMOOTH;
 		}
 	}
 
-	CDDM_calc_edges(result);
-	result->dirty |= DM_DIRTY_NORMALS;
 	return result;
 }
 
