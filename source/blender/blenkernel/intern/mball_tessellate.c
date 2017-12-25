@@ -1485,6 +1485,9 @@ void BKE_dm_from_metaball(DispList *dl, DerivedMesh *dm)
 		allloop = mloop = dm->getLoopArray(dm);
 		mpoly = dm->getPolyArray(dm);
 
+		//this will be recalculated here
+		dm->numLoopData = 0;
+
 		a = dl->nr;
 		nors = dl->nors;
 		verts = dl->verts;
@@ -1520,6 +1523,9 @@ void BKE_dm_from_metaball(DispList *dl, DerivedMesh *dm)
 
 		CDDM_calc_normals(dm);
 		CDDM_calc_edges(dm);
+		//CDDM_recalc_tessellation(dm);
+		CDDM_recalc_looptri(dm);
+		dm->dirty |= DM_DIRTY_NORMALS;
 	}
 }
 

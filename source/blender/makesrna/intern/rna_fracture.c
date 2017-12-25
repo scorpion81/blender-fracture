@@ -198,6 +198,7 @@ static void rna_##_type##Modifier_##_prop##_set(PointerRNA *ptr, const char *val
 RNA_MOD_VGROUP_NAME_SET(Fracture, thresh_defgrp_name);
 RNA_MOD_VGROUP_NAME_SET(Fracture, ground_defgrp_name);
 RNA_MOD_VGROUP_NAME_SET(Fracture, inner_defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(Fracture, acceleration_defgrp_name);
 
 #undef RNA_MOD_VGROUP_NAME_SET
 
@@ -629,6 +630,21 @@ static void rna_FractureModifier_cluster_group_set(PointerRNA* ptr, PointerRNA v
 	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
 	rmd->cluster_group = value.data;
 	rmd->refresh_constraints = true;
+}
+
+//cant really update outside sim, without live values
+static void rna_FractureModifier_max_acceleration_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
+	rmd->max_acceleration = value;
+	//rmd->refresh_constraints = true;
+}
+
+static void rna_FractureModifier_min_acceleration_set(PointerRNA *ptr, float value)
+{
+	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
+	rmd->min_acceleration = value;
+	//rmd->refresh_constraints = true;
 }
 
 static void rna_Modifier_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
@@ -1444,6 +1460,31 @@ void RNA_def_fracture(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_self_collision", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "use_self_collision", false);
 	RNA_def_property_ui_text(prop, "Self Collision", "Allow collisions between constraint islands");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "acceleration_vertex_group", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "acceleration_defgrp_name");
+	RNA_def_property_ui_text(prop, "Acceleration Vertex Group", "Vertex group whose weights represent the forces affecting the meshislands");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_FractureModifier_acceleration_defgrp_name_set");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "min_acceleration", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "min_acceleration");
+	RNA_def_property_range(prop, 0, FLT_MAX);
+	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_min_acceleration_set", NULL);
+	RNA_def_property_ui_text(prop, "Min Acceleration", "The minimum against which the force will be normed against");
+	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.1f, 2);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "max_acceleration", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "max_acceleration");
+	RNA_def_property_range(prop, 0, FLT_MAX);
+	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_max_acceleration_set", NULL);
+	RNA_def_property_ui_text(prop, "Max Acceleration", "The maximum against which the force will be normed against");
+	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.1f, 2);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	RNA_api_fracture(brna, srna);

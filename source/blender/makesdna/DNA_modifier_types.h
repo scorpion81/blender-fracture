@@ -1694,6 +1694,7 @@ typedef struct FractureModifierData {
 	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char inner_defgrp_name[64];  /* MAX_VGROUP_NAME */
+	char acceleration_defgrp_name[64]; /* MAX_VGROUP_NAME */
 	char uvlayer_name[64];  /* MAX_CUSTOMDATA_LAYER_NAME */
 	struct KDTree *nor_tree; /* store original vertices here (coords), to find them later and reuse their normals */
 	struct Material *inner_material;
@@ -1771,6 +1772,8 @@ typedef struct FractureModifierData {
 	float dynamic_min_size;
 	float inner_crease;
 	float orthogonality_factor;
+	float min_acceleration;
+	float max_acceleration;
 
 	/* flags */
 	int refresh;

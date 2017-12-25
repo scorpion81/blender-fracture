@@ -232,6 +232,7 @@ ModifierTypeInfo modifierType_Remesh = {
 	/* type */              eModifierTypeType_Nonconstructive,
 	/* flags */             eModifierTypeFlag_AcceptsMesh |
 	                        eModifierTypeFlag_AcceptsCVs |
+                            eModifierTypeFlag_SupportsMapping |
 	                        eModifierTypeFlag_SupportsEditmode,
 	/* copyData */          copyData,
 	/* deformVerts */       NULL,

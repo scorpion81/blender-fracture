@@ -167,6 +167,11 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             box.label("Inner Vertex Group:")
             box.prop_search(md, "inner_vertex_group", ob, "vertex_groups", text = "")
             box.prop(md, "inner_crease")
+            box.label("Acceleration Map:")
+            box.prop_search(md, "acceleration_vertex_group", ob, "vertex_groups", text = "")
+            row = box.row(align=True)
+            row.prop(md, "min_acceleration")
+            row.prop(md, "max_acceleration")
             if (md.frac_algorithm in {'BISECT_FAST', 'BISECT_FAST_FILL'}):
                 box.prop(md, "orthogonality_factor", text="Rectangular Alignment")
 

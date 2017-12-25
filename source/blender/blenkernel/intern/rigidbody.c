@@ -63,6 +63,7 @@
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_depsgraph.h"
+#include "BKE_deform.h"
 #include "BKE_effect.h"
 #include "BKE_fracture.h"
 #include "BKE_global.h"
@@ -4316,6 +4317,52 @@ static bool check_constraints(FractureModifierData *fmd, MeshIsland *mi, RigidBo
 	return false;
 }
 
+static void updateAccelerationMap(FractureModifierData *fmd, RigidBodyOb* rbo, Object* ob, rbContactPoint* cp)
+{
+	const int acc_defgrp_index = defgroup_name_index(ob, fmd->acceleration_defgrp_name);
+	MeshIsland *mi = findMeshIsland(fmd, rbo->meshisland_index);
+	DerivedMesh *dm = fmd->visible_mesh_cached;
+	MDeformVert *dvert = NULL, *dv;
+	MDeformWeight *dw = NULL;
+	float weight = 0.0f, denom;
+	int i = 0, w = 0;
+	int totvert = dm->getNumVerts(dm);
+
+	dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
+
+	if (dvert == NULL)
+	{
+		dvert = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC,
+	                             NULL, totvert);
+	}
+
+	//calculate weight from force...
+	denom = fmd->max_acceleration - fmd->min_acceleration;
+
+	//sanity check
+	if (denom == 0.0f)
+		denom = 1.0f;
+
+	weight = (cp->contact_force - fmd->min_acceleration) / denom;
+
+	for (i = 0; i < mi->vertex_count; i++)
+	{
+		dv = dvert + mi->vertex_indices[i];
+		if (dv) {
+			if (dv->dw == NULL) {
+				defvert_add_index_notest(dv, acc_defgrp_index, 0.0f);
+			}
+
+			for (dw = dv->dw, w = 0; w < dv->totweight; dw++, w++)
+			{
+				if (dw->def_nr == acc_defgrp_index) {
+					dw->weight = weight;
+				}
+			}
+		}
+	}
+}
+
 static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA, Object *obB)
 {
 	int linear_index1, linear_index2;
@@ -4353,6 +4400,11 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 		ob_index1 = rbw->cache_offset_map[linear_index1];
 		ob1 = rbw->objects[ob_index1];
 		fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
+
+		if (fmd1)
+		{
+			updateAccelerationMap(fmd1, rbw->cache_index_map[linear_index1], ob1,  cp);
+		}
 
 		if (fmd1 && fmd1->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
@@ -4408,6 +4460,11 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 		//ob2 = rbw->objects[ob_index2];
 		fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
 
+		if (fmd2)
+		{
+			updateAccelerationMap(fmd2, rbw->cache_index_map[linear_index2], ob2, cp);
+		}
+
 		if (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			if (fmd2->current_shard_entry && fmd2->current_shard_entry->is_new)
@@ -4454,10 +4511,14 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 	cp = NULL;
 }
 
+static ThreadMutex acceleration_lock = BLI_MUTEX_INITIALIZER;
 static void contactCallback(rbContactPoint* cp, void* world)
 {
 	RigidBodyWorld *rbw = (RigidBodyWorld*)world;
+
+	BLI_mutex_lock(&acceleration_lock);
 	check_fracture(cp, rbw, NULL, NULL);
+	BLI_mutex_unlock(&acceleration_lock);
 }
 
 static void idCallback(void *world, void* island, int* objectId, int* islandId)

@@ -257,6 +257,9 @@ static void initData(ModifierData *md)
 	fmd->use_centroids = false;
 	fmd->use_vertices = false;
 	fmd->use_self_collision = false;
+
+	fmd->min_acceleration = 0.0f;
+	fmd->max_acceleration = 1.0f;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1732,6 +1735,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	strncpy(trmd->thresh_defgrp_name, rmd->thresh_defgrp_name, strlen(rmd->thresh_defgrp_name));
 	strncpy(trmd->ground_defgrp_name, rmd->ground_defgrp_name, strlen(rmd->ground_defgrp_name));
 	strncpy(trmd->inner_defgrp_name, rmd->inner_defgrp_name, strlen(rmd->inner_defgrp_name));
+	strncpy(trmd->acceleration_defgrp_name, rmd->acceleration_defgrp_name, strlen(rmd->acceleration_defgrp_name));
 
 	trmd->visible_mesh = NULL;
 	trmd->visible_mesh_cached = NULL;
@@ -1857,6 +1861,9 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->use_centroids = rmd->use_centroids;
 	trmd->use_vertices = rmd->use_vertices;
 	trmd->use_self_collision = rmd->use_self_collision;
+
+	trmd->min_acceleration = rmd->min_acceleration;
+	trmd->max_acceleration = rmd->max_acceleration;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
