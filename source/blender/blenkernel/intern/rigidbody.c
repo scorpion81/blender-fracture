@@ -4035,21 +4035,28 @@ static bool check_constraint_island(FractureModifierData* fmd, MeshIsland *mi1, 
 
 		float dist_sq = len_squared_v3v3(mi1->centroid, mi2->centroid);
 		bool is_near = len_squared_v3v3(mi1->rigidbody->pos, mi2->rigidbody->pos) < dist_sq;
+		bool same_island = mi1->constraint_index == mi2->constraint_index;
+		bool same_near_self = same_island && fmd->use_self_collision && is_near;
+		bool diff_clust_near_self = mi1->particle_index != mi2->particle_index && fmd->use_self_collision && is_near;
+		bool regular_case = mi1 && mi2 && !fmd->use_constraint_collision && !same_island;
 
-		if (mi1->rigidbody->physics_shape)
+		if (fmd->use_self_collision)
 		{
-			RB_shape_set_margin(mi1->rigidbody->physics_shape, is_near ? 0.0f : RBO_GET_MARGIN(mi1->rigidbody));
+			if (mi1->rigidbody->physics_shape)
+			{
+				RB_shape_set_margin(mi1->rigidbody->physics_shape, is_near ? 0.0f : RBO_GET_MARGIN(mi1->rigidbody));
+			}
+
+			if (mi2->rigidbody->physics_shape)
+			{
+				RB_shape_set_margin(mi2->rigidbody->physics_shape, is_near ? 0.0f : RBO_GET_MARGIN(mi2->rigidbody));
+			}
 		}
 
-		if (mi2->rigidbody->physics_shape)
-		{
-			RB_shape_set_margin(mi2->rigidbody->physics_shape, is_near ? 0.0f : RBO_GET_MARGIN(mi2->rigidbody));
-		}
+		//collide if: same island and near, different cluster if clustered and same island and near
 
-		return (((mi1->constraint_index != mi2->constraint_index) ||
-		        ((mi1->constraint_index == mi2->constraint_index) &&
-		        (mi1->particle_index != mi2->particle_index))) &&
-		       (fmd->use_self_collision && is_near));
+		return regular_case || same_near_self || diff_clust_near_self;
+
 	}
 
 	return true;
