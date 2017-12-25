@@ -1473,18 +1473,26 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "min_acceleration");
 	RNA_def_property_range(prop, 0, FLT_MAX);
 	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_min_acceleration_set", NULL);
-	RNA_def_property_ui_text(prop, "Min Acceleration", "The minimum against which the force will be normed against");
-	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.1f, 2);
-	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_ui_text(prop, "Min", "The minimum against which the force will be normed against");
+	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.1f, 4);
+	//RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "max_acceleration", PROP_FLOAT, PROP_NONE);
 	RNA_def_property_float_sdna(prop, NULL, "max_acceleration");
 	RNA_def_property_range(prop, 0, FLT_MAX);
 	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_max_acceleration_set", NULL);
-	RNA_def_property_ui_text(prop, "Max Acceleration", "The maximum against which the force will be normed against");
-	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.1f, 2);
-	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_ui_text(prop, "Max", "The maximum against which the force will be normed against");
+	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.1f, 4);
+	//RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "acceleration_fade", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "acceleration_fade");
+	RNA_def_property_range(prop, 0, 1.0f);
+	RNA_def_property_ui_text(prop, "Fade", "Multiplier to fade out the weights with");
+	RNA_def_property_ui_range(prop, 0.0f, 1.0f, 0.1f, 4);
+	//RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	RNA_api_fracture(brna, srna);

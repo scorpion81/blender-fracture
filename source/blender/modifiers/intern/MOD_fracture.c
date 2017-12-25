@@ -260,6 +260,7 @@ static void initData(ModifierData *md)
 
 	fmd->min_acceleration = 0.0f;
 	fmd->max_acceleration = 1.0f;
+	fmd->acceleration_fade = 0.85f;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1864,6 +1865,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 
 	trmd->min_acceleration = rmd->min_acceleration;
 	trmd->max_acceleration = rmd->max_acceleration;
+	trmd->acceleration_fade = rmd->acceleration_fade;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
@@ -2073,6 +2075,7 @@ static float do_setup_meshisland(FractureModifierData *fmd, Object *ob, int totv
 	{
 		mi->locs = NULL;
 		mi->rots = NULL;
+		mi->acc_sequence = NULL;
 		mi->frame_count = 0;
 
 		if (fmd->modifier.scene->rigidbody_world)
@@ -3756,6 +3759,7 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 	{
 		mi->locs = NULL;
 		mi->rots = NULL;
+		mi->acc_sequence = NULL;
 		mi->frame_count = 0;
 
 		if (fmd->modifier.scene->rigidbody_world)
@@ -3987,6 +3991,17 @@ static DerivedMesh *output_dm(FractureModifierData* fmd, DerivedMesh *dm, Object
 				}
 			}
 		}
+
+		//fade out acceleration map weights too
+		/*if (dvert) {
+			int i;
+			int defgrp = defgroup_name_index(ob, fmd->acceleration_defgrp_name);
+			for (i = 0; i < fmd->visible_mesh_cached->numVertData; i++) {
+				if (dvert[i].dw && dvert[i].dw->def_nr == defgrp && dvert[i].dw->weight >= 0.0f) {
+					dvert[i].dw->weight -= 0.5f;
+				}
+			}
+		}*/
 
 		if (fmd->autohide_dist > 0 || fmd->automerge_dist > 0 || fmd->use_centroids || fmd->use_vertices)
 		{

@@ -1464,6 +1464,7 @@ typedef struct MeshIsland {
 	struct RigidBodyShardCon **participating_constraints;
 	float *locs;
 	float *rots;
+	float *acc_sequence;
 
 	char name[66]; /* MAX_ID_NAME */
 	char pad1[2];
@@ -1774,6 +1775,7 @@ typedef struct FractureModifierData {
 	float orthogonality_factor;
 	float min_acceleration;
 	float max_acceleration;
+	float acceleration_fade;
 
 	/* flags */
 	int refresh;
@@ -1832,7 +1834,7 @@ typedef struct FractureModifierData {
 	short mat_ofs_intersect;
 	short mat_ofs_difference;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

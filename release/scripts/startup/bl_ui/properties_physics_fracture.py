@@ -172,6 +172,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             row = box.row(align=True)
             row.prop(md, "min_acceleration")
             row.prop(md, "max_acceleration")
+            row.prop(md, "acceleration_fade")
             if (md.frac_algorithm in {'BISECT_FAST', 'BISECT_FAST_FILL'}):
                 box.prop(md, "orthogonality_factor", text="Rectangular Alignment")
 

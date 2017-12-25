@@ -3293,6 +3293,12 @@ void BKE_fracture_free_mesh_island(FractureModifierData *rmd, MeshIsland *mi, bo
 		mi->locs = NULL;
 	}
 
+	if (mi->acc_sequence)
+	{
+		MEM_freeN(mi->acc_sequence);
+		mi->acc_sequence = NULL;
+	}
+
 	mi->frame_count = 0;
 
 	MEM_freeN(mi);

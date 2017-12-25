@@ -5211,6 +5211,7 @@ static void read_meshIsland(FileData *fd, MeshIsland **address)
 
 	mi->locs = newdataadr(fd, mi->locs);
 	mi->rots = newdataadr(fd, mi->rots);
+	mi->acc_sequence = newdataadr(fd, mi->acc_sequence);
 
 	/* will be refreshed on the fly if not there*/
 	mi->participating_constraints = newdataadr(fd, mi->participating_constraints);

@@ -705,6 +705,7 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.grid_resolution"
         "fracture.min_acceleration",
         "fracture.max_acceleration",
+        "fracture.acceleration_fade"
     ]
 
     preset_subdir = "fracture"
