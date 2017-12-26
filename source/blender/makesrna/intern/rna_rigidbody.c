@@ -83,6 +83,7 @@ static EnumPropertyItem rigidbody_mesh_source_items[] = {
 	{RBO_MESH_BASE, "BASE", 0, "Base", "Base mesh"},
 	{RBO_MESH_DEFORM, "DEFORM", 0, "Deform", "Deformations (shape keys, deform modifiers)"},
 	{RBO_MESH_FINAL, "FINAL", 0, "Final", "All modifiers"},
+	{RBO_MESH_FINAL_SOLID, "FINAL_SOLID", 0, "Final Solid", "All modifiers and solidified by margin"},
 	{0, NULL, 0, NULL, NULL}};
 #endif
 

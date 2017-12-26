@@ -222,7 +222,9 @@ typedef enum eRigidBody_MeshSource {
 	/* only deformations */
 	RBO_MESH_DEFORM,
 	/* final derived mesh */
-	RBO_MESH_FINAL
+	RBO_MESH_FINAL,
+	/* solidifed final mesh (physics only) */
+	RBO_MESH_FINAL_SOLID
 } eRigidBody_MeshSource;
 
 /* ******************************** */

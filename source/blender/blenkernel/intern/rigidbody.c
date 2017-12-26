@@ -78,6 +78,7 @@
 #include "BKE_depsgraph.h"
 #include "BKE_scene.h"
 #include "PIL_time.h"
+#include "bmesh.h"
 
 #ifdef WITH_BULLET
 
@@ -278,6 +279,36 @@ RigidBodyCon *BKE_rigidbody_copy_constraint(const Object *ob)
 	return rbcN;
 }
 
+/* although this may be slow, it also may help to correct the mesh bounding problem */
+static DerivedMesh* dm_solidify(DerivedMesh *dm, float thickness)
+{
+	DerivedMesh *result = NULL;
+	BMesh *bm = BM_mesh_create(&bm_mesh_allocsize_default, &((struct BMeshCreateParams){.use_toolflags = true,}));
+	BMOperator bmop;
+
+	DM_to_bmesh_ex(dm, bm, true);
+
+	BMO_op_initf(bm, &bmop, BMO_FLAG_DEFAULTS, "solidify geom=%af thickness=%f", thickness);
+
+	/* deselect only the faces in the region to be solidified (leave wire
+	 * edges and loose verts selected, as there will be no corresponding
+	 * geometry selected below) */
+	BMO_slot_buffer_hflag_disable(bm, bmop.slots_in, "geom", BM_FACE, BM_ELEM_SELECT, true);
+
+	/* run the solidify operator */
+	BMO_op_exec(bm, &bmop);
+
+	/* select the newly generated faces */
+	BMO_slot_buffer_hflag_enable(bm, bmop.slots_out, "geom.out", BM_FACE, BM_ELEM_SELECT, true);
+
+	BMO_op_finish(bm, &bmop);
+
+	result = CDDM_from_bmesh(bm, true);
+	BM_mesh_free(bm);
+
+	return result;
+}
+
 /* ************************************** */
 /* Setup Utilities - Validate Sim Instances */
 
@@ -289,6 +320,10 @@ static DerivedMesh *rigidbody_get_mesh(Object *ob)
 	}
 	else if (ob->rigidbody_object->mesh_source == RBO_MESH_FINAL) {
 		return ob->derivedFinal;
+	}
+	else if (ob->rigidbody_object->mesh_source == RBO_MESH_FINAL_SOLID)
+	{
+		return dm_solidify(ob->derivedFinal, ob->rigidbody_object->margin);
 	}
 	else {
 		return CDDM_from_mesh(ob->data);
@@ -3269,7 +3304,7 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh(Object *ob)
 		}
 
 		/* cleanup temp data */
-		if (ob->rigidbody_object->mesh_source == RBO_MESH_BASE) {
+		if (ob->rigidbody_object->mesh_source == RBO_MESH_BASE || ob->rigidbody_object->mesh_source == RBO_MESH_FINAL_SOLID) {
 			dm->release(dm);
 		}
 	}
@@ -3334,10 +3369,8 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 	else if (rbo->shape == RB_SHAPE_SPHERE) {
 
 		/* take radius to the largest dimension to try and encompass everything */
-		radius = max_fff(size[0], size[1], size[2]) * 0.5f;
-
-		if (rbo->flag & RBO_FLAG_RANDOM_MARGIN)
-			radius = (BLI_frand() * radius) + 0.001f;
+		radius = (rbo->flag & RBO_FLAG_USE_MARGIN) ? min_fff(size[0], size[1], size[2]) :
+				 max_fff(size[0], size[1], size[2]);
 	}
 
 	/* create new shape */
@@ -3347,7 +3380,9 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 			break;
 
 		case RB_SHAPE_SPHERE:
-			margin = RBO_GET_MARGIN(rbo);
+			margin = (rbo->flag & RBO_FLAG_USE_MARGIN) ? rbo->margin : 0.0f;
+			margin = (rbo->flag & RBO_FLAG_RANDOM_MARGIN) ? BLI_frand() * margin : margin;
+
 			new_shape = RB_shape_new_sphere(radius + margin);
 			break;
 
