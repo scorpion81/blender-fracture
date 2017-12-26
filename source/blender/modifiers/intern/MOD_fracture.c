@@ -3992,17 +3992,6 @@ static DerivedMesh *output_dm(FractureModifierData* fmd, DerivedMesh *dm, Object
 			}
 		}
 
-		//fade out acceleration map weights too
-		/*if (dvert) {
-			int i;
-			int defgrp = defgroup_name_index(ob, fmd->acceleration_defgrp_name);
-			for (i = 0; i < fmd->visible_mesh_cached->numVertData; i++) {
-				if (dvert[i].dw && dvert[i].dw->def_nr == defgrp && dvert[i].dw->weight >= 0.0f) {
-					dvert[i].dw->weight -= 0.5f;
-				}
-			}
-		}*/
-
 		if (fmd->autohide_dist > 0 || fmd->automerge_dist > 0 || fmd->use_centroids || fmd->use_vertices)
 		{
 			//printf("Autohide \n");

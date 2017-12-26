@@ -105,7 +105,7 @@ static bool restoreKinematic(RigidBodyWorld *rbw);
 static void DM_mesh_boundbox(DerivedMesh *bm, float r_loc[3], float r_size[3]);
 static void test_deactivate_rigidbody(RigidBodyOb *rbo);
 static float box_volume(float size[3]);
-static void updateAccelerationMap(FractureModifierData *fmd, MeshIsland* mi, Object* ob, rbContactPoint* cp, int ctime);
+static void updateAccelerationMap(FractureModifierData *fmd, MeshIsland* mi, Object* ob, rbContactPoint* cp, int ctime, RigidBodyWorld *rbw);
 
 #endif
 
@@ -2997,7 +2997,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 
 		if (mi->acc_sequence == NULL)
 		{
-			mi->acc_sequence = MEM_mallocN(sizeof(float), "mi->acc_sequence");
+			mi->acc_sequence = MEM_callocN(sizeof(float), "mi->acc_sequence");
 		}
 
 		if (n > mi->frame_count) {
@@ -3017,7 +3017,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 			mi->frame_count = n;
 		}
 
-		updateAccelerationMap(rmd, mi, ob, NULL, frame);
+		updateAccelerationMap(rmd, mi, ob, NULL, frame, rbw);
 	}
 
 	for (j = 0; j < mi->vertex_count; j++) {
@@ -4363,7 +4363,8 @@ static bool check_constraints(FractureModifierData *fmd, MeshIsland *mi, RigidBo
 	return false;
 }
 
-static void updateAccelerationMap(FractureModifierData *fmd, MeshIsland* mi, Object* ob, rbContactPoint* cp, int ctime)
+static void updateAccelerationMap(FractureModifierData *fmd, MeshIsland* mi, Object* ob, rbContactPoint* cp, int ctime,
+                                  RigidBodyWorld *rbw)
 {
 	const int acc_defgrp_index = defgroup_name_index(ob, fmd->acceleration_defgrp_name);
 	DerivedMesh *dm = fmd->visible_mesh_cached;
@@ -4372,7 +4373,6 @@ static void updateAccelerationMap(FractureModifierData *fmd, MeshIsland* mi, Obj
 	float weight = 0.0f, denom, force = 0.0f;
 	int i = 0, w = 0;
 	int totvert = dm->getNumVerts(dm);
-	float dampen = fmd->acceleration_fade;
 
 	dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
 
@@ -4394,60 +4394,49 @@ static void updateAccelerationMap(FractureModifierData *fmd, MeshIsland* mi, Obj
 		force = cp->contact_force;
 		if ((force > fmd->min_acceleration && force < fmd->max_acceleration))
 		{
-			float lastforce = 0.0f;
-			float lastweight = -1;
-
-			if (ctime > mi->start_frame + 1) {
-				//keep value for fading it ?
-				lastforce = mi->acc_sequence[ctime - mi->start_frame -1];
-				lastweight = (lastforce - fmd->min_acceleration) / denom;
-			}
-			else {
-				lastweight = 0.0f;
-			}
-
-			weight = (force - fmd->min_acceleration) / denom;
-
-			//if (fabsf(lastweight - weight) < (1.0f - dampen) && (lastweight >= 0.0f))
+			if (force > mi->acc_sequence[ctime - mi->start_frame])
 			{
-				if (force > mi->acc_sequence[ctime - mi->start_frame])
-				{
-					//printf("force :%f\n", force);
-					mi->acc_sequence[ctime - mi->start_frame] = force;
-				}
-				else {
-					mi->acc_sequence[ctime - mi->start_frame] = lastforce * dampen;
-				}
+				mi->acc_sequence[ctime - mi->start_frame] = force;
 			}
-			/*else
-			{
-				mi->acc_sequence[ctime - mi->start_frame] = lastforce * dampen;
-			}*/
 		}
 	}
 	else if (mi->acc_sequence)
-	{	//read cached force, but update weights only if != 0 (maybe decrement then
+	{
+		float lastforce = 0.0f;
 		force = mi->acc_sequence[ctime - mi->start_frame];
-		weight = (force - fmd->min_acceleration) / denom;
+		if (ctime > mi->start_frame + 1)
+		{
+			lastforce = mi->acc_sequence[ctime - mi->start_frame - 1];
+		}
 
-		if (weight < 0.0f)
-			weight = 0.0f;
-
-		if (weight > 1.0f)
-			weight = 1.0f;
+		if (force >= lastforce)
+		{
+			weight = (force - fmd->min_acceleration) / denom;
+		}
 
 		for (i = 0; i < mi->vertex_count; i++)
 		{
 			dv = dvert + mi->vertex_indices[i];
 			if (dv) {
 				if (dv->dw == NULL) {
-					defvert_add_index_notest(dv, acc_defgrp_index, weight);
+					defvert_add_index_notest(dv, acc_defgrp_index, 0.0f);
 				}
 
 				for (dw = dv->dw, w = 0; w < dv->totweight; dw++, w++)
 				{
 					if (dw->def_nr == acc_defgrp_index) {
-						dw->weight = weight;
+
+						if (force > lastforce && weight >= 0.0f && weight <= 1.0f)
+						{
+							dw->weight = weight;
+						}
+						else if (ctime == rbw->pointcache->startframe)
+						{	//reset
+							dw->weight = 0.0f;
+						}
+						else {
+							dw->weight *= fmd->acceleration_fade;
+						}
 					}
 				}
 			}
@@ -4498,7 +4487,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 			RigidBodyOb *rbo = rbw->cache_index_map[linear_index1];
 			int id = rbo->meshisland_index;
 			MeshIsland* mi = findMeshIsland(fmd1, id);
-			updateAccelerationMap(fmd1, mi, ob1, cp, rbw->ltime+1);
+			updateAccelerationMap(fmd1, mi, ob1, cp, rbw->ltime+1, rbw);
 		}
 
 		if (fmd1 && fmd1->fracture_mode == MOD_FRACTURE_DYNAMIC)
@@ -4560,7 +4549,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 			RigidBodyOb *rbo = rbw->cache_index_map[linear_index2];
 			int id = rbo->meshisland_index;
 			MeshIsland* mi = findMeshIsland(fmd2, id);
-			updateAccelerationMap(fmd2, mi, ob2, cp, rbw->ltime+1);
+			updateAccelerationMap(fmd2, mi, ob2, cp, rbw->ltime+1, rbw);
 		}
 
 		if (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC)
