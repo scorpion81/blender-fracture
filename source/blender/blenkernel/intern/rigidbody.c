@@ -2975,11 +2975,12 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		n = frame - mi->start_frame + 1;
 		x = frame - mi->start_frame;
 
-		if (mi->locs == NULL || mi->rots == NULL)
+		if (mi->locs == NULL || mi->rots == NULL || mi->acc_sequence == NULL)
 		{
 			float loca[3], rota[4], quat[4];
 			mi->locs = MEM_mallocN(sizeof(float)*3, "mi->locs");
 			mi->rots = MEM_mallocN(sizeof(float)*4, "mi->rots");
+			mi->acc_sequence = MEM_callocN(sizeof(float), "mi->acc_sequence");
 			mi->frame_count = 0;
 
 			copy_v3_v3(loca, mi->centroid);
@@ -2999,16 +3000,12 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 			mi->rots[3] = rota[3];
 		}
 
-		if (mi->acc_sequence == NULL)
-		{
-			mi->acc_sequence = MEM_callocN(sizeof(float), "mi->acc_sequence");
-		}
-
 		if (n > mi->frame_count) {
 			mi->locs = MEM_reallocN(mi->locs, sizeof(float) * 3 * n);
 			mi->rots = MEM_reallocN(mi->rots, sizeof(float) * 4 * n);
-			mi->acc_sequence = MEM_reallocN(mi->acc_sequence, sizeof(float) * (n+1));
-			mi->acc_sequence[n] = 0.0f;
+			mi->acc_sequence = MEM_reallocN(mi->acc_sequence, sizeof(float) * n);
+			//mi->acc_sequence[n] = 0.0f;
+			mi->acc_sequence[x] = 0.0f;
 
 			mi->locs[x*3] = loc[0];
 			mi->locs[x*3+1] = loc[1];
@@ -3021,7 +3018,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 			mi->frame_count = n;
 		}
 
-		updateAccelerationMap(rmd, mi, ob, NULL, frame, rbw);
+		updateAccelerationMap(rmd, mi, ob, NULL, rbw->ltime, rbw);
 	}
 
 	for (j = 0; j < mi->vertex_count; j++) {
@@ -4398,25 +4395,20 @@ static void updateAccelerationMap(FractureModifierData *fmd, MeshIsland* mi, Obj
 		force = cp->contact_force;
 		if ((force > fmd->min_acceleration && force < fmd->max_acceleration))
 		{
-			if (force > mi->acc_sequence[ctime - mi->start_frame])
+			if (force > mi->acc_sequence[ctime - mi->start_frame + 1])
 			{
-				mi->acc_sequence[ctime - mi->start_frame] = force;
+				mi->acc_sequence[ctime - mi->start_frame + 1] = force;
 			}
 		}
 	}
-	else if (mi->acc_sequence)
-	{
-		float lastforce = 0.0f;
-		force = mi->acc_sequence[ctime - mi->start_frame];
-		if (ctime > mi->start_frame + 1)
-		{
-			lastforce = mi->acc_sequence[ctime - mi->start_frame - 1];
-		}
 
-		if (force >= lastforce)
-		{
-			weight = (force - fmd->min_acceleration) / denom;
-		}
+	if (mi->acc_sequence)
+	{
+		force = mi->acc_sequence[ctime - mi->start_frame + 1];
+		weight = (force - fmd->min_acceleration) / denom;
+
+		if (ctime == mi->start_frame)
+			weight = 0.0f;
 
 		for (i = 0; i < mi->vertex_count; i++)
 		{
@@ -4430,15 +4422,12 @@ static void updateAccelerationMap(FractureModifierData *fmd, MeshIsland* mi, Obj
 				{
 					if (dw->def_nr == acc_defgrp_index) {
 
-						if (force > lastforce && weight >= 0.0f && weight <= 1.0f)
-						{
+						if (weight >= 0.0f && weight <= 1.0f) {
 							dw->weight = weight;
 						}
-						else if (ctime == rbw->pointcache->startframe)
-						{	//reset
-							dw->weight = 0.0f;
-						}
-						else {
+
+						if (!cp)
+						{
 							dw->weight *= fmd->acceleration_fade;
 						}
 					}
@@ -4491,7 +4480,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 			RigidBodyOb *rbo = rbw->cache_index_map[linear_index1];
 			int id = rbo->meshisland_index;
 			MeshIsland* mi = findMeshIsland(fmd1, id);
-			updateAccelerationMap(fmd1, mi, ob1, cp, rbw->ltime+1, rbw);
+			updateAccelerationMap(fmd1, mi, ob1, cp, rbw->ltime, rbw);
 		}
 
 		if (fmd1 && fmd1->fracture_mode == MOD_FRACTURE_DYNAMIC)
@@ -4553,7 +4542,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 			RigidBodyOb *rbo = rbw->cache_index_map[linear_index2];
 			int id = rbo->meshisland_index;
 			MeshIsland* mi = findMeshIsland(fmd2, id);
-			updateAccelerationMap(fmd2, mi, ob2, cp, rbw->ltime+1, rbw);
+			updateAccelerationMap(fmd2, mi, ob2, cp, rbw->ltime, rbw);
 		}
 
 		if (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC)
