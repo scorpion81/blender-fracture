@@ -1282,7 +1282,7 @@ static MeshIsland *find_meshisland(FractureModifierData *fmd, int id)
 	MeshIsland *mi = (MeshIsland*)fmd->meshIslands.first;
 	while (mi)
 	{
-		if (mi->id == id)
+		if (mi->rigidbody->meshisland_index == id)
 		{
 			return mi;
 		}

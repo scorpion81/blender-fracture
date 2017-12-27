@@ -1025,23 +1025,23 @@ void BKE_rigidbody_world_id_loop(RigidBodyWorld *rbw, RigidbodyWorldIDFunc func,
 	 * of the rigidbody world... the rbw->objects array would contain group objects only anyway, also dont forget
 	 * regular constraints if there are any */
 
-	/*
-	if (rbw->objects) {
+	/*if (rbw->objects) {
 		int i;
-		for (i = 0; i < rbw->numbodies; i++) {
+		int count = BLI_listbase_count(&rbw->group->gobject);
+		for (i = 0; i < count; i++) {
 			func(rbw, (ID **)&rbw->objects[i], userdata, IDWALK_CB_NOP);
 		}
 	}*/
 
 	if (rbw->group) {
 		for (go = rbw->group->gobject.first; go; go = go->next) {
-			func(rbw, (ID **)&go->ob, userdata, IDWALK_NOP);
+			func(rbw, (ID **)&go->ob, userdata, IDWALK_CB_NOP);
 		}
 	}
 
 	if (rbw->constraints) {
 		for (go = rbw->constraints->gobject.first; go; go = go->next) {
-			func(rbw, (ID **)&go->ob, userdata, IDWALK_NOP);
+			func(rbw, (ID **)&go->ob, userdata, IDWALK_CB_NOP);
 		}
 	}
 }
@@ -1591,12 +1591,12 @@ static int rigidbody_group_count_items(const ListBase *group, int *r_num_objects
 void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw, bool do_bake_correction)
 {
 	GroupObject *go;
-	ModifierData *md;
 	FractureModifierData *rmd;
 	MeshIsland *mi;
-	int i, j = 0, l = 0, m = 0, n = 0, counter = 0, k = 0;
+	int i, j = 0, l = 0, m = 0, n = 0, counter = 0;
 	bool ismapped = false;
-	Object** temp_obj = NULL;
+	RigidBodyOb ** tmp_index = NULL;
+	int *tmp_offset = NULL;
 	
 	if (rbw->objects != NULL) {
 		MEM_freeN(rbw->objects);
@@ -1619,77 +1619,73 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw, bool do_bake_correction)
 	rbw->objects = MEM_mallocN(sizeof(Object *) * l, "objects");
 	rbw->cache_index_map = MEM_mallocN(sizeof(RigidBodyOb *) * rbw->numbodies, "cache_index_map");
 	rbw->cache_offset_map = MEM_mallocN(sizeof(int) * rbw->numbodies, "cache_offset_map");
+	tmp_index =  MEM_mallocN(sizeof(RigidBodyOb *) * rbw->numbodies, "cache_index_map temp");
+	tmp_offset = MEM_mallocN(sizeof(int) * rbw->numbodies, "cache_offset_map");
+
 	printf("RigidbodyCount changed: %d\n", rbw->numbodies);
 
 	//correct map if baked, it might be shifted
-	temp_obj = MEM_mallocN(sizeof(Object*) * l, "temp_obj");
 	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
-		Object *ob = go->ob;
-		temp_obj[i] = ob;
-	}
 
-	i = 0;
-	for (k = 0; k < l; k++) {
-
-		Object *ob = temp_obj[k];
-		if (!ob->rigidbody_object) {
-			//sort out non-rigidbodies which might be accidentally in the group...
-			continue;
+		if (go->ob->rigidbody_object)
+		{
+			rbw->objects[i] = go->ob;
 		}
 
-		if (do_bake_correction && (ob->rigidbody_object->meshisland_index != i) && n > 0) {
-			//pick the correct object in case it doesnt match (when we are baked
-			if (ob->rigidbody_object->meshisland_index < l && ob->rigidbody_object->meshisland_index > -1) {
-				ob = temp_obj[ob->rigidbody_object->meshisland_index];
-			}
-		}
-
-		rbw->objects[i] = ob;
-
-		for (md = ob->modifiers.first; md; md = md->next) {
-
-			if (md->type == eModifierType_Fracture) {
-				rmd = (FractureModifierData *)md;
-				if (isModifierActive(rmd)) {
-					for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
-						//store original position of the object in the object array, to be able to rearrange it later so it matches the baked cache
-						if ((mi == rmd->meshIslands.first) && !do_bake_correction) {
-							ob->rigidbody_object->meshisland_index = i;
-						}
-						rbw->cache_index_map[counter] = mi->rigidbody; /* map all shards of an object to this object index*/
-						rbw->cache_offset_map[counter] = i;
-						mi->linear_index = counter;
-						if (mi->rigidbody) {
-							//as we search by id now in the pointcache, we set the id here too
-							mi->rigidbody->meshisland_index = mi->id;
-						}
-						counter++;
-						j++;
-					}
-					ismapped = true;
-					break;
+		rmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
+		if (rmd) {
+			for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
+				//store original position of the object in the object array, to be able to rearrange it later so it matches the baked cache
+				tmp_index[counter] = mi->rigidbody; /* map all shards of an object to this object index*/
+				tmp_offset[counter] = i;
+				mi->linear_index = counter;
+				if (mi->rigidbody && !do_bake_correction) {
+					//as we search by id now in the pointcache, we set the id here too
+					mi->rigidbody->meshisland_index = counter;
 				}
+				counter++;
+				j++;
 			}
+			ismapped = true;
 		}
 
-		if (!ismapped) {
-			rbw->cache_index_map[counter] = ob->rigidbody_object; /*1 object 1 index here (normal case)*/
-			rbw->cache_offset_map[counter] = i;
-			if (ob->rigidbody_object && !do_bake_correction)
-				ob->rigidbody_object->meshisland_index = i;
+		if (!ismapped && go->ob->rigidbody_object) {
+			tmp_index[counter] = go->ob->rigidbody_object; /*1 object 1 index here (normal case)*/
+			tmp_offset[counter] = i;
+			if (go->ob->rigidbody_object && !do_bake_correction)
+				go->ob->rigidbody_object->meshisland_index = counter;
 			counter++;
 		}
 
 		ismapped = false;
-		i++;
 	}
 
-	MEM_freeN(temp_obj);
+	//do shuffle for each rigidbody
+	for (i = 0; i < rbw->numbodies; i++)
+	{
+		RigidBodyOb *rbo = tmp_index[i];
+		int offset = tmp_offset[i];
+
+		if (rbo->meshisland_index != i && do_bake_correction)
+		{
+			rbw->cache_index_map[rbo->meshisland_index] = rbo;
+			rbw->cache_offset_map[rbo->meshisland_index] = offset;
+			//printf("Shuffle %d -> %d\n", i, rbo->meshisland_index);
+		}
+		else {
+			rbw->cache_index_map[i] = rbo;
+			rbw->cache_offset_map[i] = offset;
+		}
+	}
+
+	MEM_freeN(tmp_index);
+	MEM_freeN(tmp_offset);
 }
 
 static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw, bool rebuild)
 {
 	float adj_gravity[3];
+	bool skip_correction = rbw->flag & RBW_FLAG_REFRESH_MODIFIERS;
 
 	/* adjust gravity to take effector weights into account */
 	if (scene->physics_settings.flag & PHYS_GLOBAL_GRAVITY) {
@@ -1704,10 +1700,9 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw, bool r
 	RB_dworld_set_gravity(rbw->physics_world, adj_gravity);
 
 	/* update object array in case there are changes */
-	//if (!(rbw->flag & RBW_FLAG_REFRESH_MODIFIERS))
 	if (rebuild)
 	{
-		BKE_rigidbody_update_ob_array(rbw, rbw->pointcache->flag & PTCACHE_BAKED);
+		BKE_rigidbody_update_ob_array(rbw, (rbw->pointcache->flag & PTCACHE_BAKED) && !skip_correction);
 	}
 }
 
@@ -1729,6 +1724,10 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 		}
 		else if (rbo->mesh_source == RBO_MESH_FINAL) {
 			dm = ob->derivedFinal;
+		}
+		else if (rbo->mesh_source == RBO_MESH_FINAL_SOLID)
+		{
+			dm = dm_solidify(ob->derivedFinal, rbo->margin);
 		}
 
 		if (dm) {
@@ -1764,6 +1763,11 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 			else
 			{
 				RB_shape_trimesh_update(rbo->physics_shape, (float *)mvert, totvert, sizeof(MVert), bb->vec[0], bb->vec[6]);
+			}
+
+			if (rbo->mesh_source == RBO_MESH_FINAL_SOLID)
+			{
+				dm->release(dm);
 			}
 		}
 	}
@@ -2355,7 +2359,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			BKE_ptcache_id_reset(scene, &pid, PTCACHE_RESET_OUTDATED);
 		}
 
-		BKE_rigidbody_update_ob_array(rbw, rbw->pointcache->flag & PTCACHE_BAKED);
+		BKE_rigidbody_update_ob_array(rbw, cache->flag & PTCACHE_BAKED);
 	}
 
 	/* try to read from cache */
@@ -4270,7 +4274,7 @@ static MeshIsland* findMeshIsland(FractureModifierData *fmd, int id)
 
 	while (mi)
 	{
-		if (mi->id == id)
+		if (mi->rigidbody->meshisland_index == id)
 		{
 			return mi;
 		}
@@ -4418,7 +4422,7 @@ static void updateAccelerationMap(FractureModifierData *fmd, MeshIsland* mi, Obj
 		{
 			dv = dvert + mi->vertex_indices[i];
 			if (dv) {
-				if (dv->dw == NULL) {
+				if (dv->dw == NULL && acc_defgrp_index >= 0) {
 					defvert_add_index_notest(dv, acc_defgrp_index, 0.0f);
 				}
 
@@ -4482,7 +4486,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 		ob1 = rbw->objects[ob_index1];
 		fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
 
-		if (fmd1)
+		if (fmd1 && fmd1->fracture_mode != MOD_FRACTURE_DYNAMIC)
 		{
 			RigidBodyOb *rbo = rbw->cache_index_map[linear_index1];
 			int id = rbo->meshisland_index;
@@ -4496,8 +4500,8 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 			{
 				RigidBodyOb *rbo = rbw->cache_index_map[linear_index1];
 				int id = rbo->meshisland_index;
-				Shard *s = findShard(fmd1, id);
 				MeshIsland* mi = findMeshIsland(fmd1, id);
+				Shard *s = findShard(fmd1, mi->id);
 				if (mi->rigidbody->mass > 0) {
 					force = force / mi->rigidbody->mass;
 				}
@@ -4523,10 +4527,10 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 					}
 					/*only fracture on new entries, this is necessary because after loading a file
 					 *the pointcache thinks it is empty and a fracture is attempted ! */
-					if (check_shard_size(fmd1, id))
+					if (check_shard_size(fmd1, mi->id))
 					{
 						FractureID* fid1 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid1");
-						fid1->shardID = id;
+						fid1->shardID = mi->id;
 						BLI_addtail(&fmd1->fracture_ids, fid1);
 						fmd1->update_dynamic = true;
 					}
@@ -4544,7 +4548,7 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 		//ob2 = rbw->objects[ob_index2];
 		fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
 
-		if (fmd2)
+		if (fmd2 && fmd2->fracture_mode != MOD_FRACTURE_DYNAMIC)
 		{
 			RigidBodyOb *rbo = rbw->cache_index_map[linear_index2];
 			int id = rbo->meshisland_index;
@@ -4558,8 +4562,8 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 			{
 				RigidBodyOb *rbo = rbw->cache_index_map[linear_index2];
 				int id = rbo->meshisland_index;
-				Shard *s = findShard(fmd2, id);
 				MeshIsland* mi = findMeshIsland(fmd2, id);
+				Shard *s = findShard(fmd2, mi->id);
 
 				if (mi->rigidbody->mass > 0) {
 					force = force / mi->rigidbody->mass;
@@ -4583,10 +4587,10 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 						copy_v3_v3(s->impact_size, size);
 					}
 
-					if (check_shard_size(fmd2, id))
+					if (check_shard_size(fmd2, mi->id))
 					{
 						FractureID* fid2 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid2");
-						fid2->shardID = id;
+						fid2->shardID = mi->id;
 						BLI_addtail(&fmd2->fracture_ids, fid2);
 						fmd2->update_dynamic = true;
 					}

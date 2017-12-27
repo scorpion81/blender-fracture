@@ -4505,22 +4505,22 @@ static void foreachIDLink(ModifierData *md, Object *ob,
                           IDWalkFunc walk, void *userData)
 {
 	FractureModifierData *fmd = (FractureModifierData *) md;
-	FractureSetting *fs;
+	//FractureSetting *fs;
 
-	walk(userData, ob, (ID **)&fmd->inner_material, IDWALK_NOP);
-	walk(userData, ob, (ID **)&fmd->extra_group, IDWALK_NOP);
-	walk(userData, ob, (ID **)&fmd->dm_group, IDWALK_NOP);
-	walk(userData, ob, (ID **)&fmd->cluster_group, IDWALK_NOP);
-	walk(userData, ob, (ID **)&fmd->cutter_group, IDWALK_NOP);
-	walk(userData, ob, (ID **)&fmd->autohide_filter_group, IDWALK_NOP);
+	walk(userData, ob, (ID **)&fmd->inner_material, IDWALK_CB_NOP);
+	walk(userData, ob, (ID **)&fmd->extra_group, IDWALK_CB_NOP);
+	walk(userData, ob, (ID **)&fmd->dm_group, IDWALK_CB_NOP);
+	walk(userData, ob, (ID **)&fmd->cluster_group, IDWALK_CB_NOP);
+	walk(userData, ob, (ID **)&fmd->cutter_group, IDWALK_CB_NOP);
+	walk(userData, ob, (ID **)&fmd->autohide_filter_group, IDWALK_CB_NOP);
 
-	for (fs = fmd->fracture_settings.first; fs; fs = fs->next)
+	/*for (fs = fmd->fracture_settings.first; fs; fs = fs->next)
 	{
 		walk(userData, ob, (ID **)&fs->inner_material, IDWALK_NOP);
 		walk(userData, ob, (ID **)&fs->extra_group, IDWALK_NOP);
 		walk(userData, ob, (ID **)&fs->cluster_group, IDWALK_NOP);
 		walk(userData, ob, (ID **)&fs->cutter_group, IDWALK_NOP);
-	}
+	}*/
 }
 
 static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(md))
@@ -4585,7 +4585,7 @@ static void foreachObjectLink(
 		GroupObject *go;
 		for (go = fmd->extra_group->gobject.first; go; go = go->next) {
 			if (go->ob) {
-				walk(userData, ob, &go->ob, IDWALK_NOP);
+				walk(userData, ob, &go->ob, IDWALK_CB_NOP);
 			}
 		}
 	}
@@ -4594,7 +4594,7 @@ static void foreachObjectLink(
 		GroupObject *go;
 		for (go = fmd->cutter_group->gobject.first; go; go = go->next) {
 			if (go->ob) {
-				walk(userData, ob, &go->ob, IDWALK_NOP);
+				walk(userData, ob, &go->ob, IDWALK_CB_NOP);
 			}
 		}
 	}
@@ -4603,7 +4603,7 @@ static void foreachObjectLink(
 		GroupObject *go;
 		for (go = fmd->autohide_filter_group->gobject.first; go; go = go->next) {
 			if (go->ob) {
-				walk(userData, ob, &go->ob, IDWALK_NOP);
+				walk(userData, ob, &go->ob, IDWALK_CB_NOP);
 			}
 		}
 	}
@@ -4613,7 +4613,7 @@ static void foreachObjectLink(
 		for (go = fmd->cutter_group->gobject.first; go; go = go->next) {
 			if (go->ob)
 			{
-				walk(userData, ob, &go->ob, IDWALK_NOP);
+				walk(userData, ob, &go->ob, IDWALK_CB_NOP);
 			}
 		}
 	}
