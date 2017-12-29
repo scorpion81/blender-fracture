@@ -3677,9 +3677,6 @@ void BKE_update_acceleration_map(FractureModifierData *fmd, MeshIsland* mi, Obje
 	{
 		weight = (acc - fmd->min_acceleration) / denom;
 
-		if (ctime == mi->start_frame)
-			weight = 0.0f;
-
 		for (i = 0; i < mi->vertex_count; i++)
 		{
 			dv = dvert + mi->vertex_indices[i];

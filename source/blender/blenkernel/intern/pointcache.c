@@ -1347,12 +1347,18 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 					if (cfra >= mi->start_frame + 1)
 					{
 						lastvel = mi->acc_sequence[cfra - mi->start_frame - 1];
+						acc = fabsf(vel - lastvel);
+						BKE_update_acceleration_map(fmd, mi, ob, cfra, acc);
+					}
+					else {
+						BKE_update_acceleration_map(fmd, mi, ob, cfra, 0.0f);
+
 					}
 
-					acc = fabsf(vel - lastvel);
-
-					mi->acc_sequence[cfra - mi->start_frame] = acc;
-					BKE_update_acceleration_map(fmd, mi, ob, cfra, acc);
+					mi->acc_sequence[cfra - mi->start_frame] = vel;
+				}
+				else {
+					BKE_update_acceleration_map(fmd, mi, ob, cfra, 0.0f);
 				}
 			}
 
@@ -1446,9 +1452,22 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 				int frame = (int)floor(cfra);
 				mi = find_meshisland(fmd, rbo->meshisland_index);
 				if (frame >= mi->start_frame && frame <= mi->frame_count) {
-					float acc = mi->acc_sequence[frame - mi->start_frame];
-					//printf("acc %f\n", acc);
-					BKE_update_acceleration_map(fmd, mi, ob, frame, acc);
+					float vel = mi->acc_sequence[frame - mi->start_frame];
+					float lastvel = 0.0f;
+					float acc = 0.0f;
+
+					if (frame >= mi->start_frame + 1)
+					{
+						lastvel = mi->acc_sequence[frame - mi->start_frame - 1];
+						acc = fabsf(vel - lastvel);
+						BKE_update_acceleration_map(fmd, mi, ob, frame, acc);
+					}
+					else {
+						BKE_update_acceleration_map(fmd, mi, ob, frame, 0.0f);
+					}
+				}
+				else {
+					BKE_update_acceleration_map(fmd, mi, ob, frame, 0.0f);
 				}
 			}
 		}
