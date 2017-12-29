@@ -1324,6 +1324,37 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 	{
 		if ((!fmd || fmd->fracture_mode != MOD_FRACTURE_DYNAMIC) && rbo->type == RBO_TYPE_ACTIVE)
 		{
+			MeshIsland *mi = NULL;
+
+			if (fmd && fmd->acceleration_defgrp_name[0])
+			{
+				mi = find_meshisland(fmd, rbo->meshisland_index);
+				if (cfra >= mi->start_frame && cfra <= mi->frame_count) {
+					float lastvel = 0.0f;
+					float vel = 0.0f;
+					float linvel[3] = {0.0f, 0.0f, 0.0f};
+					float angvel[3] = {0.0f, 0.0f, 0.0f};
+					float acc = 0.0f;
+
+					//rough framewise estimate of total force
+					if (mi->rigidbody->physics_object)
+					{
+						RB_body_get_linear_velocity(mi->rigidbody->physics_object, linvel);
+						RB_body_get_angular_velocity(mi->rigidbody->physics_object, angvel);
+						vel = len_v3(linvel) + len_v3(angvel);
+					}
+
+					if (cfra >= mi->start_frame + 1)
+					{
+						lastvel = mi->acc_sequence[cfra - mi->start_frame - 1];
+					}
+
+					acc = fabsf(vel - lastvel);
+
+					mi->acc_sequence[cfra - mi->start_frame] = acc;
+					BKE_update_acceleration_map(fmd, mi, ob, cfra, acc);
+				}
+			}
 
 #ifdef WITH_BULLET
 			RB_body_get_position(rbo->physics_object, rbo->pos);
@@ -1336,7 +1367,7 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 		{
 			//MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
 			MeshIsland *mi = find_meshisland(fmd, rbo->meshisland_index);
-			int frame = (int)floor(cfra);
+			int frame = cfra;
 
 //			if (!mi)
 //				return 0;
@@ -1399,6 +1430,8 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 	if (!fmd || (fmd && fmd->fracture_mode != MOD_FRACTURE_DYNAMIC))
 	{
 		if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
+			MeshIsland *mi = NULL;
+
 			if (old_data) {
 				memcpy(rbo->pos, data, 3 * sizeof(float));
 				memcpy(rbo->orn, data + 3, 4 * sizeof(float));
@@ -1406,6 +1439,17 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 			else {
 				PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
 				PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
+			}
+
+			if (fmd && fmd->acceleration_defgrp_name[0])
+			{
+				int frame = (int)floor(cfra);
+				mi = find_meshisland(fmd, rbo->meshisland_index);
+				if (frame >= mi->start_frame && frame <= mi->frame_count) {
+					float acc = mi->acc_sequence[frame - mi->start_frame];
+					//printf("acc %f\n", acc);
+					BKE_update_acceleration_map(fmd, mi, ob, frame, acc);
+				}
 			}
 		}
 	}

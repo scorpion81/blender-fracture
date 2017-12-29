@@ -3647,3 +3647,59 @@ void BKE_meshisland_constraint_create(FractureModifierData* fmd, MeshIsland *mi1
 	mi2->participating_constraints[mi2->participating_constraint_count] = rbsc;
 	mi2->participating_constraint_count++;
 }
+
+void BKE_update_acceleration_map(FractureModifierData *fmd, MeshIsland* mi, Object* ob, int ctime, float acc)
+{
+	const int acc_defgrp_index = defgroup_name_index(ob, fmd->acceleration_defgrp_name);
+	DerivedMesh *dm = fmd->visible_mesh_cached;
+	MDeformVert *dvert = NULL, *dv = NULL;
+	MDeformWeight *dw = NULL;
+	float weight = 0.0f, denom;
+	int i = 0, w = 0;
+	int totvert = dm->getNumVerts(dm);
+
+	dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
+
+	if (dvert == NULL)
+	{
+		dvert = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC,
+	                             NULL, totvert);
+	}
+
+	//calculate weight from force...
+	denom = fmd->max_acceleration - fmd->min_acceleration;
+
+	//sanity check
+	if (denom == 0.0f)
+		denom = 1.0f;
+
+	//if (mi->acc_sequence)
+	{
+		weight = (acc - fmd->min_acceleration) / denom;
+
+		if (ctime == mi->start_frame)
+			weight = 0.0f;
+
+		for (i = 0; i < mi->vertex_count; i++)
+		{
+			dv = dvert + mi->vertex_indices[i];
+			if (dv) {
+				if (dv->dw == NULL && acc_defgrp_index >= 0) {
+					defvert_add_index_notest(dv, acc_defgrp_index, 0.0f);
+				}
+
+				for (dw = dv->dw, w = 0; w < dv->totweight; dw++, w++)
+				{
+					if (dw->def_nr == acc_defgrp_index) {
+
+						if (weight >= 0.0f && weight <= 1.0f) {
+							dw->weight = weight;
+						}
+
+						dw->weight *= fmd->acceleration_fade;
+					}
+				}
+			}
+		}
+	}
+}

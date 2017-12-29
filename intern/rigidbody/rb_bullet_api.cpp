@@ -721,6 +721,9 @@ struct myResultCallback : public btCollisionWorld::ClosestRayResultCallback
 	}
 };
 
+#define MIN2(a, b)  ((a) < (b) ? (a) : (b))
+#define MIN3(a, b, c)       (MIN2(MIN2((a), (b)), (c)))
+
 struct rbFilterCallback : public btOverlapFilterCallback
 {
 	int (*callback)(void* world, void* island1, void* island2, void* blenderOb1, void* blenderOb2, bool activate);
@@ -736,80 +739,55 @@ struct rbFilterCallback : public btOverlapFilterCallback
 
 		collides = collides && (rb0->col_groups & rb1->col_groups);
 		if (this->callback != NULL) {
-			int result = 0;
-#if 0
-			//cast ray from centroid of 1 rigidbody to another, do this only for mesh shapes (all other can use standard bbox)
+
 			int stype0 = rb0->body->getCollisionShape()->getShapeType();
 			int stype1 = rb1->body->getCollisionShape()->getShapeType();
-			bool nonMeshShape0 = (stype0 != GIMPACT_SHAPE_PROXYTYPE) && (stype0 != TRIANGLE_MESH_SHAPE_PROXYTYPE);
-			bool nonMeshShape1 = (stype1 != GIMPACT_SHAPE_PROXYTYPE) && (stype1 != TRIANGLE_MESH_SHAPE_PROXYTYPE);
+			bool meshShape0 = (stype0 == GIMPACT_SHAPE_PROXYTYPE) || (stype0 == TRIANGLE_MESH_SHAPE_PROXYTYPE);
+			bool meshShape1 = (stype1 == GIMPACT_SHAPE_PROXYTYPE) || (stype1 == TRIANGLE_MESH_SHAPE_PROXYTYPE);
 
-			if ((rb0->meshIsland != NULL) ^ (rb1->meshIsland != NULL))
+			if (rb0->blenderOb != rb1->blenderOb && (meshShape0 || meshShape1))
 			{
 				btVector3 v0, v1;
-				rbRigidBody* rb2 = NULL;
-				bool valid = false;
+				v0 = rb0->body->getWorldTransform().getOrigin();
+				v1 = rb1->body->getWorldTransform().getOrigin();
+				float maxbound1 = MIN3(rb0->bbox->x(), rb0->bbox->y(), rb0->bbox->z());
+				float maxbound2 = MIN3(rb1->bbox->x(), rb1->bbox->y(), rb1->bbox->z());
+				float bound = maxbound1;
 
-				if (rb0->meshIsland != NULL)
+				if (maxbound2 < maxbound1)
 				{
-					v0 = rb0->body->getWorldTransform().getOrigin();
-					v1 = rb1->body->getWorldTransform().getOrigin();
-				}
-				else if (rb1->meshIsland != NULL)
-				{
-					v0 = rb1->body->getWorldTransform().getOrigin();
-					v1 = rb0->body->getWorldTransform().getOrigin();
+					bound = maxbound2;
 				}
 
 				myResultCallback cb(v0, v1);
 				rb0->world->dynamicsWorld->rayTest(v0, v1, cb);
-				if (cb.m_collisionObject != NULL)
+				if (cb.m_collisionObject)
 				{
-					rb2 = (rbRigidBody*)cb.m_collisionObject->getUserPointer();
-				}
-				else
-				{
-					valid = false;
-				}
+					float dist_sq = (v0 - cb.m_collisionObject->getWorldTransform().getOrigin()).length2();
+					//float dist_sq2 = (v0 - v1).length2();
+					float dist_sq2 = bound * bound;
+					if (dist_sq < dist_sq2)
+					{
+						int result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland,
+						                            rb0->blenderOb, rb1->blenderOb, activate);
 
-				if (rb0->meshIsland != NULL && rb2 != NULL)
-				{
-					valid = rb2->blenderOb != rb0->blenderOb;
+						collides = collides && (bool)result;
+					}
+					else
+					{
+						collides = false;
+					}
 				}
-				else if (rb1->meshIsland != NULL && rb2 != NULL)
-				{
-					valid = rb2->blenderOb != rb1->blenderOb;
-				}
-
-				if (rb0->meshIsland != NULL)
-				{
-					valid = valid || nonMeshShape1;
-				}
-				else if (rb1->meshIsland != NULL)
-				{
-					valid = valid || nonMeshShape0;
-				}
-
-
-				if (valid)
-				{
-					result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland, rb0->blenderOb, rb1->blenderOb);
-				}
-				else
-				{
-					//just check for ghost flags and collision groups there
-					result = this->callback(NULL, NULL, NULL, rb0->blenderOb, rb1->blenderOb);
+				else {
+					collides = false;
 				}
 			}
-			else
-			{
-				result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland, rb0->blenderOb, rb1->blenderOb);
-			}
+			else {
+				int result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland,
+				                            rb0->blenderOb, rb1->blenderOb, activate && (rb0->blenderOb != rb1->blenderOb));
 
-			collides = collides && (bool)result;
-#endif
-			result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland, rb0->blenderOb, rb1->blenderOb, activate);
-			collides = collides && (bool)result;
+				collides = collides && (bool)result;
+			}
 		}
 
 		return collides;
@@ -1359,6 +1337,21 @@ void RB_body_set_sleep_thresh(rbRigidBody *object, float linear, float angular)
 }
 
 /* ............ */
+
+void RB_body_get_total_force(rbRigidBody *object, float v_out[3])
+{
+	btRigidBody *body = object->body;
+
+	copy_v3_btvec3(v_out, body->getTotalForce());
+}
+
+void RB_body_get_total_torque(rbRigidBody *object, float v_out[3])
+{
+	btRigidBody *body = object->body;
+
+	copy_v3_btvec3(v_out, body->getTotalTorque());
+}
+
 
 void RB_body_get_linear_velocity(rbRigidBody *object, float v_out[3])
 {

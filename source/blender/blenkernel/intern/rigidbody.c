@@ -105,7 +105,7 @@ static bool restoreKinematic(RigidBodyWorld *rbw);
 static void DM_mesh_boundbox(DerivedMesh *bm, float r_loc[3], float r_size[3]);
 static void test_deactivate_rigidbody(RigidBodyOb *rbo);
 static float box_volume(float size[3]);
-static void updateAccelerationMap(FractureModifierData *fmd, MeshIsland* mi, Object* ob, rbContactPoint* cp, int ctime, RigidBodyWorld *rbw);
+static void updateAccelerationMap(FractureModifierData *fmd, MeshIsland* mi, Object*ob, int ctime, float acc);
 
 #endif
 
@@ -2980,7 +2980,7 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 			float loca[3], rota[4], quat[4];
 			mi->locs = MEM_mallocN(sizeof(float)*3, "mi->locs");
 			mi->rots = MEM_mallocN(sizeof(float)*4, "mi->rots");
-			mi->acc_sequence = MEM_callocN(sizeof(float), "mi->acc_sequence");
+			mi->acc_sequence = MEM_callocN(sizeof(float) * 2, "mi->acc_sequence");
 			mi->frame_count = 0;
 
 			copy_v3_v3(loca, mi->centroid);
@@ -3003,9 +3003,9 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		if (n > mi->frame_count) {
 			mi->locs = MEM_reallocN(mi->locs, sizeof(float) * 3 * n);
 			mi->rots = MEM_reallocN(mi->rots, sizeof(float) * 4 * n);
-			mi->acc_sequence = MEM_reallocN(mi->acc_sequence, sizeof(float) * n);
-			//mi->acc_sequence[n] = 0.0f;
-			mi->acc_sequence[x] = 0.0f;
+			mi->acc_sequence = MEM_reallocN(mi->acc_sequence, sizeof(float) * (n+1));
+			//mi->acc_sequence[x] = 0.0f;
+			mi->acc_sequence[n] = 0.0f;
 
 			mi->locs[x*3] = loc[0];
 			mi->locs[x*3+1] = loc[1];
@@ -3017,8 +3017,6 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 			mi->rots[x*4+3] = rot[3];
 			mi->frame_count = n;
 		}
-
-		updateAccelerationMap(rmd, mi, ob, NULL, rbw->ltime, rbw);
 	}
 
 	for (j = 0; j < mi->vertex_count; j++) {
@@ -4017,13 +4015,15 @@ static bool do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 	}
 	else if (!fmd)
 	{
-		bool valid = ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER;
-		bool antiValid = ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER;
 		RigidBodyOb* rbo = ob->rigidbody_object;
+		valid = ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER;
+		antiValid = ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER;
 
 		if (rbo && valid && activate)
 		{
-			activateRigidbody(rbo, rbw, NULL, ob);
+			if (activate)
+				activateRigidbody(rbo, rbw, NULL, ob);
+
 			wouldActivate = true;
 		}
 
@@ -4364,78 +4364,7 @@ static bool check_constraints(FractureModifierData *fmd, MeshIsland *mi, RigidBo
 	return false;
 }
 
-static void updateAccelerationMap(FractureModifierData *fmd, MeshIsland* mi, Object* ob, rbContactPoint* cp, int ctime,
-                                  RigidBodyWorld *rbw)
-{
-	const int acc_defgrp_index = defgroup_name_index(ob, fmd->acceleration_defgrp_name);
-	DerivedMesh *dm = fmd->visible_mesh_cached;
-	MDeformVert *dvert = NULL, *dv = NULL;
-	MDeformWeight *dw = NULL;
-	float weight = 0.0f, denom, force = 0.0f;
-	int i = 0, w = 0;
-	int totvert = dm->getNumVerts(dm);
 
-	dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
-
-	if (dvert == NULL)
-	{
-		dvert = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC,
-	                             NULL, totvert);
-	}
-
-	//calculate weight from force...
-	denom = fmd->max_acceleration - fmd->min_acceleration;
-
-	//sanity check
-	if (denom == 0.0f)
-		denom = 1.0f;
-
-	if (cp)
-	{
-		force = cp->contact_force;
-		if ((force > fmd->min_acceleration && force < fmd->max_acceleration))
-		{
-			if (force > mi->acc_sequence[ctime - mi->start_frame + 1])
-			{
-				mi->acc_sequence[ctime - mi->start_frame + 1] = force;
-			}
-		}
-	}
-
-	if (mi->acc_sequence)
-	{
-		force = mi->acc_sequence[ctime - mi->start_frame + 1];
-		weight = (force - fmd->min_acceleration) / denom;
-
-		if (ctime == mi->start_frame)
-			weight = 0.0f;
-
-		for (i = 0; i < mi->vertex_count; i++)
-		{
-			dv = dvert + mi->vertex_indices[i];
-			if (dv) {
-				if (dv->dw == NULL && acc_defgrp_index >= 0) {
-					defvert_add_index_notest(dv, acc_defgrp_index, 0.0f);
-				}
-
-				for (dw = dv->dw, w = 0; w < dv->totweight; dw++, w++)
-				{
-					if (dw->def_nr == acc_defgrp_index) {
-
-						if (weight >= 0.0f && weight <= 1.0f) {
-							dw->weight = weight;
-						}
-
-						if (!cp)
-						{
-							dw->weight *= fmd->acceleration_fade;
-						}
-					}
-				}
-			}
-		}
-	}
-}
 
 static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA, Object *obB)
 {
@@ -4474,14 +4403,6 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 		ob_index1 = rbw->cache_offset_map[linear_index1];
 		ob1 = rbw->objects[ob_index1];
 		fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
-
-		if (fmd1 && fmd1->fracture_mode != MOD_FRACTURE_DYNAMIC)
-		{
-			RigidBodyOb *rbo = rbw->cache_index_map[linear_index1];
-			int id = rbo->meshisland_index;
-			MeshIsland* mi = findMeshIsland(fmd1, id);
-			updateAccelerationMap(fmd1, mi, ob1, cp, rbw->ltime, rbw);
-		}
 
 		if (fmd1 && fmd1->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
@@ -4536,14 +4457,6 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 		//ob_index2 = rbw->cache_offset_map[linear_index2];
 		//ob2 = rbw->objects[ob_index2];
 		fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
-
-		if (fmd2 && fmd2->fracture_mode != MOD_FRACTURE_DYNAMIC)
-		{
-			RigidBodyOb *rbo = rbw->cache_index_map[linear_index2];
-			int id = rbo->meshisland_index;
-			MeshIsland* mi = findMeshIsland(fmd2, id);
-			updateAccelerationMap(fmd2, mi, ob2, cp, rbw->ltime, rbw);
-		}
 
 		if (fmd2 && fmd2->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{

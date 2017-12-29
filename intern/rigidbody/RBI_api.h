@@ -188,6 +188,10 @@ void RB_body_set_angular_sleep_thresh(rbRigidBody *body, float value);
 
 void RB_body_set_sleep_thresh(rbRigidBody *body, float linear, float angular);
 
+/* Force and Torque */
+void RB_body_get_total_force(rbRigidBody *body, float v_out[3]);
+void RB_body_get_total_torque(rbRigidBody *body, float v_out[3]);
+
 /* Linear Velocity */
 void RB_body_get_linear_velocity(rbRigidBody *body, float v_out[3]);
 void RB_body_set_linear_velocity(rbRigidBody *body, const float v_in[3]);
