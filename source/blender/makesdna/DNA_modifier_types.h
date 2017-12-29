@@ -1244,6 +1244,7 @@ typedef enum {
 	eRemeshFlag_Alive    = (1 << 0),
 	eRemeshFlag_Dead     = (1 << 1),
 	eRemeshFlag_Unborn   = (1 << 2),
+	eRemeshFlag_Size     = (1 << 3),
 } MetaballRemeshPsysFlag;
 
 typedef struct RemeshModifierData {

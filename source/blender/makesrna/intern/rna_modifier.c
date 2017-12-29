@@ -3865,6 +3865,7 @@ static void rna_def_modifier_remesh(BlenderRNA *brna)
 	    {eRemeshFlag_Alive, "ALIVE", 0, "Alive", "Output a metaball surface using alive particle input data"},
 	    {eRemeshFlag_Dead, "DEAD", 0, "Dead", "Output a metaball surface using dead particle input data"},
 	    {eRemeshFlag_Unborn, "UNBORN", 0, "Unborn", "Output a metaball surface using unborn particle input data"},
+	    {eRemeshFlag_Size, "SIZE", 0, "Size", "Override metaball size by individual particle size"},
 	    {0, NULL, 0, NULL, NULL}
 	};
 

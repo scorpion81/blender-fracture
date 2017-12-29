@@ -35,7 +35,8 @@ void BKE_mball_polygonize(
 
 void BKE_mball_cubeTable_free(void);
 
-struct DerivedMesh* BKE_repolygonize_dm(struct DerivedMesh *dm, float thresh, float basesize[3], float wiresize, float rendersize, bool render);
+struct DerivedMesh* BKE_repolygonize_dm(struct DerivedMesh *dm, float thresh, float basesize[3], float wiresize,
+                                        float rendersize, bool render, bool override_size);
 
 void BKE_dm_from_metaball(struct DispList *dl, struct DerivedMesh *dm);
 

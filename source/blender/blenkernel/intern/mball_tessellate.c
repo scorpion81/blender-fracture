@@ -1330,23 +1330,33 @@ void BKE_mball_polygonize(EvaluationContext *eval_ctx, Scene *scene, Object *ob,
 	freepolygonize(&process);
 }
 
-static void init_meta_dm(PROCESS* process, DerivedMesh *dm, float stiffness, float radius, float size[3])
+static void init_meta_dm(PROCESS* process, DerivedMesh *dm, float stiffness, float radius, float size[3], bool override_size)
 {
 	float quat[4];
 	unsigned int i;
 	int totvert = dm->getNumVerts(dm), j;
 	MVert* mvert = dm->getVertArray(dm);
+	float* psize = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "psize");
 
 	unit_qt(quat);
 
 	/* make main array */
 	for (j = 0; j < totvert; j++, mvert++)
 	{
+		MetaElem *new_ml;
+
 		//float size[3] = {1.0f, 1.0f, 1.0f};
 		float expx, expy, expz;
 		float tempmin[3], tempmax[3];
+		float sz[3];
 
-		MetaElem *new_ml;
+		if (psize != NULL && psize[j] > 0.0f && override_size)
+		{
+			mul_v3_v3fl(sz, size, psize[j]);
+		}
+		else {
+			copy_v3_v3(sz, size);
+		}
 
 		/* make a copy because of duplicates */
 		new_ml = BLI_memarena_alloc(process->pgn_elements, sizeof(MetaElem));
@@ -1378,7 +1388,9 @@ static void init_meta_dm(PROCESS* process, DerivedMesh *dm, float stiffness, flo
 
 		/* Rotation of MetaElem is stored in quat */
 		//quat_to_mat4(rot, quat);
-		loc_quat_size_to_mat4((float(*)[4])new_ml->mat, mvert->co, quat, size);
+
+
+		loc_quat_size_to_mat4((float(*)[4])new_ml->mat, mvert->co, quat, sz);
 		invert_m4_m4((float(*)[4])new_ml->imat,(float(*)[4])new_ml->mat);
 
 #if 0
@@ -1530,7 +1542,8 @@ void BKE_dm_from_metaball(DispList *dl, DerivedMesh *dm)
 }
 
 
-DerivedMesh* BKE_repolygonize_dm(DerivedMesh *dm, float thresh, float basesize[3], float wiresize, float rendersize, bool render)
+DerivedMesh* BKE_repolygonize_dm(DerivedMesh *dm, float thresh, float basesize[3], float wiresize, float rendersize,
+                                 bool render, bool override_size)
 {
 	DerivedMesh *result = NULL;
 	DispList *dl;
@@ -1561,7 +1574,7 @@ DerivedMesh* BKE_repolygonize_dm(DerivedMesh *dm, float thresh, float basesize[3
 	process.pgn_elements = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, "Metaball memarena");
 
 	/* initialize from DM */
-	init_meta_dm(&process, dm, 2.0f, 2.0f, basesize);
+	init_meta_dm(&process, dm, 2.0f, 2.0f, basesize, override_size);
 
 	if (process.totelem > 0) {
 		build_bvh_spatial(&process, &process.metaball_bvh, 0, process.totelem, &process.allbb);

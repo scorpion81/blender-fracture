@@ -222,7 +222,9 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, 
 	DerivedMesh *dm = NULL, *result = NULL;
 	MVert *mv = NULL, *mv2 = NULL;
 	float (*pos)[3] = NULL;
+	float *psize = NULL;
 	int i = 0, n = 0;
+	bool override_size = rmd->pflag & eRemeshFlag_Size;
 
 	if (((rmd->input & MOD_REMESH_VERTICES)==0) && (rmd->input & MOD_REMESH_PARTICLES))
 	{
@@ -234,13 +236,15 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, 
 		n = get_particle_positions(rmd, psys, &pos);
 		dm = CDDM_new(n, 0, 0, 0, 0);
 		mv = dm->getVertArray(dm);
+		psize = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "psize");
 
 		for (i = 0; i < n; i++)
 		{
 			copy_v3_v3(mv[i].co, pos[i]);
+			psize[i] = psys->particles[i].size;
 		}
 
-		result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render);
+		result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
 		dm->release(dm);
 
 		if (pos)
@@ -251,7 +255,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, 
 	else if ((rmd->input & MOD_REMESH_VERTICES) && ((rmd->input & MOD_REMESH_PARTICLES) == 0))
 	{
 		//verts only
-		return BKE_repolygonize_dm(derived, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render);
+		return BKE_repolygonize_dm(derived, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
 	}
 	else if ((rmd->input & MOD_REMESH_VERTICES) && (rmd->input & MOD_REMESH_PARTICLES))
 	{
@@ -262,20 +266,24 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, 
 			n = get_particle_positions(rmd, psys, &pos);
 
 		dm = CDDM_new(n + derived->numVertData, 0, 0, 0, 0);
+		psize = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "psize");
+
 		mv = dm->getVertArray(dm);
 		mv2 = derived->getVertArray(derived);
 
 		for (i = 0; i < n; i++)
 		{
 			copy_v3_v3(mv[i].co, pos[i]);
+			psize[i] = psys->particles[i].size;
 		}
 
 		for (i = n; i < n + derived->numVertData; i++)
 		{
 			copy_v3_v3(mv[i].co, mv2[i-n].co);
+			psize[i] = -1.0f; //use mball sizep
 		}
 
-		result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render);
+		result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
 		dm->release(dm);
 
 		if (pos)
