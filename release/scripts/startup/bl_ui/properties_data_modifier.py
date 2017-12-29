@@ -1122,6 +1122,13 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
         if md.mode == 'METABALL':
             row = layout.row()
+            row.prop(md, "input")
+            if 'PARTICLES' in md.input:
+                row = layout.row()
+                row.prop(md, "psys")
+                row = layout.row()
+                row.prop(md, "filter")
+            row = layout.row()
             col = row.column(align=True)
             col.prop(md, "mball_size")
             col = row.column(align=True)

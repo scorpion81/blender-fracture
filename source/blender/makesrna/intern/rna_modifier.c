@@ -3855,6 +3855,19 @@ static void rna_def_modifier_remesh(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
+	static EnumPropertyItem mesh_items[] =  {
+	    {MOD_REMESH_VERTICES, "VERTICES", 0, "Vertices", "Output a metaball surface using vertex input data"},
+	    {MOD_REMESH_PARTICLES, "PARTICLES", 0, "Particles", "Output a metaball surface using particle input data"},
+	    {0, NULL, 0, NULL, NULL}
+	};
+
+	static EnumPropertyItem filter_items[] =  {
+	    {eRemeshFlag_Alive, "ALIVE", 0, "Alive", "Output a metaball surface using alive particle input data"},
+	    {eRemeshFlag_Dead, "DEAD", 0, "Dead", "Output a metaball surface using dead particle input data"},
+	    {eRemeshFlag_Unborn, "UNBORN", 0, "Unborn", "Output a metaball surface using unborn particle input data"},
+	    {0, NULL, 0, NULL, NULL}
+	};
+
 	StructRNA *srna;
 	PropertyRNA *prop;
 
@@ -3936,6 +3949,25 @@ static void rna_def_modifier_remesh(BlenderRNA *brna)
 	RNA_def_property_array(prop, 3);
 	RNA_def_property_ui_text(prop, "Size",
 	                         "The base size of each metaball element");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "input", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, mesh_items);
+	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
+	RNA_def_property_ui_text(prop, "Input", "Which input source to consider in remeshing");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "psys", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "psys");
+	RNA_def_property_range(prop, 0, INT_MAX);
+	RNA_def_property_ui_text(prop, "Particle System Index", "Index of the input particle system to use");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "filter", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "pflag");
+	RNA_def_property_enum_items(prop, filter_items);
+	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
+	RNA_def_property_ui_text(prop, "Filter", "Which particles to consider in remeshing");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

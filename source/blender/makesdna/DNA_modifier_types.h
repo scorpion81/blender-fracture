@@ -1234,6 +1234,18 @@ typedef enum RemeshModifierMode {
 	MOD_REMESH_MBALL          = 3,
 } RemeshModifierMode;
 
+
+typedef enum MetaballRemeshFlags {
+	MOD_REMESH_VERTICES = (1 << 0),
+	MOD_REMESH_PARTICLES = (1 << 1),
+} MetaballRemeshFlags;
+
+typedef enum {
+	eRemeshFlag_Alive    = (1 << 0),
+	eRemeshFlag_Dead     = (1 << 1),
+	eRemeshFlag_Unborn   = (1 << 2),
+} MetaballRemeshPsysFlag;
+
 typedef struct RemeshModifierData {
 	ModifierData modifier;
 
@@ -1250,6 +1262,9 @@ typedef struct RemeshModifierData {
 	float wiresize;
 	float thresh;
 	float basesize[3];
+	int input;
+	int pflag;
+	int psys;
 
 	/* octree depth */
 	char depth;
@@ -1257,6 +1272,7 @@ typedef struct RemeshModifierData {
 	char flag;
 	char mode;
 	char pad;
+	char pad2[4];
 } RemeshModifierData;
 
 /* Skin modifier */

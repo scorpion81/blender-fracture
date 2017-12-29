@@ -29,6 +29,7 @@
 #include "BLI_math_base.h"
 #include "BLI_math_vector.h"
 #include "BLI_utildefines.h"
+#include "BLI_listbase.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_DerivedMesh.h"
@@ -37,6 +38,7 @@
 #include "DNA_meshdata_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_object_types.h"
+#include "DNA_particle_types.h"
 
 #include "MOD_modifiertypes.h"
 
@@ -63,6 +65,10 @@ static void initData(ModifierData *md)
 	rmd->thresh = 0.6f;
 	rmd->wiresize = 0.4f;
 	rmd->rendersize = 0.2f;
+
+	rmd->input = 0;
+	rmd->pflag = 1;
+	rmd->psys = 0;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -148,8 +154,141 @@ static void dualcon_add_quad(void *output_v, const int vert_indices[4])
 	output->curface++;
 }
 
+static int get_particle_positions(RemeshModifierData *rmd, ParticleSystem *psys, float (**pos)[3])
+{
+	//take alive, for now
+	ParticleData *pa;
+	int i = 0, j = 0;
+
+	for (i = 0; i < psys->totpart; i++)
+	{
+		pa = psys->particles + i;
+		if (pa->alive == PARS_UNBORN && (rmd->pflag & eRemeshFlag_Unborn) == 0) continue;
+		if (pa->alive == PARS_ALIVE && (rmd->pflag & eRemeshFlag_Alive) == 0) continue;
+		if (pa->alive == PARS_DEAD && (rmd->pflag & eRemeshFlag_Dead) == 0) continue;
+
+		if (j == 0) {
+			(*pos) = MEM_mallocN(sizeof(float) * 3, "part pos");
+			copy_v3_v3((*pos)[0], pa->state.co);
+			j++;
+		}
+		else {
+			(*pos) = MEM_reallocN((*pos), sizeof(float) * 3 * (j+1));
+			copy_v3_v3((*pos)[j], pa->state.co);
+			j++;
+		}
+	}
+
+	return j;
+}
+
+static ParticleSystem *get_psys(RemeshModifierData *rmd, Object *ob, bool render)
+{
+	ParticleSystem *psys;
+	ModifierData *ob_md = (ModifierData*)rmd;
+
+	psys = BLI_findlink(&ob->particlesystem, rmd->psys - 1);
+	if (psys == NULL)
+		return NULL;
+
+	/* If the psys modifier is disabled we cannot use its data.
+	 * First look up the psys modifier from the object, then check if it is enabled.
+	 */
+
+	for (ob_md = ob->modifiers.first; ob_md; ob_md = ob_md->next) {
+		if (ob_md->type == eModifierType_ParticleSystem) {
+			ParticleSystemModifierData *psmd = (ParticleSystemModifierData *)ob_md;
+			if (psmd->psys == psys) {
+				int required_mode;
+
+				if (render) required_mode = eModifierMode_Render;
+				else required_mode = eModifierMode_Realtime;
+
+				if (modifier_isEnabled(ob_md->scene, ob_md, required_mode))
+				{
+					return psys;
+				}
+
+				return NULL;
+			}
+		}
+	}
+
+	return NULL;
+}
+
+static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, ParticleSystem *psys, bool render)
+{
+	DerivedMesh *dm = NULL, *result = NULL;
+	MVert *mv = NULL, *mv2 = NULL;
+	float (*pos)[3] = NULL;
+	int i = 0, n = 0;
+
+	if (((rmd->input & MOD_REMESH_VERTICES)==0) && (rmd->input & MOD_REMESH_PARTICLES))
+	{
+		//particles only
+
+		if (psys == NULL)
+			return derived;
+
+		n = get_particle_positions(rmd, psys, &pos);
+		dm = CDDM_new(n, 0, 0, 0, 0);
+		mv = dm->getVertArray(dm);
+
+		for (i = 0; i < n; i++)
+		{
+			copy_v3_v3(mv[i].co, pos[i]);
+		}
+
+		result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render);
+		dm->release(dm);
+
+		if (pos)
+			MEM_freeN(pos);
+
+		return result;
+	}
+	else if ((rmd->input & MOD_REMESH_VERTICES) && ((rmd->input & MOD_REMESH_PARTICLES) == 0))
+	{
+		//verts only
+		return BKE_repolygonize_dm(derived, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render);
+	}
+	else if ((rmd->input & MOD_REMESH_VERTICES) && (rmd->input & MOD_REMESH_PARTICLES))
+	{
+		//both, for simplicity only use vert data here
+		n = 0;
+
+		if (psys)
+			n = get_particle_positions(rmd, psys, &pos);
+
+		dm = CDDM_new(n + derived->numVertData, 0, 0, 0, 0);
+		mv = dm->getVertArray(dm);
+		mv2 = derived->getVertArray(derived);
+
+		for (i = 0; i < n; i++)
+		{
+			copy_v3_v3(mv[i].co, pos[i]);
+		}
+
+		for (i = n; i < n + derived->numVertData; i++)
+		{
+			copy_v3_v3(mv[i].co, mv2[i-n].co);
+		}
+
+		result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render);
+		dm->release(dm);
+
+		if (pos)
+			MEM_freeN(pos);
+
+		return result;
+	}
+
+	return NULL;
+}
+
 static DerivedMesh *applyModifier(ModifierData *md,
-                                  Object *UNUSED(ob),
+                                  Object *ob,
                                   DerivedMesh *dm,
                                   ModifierApplyFlag flag)
 {
@@ -198,7 +337,10 @@ static DerivedMesh *applyModifier(ModifierData *md,
 		result->dirty |= DM_DIRTY_NORMALS;
 	}
 	else {
-		result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, flag & MOD_APPLY_RENDER);
+		ParticleSystem* psys = NULL;
+		bool render = flag & MOD_APPLY_RENDER;
+		psys = get_psys(rmd, ob, render);
+		result = repolygonize(rmd, dm, psys, render);
 	}
 
 	if (result && (rmd->flag & MOD_REMESH_SMOOTH_SHADING)) {
