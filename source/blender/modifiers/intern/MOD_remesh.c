@@ -154,7 +154,7 @@ static void dualcon_add_quad(void *output_v, const int vert_indices[4])
 	output->curface++;
 }
 
-static int get_particle_positions(RemeshModifierData *rmd, ParticleSystem *psys, float (**pos)[3])
+static int get_particle_positions_sizes(RemeshModifierData *rmd, ParticleSystem *psys, float (**pos)[3], float **size)
 {
 	//take alive, for now
 	ParticleData *pa;
@@ -169,12 +169,16 @@ static int get_particle_positions(RemeshModifierData *rmd, ParticleSystem *psys,
 
 		if (j == 0) {
 			(*pos) = MEM_mallocN(sizeof(float) * 3, "part pos");
+			(*size) = MEM_mallocN(sizeof(float), "part size");
 			copy_v3_v3((*pos)[0], pa->state.co);
+			(*size)[0] = pa->size;
 			j++;
 		}
 		else {
 			(*pos) = MEM_reallocN((*pos), sizeof(float) * 3 * (j+1));
+			(*size) = MEM_reallocN((*size), sizeof(float) * (j+1));
 			copy_v3_v3((*pos)[j], pa->state.co);
+			(*size)[j] = pa->size;
 			j++;
 		}
 	}
@@ -222,7 +226,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, 
 	DerivedMesh *dm = NULL, *result = NULL;
 	MVert *mv = NULL, *mv2 = NULL;
 	float (*pos)[3] = NULL;
-	float *psize = NULL;
+	float *size = NULL, *psize = NULL;
 	int i = 0, n = 0;
 	bool override_size = rmd->pflag & eRemeshFlag_Size;
 
@@ -233,7 +237,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, 
 		if (psys == NULL)
 			return derived;
 
-		n = get_particle_positions(rmd, psys, &pos);
+		n = get_particle_positions_sizes(rmd, psys, &pos, &size);
 		dm = CDDM_new(n, 0, 0, 0, 0);
 		mv = dm->getVertArray(dm);
 		psize = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "psize");
@@ -241,7 +245,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, 
 		for (i = 0; i < n; i++)
 		{
 			copy_v3_v3(mv[i].co, pos[i]);
-			psize[i] = psys->particles[i].size;
+			psize[i] = size[i];
 		}
 
 		result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
@@ -249,6 +253,9 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, 
 
 		if (pos)
 			MEM_freeN(pos);
+
+		if (size)
+			MEM_freeN(size);
 
 		return result;
 	}
@@ -263,7 +270,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, 
 		n = 0;
 
 		if (psys)
-			n = get_particle_positions(rmd, psys, &pos);
+			n = get_particle_positions_sizes(rmd, psys, &pos, &size);
 
 		dm = CDDM_new(n + derived->numVertData, 0, 0, 0, 0);
 		psize = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "psize");
@@ -274,7 +281,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, 
 		for (i = 0; i < n; i++)
 		{
 			copy_v3_v3(mv[i].co, pos[i]);
-			psize[i] = psys->particles[i].size;
+			psize[i] = size[i];
 		}
 
 		for (i = n; i < n + derived->numVertData; i++)
@@ -288,6 +295,9 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, 
 
 		if (pos)
 			MEM_freeN(pos);
+
+		if (size)
+			MEM_freeN(size);
 
 		return result;
 	}
