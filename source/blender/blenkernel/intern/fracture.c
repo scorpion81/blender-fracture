@@ -3648,7 +3648,7 @@ void BKE_meshisland_constraint_create(FractureModifierData* fmd, MeshIsland *mi1
 	mi2->participating_constraint_count++;
 }
 
-void BKE_update_acceleration_map(FractureModifierData *fmd, MeshIsland* mi, Object* ob, int ctime, float acc)
+void BKE_update_acceleration_map(FractureModifierData *fmd, MeshIsland* mi, Object* ob, int ctime, float acc, RigidBodyWorld *rbw)
 {
 	const int acc_defgrp_index = defgroup_name_index(ob, fmd->acceleration_defgrp_name);
 	DerivedMesh *dm = fmd->visible_mesh_cached;
@@ -3692,8 +3692,12 @@ void BKE_update_acceleration_map(FractureModifierData *fmd, MeshIsland* mi, Obje
 						if (weight >= 0.0f && weight <= 1.0f) {
 							dw->weight = weight;
 						}
+						else if (ctime == rbw->pointcache->startframe) {
+							dw->weight = 0.0f;
+						}
 
-						dw->weight *= fmd->acceleration_fade;
+						if (ctime == rbw->ltime + 1)
+							dw->weight *= fmd->acceleration_fade;
 					}
 				}
 			}

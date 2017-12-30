@@ -1344,21 +1344,13 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 						vel = len_v3(linvel) + len_v3(angvel);
 					}
 
-					if (cfra >= mi->start_frame + 1)
+					if (cfra >= mi->start_frame + 1 && cfra == rbw->ltime + 1)
 					{
 						lastvel = mi->acc_sequence[cfra - mi->start_frame - 1];
 						acc = fabsf(vel - lastvel);
-						BKE_update_acceleration_map(fmd, mi, ob, cfra, acc);
+						BKE_update_acceleration_map(fmd, mi, ob, cfra, acc, rbw);
+						mi->acc_sequence[cfra - mi->start_frame] = vel;
 					}
-					else {
-						BKE_update_acceleration_map(fmd, mi, ob, cfra, 0.0f);
-
-					}
-
-					mi->acc_sequence[cfra - mi->start_frame] = vel;
-				}
-				else {
-					BKE_update_acceleration_map(fmd, mi, ob, cfra, 0.0f);
 				}
 			}
 
@@ -1460,14 +1452,8 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 					{
 						lastvel = mi->acc_sequence[frame - mi->start_frame - 1];
 						acc = fabsf(vel - lastvel);
-						BKE_update_acceleration_map(fmd, mi, ob, frame, acc);
+						BKE_update_acceleration_map(fmd, mi, ob, frame, acc, rbw);
 					}
-					else {
-						BKE_update_acceleration_map(fmd, mi, ob, frame, 0.0f);
-					}
-				}
-				else {
-					BKE_update_acceleration_map(fmd, mi, ob, frame, 0.0f);
 				}
 			}
 		}
@@ -1537,6 +1523,19 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 				memcpy(keys[2].rot, data + 3, 4 * sizeof(float));
 			}
 			else {
+				if (fmd)
+				{
+					MeshIsland *mi = find_meshisland(fmd, rbo->meshisland_index);
+					float acc = mi->acc_sequence[((int)cfra)-mi->start_frame];
+					/*float acc1 = mi->acc_sequence[((int)cfra1)-mi->start_frame];
+					float acc2 = mi->acc_sequence[((int)cfra2)-mi->start_frame];
+					float t = (cfra - cfra1) / (cfra2 - cfra1);
+					const float s = 1.0f - t;
+					float acc = s * acc1 + t * acc2;*/
+
+					BKE_update_acceleration_map(fmd, mi, ob, (int)cfra, acc, rbw);
+				}
+
 				BKE_ptcache_make_particle_key(keys+2, 0, data, cfra2);
 			}
 		}

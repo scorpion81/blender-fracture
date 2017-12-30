@@ -105,7 +105,6 @@ static bool restoreKinematic(RigidBodyWorld *rbw);
 static void DM_mesh_boundbox(DerivedMesh *bm, float r_loc[3], float r_size[3]);
 static void test_deactivate_rigidbody(RigidBodyOb *rbo);
 static float box_volume(float size[3]);
-static void updateAccelerationMap(FractureModifierData *fmd, MeshIsland* mi, Object*ob, int ctime, float acc);
 
 #endif
 
@@ -5376,6 +5375,9 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 					{
 						mul_qt_qtqt(rbo->orn, rbo->orn, mi->rot);
 					}
+
+					//reset at start, there no cache read seems to happen
+					BKE_update_acceleration_map(fmd, mi, ob, (int)ctime, 0.0f, rbw);
 				}
 
 				if ((ob->rigidbody_object->type == RBO_TYPE_ACTIVE) && (rbo->type == RBO_TYPE_ACTIVE || rbo->flag & RBO_FLAG_KINEMATIC)) {

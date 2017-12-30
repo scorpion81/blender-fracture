@@ -37,6 +37,7 @@
 struct FracMesh;
 struct Shard;
 
+struct RigidBodyWorld;
 struct FractureModifierData;
 struct FractureSetting;
 struct DerivedMesh;
@@ -126,6 +127,6 @@ short BKE_fracture_collect_materials(struct Object* o, struct Object* ob, int ma
 
 void BKE_bm_mesh_hflag_flush_vert(struct BMesh *bm, const char hflag);
 void BKE_meshisland_constraint_create(struct FractureModifierData* fmd, struct MeshIsland *mi1, struct MeshIsland *mi2, int con_type, float thresh);
-void BKE_update_acceleration_map(struct FractureModifierData *fmd, struct MeshIsland* mi, struct Object* ob, int ctime, float acc);
+void BKE_update_acceleration_map(struct FractureModifierData *fmd, struct MeshIsland* mi, struct Object* ob, int ctime, float acc, struct RigidBodyWorld *rbw);
 
 #endif /* BKE_FRACTURE_H */
