@@ -68,7 +68,7 @@ static void initData(ModifierData *md)
 
 	rmd->input = 0;
 	rmd->pflag = 1;
-	rmd->psys = 0;
+	rmd->psys = 1;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)

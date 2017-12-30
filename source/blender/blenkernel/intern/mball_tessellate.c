@@ -1610,6 +1610,9 @@ DerivedMesh* BKE_repolygonize_dm(DerivedMesh *dm, float thresh, float basesize[3
 		}
 	}
 
+	if (!result)
+		result = CDDM_new(0, 0, 0, 0, 0); //return an empty mesh
+
 	freepolygonize(&process);
 
 	return result;
