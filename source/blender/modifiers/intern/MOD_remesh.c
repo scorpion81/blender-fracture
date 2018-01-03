@@ -154,30 +154,35 @@ static void dualcon_add_quad(void *output_v, const int vert_indices[4])
 	output->curface++;
 }
 
-static int get_particle_positions_sizes(RemeshModifierData *rmd, ParticleSystem *psys, float (**pos)[3], float **size)
+static int get_particle_positions_sizes(RemeshModifierData *rmd, ParticleSystem *psys, Object *ob, float (**pos)[3], float **size)
 {
 	//take alive, for now
 	ParticleData *pa;
 	int i = 0, j = 0;
+	float imat[4][4];
+	invert_m4_m4(imat, ob->obmat);
 
 	for (i = 0; i < psys->totpart; i++)
 	{
+		float co[3];
 		pa = psys->particles + i;
 		if (pa->alive == PARS_UNBORN && (rmd->pflag & eRemeshFlag_Unborn) == 0) continue;
 		if (pa->alive == PARS_ALIVE && (rmd->pflag & eRemeshFlag_Alive) == 0) continue;
 		if (pa->alive == PARS_DEAD && (rmd->pflag & eRemeshFlag_Dead) == 0) continue;
 
+		mul_v3_m4v3(co, imat, pa->state.co);
+
 		if (j == 0) {
 			(*pos) = MEM_mallocN(sizeof(float) * 3, "part pos");
 			(*size) = MEM_mallocN(sizeof(float), "part size");
-			copy_v3_v3((*pos)[0], pa->state.co);
+			copy_v3_v3((*pos)[0], co);
 			(*size)[0] = pa->size;
 			j++;
 		}
 		else {
 			(*pos) = MEM_reallocN((*pos), sizeof(float) * 3 * (j+1));
 			(*size) = MEM_reallocN((*size), sizeof(float) * (j+1));
-			copy_v3_v3((*pos)[j], pa->state.co);
+			copy_v3_v3((*pos)[j], co);
 			(*size)[j] = pa->size;
 			j++;
 		}
@@ -221,7 +226,7 @@ static ParticleSystem *get_psys(RemeshModifierData *rmd, Object *ob, bool render
 	return NULL;
 }
 
-static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, ParticleSystem *psys, bool render)
+static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMesh* derived, ParticleSystem *psys, bool render)
 {
 	DerivedMesh *dm = NULL, *result = NULL;
 	MVert *mv = NULL, *mv2 = NULL;
@@ -237,7 +242,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, 
 		if (psys == NULL)
 			return derived;
 
-		n = get_particle_positions_sizes(rmd, psys, &pos, &size);
+		n = get_particle_positions_sizes(rmd, psys, ob, &pos, &size);
 		dm = CDDM_new(n, 0, 0, 0, 0);
 		mv = dm->getVertArray(dm);
 		psize = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "psize");
@@ -270,7 +275,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, DerivedMesh* derived, 
 		n = 0;
 
 		if (psys)
-			n = get_particle_positions_sizes(rmd, psys, &pos, &size);
+			n = get_particle_positions_sizes(rmd, psys, ob, &pos, &size);
 
 		dm = CDDM_new(n + derived->numVertData, 0, 0, 0, 0);
 		psize = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "psize");
@@ -358,7 +363,7 @@ static DerivedMesh *applyModifier(ModifierData *md,
 		ParticleSystem* psys = NULL;
 		bool render = flag & MOD_APPLY_RENDER;
 		psys = get_psys(rmd, ob, render);
-		result = repolygonize(rmd, dm, psys, render);
+		result = repolygonize(rmd, ob, dm, psys, render);
 	}
 
 	if (result && (rmd->flag & MOD_REMESH_SMOOTH_SHADING)) {
