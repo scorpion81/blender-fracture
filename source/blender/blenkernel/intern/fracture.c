@@ -3656,7 +3656,10 @@ void BKE_update_acceleration_map(FractureModifierData *fmd, MeshIsland* mi, Obje
 	MDeformWeight *dw = NULL;
 	float weight = 0.0f, denom;
 	int i = 0, w = 0;
-	int totvert = dm->getNumVerts(dm);
+	int totvert = dm ? dm->getNumVerts(dm) : 0;
+
+	if (!dm)
+		return;
 
 	dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
 
