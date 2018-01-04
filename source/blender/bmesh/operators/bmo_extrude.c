@@ -768,18 +768,29 @@ static void solidify_add_thickness(BMesh *bm, const float dist)
 void bmo_solidify_face_region_exec(BMesh *bm, BMOperator *op)
 {
 	BMOperator extrudeop;
-	BMOperator reverseop;
+	//BMOperator reverseop;
 	float thickness;
+	float offset;
+	float orig_thick;
+	float new_thick;
 
 	thickness = BMO_slot_float_get(op->slots_in, "thickness");
+	offset = BMO_slot_float_get(op->slots_in, "offset");
 
+	orig_thick = -(((-offset + 1.0f) * 0.5f) * thickness);
+	new_thick =  orig_thick + thickness;
+
+#if 0
 	/* Flip original faces (so the shell is extruded inward) */
-	BMO_op_init(bm, &reverseop, op->flag, "reverse_faces");
-	BMO_slot_bool_set(reverseop.slots_in, "flip_multires", true);
-	BMO_slot_copy(op,         slots_in, "geom",
+	{
+		BMO_op_init(bm, &reverseop, op->flag, "reverse_faces");
+		BMO_slot_bool_set(reverseop.slots_in, "flip_multires", true);
+		BMO_slot_copy(op,         slots_in, "geom",
 	              &reverseop, slots_in, "faces");
-	BMO_op_exec(bm, &reverseop);
-	BMO_op_finish(bm, &reverseop);
+		BMO_op_exec(bm, &reverseop);
+		BMO_op_finish(bm, &reverseop);
+	}
+#endif
 
 	/* Extrude the region */
 	BMO_op_initf(bm, &extrudeop, op->flag, "extrude_face_region use_keep_orig=%b", true);
@@ -787,10 +798,16 @@ void bmo_solidify_face_region_exec(BMesh *bm, BMOperator *op)
 	              &extrudeop, slots_in, "geom");
 	BMO_op_exec(bm, &extrudeop);
 
-	/* Push the verts of the extruded faces inward to create thickness */
+	/* Push the original verts also according to offset */
+	BMO_slot_buffer_flag_enable(bm, extrudeop.slots_in, "geom", BM_FACE, FACE_MARK);
+	calc_solidify_normals(bm);
+	solidify_add_thickness(bm, -orig_thick);
+	BMO_slot_buffer_flag_disable(bm, extrudeop.slots_in, "geom", BM_FACE, FACE_MARK);
+
+	/* Push the verts of the extruded faces according to offset to create thickness */
 	BMO_slot_buffer_flag_enable(bm, extrudeop.slots_out, "geom.out", BM_FACE, FACE_MARK);
 	calc_solidify_normals(bm);
-	solidify_add_thickness(bm, thickness);
+	solidify_add_thickness(bm, new_thick);
 
 	BMO_slot_copy(&extrudeop, slots_out, "geom.out",
 	              op,         slots_out, "geom.out");

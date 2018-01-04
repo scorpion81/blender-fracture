@@ -98,7 +98,7 @@ static void contactCallback(rbContactPoint* cp, void* world);
 static void idCallback(void *world, void* island, int* objectId, int* islandId);
 static void tickCallback(float timestep, void *scene);
 static bool isModifierActive(FractureModifierData *rmd);
-static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *mi, Object *ob);
+static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED_rbw, MeshIsland *mi, Object *ob);
 static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bool rebuild);
 static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, float ctime);
 static bool restoreKinematic(RigidBodyWorld *rbw);
@@ -287,7 +287,7 @@ static DerivedMesh* dm_solidify(DerivedMesh *dm, float thickness)
 
 	DM_to_bmesh_ex(dm, bm, true);
 
-	BMO_op_initf(bm, &bmop, BMO_FLAG_DEFAULTS, "solidify geom=%af thickness=%f", thickness);
+	BMO_op_initf(bm, &bmop, BMO_FLAG_DEFAULTS, "solidify geom=%af thickness=%f offset=%f", thickness, 0.0f, true);
 
 	/* deselect only the faces in the region to be solidified (leave wire
 	 * edges and loose verts selected, as there will be no corresponding
@@ -959,6 +959,8 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, Object *target
 	{
 		rbo = BKE_rigidbody_copy_object(target);
 		mat4_to_loc_quat(rbo->pos, rbo->orn, target->obmat);
+		zero_v3(rbo->lin_vel);
+		zero_v3(rbo->ang_vel);
 	}
 	else
 	{
@@ -975,6 +977,8 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, Object *target
 		mul_v3_v3(centr, size);
 		mul_qt_v3(rbo->orn, centr);
 		add_v3_v3(rbo->pos, centr);
+		zero_v3(rbo->lin_vel);
+		zero_v3(rbo->ang_vel);
 	}
 
 	/* return this object */
@@ -5050,14 +5054,14 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		float locbb[3];
 
 		//hacky check for ob->derivedFinal validity
-		if (ob->derivedFinal && ob->derivedFinal->getNumLoopTri(ob->derivedFinal) > 0)
+		/*if (ob->derivedFinal && ob->derivedFinal->getNumLoopTri(ob->derivedFinal) > 0)
 		{
 			DM_mesh_boundbox(ob->derivedFinal, locbb, bbsize);
 		}
 		else
 		{
 			BKE_mesh_boundbox_calc((Mesh*)ob->data, locbb, bbsize);
-		}
+		}*/
 
 
 		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
@@ -5093,12 +5097,14 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				/* refresh object... */
 				int do_rebuild = rebuild;
 
+				DM_mesh_boundbox(mi->physics_mesh, locbb, bbsize);
+
 				if ((rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS) && fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 				{
 					//reset speeds
 					//printf("ZEROIZING speed (shard)\n");
-					zero_v3(mi->rigidbody->lin_vel);
-					zero_v3(mi->rigidbody->ang_vel);
+					//zero_v3(mi->rigidbody->lin_vel);
+					//zero_v3(mi->rigidbody->ang_vel);
 					mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					mi->rigidbody->flag &= ~RBO_FLAG_PROPAGATE_TRIGGER;
 				}
@@ -5376,8 +5382,12 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 						mul_qt_qtqt(rbo->orn, rbo->orn, mi->rot);
 					}
 
+					zero_v3(rbo->lin_vel);
+					zero_v3(rbo->ang_vel);
+
 					//reset at start, there no cache read seems to happen
 					BKE_update_acceleration_map(fmd, mi, ob, (int)ctime, 0.0f, rbw);
+					BKE_update_velocity_layer(fmd, mi);
 				}
 
 				if ((ob->rigidbody_object->type == RBO_TYPE_ACTIVE) && (rbo->type == RBO_TYPE_ACTIVE || rbo->flag & RBO_FLAG_KINEMATIC)) {

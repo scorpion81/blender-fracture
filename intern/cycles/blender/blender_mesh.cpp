@@ -941,7 +941,7 @@ static void sync_mesh_fluid_motion(BL::Object& b_ob, Scene *scene, Mesh *mesh)
 	}
 }
 
-static bool sync_mesh_precalculated_motion(BL::Mesh& b_mesh, Scene *scene, Mesh *mesh)
+static bool sync_mesh_precalculated_motion(BL::Mesh& b_mesh, BL::Scene& b_scene, Scene *scene, Mesh *mesh)
 {
 	if(scene->need_motion() == Scene::MOTION_NONE)
 		return false;
@@ -957,7 +957,8 @@ static bool sync_mesh_precalculated_motion(BL::Mesh& b_mesh, Scene *scene, Mesh 
 	/* Only export previous and next frame, we don't have any in between data. */
 	float motion_times[2] = {-1.0f, 1.0f};
 	for(int step = 0; step < 2; step++) {
-		float relative_time = motion_times[step] * scene->motion_shutter_time() * 0.5f;
+		/* those are TIMES, but treated like Frames ? makes too high values, so take fps into account*/
+		float relative_time = motion_times[step] * scene->motion_shutter_time() * 0.5f / b_scene.render().fps();
 		float3 *mP = attr_mP->data_float3() + step*mesh->verts.size();
 
 		int i = 0;
@@ -982,6 +983,7 @@ static bool sync_mesh_precalculated_motion(BL::Mesh& b_mesh, Scene *scene, Mesh 
 
 			//printf("Vel %f %f %f\n", (double)x, (double)y, (double)z);
 			mP[i] = P[i] + make_float3(x, y, z) * relative_time;
+			x = 1;
 		}
 	}
 
@@ -1122,7 +1124,7 @@ Mesh *BlenderSync::sync_mesh(BL::Object& b_ob,
 				b_ob.cache_release();
 			}
 
-			sync_mesh_precalculated_motion(b_mesh, scene, mesh);
+			sync_mesh_precalculated_motion(b_mesh, b_scene, scene, mesh);
 
 			/* free derived mesh */
 			b_data.meshes.remove(b_mesh, false);
@@ -1229,7 +1231,8 @@ void BlenderSync::sync_mesh_motion(BL::Object& b_ob,
 
 	/* other precalculated motion (remesher for now only) */
 	BL::RemeshModifier b_remesher = object_metaball_remesher_find(b_ob);
-	if(b_remesher)
+	BL::FractureModifier b_fracture = object_fracture_modifier_find(b_ob);
+	if(b_remesher || b_fracture)
 		return;
 
 	if(ccl::BKE_object_is_deform_modified(b_ob, b_scene, preview)) {

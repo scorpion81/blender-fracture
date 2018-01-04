@@ -581,6 +581,20 @@ static inline BL::RemeshModifier object_metaball_remesher_find(BL::Object b_ob)
 	return BL::RemeshModifier(PointerRNA_NULL);
 }
 
+static inline BL::FractureModifier object_fracture_modifier_find(BL::Object b_ob)
+{
+	BL::Object::modifiers_iterator b_mod;
+
+	for(b_ob.modifiers.begin(b_mod); b_mod != b_ob.modifiers.end(); ++b_mod) {
+		if(b_mod->is_a(&RNA_FractureModifier)) {
+			BL::FractureModifier b_fmd(*b_mod);
+			return b_fmd;
+		}
+	}
+
+	return BL::FractureModifier(PointerRNA_NULL);
+}
+
 static inline Mesh::SubdivisionType object_subdivision_type(BL::Object& b_ob, bool preview, bool experimental)
 {
 	PointerRNA cobj = RNA_pointer_get(&b_ob.ptr, "cycles");

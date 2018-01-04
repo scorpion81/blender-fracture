@@ -1942,7 +1942,6 @@ void *CustomData_add_layer_named(CustomData *data, int type, int alloctype,
 	return NULL;
 }
 
-
 bool CustomData_free_layer(CustomData *data, int type, int totelem, int index)
 {
 	const int index_first = CustomData_get_layer_index(data, type);

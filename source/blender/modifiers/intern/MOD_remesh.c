@@ -239,6 +239,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 	float *size = NULL, *psize = NULL, *velX = NULL, *velY = NULL, *velZ = NULL;
 	int i = 0, n = 0;
 	bool override_size = rmd->pflag & eRemeshFlag_Size;
+	bool verts_only = rmd->pflag & eRemeshFlag_Verts;
 
 	if (((rmd->input & MOD_REMESH_VERTICES)==0) && (rmd->input & MOD_REMESH_PARTICLES))
 	{
@@ -264,9 +265,6 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 			velZ[i] = vel[i][2];
 		}
 
-		result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
-		dm->release(dm);
-
 		if (pos)
 			MEM_freeN(pos);
 
@@ -276,7 +274,15 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		if (vel)
 			MEM_freeN(vel);
 
-		return result;
+		if (verts_only)
+		{
+			return dm;
+		}
+		else {
+			result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
+			dm->release(dm);
+			return result;
+		}
 	}
 	else if ((rmd->input & MOD_REMESH_VERTICES) && ((rmd->input & MOD_REMESH_PARTICLES) == 0))
 	{
@@ -318,9 +324,6 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 			velZ[i] = 0.0f;
 		}
 
-		result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
-		dm->release(dm);
-
 		if (pos)
 			MEM_freeN(pos);
 
@@ -330,7 +333,15 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		if (vel)
 			MEM_freeN(vel);
 
-		return result;
+		if (verts_only)
+		{
+			return dm;
+		}
+		else {
+			result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
+			dm->release(dm);
+			return result;
+		}
 	}
 
 	return NULL;

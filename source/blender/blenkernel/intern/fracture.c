@@ -204,6 +204,29 @@ static int shard_sortsize(const void *s1, const void *s2, void* UNUSED(context))
 	return 0;
 }
 
+void* check_add_layer(CustomData *src, CustomData *dst, int type, int totelem, const char* name)
+{
+	void *layer =  CustomData_get_layer_named(dst, type, name);
+
+	if (!layer) {
+		void* orig = NULL;
+
+		if (src) {
+			orig = CustomData_get_layer_named(src, type, name);
+		}
+
+		if (orig) {
+			return CustomData_add_layer_named(dst, type, CD_DUPLICATE, orig, totelem, name);
+		}
+		else{
+			return CustomData_add_layer_named(dst, type, CD_CALLOC, NULL, totelem, name);
+		}
+	}
+	else {
+		return layer;
+	}
+}
+
 Shard *BKE_custom_data_to_shard(Shard *s, DerivedMesh *dm)
 {
 	CustomData_reset(&s->vertData);
@@ -215,6 +238,11 @@ Shard *BKE_custom_data_to_shard(Shard *s, DerivedMesh *dm)
 	CustomData_copy(&dm->loopData, &s->loopData, CD_MASK_MLOOPUV, CD_DUPLICATE, s->totloop);
 	CustomData_copy(&dm->polyData, &s->polyData, CD_MASK_MTEXPOLY, CD_DUPLICATE, s->totpoly);
 	CustomData_copy(&dm->edgeData, &s->edgeData, CD_MASK_CREASE | CD_MASK_BWEIGHT | CD_MASK_MEDGE, CD_DUPLICATE, s->totedge);
+
+	//add velocity vertex layers...
+	check_add_layer(&dm->vertData, &s->vertData, CD_PROP_FLT, s->totvert, "velX");
+	check_add_layer(&dm->vertData, &s->vertData, CD_PROP_FLT, s->totvert, "velY");
+	check_add_layer(&dm->vertData, &s->vertData, CD_PROP_FLT, s->totvert, "velZ");
 
 	return s;
 }
@@ -3153,6 +3181,7 @@ void fracture_collect_layers(Shard* s, DerivedMesh *dm, int vertstart, int polys
 	fracture_collect_layer(&s->edgeData, &dm->edgeData, totedge, CD_CREASE, edgestart, s->totedge);
 	fracture_collect_layer(&s->edgeData, &dm->edgeData, totedge, CD_BWEIGHT, edgestart, s->totedge);
 	//fracture_collect_layer(&s->edgeData, &dm->edgeData, totedge, CD_MEDGE, edgestart, s->totedge);
+	fracture_collect_layer(&s->vertData, &dm->vertData, totvert, CD_PROP_FLT, vertstart, s->totvert);
 }
 
 MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own, Object *target)
@@ -3705,5 +3734,58 @@ void BKE_update_acceleration_map(FractureModifierData *fmd, MeshIsland* mi, Obje
 				}
 			}
 		}
+	}
+}
+
+void BKE_update_velocity_layer(FractureModifierData *fmd, MeshIsland *mi)
+{
+	DerivedMesh *dm = fmd->visible_mesh_cached;
+	float* velX, *velY, *velZ;
+	RigidBodyOb *rbo = mi->rigidbody;
+	Shard *s, *t = NULL;
+	int i = 0;
+
+	if (!dm)
+		return;
+
+	//XXX TODO deal with split shards to islands etc, here take only "real" shards for now
+	for (s = fmd->frac_mesh->shard_map.first; s; s = s->next)
+	{
+		if (s->shard_id == mi->id)
+		{
+			t = s;
+			break;
+		}
+	}
+
+	velX = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velX");
+	velY = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velY");
+	velZ = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velZ");
+
+	//XXX how to represent this in mblur ?
+	//zero_v3(rbo->ang_vel);
+
+	//if (!velX || !velY || !velZ)
+	//	return;
+
+	for (i = 0; i < mi->vertex_count; i++)
+	{
+		if (t)
+		{
+			float *sX, *sY, *sZ;
+
+			sX = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velX");
+			sX[i] = rbo->lin_vel[0] + rbo->ang_vel[0];
+
+			sY = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velY");
+			sY[i] = rbo->lin_vel[1] + rbo->ang_vel[1];
+
+			sZ = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velZ");
+			sZ[i] = rbo->lin_vel[2] + rbo->ang_vel[2];
+		}
+
+		velX[mi->vertex_indices[i]] = rbo->lin_vel[0] + rbo->ang_vel[0];
+		velY[mi->vertex_indices[i]] = rbo->lin_vel[1] + rbo->ang_vel[1];
+		velZ[mi->vertex_indices[i]] = rbo->lin_vel[2] + rbo->ang_vel[2];
 	}
 }

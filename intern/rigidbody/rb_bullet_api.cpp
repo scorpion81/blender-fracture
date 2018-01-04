@@ -721,9 +721,6 @@ struct myResultCallback : public btCollisionWorld::ClosestRayResultCallback
 	}
 };
 
-#define MIN2(a, b)  ((a) < (b) ? (a) : (b))
-#define MIN3(a, b, c)       (MIN2(MIN2((a), (b)), (c)))
-
 struct rbFilterCallback : public btOverlapFilterCallback
 {
 	int (*callback)(void* world, void* island1, void* island2, void* blenderOb1, void* blenderOb2, bool activate);
@@ -745,38 +742,34 @@ struct rbFilterCallback : public btOverlapFilterCallback
 			bool meshShape0 = (stype0 == GIMPACT_SHAPE_PROXYTYPE) || (stype0 == TRIANGLE_MESH_SHAPE_PROXYTYPE);
 			bool meshShape1 = (stype1 == GIMPACT_SHAPE_PROXYTYPE) || (stype1 == TRIANGLE_MESH_SHAPE_PROXYTYPE);
 
-			if (rb0->blenderOb != rb1->blenderOb && (meshShape0 && meshShape1) && activate)
+			if ((rb0->blenderOb != rb1->blenderOb) && (meshShape0 || meshShape1))
 			{
-				btVector3 v0, v1;
+				btVector3 v0, v1, min0, max0, min1, max1, min, max;
 				v0 = rb0->body->getWorldTransform().getOrigin();
 				v1 = rb1->body->getWorldTransform().getOrigin();
-				float maxbound1 = MIN3(rb0->bbox->x(), rb0->bbox->y(), rb0->bbox->z());
-				float maxbound2 = MIN3(rb1->bbox->x(), rb1->bbox->y(), rb1->bbox->z());
-				float bound = maxbound1;
 
-				if (maxbound2 < maxbound1)
+				rb0->body->getAabb(min0, max0);
+				rb1->body->getAabb(min1, max1);
+
+				min = min1;
+				max = max1;
+
+				if ((max0-min0).length2() < (max1-min1).length2())
 				{
-					bound = maxbound2;
+					min = min0;
+					max = max0;
 				}
 
 				myResultCallback cb(v0, v1);
 				rb0->world->dynamicsWorld->rayTest(v0, v1, cb);
-				if (cb.m_collisionObject)
+				if (cb.m_collisionObject && TestPointAgainstAabb2(min, max, cb.m_hitPointWorld))
 				{
-					float dist_sq = (v0 - cb.m_collisionObject->getWorldTransform().getOrigin()).length2();
-					//float dist_sq2 = (v0 - v1).length2();
-					float dist_sq2 = bound * bound;
-					if (dist_sq < dist_sq2)
-					{
-						int result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland,
-						                            rb0->blenderOb, rb1->blenderOb, activate);
+					int result = this->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland,
+												rb0->blenderOb, rb1->blenderOb,
+												activate && (cb.m_collisionObject == (btCollisionObject*)rb1->body));
 
-						collides = collides && (bool)result;
-					}
-					else
-					{
-						collides = false;
-					}
+					collides = collides && (bool)result;
+
 				}
 				else {
 					collides = false;
