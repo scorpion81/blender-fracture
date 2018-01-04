@@ -946,16 +946,6 @@ static bool sync_mesh_precalculated_motion(BL::Mesh& b_mesh, Scene *scene, Mesh 
 	if(scene->need_motion() == Scene::MOTION_NONE)
 		return false;
 
-	/*mesh->subdivision_type = object_subdivision_type(b_ob, preview, experimental);
-
-	BL::Mesh b_mesh = object_to_mesh(b_data,
-	                                 b_ob,
-	                                 b_scene,
-	                                 true,
-	                                 false,
-	                                 !preview,
-	                                 mesh->subdivision_type);*/
-
 	/* Find or add attribute */
 	float3 *P = &mesh->verts[0];
 	Attribute *attr_mP = mesh->attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
@@ -975,7 +965,11 @@ static bool sync_mesh_precalculated_motion(BL::Mesh& b_mesh, Scene *scene, Mesh 
 		BL::MeshVertexFloatPropertyLayer vlY = b_mesh.vertex_layers_float[std::string("velY")];
 		BL::MeshVertexFloatPropertyLayer vlZ = b_mesh.vertex_layers_float[std::string("velZ")];
 
-		if (vlX.data.length() == 0 || vlY.data.length() == 0 || vlZ.data.length() == 0)
+		BL::Pointer ptrX = (BL::Pointer)vlX;
+		BL::Pointer ptrY = (BL::Pointer)vlY;
+		BL::Pointer ptrZ = (BL::Pointer)vlZ;
+
+		if (!ptrX || !ptrY || !ptrZ || vlX.data.length() != mesh->verts.size())
 		{
 			return false;
 		}
@@ -990,9 +984,6 @@ static bool sync_mesh_precalculated_motion(BL::Mesh& b_mesh, Scene *scene, Mesh 
 			mP[i] = P[i] + make_float3(x, y, z) * relative_time;
 		}
 	}
-
-	/* free derived mesh */
-	//b_data.meshes.remove(b_mesh, false);
 
 	return true;
 }

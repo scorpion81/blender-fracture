@@ -293,6 +293,9 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 
 		dm = CDDM_new(n + derived->numVertData, 0, 0, 0, 0);
 		psize = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "psize");
+		velX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "velX");
+		velY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "velY");
+		velZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "velZ");
 
 		mv = dm->getVertArray(dm);
 		mv2 = derived->getVertArray(derived);
