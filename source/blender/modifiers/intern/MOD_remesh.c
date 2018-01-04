@@ -292,6 +292,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 	else if ((rmd->input & MOD_REMESH_VERTICES) && (rmd->input & MOD_REMESH_PARTICLES))
 	{
 		//both, for simplicity only use vert data here
+		float* ovX, *ovY, *ovZ;
 		n = 0;
 
 		if (psys)
@@ -306,6 +307,10 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		mv = dm->getVertArray(dm);
 		mv2 = derived->getVertArray(derived);
 
+		ovX = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "velX");
+		ovY = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "velY");
+		ovZ = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "velZ");
+
 		for (i = 0; i < n; i++)
 		{
 			copy_v3_v3(mv[i].co, pos[i]);
@@ -319,9 +324,9 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		{
 			copy_v3_v3(mv[i].co, mv2[i-n].co);
 			psize[i] = -1.0f; //use mball sizep
-			velX[i] = 0.0f;
-			velY[i] = 0.0f;
-			velZ[i] = 0.0f;
+			velX[i] = ovX ? ovX[i-n] : 0.0f;
+			velY[i] = ovY ? ovY[i-n] : 0.0f;
+			velZ[i] = ovZ ? ovZ[i-n] : 0.0f;
 		}
 
 		if (pos)

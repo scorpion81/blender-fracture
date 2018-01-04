@@ -275,6 +275,7 @@ void *CustomData_get(const struct CustomData *data, int index, int type);
 void *CustomData_get_n(const struct CustomData *data, int type, int index, int n);
 void *CustomData_bmesh_get(const struct CustomData *data, void *block, int type);
 void *CustomData_bmesh_get_n(const struct CustomData *data, void *block, int type, int n);
+void *CustomData_bmesh_get_named(const CustomData *data, void *block, int type, const char *name);
 
 /* gets the layer at physical index n, with no type checking.
  */

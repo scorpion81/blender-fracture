@@ -2914,6 +2914,18 @@ void *CustomData_bmesh_get_n(const CustomData *data, void *block, int type, int 
 	return POINTER_OFFSET(block, data->layers[layer_index + n].offset);
 }
 
+/* why did this miss here before, useful ! */
+void *CustomData_bmesh_get_named(const CustomData *data, void *block, int type, const char *name)
+{
+	int layer_index;
+
+	/* get the layer index of the first layer of type */
+	layer_index = CustomData_get_named_layer_index(data, type, name);
+	if (layer_index == -1) return NULL;
+
+	return POINTER_OFFSET(block, data->layers[layer_index].offset);
+}
+
 /*gets from the layer at physical index n, note: doesn't check type.*/
 void *CustomData_bmesh_get_layer_n(const CustomData *data, void *block, int n)
 {

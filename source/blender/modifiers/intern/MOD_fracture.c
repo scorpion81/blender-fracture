@@ -3429,19 +3429,50 @@ static void optimize_automerge(FractureModifierData *fmd)
 	printf("remaining | removed groups: %d | %d\n", count, removed);
 }
 
-static void centroids_to_verts(FractureModifierData* fmd, BMesh* bm, Object* ob)
+static DerivedMesh* centroids_to_verts(FractureModifierData* fmd, BMesh* bm, Object* ob)
 {
+	BMIter viter;
+	DerivedMesh *dm = NULL;
+	MVert *mv = NULL;
+	BMVert *v = NULL;
 	MeshIsland *mi;
 	//only add verts where centroids are...
 	float imat[4][4];
+	float *velX, *velY, *velZ;
+	int i = 0;
+	int dm_totvert = BLI_listbase_count(&fmd->meshIslands);
+	int totvert = dm_totvert + bm->totvert;
+
+
 	invert_m4_m4(imat, ob->obmat);
+
+	dm = CDDM_new(totvert, 0, 0, 0, 0);
+
+	mv = dm->getVertArray(dm);
+	velX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, totvert, "velX");
+	velY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, totvert, "velY");
+	velZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, totvert, "velZ");
 
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 	{
-		float co[3];
-		mul_v3_m4v3(co, imat, mi->rigidbody->pos);
-		BM_vert_create(bm, co, NULL, BM_CREATE_NOP);
+		RigidBodyOb *rbo = mi->rigidbody;
+		mul_v3_m4v3(mv[i].co, imat, mi->rigidbody->pos);
+		velX[i] = rbo->lin_vel[0] + rbo->ang_vel[0];
+		velY[i] = rbo->lin_vel[1] + rbo->ang_vel[1];
+		velZ[i] = rbo->lin_vel[2] + rbo->ang_vel[2];
+		i++;
 	}
+
+	i = 0;
+	BM_ITER_MESH_INDEX(v, &viter, bm, BM_VERTS_OF_MESH, i)
+	{
+		copy_v3_v3(mv[i + dm_totvert].co, v->co);
+		velX[i + dm_totvert] = BM_elem_float_data_get_named(&bm->vdata, v, CD_PROP_FLT, "velX");
+		velY[i + dm_totvert] = BM_elem_float_data_get_named(&bm->vdata, v, CD_PROP_FLT, "velY");
+		velZ[i + dm_totvert] = BM_elem_float_data_get_named(&bm->vdata, v, CD_PROP_FLT, "velZ");
+	}
+
+	return dm;
 }
 
 static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Object *ob)
@@ -3456,7 +3487,10 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 
 	if (fmd->use_centroids && !fmd->use_vertices)
 	{
-		centroids_to_verts(fmd, bm, ob);
+		result = centroids_to_verts(fmd, bm, ob);
+		BM_mesh_free(bm);
+		MEM_freeN(faces);
+		return result;
 	}
 	else {
 		DM_to_bmesh_ex(dm, bm, true);
@@ -3527,7 +3561,10 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 
 		if (fmd->use_centroids)
 		{
-			centroids_to_verts(fmd, bm, ob);
+			result = centroids_to_verts(fmd, bm, ob);
+			BM_mesh_free(bm);
+			MEM_freeN(faces);
+			return result;
 		}
 	}
 
@@ -3567,7 +3604,11 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 		BM_mesh_normals_update(bm);
 	}
 
-	result = CDDM_from_bmesh(bm, true);
+	//if (!fmd->use_centroids && !fmd->use_vertices)
+	{
+		result = CDDM_from_bmesh(bm, true);
+	}
+
 	BM_mesh_free(bm);
 	MEM_freeN(faces);
 

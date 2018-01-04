@@ -742,7 +742,7 @@ struct rbFilterCallback : public btOverlapFilterCallback
 			bool meshShape0 = (stype0 == GIMPACT_SHAPE_PROXYTYPE) || (stype0 == TRIANGLE_MESH_SHAPE_PROXYTYPE);
 			bool meshShape1 = (stype1 == GIMPACT_SHAPE_PROXYTYPE) || (stype1 == TRIANGLE_MESH_SHAPE_PROXYTYPE);
 
-			if ((rb0->blenderOb != rb1->blenderOb) && (meshShape0 || meshShape1))
+			if ((rb0->blenderOb != rb1->blenderOb) && (meshShape0 && meshShape1))
 			{
 				btVector3 v0, v1, min0, max0, min1, max1, min, max;
 				v0 = rb0->body->getWorldTransform().getOrigin();
