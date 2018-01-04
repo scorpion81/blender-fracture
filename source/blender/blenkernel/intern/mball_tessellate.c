@@ -72,7 +72,7 @@ typedef struct corner {         /* corner of a cube */
 } CORNER;
 
 typedef struct cube {           /* partitioning cell (cube) */
-	int i, j, k;                /* lattice location of cube */
+	int i, j, k, index;         /* lattice location of cube + original index ? */
 	CORNER *corners[8];         /* eight corners */
 } CUBE;
 
@@ -139,13 +139,15 @@ typedef struct process {        /* parameters, storage */
 	unsigned int totvertex;		/* memory size */
 	unsigned int curvertex;		/* currently added vertices */
 
+	int* orig_index;			/* map new vertices to original ones */
+
 	/* memory allocation from common pool */
 	MemArena *pgn_elements;
 } PROCESS;
 
 /* Forward declarations */
-static int vertid(PROCESS *process, const CORNER *c1, const CORNER *c2);
-static void add_cube(PROCESS *process, int i, int j, int k);
+static int vertid(PROCESS *process, const CORNER *c1, const CORNER *c2, int index);
+static void add_cube(PROCESS *process, int i, int j, int k, int index);
 static void make_face(PROCESS *process, int i1, int i2, int i3, int i4);
 static void converge(PROCESS *process, const CORNER *c1, const CORNER *c2, float r_p[3]);
 
@@ -451,6 +453,7 @@ static void freepolygonize(PROCESS *process)
 	if (process->mainb) MEM_freeN(process->mainb);
 	if (process->bvh_queue) MEM_freeN(process->bvh_queue);
 	if (process->pgn_elements) BLI_memarena_free(process->pgn_elements);
+	if (process->orig_index) MEM_freeN(process->orig_index);
 }
 
 /* **************** POLYGONIZATION ************************ */
@@ -506,12 +509,12 @@ static void docube(PROCESS *process, CUBE *cube)
 	}
 
 	/* Using faces[] table, adds neighbouring cube if surface intersects face in this direction. */
-	if (MB_BIT(faces[index], 0)) add_cube(process, cube->i - 1, cube->j, cube->k);
-	if (MB_BIT(faces[index], 1)) add_cube(process, cube->i + 1, cube->j, cube->k);
-	if (MB_BIT(faces[index], 2)) add_cube(process, cube->i, cube->j - 1, cube->k);
-	if (MB_BIT(faces[index], 3)) add_cube(process, cube->i, cube->j + 1, cube->k);
-	if (MB_BIT(faces[index], 4)) add_cube(process, cube->i, cube->j, cube->k - 1);
-	if (MB_BIT(faces[index], 5)) add_cube(process, cube->i, cube->j, cube->k + 1);
+	if (MB_BIT(faces[index], 0)) add_cube(process, cube->i - 1, cube->j, cube->k, cube->index);
+	if (MB_BIT(faces[index], 1)) add_cube(process, cube->i + 1, cube->j, cube->k, cube->index);
+	if (MB_BIT(faces[index], 2)) add_cube(process, cube->i, cube->j - 1, cube->k, cube->index);
+	if (MB_BIT(faces[index], 3)) add_cube(process, cube->i, cube->j + 1, cube->k, cube->index);
+	if (MB_BIT(faces[index], 4)) add_cube(process, cube->i, cube->j, cube->k - 1, cube->index);
+	if (MB_BIT(faces[index], 5)) add_cube(process, cube->i, cube->j, cube->k + 1, cube->index);
 
 	/* Using cubetable[], determines polygons for output. */
 	for (polys = cubetable[index]; polys; polys = polys->next) {
@@ -523,7 +526,7 @@ static void docube(PROCESS *process, CUBE *cube)
 			c1 = cube->corners[corner1[edges->i]];
 			c2 = cube->corners[corner2[edges->i]];
 
-			indexar[count] = vertid(process, c1, c2);
+			indexar[count] = vertid(process, c1, c2, cube->index);
 			count++;
 		}
 
@@ -836,16 +839,18 @@ static int getedge(EDGELIST *table[],
 /**
  * Adds a vertex, expands memory if needed.
  */
-static void addtovertices(PROCESS *process, const float v[3], const float no[3])
+static void addtovertices(PROCESS *process, const float v[3], const float no[3], const int index)
 {
 	if (process->curvertex == process->totvertex) {
 		process->totvertex += 4096;
 		process->co = MEM_reallocN(process->co, process->totvertex * sizeof(float[3]));
 		process->no = MEM_reallocN(process->no, process->totvertex * sizeof(float[3]));
+		process->orig_index = MEM_reallocN(process->orig_index, process->totvertex * sizeof(int));
 	}
 
 	copy_v3_v3(process->co[process->curvertex], v);
 	copy_v3_v3(process->no[process->curvertex], no);
+	process->orig_index[process->curvertex] = index;
 
 	process->curvertex++;
 }
@@ -893,7 +898,7 @@ static void vnormal(PROCESS *process, const float point[3], float r_no[3])
  *
  * If it wasn't previously computed, does #converge() and adds vertex to process.
  */
-static int vertid(PROCESS *process, const CORNER *c1, const CORNER *c2)
+static int vertid(PROCESS *process, const CORNER *c1, const CORNER *c2, int index)
 {
 	float v[3], no[3];
 	int vid = getedge(process->edges, c1->i, c1->j, c1->k, c2->i, c2->j, c2->k);
@@ -908,7 +913,7 @@ static int vertid(PROCESS *process, const CORNER *c1, const CORNER *c2)
 	vnormal(process, v, no);
 #endif
 
-	addtovertices(process, v, no);            /* save vertex */
+	addtovertices(process, v, no, index);            /* save vertex */
 	vid = (int)process->curvertex - 1;
 	setedge(process, c1->i, c1->j, c1->k, c2->i, c2->j, c2->k, vid);
 
@@ -961,7 +966,7 @@ static void converge(PROCESS *process, const CORNER *c1, const CORNER *c2, float
 /**
  * Adds cube at given lattice position to cube stack of process.
  */
-static void add_cube(PROCESS *process, int i, int j, int k)
+static void add_cube(PROCESS *process, int i, int j, int k, int index)
 {
 	CUBES *ncube;
 	int n;
@@ -976,6 +981,7 @@ static void add_cube(PROCESS *process, int i, int j, int k)
 		ncube->cube.i = i;
 		ncube->cube.j = j;
 		ncube->cube.k = k;
+		ncube->cube.index = index;
 
 		/* set corners of initial cube: */
 		for (n = 0; n < 8; n++)
@@ -1039,7 +1045,7 @@ static void find_first_points(PROCESS *process, const unsigned int em)
 						add[1] = it[1] - dir[1];
 						add[2] = it[2] - dir[2];
 						DO_MIN(it, add);
-						add_cube(process, add[0], add[1], add[2]);
+						add_cube(process, add[0], add[1], add[2], (int)em);
 						break;
 					}
 				} while ((it[0] > lbn[0]) && (it[1] > lbn[1]) && (it[2] > lbn[2]) &&
@@ -1269,6 +1275,7 @@ void BKE_mball_polygonize(EvaluationContext *eval_ctx, Scene *scene, Object *ob,
 
 	mb = ob->data;
 
+	process.orig_index = NULL;
 	process.thresh = mb->thresh;
 
 	if      (process.thresh < 0.001f) process.converge_res = 16;
@@ -1476,13 +1483,15 @@ static void init_meta_dm(PROCESS* process, DerivedMesh *dm, float stiffness, flo
 	}
 }
 
-void BKE_dm_from_metaball(DispList *dl, DerivedMesh *dm)
+void BKE_dm_from_metaball(DispList *dl, DerivedMesh *dm, DerivedMesh *odm, int *orig_index)
 {
 	MVert *mvert;
 	MLoop *mloop, *allloop;
 	MPoly *mpoly;
 	const float *nors, *verts;
+	float *velX, *velY, *velZ, *ovX = NULL, *ovY = NULL, *ovZ = NULL;
 	int a, *index;
+	int totvert = 0;
 
 	if (dl == NULL) return;
 
@@ -1493,9 +1502,18 @@ void BKE_dm_from_metaball(DispList *dl, DerivedMesh *dm)
 
 		//dm->numVertData = dl->nr;
 		//dm->numPolyData = dl->parts;
+		totvert = dm->getNumVerts(dm);
 		mvert = dm->getVertArray(dm);
 		allloop = mloop = dm->getLoopArray(dm);
 		mpoly = dm->getPolyArray(dm);
+
+		velX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, totvert, "velX");
+		velY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, totvert, "velY");
+		velZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, totvert, "velZ");
+
+		ovX = CustomData_get_layer_named(&odm->vertData, CD_PROP_FLT, "velX");
+		ovY = CustomData_get_layer_named(&odm->vertData, CD_PROP_FLT, "velY");
+		ovZ = CustomData_get_layer_named(&odm->vertData, CD_PROP_FLT, "velZ");
 
 		//this will be recalculated here
 		dm->numLoopData = 0;
@@ -1514,6 +1532,7 @@ void BKE_dm_from_metaball(DispList *dl, DerivedMesh *dm)
 		a = dl->parts;
 		index = dl->index;
 		while (a--) {
+			int k = 0;
 			int count = index[2] != index[3] ? 4 : 3;
 
 			mloop[0].v = (unsigned int)index[0];
@@ -1526,6 +1545,18 @@ void BKE_dm_from_metaball(DispList *dl, DerivedMesh *dm)
 			mpoly->loopstart = (int)(mloop - allloop);
 			//mpoly->flag = ME_SMOOTH;
 
+			for (k = 0; k < count; k++)
+			{
+				if (ovX && ovY && ovZ)
+				{
+					int v = index[k];
+					velX[v] = ovX[orig_index[v]];
+					velY[v] = ovY[orig_index[v]];
+					velZ[v] = ovZ[orig_index[v]];
+					//printf("Vel %f %f %f/n", velX[a], velY[a], velZ[a]);
+				}
+			}
+
 
 			mpoly++;
 			mloop += count;
@@ -1535,7 +1566,7 @@ void BKE_dm_from_metaball(DispList *dl, DerivedMesh *dm)
 
 		CDDM_calc_normals(dm);
 		CDDM_calc_edges(dm);
-		//CDDM_recalc_tessellation(dm);
+		CDDM_recalc_tessellation(dm);
 		CDDM_recalc_looptri(dm);
 		dm->dirty |= DM_DIRTY_NORMALS;
 	}
@@ -1579,6 +1610,8 @@ DerivedMesh* BKE_repolygonize_dm(DerivedMesh *dm, float thresh, float basesize[3
 	if (process.totelem > 0) {
 		build_bvh_spatial(&process, &process.metaball_bvh, 0, process.totelem, &process.allbb);
 
+		process.orig_index = MEM_callocN(process.totelem * sizeof(int), "process origindex");
+
 		/* don't polygonize metaballs with too high resolution (base mball to small)
 		 * note: Eps was 0.0001f but this was giving problems for blood animation for durian, using 0.00001f */
 		if (basesize[0] > 0.00001f * (process.allbb.max[0] - process.allbb.min[0]) ||
@@ -1604,7 +1637,7 @@ DerivedMesh* BKE_repolygonize_dm(DerivedMesh *dm, float thresh, float basesize[3
 				dl->nors = (float *)process.no;
 
 				result = CDDM_new(dl->nr, 0, 0, dl->parts * 4, dl->parts);
-				BKE_dm_from_metaball(dl, result);
+				BKE_dm_from_metaball(dl, result, dm, process.orig_index);
 				BKE_displist_elem_free(dl);
 			}
 		}

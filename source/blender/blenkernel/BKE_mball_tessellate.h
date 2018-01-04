@@ -38,6 +38,6 @@ void BKE_mball_cubeTable_free(void);
 struct DerivedMesh* BKE_repolygonize_dm(struct DerivedMesh *dm, float thresh, float basesize[3], float wiresize,
                                         float rendersize, bool render, bool override_size);
 
-void BKE_dm_from_metaball(struct DispList *dl, struct DerivedMesh *dm);
+void BKE_dm_from_metaball(struct DispList *dl, struct DerivedMesh *dm, struct DerivedMesh *odm, int *orig_index);
 
 #endif  /* __BKE_MBALL_TESSELLATE_H__ */
