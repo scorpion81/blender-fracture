@@ -983,7 +983,6 @@ static bool sync_mesh_precalculated_motion(BL::Mesh& b_mesh, BL::Scene& b_scene,
 
 			//printf("Vel %f %f %f\n", (double)x, (double)y, (double)z);
 			mP[i] = P[i] + make_float3(x, y, z) * relative_time;
-			x = 1;
 		}
 	}
 

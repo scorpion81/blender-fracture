@@ -3765,9 +3765,6 @@ void BKE_update_velocity_layer(FractureModifierData *fmd, MeshIsland *mi)
 	//XXX how to represent this in mblur ?
 	//zero_v3(rbo->ang_vel);
 
-	//if (!velX || !velY || !velZ)
-	//	return;
-
 	for (i = 0; i < mi->vertex_count; i++)
 	{
 		if (t)
@@ -3783,6 +3780,9 @@ void BKE_update_velocity_layer(FractureModifierData *fmd, MeshIsland *mi)
 			sZ = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velZ");
 			sZ[i] = rbo->lin_vel[2] + rbo->ang_vel[2];
 		}
+
+		if (!velX || !velY || !velZ)
+			continue;
 
 		velX[mi->vertex_indices[i]] = rbo->lin_vel[0] + rbo->ang_vel[0];
 		velY[mi->vertex_indices[i]] = rbo->lin_vel[1] + rbo->ang_vel[1];
