@@ -351,7 +351,7 @@ static bool object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
 	modifier_free(md);
 	BKE_object_free_derived_caches(ob);
 
-	if (do_rigidbody_cleanup)
+	if (do_rigidbody_cleanup && scene)
 	{
 		/* need to clean up modifier remainders inside the rigidbody world
 		 * AFTER the modifier is gone...  but only from the operator ?*/

@@ -1304,8 +1304,8 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 	float linvel[3] = {0.0f, 0.0f, 0.0f};
 	float angvel[3] = {0.0f, 0.0f, 0.0f};
 
-	//if (!rbw->cache_index_map || !rbw->cache_offset_map)
-	//	return 1;
+	if (!rbw->cache_index_map || !rbw->cache_offset_map)
+		return 1;
 
 	rbo = rbw->cache_index_map[index];
 	
