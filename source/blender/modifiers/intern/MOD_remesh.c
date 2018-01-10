@@ -30,6 +30,7 @@
 #include "BLI_math_vector.h"
 #include "BLI_utildefines.h"
 #include "BLI_listbase.h"
+#include "BLI_memarena.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_DerivedMesh.h"
@@ -155,13 +156,17 @@ static void dualcon_add_quad(void *output_v, const int vert_indices[4])
 }
 
 static int get_particle_positions_sizes_vel(RemeshModifierData *rmd, ParticleSystem *psys, Object *ob,
-                                        float (**pos)[3], float **size, float (**vel)[3])
+                                        float (**pos)[3], float **size, float (**vel)[3], MemArena *pardata)
 {
 	//take alive, for now
 	ParticleData *pa;
 	int i = 0, j = 0;
 	float imat[4][4];
 	invert_m4_m4(imat, ob->obmat);
+
+	(*pos) = BLI_memarena_alloc(pardata, sizeof(float) * 3 * psys->totpart);
+	(*size) = BLI_memarena_alloc(pardata, sizeof(float) * psys->totpart);
+	(*vel) = BLI_memarena_calloc(pardata, sizeof(float) * 3 * psys->totpart);
 
 	for (i = 0; i < psys->totpart; i++)
 	{
@@ -172,25 +177,10 @@ static int get_particle_positions_sizes_vel(RemeshModifierData *rmd, ParticleSys
 		if (pa->alive == PARS_DEAD && (rmd->pflag & eRemeshFlag_Dead) == 0) continue;
 
 		mul_v3_m4v3(co, imat, pa->state.co);
-
-		if (j == 0) {
-			(*pos) = MEM_mallocN(sizeof(float) * 3, "part pos");
-			(*size) = MEM_mallocN(sizeof(float), "part size");
-			(*vel) = MEM_callocN(sizeof(float) * 3, "part vel");
-			copy_v3_v3((*pos)[0], co);
-			(*size)[0] = pa->size;
-			copy_v3_v3((*vel)[0], pa->state.vel);
-			j++;
-		}
-		else {
-			(*pos) = MEM_reallocN((*pos), sizeof(float) * 3 * (j+1));
-			(*size) = MEM_reallocN((*size), sizeof(float) * (j+1));
-			(*vel) = MEM_reallocN((*vel), sizeof(float) * 3 * (j+1));
-			copy_v3_v3((*pos)[j], co);
-			(*size)[j] = pa->size;
-			copy_v3_v3((*vel)[j], pa->state.vel);
-			j++;
-		}
+		copy_v3_v3((*pos)[j], co);
+		(*size)[j] = pa->size;
+		copy_v3_v3((*vel)[j], pa->state.vel);
+		j++;
 	}
 
 	return j;
@@ -244,11 +234,13 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 	if (((rmd->input & MOD_REMESH_VERTICES)==0) && (rmd->input & MOD_REMESH_PARTICLES))
 	{
 		//particles only
-
+		MemArena *pardata = NULL;
 		if (psys == NULL)
 			return derived;
 
-		n = get_particle_positions_sizes_vel(rmd, psys, ob, &pos, &size, &vel);
+		pardata = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, "pardata");
+
+		n = get_particle_positions_sizes_vel(rmd, psys, ob, &pos, &size, &vel, pardata);
 		dm = CDDM_new(n, 0, 0, 0, 0);
 		mv = dm->getVertArray(dm);
 		psize = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "psize");
@@ -256,6 +248,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		velY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "velY");
 		velZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "velZ");
 
+#pragma omp parallel for
 		for (i = 0; i < n; i++)
 		{
 			copy_v3_v3(mv[i].co, pos[i]);
@@ -265,20 +258,14 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 			velZ[i] = vel[i][2];
 		}
 
-		if (pos)
-			MEM_freeN(pos);
-
-		if (size)
-			MEM_freeN(size);
-
-		if (vel)
-			MEM_freeN(vel);
-
 		if (verts_only)
 		{
+			BLI_memarena_free(pardata);
 			return dm;
 		}
 		else {
+			BLI_memarena_free(pardata);
+//#pragma omp parallel num_threads(4)
 			result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
 			dm->release(dm);
 			return result;
@@ -287,16 +274,20 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 	else if ((rmd->input & MOD_REMESH_VERTICES) && ((rmd->input & MOD_REMESH_PARTICLES) == 0))
 	{
 		//verts only
-		return BKE_repolygonize_dm(derived, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
+		DerivedMesh *result = NULL;
+//#pragma omp parallel
+		result = BKE_repolygonize_dm(derived, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
+		return result;
 	}
 	else if ((rmd->input & MOD_REMESH_VERTICES) && (rmd->input & MOD_REMESH_PARTICLES))
 	{
 		//both, for simplicity only use vert data here
 		float* ovX, *ovY, *ovZ;
 		n = 0;
+		MemArena *pardata = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, "pardata");
 
 		if (psys)
-			n = get_particle_positions_sizes_vel(rmd, psys, ob, &pos, &size, &vel);
+			n = get_particle_positions_sizes_vel(rmd, psys, ob, &pos, &size, &vel, pardata);
 
 		dm = CDDM_new(n + derived->numVertData, 0, 0, 0, 0);
 		psize = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "psize");
@@ -311,6 +302,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		ovY = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "velY");
 		ovZ = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "velZ");
 
+#pragma omp parallel for
 		for (i = 0; i < n; i++)
 		{
 			copy_v3_v3(mv[i].co, pos[i]);
@@ -320,6 +312,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 			velZ[i] = vel[i][2];
 		}
 
+#pragma omp parallel for
 		for (i = n; i < n + derived->numVertData; i++)
 		{
 			copy_v3_v3(mv[i].co, mv2[i-n].co);
@@ -329,20 +322,14 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 			velZ[i] = ovZ ? ovZ[i-n] : 0.0f;
 		}
 
-		if (pos)
-			MEM_freeN(pos);
-
-		if (size)
-			MEM_freeN(size);
-
-		if (vel)
-			MEM_freeN(vel);
-
 		if (verts_only)
 		{
+			BLI_memarena_free(pardata);
 			return dm;
 		}
 		else {
+			BLI_memarena_free(pardata);
+//#pragma omp parallel
 			result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
 			dm->release(dm);
 			return result;
