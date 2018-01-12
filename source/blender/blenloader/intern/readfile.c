@@ -5608,6 +5608,8 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 			}
 		}
 
+		fmd->anim_bind = newdataadr(fd, fmd->anim_bind);
+
 		fmd->refresh_images = true;
 		fmd->auto_execute = autoexec;
 		fmd->refresh_autohide = true;

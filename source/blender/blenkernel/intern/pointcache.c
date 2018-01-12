@@ -1355,13 +1355,17 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 			}
 
 #ifdef WITH_BULLET
-			RB_body_get_position(rbo->physics_object, rbo->pos);
-			RB_body_get_orientation(rbo->physics_object, rbo->orn);
+			if (!(fmd && fmd->use_animated_mesh && fmd->anim_mesh_ob && (rbo->flag & RBO_FLAG_KINEMATIC)))
+			{
+				RB_body_get_position(rbo->physics_object, rbo->pos);
+				RB_body_get_orientation(rbo->physics_object, rbo->orn);
+			}
 
 			RB_body_get_linear_velocity(rbo->physics_object, rbo->lin_vel);
 			RB_body_get_angular_velocity(rbo->physics_object, rbo->ang_vel);
 
-			if (fmd)
+			//this is only for motionblur, so its enough to be updated when rendering
+			if (fmd && G.is_rendering)
 			{
 				mi = find_meshisland(fmd, rbo->meshisland_index);
 				BKE_update_velocity_layer(fmd, mi);
@@ -1485,7 +1489,8 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 				}
 			}
 
-			if (fmd)
+			//this is only for motionblur, so its enough to be updated when rendering
+			if (fmd && G.is_rendering)
 			{
 				mi = find_meshisland(fmd, rbo->meshisland_index);
 				BKE_update_velocity_layer(fmd, mi);

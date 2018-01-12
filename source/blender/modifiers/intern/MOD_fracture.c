@@ -261,6 +261,11 @@ static void initData(ModifierData *md)
 	fmd->min_acceleration = 0.0f;
 	fmd->max_acceleration = 1.0f;
 	fmd->acceleration_fade = 0.85f;
+
+	fmd->use_animated_mesh = false;
+	fmd->anim_mesh_ob = NULL;
+	fmd->anim_bind = NULL;
+	fmd->anim_bind_len = 0;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -464,6 +469,10 @@ static void free_modifier(FractureModifierData *fmd, bool do_free_seq, bool do_f
 		BLI_remlink(&fmd->fracture_settings, fs);
 		MEM_freeN(fs);
 	}
+
+	if (fmd->anim_bind)
+		MEM_freeN(fmd->anim_bind);
+
 }
 
 static void freeData_internal(FractureModifierData *fmd, bool do_free_seq, bool do_free_rigidbody)
@@ -1866,6 +1875,12 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->min_acceleration = rmd->min_acceleration;
 	trmd->max_acceleration = rmd->max_acceleration;
 	trmd->acceleration_fade = rmd->acceleration_fade;
+
+	trmd->use_animated_mesh = rmd->use_animated_mesh;
+	trmd->anim_mesh_ob = rmd->anim_mesh_ob;
+	trmd->anim_bind_len = 0; //rmd->anim_bind_len;
+	trmd->anim_bind = NULL;
+	//memcpy(trmd->anim_bind, rmd->anim_bind, sizeof(int) * trmd->anim_bind_len);
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
@@ -4448,7 +4463,8 @@ static void do_reset_automerge(FractureModifierData* fmd)
 #endif
 
 
-static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm, char names [][66], int count)
+static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMesh *dm, DerivedMesh *orig_dm,
+                               char names [][66], int count)
 {
 	bool exploOK = false; /* doFracture */
 
@@ -4554,6 +4570,7 @@ static void foreachIDLink(ModifierData *md, Object *ob,
 	walk(userData, ob, (ID **)&fmd->cluster_group, IDWALK_CB_NOP);
 	walk(userData, ob, (ID **)&fmd->cutter_group, IDWALK_CB_NOP);
 	walk(userData, ob, (ID **)&fmd->autohide_filter_group, IDWALK_CB_NOP);
+	walk(userData, ob, (ID **)&fmd->anim_mesh_ob, IDWALK_CB_NOP);
 
 	/*for (fs = fmd->fracture_settings.first; fs; fs = fs->next)
 	{
@@ -4578,6 +4595,13 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
                            DagNode *obNode)
 {
 	FractureModifierData *fmd = (FractureModifierData *) md;
+
+	if (fmd->anim_mesh_ob)
+	{
+		DagNode *curNode = dag_get_node(forest, fmd->anim_mesh_ob);
+		dag_add_relation(forest, curNode, obNode,
+		                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Fracture Modifier Animated Mesh Input");
+	}
 
 	if (fmd->extra_group) {
 		GroupObject *go;
@@ -4621,6 +4645,9 @@ static void foreachObjectLink(
     ObjectWalkFunc walk, void *userData)
 {
 	FractureModifierData *fmd = (FractureModifierData *) md;
+
+	if (fmd->anim_mesh_ob)
+		walk(userData, ob, &fmd->anim_mesh_ob, IDWALK_CB_NOP);
 
 	if (fmd->extra_group) {
 		GroupObject *go;

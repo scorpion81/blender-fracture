@@ -647,6 +647,12 @@ static void rna_FractureModifier_min_acceleration_set(PointerRNA *ptr, float val
 	//rmd->refresh_constraints = true;
 }
 
+static void rna_FractureModifier_anim_mesh_ob_set(PointerRNA* ptr, PointerRNA value)
+{
+	FractureModifierData *rmd = (FractureModifierData*)ptr->data;
+	rmd->anim_mesh_ob = value.data;
+}
+
 static void rna_Modifier_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
 {
 	ModifierData* md = ptr->data;
@@ -1493,6 +1499,20 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Fade", "Multiplier to fade out the weights with");
 	RNA_def_property_ui_range(prop, 0.0f, 1.0f, 0.1f, 4);
 	//RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_animated_mesh", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_animated_mesh", false);
+	RNA_def_property_ui_text(prop, "Use Animated Mesh", "Allow moving original vertices to move the shards as well");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "animated_mesh_input", PROP_POINTER, PROP_NONE);
+	RNA_def_property_ui_text(prop, "Animated Mesh", "Input for moving original vertices to move the shards as well");
+	RNA_def_property_pointer_sdna(prop, NULL, "anim_mesh_ob");
+	RNA_def_property_pointer_funcs(prop, NULL, "rna_FractureModifier_anim_mesh_ob_set", NULL, NULL);
+	RNA_def_property_flag(prop, PROP_EDITABLE);
+	RNA_def_property_flag(prop, PROP_ID_SELF_CHECK);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	RNA_api_fracture(brna, srna);

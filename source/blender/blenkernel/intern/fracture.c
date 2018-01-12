@@ -3789,3 +3789,266 @@ void BKE_update_velocity_layer(FractureModifierData *fmd, MeshIsland *mi)
 		velZ[mi->vertex_indices[i]] = rbo->lin_vel[2] + rbo->ang_vel[2];
 	}
 }
+
+/* gah, it could be that simple, if each mod handled its stuff itself */
+static DerivedMesh *eval_mod_stack_simple(Object *ob)
+{
+	DerivedMesh *dm = NULL;
+	ModifierData *md;
+
+	if (ob->type != OB_MESH)
+		return NULL;
+
+	if (ob->data == NULL)
+		return NULL;
+
+	dm = CDDM_from_mesh(ob->data);
+
+	for (md = ob->modifiers.first; md; md = md->next)
+	{
+		const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+		if (mti->deformVerts && (md->mode & (eModifierMode_Realtime | eModifierMode_Render)))
+		{
+			float (*vertexCos)[3];
+			int totvert = dm->getNumVerts(dm);
+
+			vertexCos = MEM_callocN(sizeof(float) * 3 * totvert, "Vertex Cos");
+			dm->getVertCos(dm, vertexCos);
+			mti->deformVerts(md, ob, dm, vertexCos, totvert, 0);
+			CDDM_apply_vert_coords(dm, vertexCos);
+			MEM_freeN(vertexCos);
+			CDDM_calc_normals(dm);
+		}
+
+		if (mti->applyModifier && (md->mode & (eModifierMode_Realtime | eModifierMode_Render)))
+		{
+			DerivedMesh *ndm;
+
+			ndm = mti->applyModifier(md, ob, dm, 0);
+			if (ndm != dm)
+			{
+				dm->needsFree = 1;
+				dm->release(dm);
+			}
+			dm = ndm;
+			CDDM_calc_normals(dm);
+		}
+	}
+
+	return dm;
+}
+
+void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bind)
+{
+	//to be called after rigidbodies have been actually created... from MOD_fracture.c
+	//rotation is optional, remesher + particlesystem can provide it
+	float *quatX, *quatY, *quatZ, *quatW;
+	MVert *mvert = NULL;
+	MeshIsland *mi, **mi_array;
+	DerivedMesh *dm = NULL;
+	int totvert, count = 0, i = 0;
+	KDTree *tree = NULL;
+	float obquat[4];
+	bool *used;
+
+	if (!fmd->anim_mesh_ob)
+		return;
+
+	if (fmd->anim_mesh_ob == ob)
+		return;
+
+	dm = eval_mod_stack_simple(fmd->anim_mesh_ob);
+
+	if (!dm)
+		return;
+
+	totvert = dm->getNumVerts(dm);
+
+	if (totvert == 0) {
+		dm->release(dm);
+		return;
+	}
+
+	count = BLI_listbase_count(&fmd->meshIslands);
+	mat4_to_quat(obquat, ob->obmat);
+
+	if (do_bind) {
+
+		tree = BLI_kdtree_new(count);
+		fmd->anim_bind_len = MAX2(totvert, count);
+		if (fmd->anim_bind) {
+			MEM_freeN(fmd->anim_bind);
+		}
+
+		//TODO, possibly a weak solution, but do we really want to store the length too ?
+		fmd->anim_bind = MEM_mallocN(sizeof(AnimBind) * fmd->anim_bind_len, "anim_bind");
+		for (i = 0; i < fmd->anim_bind_len; i++)
+		{
+			fmd->anim_bind[i].mi = -1;
+			fmd->anim_bind[i].v = -1;
+			zero_v3(fmd->anim_bind[i].offset);
+		}
+	}
+
+
+	mi_array = MEM_mallocN(sizeof(MeshIsland*) * count, "mi_array");
+
+	i = 0;
+	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+	{
+		float co[3];
+		copy_v3_v3(co, mi->rigidbody->pos);
+		if (do_bind)
+			BLI_kdtree_insert(tree, i, co);
+		mi_array[i] = mi;
+		i++;
+	}
+
+	if (do_bind)
+		BLI_kdtree_balance(tree);
+
+	mvert = dm->getVertArray(dm);
+
+	quatX = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "quatX");
+	quatY = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "quatY");
+	quatZ = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "quatZ");
+	quatW = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "quatW");
+
+	//check vertexcount and islandcount, TODO for splitshards... there it might differ, ignore then for now
+	//later do interpolation ? propagate to islands somehow then, not yet now...
+	//also maybe skip for dynamic for now, since this is totally different
+
+	//bind loop, bind the verts to the shards
+	if (do_bind)
+	{
+		//counter, verts per island or vice versa
+		int c;
+
+		//bindcounter
+		int b = 0;
+		used = MEM_callocN(sizeof(bool) * count, "used");
+
+		//less shards than verts, can maximal map 1 : 1
+		c = (int)ceilf((float)count / (float)totvert)+1;
+
+		for (i = 0; i < totvert; i++)
+		{
+			KDTreeNearest *n;
+			float co[3];
+			int r, j;
+
+			n = MEM_mallocN(sizeof(KDTreeNearest) * c, "nearest");
+			copy_v3_v3(co, mvert[i].co);
+			r = BLI_kdtree_find_nearest_n(tree, co, n, c);
+			for (j = 0; j < r; j++)
+			{
+				float diff[3];
+				if (b == fmd->anim_bind_len)
+					break;
+
+				if (used[n[j].index])
+					continue;
+
+				fmd->anim_bind[b].v = i;
+				fmd->anim_bind[b].mi = n[j].index;
+				//fmd->anim_bind[b].dist = n[j].dist;
+				sub_v3_v3v3(diff, co, n[j].co);
+				//copy_v3_v3(fmd->anim_bind[b].orco, co);
+				copy_v3_v3(fmd->anim_bind[b].offset, diff);
+				used[n[j].index] = true;
+				b++;
+			}
+
+			if (n)
+				MEM_freeN(n);
+
+			if (b == fmd->anim_bind_len)
+				break;
+		}
+
+		if (tree)
+			BLI_kdtree_free(tree);
+
+		if (used)
+			MEM_freeN(used);
+	}
+
+
+	{
+		int j = 0;
+		//map 1 vert to several shards, maxium 1 : 1
+		for (i = 0; i < fmd->anim_bind_len; i++)
+		{
+			float co[3]; // orco[3], diff[3];
+			int index = -1;
+
+			if (!fmd->anim_bind)
+				continue;
+
+			index = fmd->anim_bind[i].mi;
+
+			if (index == -1)
+				continue;
+
+			mi = mi_array[index];
+
+			//only let kinematic rbs do this, active ones are being taken care of by bullet
+			if (mi && mi->rigidbody && mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+			{
+				//the 4 rot layers *should* be aligned, caller needs to ensure !
+				bool quats = quatX && quatY && quatZ && quatW;
+				float quat[4] = { 1, 0, 0, 0};
+
+
+				if (fmd->anim_bind[i].v >= totvert) {
+					continue;
+				}
+
+				copy_v3_v3(co, mvert[fmd->anim_bind[i].v].co);
+				//sub_v3_v3v3(orco, co, fmd->anim_bind[i].orco);
+				//sub_v3_v3v3(diff, co, mi->centroid);
+
+				/*if (!(compare_v3v3(diff, orco, 0.1f)))
+				{	//did the index shuffle ? might be if there is a sudden increase in distance
+					mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC;
+					mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					continue;
+				}*/
+
+				sub_v3_v3(co, fmd->anim_bind[i].offset);
+				mul_m4_v3(ob->obmat, co);
+				copy_v3_v3(mi->rigidbody->pos, co);
+
+				if (quats)
+				{
+					quat[0] = quatX[fmd->anim_bind[i].v];
+					quat[1] = quatY[fmd->anim_bind[i].v];
+					quat[2] = quatZ[fmd->anim_bind[i].v];
+					quat[3] = quatW[fmd->anim_bind[i].v];
+
+					copy_qt_qt(mi->rigidbody->orn, quat);
+				}
+				else {
+					float no[3], vec[3] = {0, 0, 1}, quat[4];
+					normal_short_to_float_v3(no, mvert[fmd->anim_bind[i].v].no);
+					rotation_between_vecs_to_quat(quat, vec, no);
+					mul_qt_qtqt(quat, obquat, quat);
+					copy_qt_qt(mi->rigidbody->orn, quat);
+				}
+
+				mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+				//mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
+				if (mi->rigidbody->physics_object)
+				{
+					RB_body_set_loc_rot(mi->rigidbody->physics_object, mi->rigidbody->pos, mi->rigidbody->orn);
+				}
+			}
+		}
+	}
+
+	if (dm)
+		dm->release(dm);
+
+
+	MEM_freeN(mi_array);
+}

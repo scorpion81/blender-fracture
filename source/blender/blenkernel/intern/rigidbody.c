@@ -1709,7 +1709,8 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw, bool r
 	}
 }
 
-static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *ob, RigidBodyOb *rbo, float centroid[3], MeshIsland *mi, float size[3])
+static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *ob, RigidBodyOb *rbo, float centroid[3],
+                                    MeshIsland *mi, float size[3], FractureModifierData *fmd)
 {
 	float loc[3];
 	float rot[4];
@@ -1795,11 +1796,15 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 	if ((rbo->flag & RBO_FLAG_KINEMATIC && rbo->force_thresh == 0.0f) || (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 		if (((rbo->type == RBO_TYPE_ACTIVE || mi == NULL) && (rbo->flag & RBO_FLAG_KINEMATIC_REBUILD) == 0))
 		{
-			mul_v3_v3(centr, scale);
-			mul_qt_v3(rot, centr);
-			add_v3_v3(loc, centr);
-			RB_body_activate(rbo->physics_object);
-			RB_body_set_loc_rot(rbo->physics_object, loc, rot);
+			if (!(fmd && fmd->anim_mesh_ob && fmd->use_animated_mesh))
+			{
+				//override for externally animated rbs
+				mul_v3_v3(centr, scale);
+				mul_qt_v3(rot, centr);
+				add_v3_v3(loc, centr);
+				RB_body_activate(rbo->physics_object);
+				RB_body_set_loc_rot(rbo->physics_object, loc, rot);
+			}
 		}
 	}
 	/* update influence of effectors - but don't do it on an effector (why not ?)*/
@@ -1840,11 +1845,15 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 				if ((rbo->flag & RBO_FLAG_KINEMATIC_REBUILD) == 0)
 				{   //XXXXX TODO, maybe this is wrong here
 					/* do the same here as above, but here we needed the eff_force value to compare against threshold */
-					mul_v3_v3(centr, scale);
-					mul_qt_v3(rot, centr);
-					add_v3_v3(loc, centr);
-					RB_body_activate(rbo->physics_object);
-					RB_body_set_loc_rot(rbo->physics_object, loc, rot);
+
+					if (!(fmd && fmd->anim_mesh_ob && fmd->use_animated_mesh))
+					{	//same override as above
+						mul_v3_v3(centr, scale);
+						mul_qt_v3(rot, centr);
+						add_v3_v3(loc, centr);
+						RB_body_activate(rbo->physics_object);
+						RB_body_set_loc_rot(rbo->physics_object, loc, rot);
+					}
 				}
 			}
 			else
@@ -1941,7 +1950,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 			}
 
 			/* update simulation object... */
-			rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid, NULL, size);
+			rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid, NULL, size, NULL);
 		}
 	}
 
@@ -2551,7 +2560,8 @@ static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), Mes
 }
 
 static bool isModifierActive(FractureModifierData *rmd) {
-	return ((rmd != NULL) && (rmd->modifier.mode & (eModifierMode_Realtime | eModifierMode_Render)) && (rmd->refresh == false || rmd->fracture_mode == MOD_FRACTURE_DYNAMIC));
+	return ((rmd != NULL) && (rmd->modifier.mode & (eModifierMode_Realtime | eModifierMode_Render)) &&
+	        (rmd->refresh == false || rmd->fracture_mode == MOD_FRACTURE_DYNAMIC));
 }
 
 static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle, bool exact)
@@ -3469,7 +3479,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 	}
 
-	if (!rbo->physics_object || rebuild) {
+	if (!rbo->physics_object || rebuild /*|| (fmd->use_animated_mesh && fmd->anim_mesh_ob)*/) {
 		float size[3];
 
 		/* remove rigid body if it already exists before creating a new one */
@@ -5088,6 +5098,15 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		BKE_object_where_is_calc(scene, ob);
 		fmd->constraint_island_count = 1;
 
+		if ((ob->rigidbody_object && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC) &&
+		     fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)) {
+
+			if (fmd->use_animated_mesh && fmd->anim_mesh_ob)
+			{
+				BKE_read_animated_loc_rot(fmd, ob, false);
+			}
+		}
+
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 			if (mi->rigidbody == NULL) {
 				continue;
@@ -5135,7 +5154,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 					copy_v3_v3(size, s->impact_size);
 			}
 
-			rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid, mi, size);
+			rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid, mi, size, fmd);
 		}
 
 		if (fmd->use_mass_dependent_thresholds) {
@@ -5239,8 +5258,6 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		}
 
 		printf("Constraints: Frame %d , Total %d,  Intact %d,  Broken %d, Plastic %d\n", (int)frame, count, count-brokencount, brokencount, plastic);
-
-
 		return true;
 	}
 	else
@@ -5319,6 +5336,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 
 
 	if (md->type == eModifierType_Fracture) {
+
 		fmd = (FractureModifierData *)md;
 		bool mode = fmd->fracture_mode == MOD_FRACTURE_EXTERNAL;
 
@@ -5365,7 +5383,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 
 					/* keep original transform when the simulation is muted */
 					if (rbw->flag & RBW_FLAG_MUTED)
-						return true;
+						break;
 				}
 				/* otherwise set rigid body transform to current obmat*/
 				else {

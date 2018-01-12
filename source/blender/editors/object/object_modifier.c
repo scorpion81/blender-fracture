@@ -2460,6 +2460,12 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 	}
 #endif
 
+	if (rmd->anim_bind) {
+		MEM_freeN(rmd->anim_bind);
+		rmd->anim_bind = NULL;
+		rmd->anim_bind_len = 0;
+	}
+
 	BKE_scene_frame_set(scene, start);
 	DAG_relations_tag_update(G.main);
 	WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
@@ -2559,6 +2565,30 @@ static int fracture_refresh_invoke(bContext *C, wmOperator *op, const wmEvent *U
 	{
 		apply_scale(ob, scene);
 		return fracture_refresh_exec(C, op);
+	}
+
+	return OPERATOR_CANCELLED;
+}
+
+static int fracture_anim_bind_exec(bContext *C, wmOperator *op)
+{
+	Object *obact = ED_object_active_context(C);
+	FractureModifierData *rmd;
+
+	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
+	if (!rmd)
+		return OPERATOR_CANCELLED;
+
+	BKE_read_animated_loc_rot(rmd, obact, true);
+	return OPERATOR_FINISHED;
+}
+
+
+static int fracture_anim_bind_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
+{
+	if (edit_modifier_invoke_properties(C, op))
+	{
+		return fracture_anim_bind_exec(C, op);
 	}
 
 	return OPERATOR_CANCELLED;
@@ -3716,5 +3746,17 @@ void OBJECT_OT_rigidbody_convert_to_keyframes(wmOperatorType *ot)
 	//edit_modifier_properties(ot);
 }
 
+void OBJECT_OT_fracture_anim_bind(wmOperatorType *ot)
+{
+	ot->name = "Fracture Animated Mesh Bind";
+	ot->description = "Bind animated mesh vertices to mesh islands in Fracture Modifier";
+	ot->idname = "OBJECT_OT_fracture_anim_bind";
 
+	ot->poll = fracture_poll;
+	ot->invoke = fracture_anim_bind_invoke;
+	ot->exec = fracture_anim_bind_exec;
 
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+	edit_modifier_properties(ot);
+}

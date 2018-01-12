@@ -1697,6 +1697,14 @@ typedef struct FractureSetting {
 	//char pad[4];
 } FractureSetting;
 
+typedef struct AnimBind {
+	int v;
+	int mi;
+	float offset[3];
+	//float orco[3];
+	//float dist;
+} AnimBind;
+
 typedef struct FractureModifierData {
 	ModifierData modifier;
 	struct FracMesh *frac_mesh; /* store only the current fracmesh here first, later maybe an entire history...*/
@@ -1722,6 +1730,9 @@ typedef struct FractureModifierData {
 	struct GHash *vertex_island_map; /* used for constraint building based on vertex proximity, temporary data */
 	struct GHash *material_index_map; /* used to collect materials from objects to be packed, temporary data */
 	struct GHash *defgrp_index_map; /*used to collect vertexgroups from objects to be packed, temporary data */
+	struct Object *anim_mesh_ob; /*input object for animated mesh */
+	struct AnimBind *anim_bind; /* bound animation data */
+
 	ListBase shard_sequence; /* used as mesh cache / history for dynamic fracturing, for shards (necessary for conversion to DM) */
 	ListBase meshIsland_sequence; /* used as mesh cache / history for dynamic fracturing, for meshIslands (necessary for loc/rot "pointcache") */
 	ShardSequence *current_shard_entry; /*volatile storage of current shard entry, so we dont have to search in the list */
@@ -1732,6 +1743,8 @@ typedef struct FractureModifierData {
 	ListBase pack_storage; /*used to store packed geometry when switching modes */
 
 	int active_setting;
+
+	int anim_bind_len;
 
 	/* values */
 	int frac_algorithm;
@@ -1810,6 +1823,7 @@ typedef struct FractureModifierData {
 	int use_greasepencil_edges;
 	int use_constraint_collision;
 	int use_self_collision;
+	int use_animated_mesh;
 
 	int shards_to_islands;
 	int execute_threaded;

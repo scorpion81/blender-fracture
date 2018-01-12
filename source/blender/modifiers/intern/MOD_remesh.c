@@ -155,8 +155,8 @@ static void dualcon_add_quad(void *output_v, const int vert_indices[4])
 	output->curface++;
 }
 
-static int get_particle_positions_sizes_vel(RemeshModifierData *rmd, ParticleSystem *psys, Object *ob,
-                                        float (**pos)[3], float **size, float (**vel)[3], MemArena *pardata)
+static int get_particle_data(RemeshModifierData *rmd, ParticleSystem *psys, Object *ob,
+                             float (**pos)[3], float **size, float (**vel)[3], float(**rot)[4], MemArena *pardata)
 {
 	//take alive, for now
 	ParticleData *pa;
@@ -164,9 +164,10 @@ static int get_particle_positions_sizes_vel(RemeshModifierData *rmd, ParticleSys
 	float imat[4][4];
 	invert_m4_m4(imat, ob->obmat);
 
-	(*pos) = BLI_memarena_alloc(pardata, sizeof(float) * 3 * psys->totpart);
-	(*size) = BLI_memarena_alloc(pardata, sizeof(float) * psys->totpart);
+	(*pos) = BLI_memarena_calloc(pardata, sizeof(float) * 3 * psys->totpart);
+	(*size) = BLI_memarena_calloc(pardata, sizeof(float) * psys->totpart);
 	(*vel) = BLI_memarena_calloc(pardata, sizeof(float) * 3 * psys->totpart);
+	(*rot) = BLI_memarena_calloc(pardata, sizeof(float) * 4 * psys->totpart);
 
 	for (i = 0; i < psys->totpart; i++)
 	{
@@ -180,6 +181,7 @@ static int get_particle_positions_sizes_vel(RemeshModifierData *rmd, ParticleSys
 		copy_v3_v3((*pos)[j], co);
 		(*size)[j] = pa->size;
 		copy_v3_v3((*vel)[j], pa->state.vel);
+		copy_qt_qt((*rot)[j], pa->state.rot);
 		j++;
 	}
 
@@ -225,8 +227,9 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 {
 	DerivedMesh *dm = NULL, *result = NULL;
 	MVert *mv = NULL, *mv2 = NULL;
-	float (*pos)[3] = NULL, (*vel)[3] = NULL;
-	float *size = NULL, *psize = NULL, *velX = NULL, *velY = NULL, *velZ = NULL;
+	float (*pos)[3] = NULL, (*vel)[3] = NULL, (*rot)[4] = NULL;
+	float *size = NULL, *psize = NULL, *velX = NULL, *velY = NULL, *velZ = NULL,
+	      *quatX = NULL, *quatY = NULL, *quatZ = NULL, *quatW = NULL;
 	int i = 0, n = 0;
 	bool override_size = rmd->pflag & eRemeshFlag_Size;
 	bool verts_only = rmd->pflag & eRemeshFlag_Verts;
@@ -240,13 +243,18 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 
 		pardata = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, "pardata");
 
-		n = get_particle_positions_sizes_vel(rmd, psys, ob, &pos, &size, &vel, pardata);
+		n = get_particle_data(rmd, psys, ob, &pos, &size, &vel, &rot, pardata);
 		dm = CDDM_new(n, 0, 0, 0, 0);
 		mv = dm->getVertArray(dm);
 		psize = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "psize");
 		velX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "velX");
 		velY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "velY");
 		velZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "velZ");
+
+		quatX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatX");
+		quatY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatY");
+		quatZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatZ");
+		quatW = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatW");
 
 #pragma omp parallel for
 		for (i = 0; i < n; i++)
@@ -256,6 +264,11 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 			velX[i] = vel[i][0];
 			velY[i] = vel[i][1];
 			velZ[i] = vel[i][2];
+
+			quatX[i] = rot[i][0];
+			quatY[i] = rot[i][1];
+			quatZ[i] = rot[i][2];
+			quatW[i] = rot[i][3];
 		}
 
 		if (verts_only)
@@ -282,12 +295,12 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 	else if ((rmd->input & MOD_REMESH_VERTICES) && (rmd->input & MOD_REMESH_PARTICLES))
 	{
 		//both, for simplicity only use vert data here
-		float* ovX, *ovY, *ovZ;
+		float* ovX, *ovY, *ovZ, *oqX, *oqY, *oqZ, *oqW;
 		n = 0;
 		MemArena *pardata = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, "pardata");
 
 		if (psys)
-			n = get_particle_positions_sizes_vel(rmd, psys, ob, &pos, &size, &vel, pardata);
+			n = get_particle_data(rmd, psys, ob, &pos, &size, &vel, &rot, pardata);
 
 		dm = CDDM_new(n + derived->numVertData, 0, 0, 0, 0);
 		psize = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "psize");
@@ -295,12 +308,22 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		velY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "velY");
 		velZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "velZ");
 
+		quatX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatX");
+		quatY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatY");
+		quatZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatZ");
+		quatW = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatW");
+
 		mv = dm->getVertArray(dm);
 		mv2 = derived->getVertArray(derived);
 
 		ovX = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "velX");
 		ovY = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "velY");
 		ovZ = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "velZ");
+
+		oqX = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "quatX");
+		oqY = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "quatY");
+		oqZ = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "quatZ");
+		oqW = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "quatW");
 
 #pragma omp parallel for
 		for (i = 0; i < n; i++)
@@ -310,6 +333,11 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 			velX[i] = vel[i][0];
 			velY[i] = vel[i][1];
 			velZ[i] = vel[i][2];
+
+			quatX[i] = rot[i][0];
+			quatY[i] = rot[i][1];
+			quatZ[i] = rot[i][2];
+			quatW[i] = rot[i][3];
 		}
 
 #pragma omp parallel for
@@ -320,6 +348,11 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 			velX[i] = ovX ? ovX[i-n] : 0.0f;
 			velY[i] = ovY ? ovY[i-n] : 0.0f;
 			velZ[i] = ovZ ? ovZ[i-n] : 0.0f;
+
+			quatX[i] = oqX ? oqX[i-n] : 1.0f;
+			quatZ[i] = oqY ? oqY[i-n] : 1.0f;
+			quatY[i] = oqZ ? oqZ[i-n] : 1.0f;
+			quatW[i] = oqW ? oqW[i-n] : 1.0f;
 		}
 
 		if (verts_only)

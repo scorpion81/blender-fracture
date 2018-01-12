@@ -129,5 +129,6 @@ void BKE_bm_mesh_hflag_flush_vert(struct BMesh *bm, const char hflag);
 void BKE_meshisland_constraint_create(struct FractureModifierData* fmd, struct MeshIsland *mi1, struct MeshIsland *mi2, int con_type, float thresh);
 void BKE_update_acceleration_map(struct FractureModifierData *fmd, struct MeshIsland* mi, struct Object* ob, int ctime, float acc, struct RigidBodyWorld *rbw);
 void BKE_update_velocity_layer(struct FractureModifierData *fmd, struct MeshIsland *mi);
+void BKE_read_animated_loc_rot(struct FractureModifierData *fmd, Object *ob, bool do_bind);
 
 #endif /* BKE_FRACTURE_H */

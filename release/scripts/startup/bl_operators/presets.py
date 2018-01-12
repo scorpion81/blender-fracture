@@ -706,6 +706,8 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.min_acceleration",
         "fracture.max_acceleration",
         "fracture.acceleration_fade",
+        "fracture.use_animated_mesh",
+        "fracture.animated_mesh_input",
     ]
 
     preset_subdir = "fracture"

@@ -1969,6 +1969,8 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 						}
 					}
 				}
+
+				writestruct(wd, DATA, AnimBind, fmd->anim_bind_len, fmd->anim_bind);
 			}
 			else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 			{
