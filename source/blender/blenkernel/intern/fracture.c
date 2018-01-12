@@ -3846,7 +3846,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 	MVert *mvert = NULL;
 	MeshIsland *mi, **mi_array;
 	DerivedMesh *dm = NULL;
-	int totvert, count = 0, i = 0;
+	int totvert, count = 0, i = 0, *orig_index;
 	KDTree *tree = NULL;
 	float obquat[4];
 	bool *used;
@@ -3913,6 +3913,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 	quatY = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "quatY");
 	quatZ = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "quatZ");
 	quatW = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "quatW");
+	orig_index = CustomData_get_layer(&dm->vertData, CD_ORIGINDEX);
 
 	//check vertexcount and islandcount, TODO for splitshards... there it might differ, ignore then for now
 	//later do interpolation ? propagate to islands somehow then, not yet now...
@@ -3939,6 +3940,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 
 			n = MEM_mallocN(sizeof(KDTreeNearest) * c, "nearest");
 			copy_v3_v3(co, mvert[i].co);
+			mul_m4_v3(ob->obmat, co);
 			r = BLI_kdtree_find_nearest_n(tree, co, n, c);
 			for (j = 0; j < r; j++)
 			{
@@ -3998,39 +4000,48 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 				//the 4 rot layers *should* be aligned, caller needs to ensure !
 				bool quats = quatX && quatY && quatZ && quatW;
 				float quat[4] = { 1, 0, 0, 0};
+				int v = fmd->anim_bind[i].v;
 
-
-				if (fmd->anim_bind[i].v >= totvert) {
+				if (v >= totvert) {
 					continue;
 				}
 
-				copy_v3_v3(co, mvert[fmd->anim_bind[i].v].co);
-				//sub_v3_v3v3(orco, co, fmd->anim_bind[i].orco);
-				//sub_v3_v3v3(diff, co, mi->centroid);
+				if (orig_index)
+				{
+					if (orig_index[v] != v  && orig_index[v] != -1)
+					{
+						if (mi->rigidbody->physics_object && mi->rigidbody->type == RBO_TYPE_ACTIVE)
+						{
+							RigidBodyOb* rbo = mi->rigidbody;
 
-				/*if (!(compare_v3v3(diff, orco, 0.1f)))
-				{	//did the index shuffle ? might be if there is a sudden increase in distance
-					mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC;
-					mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-					continue;
-				}*/
+							mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC;
+							mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
+							RB_body_set_mass(rbo->physics_object, rbo->mass);
+							RB_body_set_kinematic_state(rbo->physics_object, false);
+							RB_body_activate(rbo->physics_object);
+							continue;
+						}
+					}
+				}
+
+				copy_v3_v3(co, mvert[v].co);
 				sub_v3_v3(co, fmd->anim_bind[i].offset);
 				mul_m4_v3(ob->obmat, co);
 				copy_v3_v3(mi->rigidbody->pos, co);
 
 				if (quats)
 				{
-					quat[0] = quatX[fmd->anim_bind[i].v];
-					quat[1] = quatY[fmd->anim_bind[i].v];
-					quat[2] = quatZ[fmd->anim_bind[i].v];
-					quat[3] = quatW[fmd->anim_bind[i].v];
+					quat[0] = quatX[v];
+					quat[1] = quatY[v];
+					quat[2] = quatZ[v];
+					quat[3] = quatW[v];
 
 					copy_qt_qt(mi->rigidbody->orn, quat);
 				}
 				else {
 					float no[3], vec[3] = {0, 0, 1}, quat[4];
-					normal_short_to_float_v3(no, mvert[fmd->anim_bind[i].v].no);
+					normal_short_to_float_v3(no, mvert[v].no);
 					rotation_between_vecs_to_quat(quat, vec, no);
 					mul_qt_qtqt(quat, obquat, quat);
 					copy_qt_qt(mi->rigidbody->orn, quat);
