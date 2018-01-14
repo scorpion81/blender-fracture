@@ -3923,14 +3923,14 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 	if (do_bind)
 	{
 		//counter, verts per island or vice versa
-		int c;
+		int c, bc = 0;
 
 		//bindcounter
 		int b = 0;
 		used = MEM_callocN(sizeof(bool) * count, "used");
 
 		//less shards than verts, can maximal map 1 : 1
-		c = (int)ceilf((float)count / (float)totvert)+1;
+		c = (int)ceilf((float)count / (float)totvert);
 
 		for (i = 0; i < totvert; i++)
 		{
@@ -3938,27 +3938,35 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 			float co[3];
 			int r, j;
 
-			n = MEM_mallocN(sizeof(KDTreeNearest) * c, "nearest");
+			n = MEM_mallocN(sizeof(KDTreeNearest) * count, "nearest");
 			copy_v3_v3(co, mvert[i].co);
 			mul_m4_v3(ob->obmat, co);
-			r = BLI_kdtree_find_nearest_n(tree, co, n, c);
+			r = BLI_kdtree_find_nearest_n(tree, co, n, count);
+			bc = 0;
 			for (j = 0; j < r; j++)
 			{
 				float diff[3];
 				if (b == fmd->anim_bind_len)
 					break;
 
-				if (used[n[j].index])
+				if (used[n[j].index]) {
 					continue;
+				}
 
 				fmd->anim_bind[b].v = i;
 				fmd->anim_bind[b].mi = n[j].index;
-				//fmd->anim_bind[b].dist = n[j].dist;
 				sub_v3_v3v3(diff, co, n[j].co);
-				//copy_v3_v3(fmd->anim_bind[b].orco, co);
+
 				copy_v3_v3(fmd->anim_bind[b].offset, diff);
 				used[n[j].index] = true;
+				//printf("Bound vertex %d to shard %d\n", i, n[j].index);
 				b++;
+
+				//reached average bind count, do not exceed so shards are distributed equally ?
+				if (bc == c)
+					break;
+
+				bc++;
 			}
 
 			if (n)
@@ -3974,8 +3982,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 		if (used)
 			MEM_freeN(used);
 	}
-
-
+	else
 	{
 		int j = 0;
 		//map 1 vert to several shards, maxium 1 : 1
@@ -4042,7 +4049,13 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 				else {
 					float no[3], vec[3] = {0, 0, 1}, quat[4];
 					normal_short_to_float_v3(no, mvert[v].no);
-					rotation_between_vecs_to_quat(quat, vec, no);
+					if (dot_v3v3(vec, no) >= 0) {
+						//if difference too strong ?
+						rotation_between_vecs_to_quat(quat, vec, no);
+					}
+					else {
+						unit_qt(quat);
+					}
 					mul_qt_qtqt(quat, obquat, quat);
 					copy_qt_qt(mi->rigidbody->orn, quat);
 				}
