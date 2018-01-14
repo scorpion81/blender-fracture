@@ -4719,8 +4719,8 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 				{
 					if (con->physics_constraint) {
 						RB_constraint_set_enabled(con->physics_constraint, false);
-						activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
-						activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
+						//activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
+						//activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
 					}
 				}
 			}
@@ -4824,16 +4824,16 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 		(anglediff > breaking_angle))
 	{
 		/* if we have cluster breaking angle, then only treat equal cluster indexes like the default, else all */
-		if ((fmd->cluster_breaking_angle > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index) ||
-			 fmd->cluster_breaking_angle == 0)
+		if ((fmd->cluster_breaking_angle > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index &&
+		     rbsc->mi1->particle_index != -1) || fmd->cluster_breaking_angle == 0)
 		{
 			if (fmd->use_breaking)
 			{
 				//break constraint
 				if (rbsc->physics_constraint) {
 					RB_constraint_set_enabled(rbsc->physics_constraint, false);
-					activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
-					activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+					//activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
+					//activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
 				}
 			}
 		}
@@ -4860,15 +4860,15 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 		(distdiff > breaking_distance))
 	{
 		/* if we have cluster breaking distance, then only treat equal cluster indexes like the default, else all */
-		if ((fmd->cluster_breaking_distance > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index) ||
-			 fmd->cluster_breaking_distance == 0)
+		if ((fmd->cluster_breaking_distance > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index &&
+		     rbsc->mi1->particle_index != -1) || fmd->cluster_breaking_distance == 0)
 		{
 			if (fmd->use_breaking)
 			{
 				if (rbsc->physics_constraint) {
 					RB_constraint_set_enabled(rbsc->physics_constraint, false);
-					activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
-					activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+					//activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
+					//activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
 				}
 			}
 		}
