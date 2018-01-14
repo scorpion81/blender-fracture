@@ -266,6 +266,7 @@ static void initData(ModifierData *md)
 	fmd->anim_mesh_ob = NULL;
 	fmd->anim_bind = NULL;
 	fmd->anim_bind_len = 0;
+	fmd->anim_mesh_rot = false;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1881,6 +1882,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->anim_bind_len = 0; //rmd->anim_bind_len;
 	trmd->anim_bind = NULL;
 	//memcpy(trmd->anim_bind, rmd->anim_bind, sizeof(int) * trmd->anim_bind_len);
+	trmd->anim_mesh_rot = rmd->anim_mesh_rot;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?

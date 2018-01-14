@@ -1515,5 +1515,10 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
+	prop = RNA_def_property(srna, "use_animated_mesh_rotation", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "anim_mesh_rot", false);
+	RNA_def_property_ui_text(prop, "Use Rotation", "Allow moving original vertices to rotate the shards as well");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
 	RNA_api_fracture(brna, srna);
 }

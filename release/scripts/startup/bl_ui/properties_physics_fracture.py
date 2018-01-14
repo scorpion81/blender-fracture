@@ -40,21 +40,29 @@ class PhysicButtonsPanel():
         rd = context.scene.render
         return (ob and (ob.type == 'MESH' or ob.type == 'CURVE' or ob.type == 'SURFACE' or ob.type == 'FONT')) and (not rd.use_game_engine) and (context.fracture)
 
-class FRACTURE_UL_fracture_settings(UIList):
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        fl = item
-        if self.layout_type in {'DEFAULT', 'COMPACT'}:
-            layout.prop(fl, "name", text="", emboss=False, icon_value=icon)
-        elif self.layout_type in {'GRID'}:
-            layout.alignment = 'CENTER'
-            layout.label(text="", icon_value=icon)
+#class FRACTURE_UL_fracture_settings(UIList):
+#    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+#        fl = item
+#        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+#            layout.prop(fl, "name", text="", emboss=False, icon_value=icon)
+#        elif self.layout_type in {'GRID'}:
+#            layout.alignment = 'CENTER'
+#            layout.label(text="", icon_value=icon)
 
-#class PHYSICS_PT_fracture_settings(PhysicButtonsPanel, Panel):
-#    bl_label = "Fracture Settings"
+class PHYSICS_PT_fracture_anim_mesh(PhysicButtonsPanel, Panel):
+    bl_label = "Fracture Animated Mesh Settings"
 
-#    def draw(self, context):
-#       layout = self.layout
-#       md = context.fracture
+    def draw(self, context):
+        layout = self.layout
+        md = context.fracture
+        layout.context_pointer_set("modifier", md)
+        row = layout.row()
+        row.prop(md, "use_animated_mesh")
+        row.prop(md, "use_animated_mesh_rotation")
+        row = layout.row()
+        row.prop(md, "animated_mesh_input")
+        row = layout.row()
+        row.operator("object.fracture_anim_bind", text="Bind", icon="UV_VERTEXSEL")
 
 #       layout.template_list("FRACTURE_UL_fracture_settings", "", md, "fracture_settings", md, "active_setting", rows=3)
 
@@ -131,12 +139,6 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
         row.prop(md, "use_smooth")
         row = layout.row()
         row.prop(md, "auto_execute")
-        row.prop(md, "use_animated_mesh")
-        row = layout.row()
-        row.prop(md, "animated_mesh_input")
-        row = layout.row()
-        row.context_pointer_set("modifier", md)
-        row.operator("object.fracture_anim_bind", text="Bind", icon="UV_VERTEXSEL")
         row = layout.row(align=True)
         row.prop(md, "splinter_axis")
         layout.prop(md, "splinter_length")
@@ -315,10 +317,11 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
 
 classes = (
     FRACTURE_MT_presets,
-    FRACTURE_UL_fracture_settings,
+    #FRACTURE_UL_fracture_settings,
     PHYSICS_PT_fracture,
     PHYSICS_PT_fracture_simulation,
     PHYSICS_PT_fracture_utilities,
+    PHYSICS_PT_fracture_anim_mesh,
 )
 
 if __name__ == "__main__":  # only for live edit.

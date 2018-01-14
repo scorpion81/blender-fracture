@@ -3848,7 +3848,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 	DerivedMesh *dm = NULL;
 	int totvert, count = 0, i = 0, *orig_index;
 	KDTree *tree = NULL;
-	float obquat[4];
+	float obquat[4], imat[4][4];
 	bool *used;
 
 	if (!fmd->anim_mesh_ob)
@@ -3863,6 +3863,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 		return;
 
 	totvert = dm->getNumVerts(dm);
+	invert_m4_m4(imat, fmd->anim_mesh_ob->obmat);
 
 	if (totvert == 0) {
 		dm->release(dm);
@@ -3940,6 +3941,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 
 			n = MEM_mallocN(sizeof(KDTreeNearest) * count, "nearest");
 			copy_v3_v3(co, mvert[i].co);
+			//mul_m4_v3(fmd->anim_mesh_ob->obmat, co);
 			mul_m4_v3(ob->obmat, co);
 			r = BLI_kdtree_find_nearest_n(tree, co, n, count);
 			bc = 0;
@@ -4034,7 +4036,8 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 
 				copy_v3_v3(co, mvert[v].co);
 				sub_v3_v3(co, fmd->anim_bind[i].offset);
-				mul_m4_v3(ob->obmat, co);
+				mul_m4_v3(fmd->anim_mesh_ob->obmat, co);
+				//mul_m4_v3(ob->obmat, co);
 				copy_v3_v3(mi->rigidbody->pos, co);
 
 				if (quats)
@@ -4044,20 +4047,19 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 					quat[2] = quatZ[v];
 					quat[3] = quatW[v];
 
-					copy_qt_qt(mi->rigidbody->orn, quat);
+					if (fmd->anim_mesh_rot) {
+						mul_qt_qtqt(quat, obquat, quat);
+						copy_qt_qt(mi->rigidbody->orn, quat);
+					}
 				}
 				else {
 					float no[3], vec[3] = {0, 0, 1}, quat[4];
 					normal_short_to_float_v3(no, mvert[v].no);
-					if (dot_v3v3(vec, no) >= 0) {
-						//if difference too strong ?
-						rotation_between_vecs_to_quat(quat, vec, no);
+					rotation_between_vecs_to_quat(quat, vec, no);
+					if (fmd->anim_mesh_rot) {
+						mul_qt_qtqt(quat, obquat, quat);
+						copy_qt_qt(mi->rigidbody->orn, quat);
 					}
-					else {
-						unit_qt(quat);
-					}
-					mul_qt_qtqt(quat, obquat, quat);
-					copy_qt_qt(mi->rigidbody->orn, quat);
 				}
 
 				mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
