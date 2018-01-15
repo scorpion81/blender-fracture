@@ -3941,8 +3941,8 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 
 			n = MEM_mallocN(sizeof(KDTreeNearest) * count, "nearest");
 			copy_v3_v3(co, mvert[i].co);
-			//mul_m4_v3(fmd->anim_mesh_ob->obmat, co);
-			mul_m4_v3(ob->obmat, co);
+			mul_m4_v3(fmd->anim_mesh_ob->obmat, co);
+			//mul_m4_v3(ob->obmat, co);
 			r = BLI_kdtree_find_nearest_n(tree, co, n, count);
 			bc = 0;
 			for (j = 0; j < r; j++)
