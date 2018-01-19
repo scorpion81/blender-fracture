@@ -3147,12 +3147,13 @@ void pack_storage_add(FractureModifierData *fmd, Shard* s)
 
 void fracture_collect_layer(CustomData* src, CustomData *dst, int totelem, int cd_type, int dst_offset, int count)
 {
+	int layerstart = CustomData_get_layer_index(src, cd_type);
 	int totlayer = CustomData_number_of_layers(src, cd_type);
 	int j;
 
 	for (j = 0; j < totlayer; j++)
 	{
-		char *name = CustomData_get_layer_name(src, cd_type, j);
+		const char *name = CustomData_get_layer_name(src, cd_type, j);
 
 		//find index of named layer in dst mesh
 		int index = CustomData_get_named_layer_index(dst, cd_type, name);
@@ -3164,7 +3165,7 @@ void fracture_collect_layer(CustomData* src, CustomData *dst, int totelem, int c
 		}
 
 		index = CustomData_get_named_layer_index(dst, cd_type, name);
-		CustomData_copy_data_layer(src, dst, j, index, 0, dst_offset, count);
+		CustomData_copy_data_layer(src, dst, j+layerstart, index, 0, dst_offset, count);
 	}
 }
 
@@ -3740,9 +3741,11 @@ void BKE_update_acceleration_map(FractureModifierData *fmd, MeshIsland* mi, Obje
 void BKE_update_velocity_layer(FractureModifierData *fmd, MeshIsland *mi)
 {
 	DerivedMesh *dm = fmd->visible_mesh_cached;
-	float* velX, *velY, *velZ;
+	float *velX=NULL, *velY=NULL, *velZ = NULL;
 	RigidBodyOb *rbo = mi->rigidbody;
 	Shard *s, *t = NULL;
+	void *pX, *pY, *pZ;
+	float *sX=NULL, *sY=NULL, *sZ=NULL;
 	int i = 0;
 
 	if (!dm)
@@ -3758,31 +3761,35 @@ void BKE_update_velocity_layer(FractureModifierData *fmd, MeshIsland *mi)
 		}
 	}
 
-	velX = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velX");
-	velY = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velY");
-	velZ = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velZ");
+	pX = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velX");
+	pY = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velY");
+	pZ = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velZ");
+
+	if (!pX ||!pY || !pZ)
+		return;
+
+	velX = (float*)pX;
+	velY = (float*)pY;
+	velZ = (float*)pZ;
 
 	//XXX how to represent this in mblur ?
 	//zero_v3(rbo->ang_vel);
 
+	if (t)
+	{
+		sX = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velX");
+		sY = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velY");
+		sZ = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velZ");
+	}
+
 	for (i = 0; i < mi->vertex_count; i++)
 	{
-		if (t)
+		if (sX && sY && sZ)
 		{
-			float *sX, *sY, *sZ;
-
-			sX = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velX");
 			sX[i] = rbo->lin_vel[0] + rbo->ang_vel[0];
-
-			sY = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velY");
 			sY[i] = rbo->lin_vel[1] + rbo->ang_vel[1];
-
-			sZ = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velZ");
 			sZ[i] = rbo->lin_vel[2] + rbo->ang_vel[2];
 		}
-
-		if (!velX || !velY || !velZ)
-			continue;
 
 		velX[mi->vertex_indices[i]] = rbo->lin_vel[0] + rbo->ang_vel[0];
 		velY[mi->vertex_indices[i]] = rbo->lin_vel[1] + rbo->ang_vel[1];
