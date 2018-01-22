@@ -1701,8 +1701,7 @@ typedef struct AnimBind {
 	int v;
 	int mi;
 	float offset[3];
-	//float orco[3];
-	//float dist;
+	float no[3];
 } AnimBind;
 
 typedef struct FractureModifierData {
