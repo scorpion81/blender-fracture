@@ -3853,7 +3853,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 	MVert *mvert = NULL;
 	MeshIsland *mi;
 	DerivedMesh *dm = NULL;
-	int totvert, count = 0, i = 0;
+	int totvert, count = 0, i = 0, *orig_index = NULL;
 	KDTree *tree = NULL;
 	float obquat[4], imat[4][4];
 
@@ -3917,7 +3917,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 	quatY = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "quatY");
 	quatZ = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "quatZ");
 	quatW = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "quatW");
-	//orig_index = CustomData_get_layer(&dm->vertData, CD_ORIGINDEX);
+	orig_index = CustomData_get_layer(&dm->vertData, CD_ORIGINDEX);
 
 	//check vertexcount and islandcount, TODO for splitshards... there it might differ, ignore then for now
 	//later do interpolation ? propagate to islands somehow then, not yet now...
@@ -3965,6 +3965,29 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 				bool quats = quatX && quatY && quatZ && quatW;
 				float quat[4] = { 1, 0, 0, 0}, vec[3], no[3], off[3];
 				int v = fmd->anim_bind[i].v;
+
+				if (v >= totvert) {
+					continue;
+				}
+
+				if (orig_index)
+				{
+					if (orig_index[v] != v  && orig_index[v] != -1)
+					{
+						if (mi->rigidbody->physics_object && mi->rigidbody->type == RBO_TYPE_ACTIVE)
+						{
+							RigidBodyOb* rbo = mi->rigidbody;
+
+							mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC;
+							mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+							RB_body_set_mass(rbo->physics_object, rbo->mass);
+							RB_body_set_kinematic_state(rbo->physics_object, false);
+							RB_body_activate(rbo->physics_object);
+							continue;
+						}
+					}
+				}
 
 				if (fmd->anim_mesh_rot)
 				{
