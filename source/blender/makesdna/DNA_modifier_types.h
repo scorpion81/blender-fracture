@@ -1807,6 +1807,7 @@ typedef struct FractureModifierData {
 	float min_acceleration;
 	float max_acceleration;
 	float acceleration_fade;
+	float anim_bind_limit;
 
 	/* flags */
 	int refresh;
@@ -1866,7 +1867,7 @@ typedef struct FractureModifierData {
 	short mat_ofs_intersect;
 	short mat_ofs_difference;
 
-	//char pad[4];
+	char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

@@ -101,7 +101,6 @@ static bool isModifierActive(FractureModifierData *rmd);
 static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED_rbw, MeshIsland *mi, Object *ob);
 static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bool rebuild);
 static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, float ctime);
-static bool restoreKinematic(RigidBodyWorld *rbw);
 static void DM_mesh_boundbox(DerivedMesh *bm, float r_loc[3], float r_size[3]);
 static void test_deactivate_rigidbody(RigidBodyOb *rbo);
 static float box_volume(float size[3]);
@@ -2387,7 +2386,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	}
 	else if (rbw->ltime == startframe)
 	{
-		/*bool did_it = */restoreKinematic(rbw);
+		/*bool did_it = */BKE_restoreKinematic(rbw, false);
 		//if (did_it)
 
 		//make 1st run like later runs... hack...
@@ -5489,7 +5488,7 @@ void rigidbody_passive_fake_parenting(FractureModifierData *fmd, Object *ob, Rig
 	}
 }
 
-static bool restoreKinematic(RigidBodyWorld *rbw)
+bool BKE_restoreKinematic(RigidBodyWorld *rbw, bool override_bind)
 {
 	GroupObject *go;
 	bool did_it = false;
@@ -5503,7 +5502,7 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 			triggered = go->ob->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION;
 
 			FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
-			if (fmd && triggered)
+			if (fmd && triggered && (!fmd->use_animated_mesh || (fmd->use_animated_mesh && override_bind)))
 			{
 				MeshIsland* mi;
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)

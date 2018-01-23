@@ -2573,13 +2573,26 @@ static int fracture_refresh_invoke(bContext *C, wmOperator *op, const wmEvent *U
 static int fracture_anim_bind_exec(bContext *C, wmOperator *op)
 {
 	Object *obact = ED_object_active_context(C);
+	Scene* scene = CTX_data_scene(C);
 	FractureModifierData *rmd;
 
 	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
 	if (!rmd)
 		return OPERATOR_CANCELLED;
 
+	//restore kinematic here, before bind (and not afterwards !)
+	if (scene && scene->rigidbody_world)
+		BKE_restoreKinematic(scene->rigidbody_world, true);
 	BKE_read_animated_loc_rot(rmd, obact, true);
+
+	DAG_relations_tag_update(G.main);
+	WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
+	WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
+	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
+
+	DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
+	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
+
 	return OPERATOR_FINISHED;
 }
 

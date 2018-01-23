@@ -3845,6 +3845,24 @@ static DerivedMesh *eval_mod_stack_simple(Object *ob)
 	return dm;
 }
 
+void activate(MeshIsland *mi)
+{
+	if (mi->rigidbody->type == RBO_TYPE_ACTIVE)
+	{
+		RigidBodyOb* rbo = mi->rigidbody;
+
+		mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC;
+		mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+		if (rbo->physics_object)
+		{
+			RB_body_set_mass(rbo->physics_object, rbo->mass);
+			RB_body_set_kinematic_state(rbo->physics_object, false);
+			RB_body_activate(rbo->physics_object);
+		}
+	}
+}
+
 void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bind)
 {
 	//to be called after rigidbodies have been actually created... from MOD_fracture.c
@@ -3936,12 +3954,19 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 			mul_m4_v3(imat, co);
 			BLI_kdtree_find_nearest(tree, co, &n);
 
-			fmd->anim_bind[i].v = n.index;
-			fmd->anim_bind[i].mi = i;
-			sub_v3_v3v3(diff, n.co, co);
+			if (n.dist <= fmd->anim_bind_limit || fmd->anim_bind_limit == 0)
+			{
+				fmd->anim_bind[i].v = n.index;
+				fmd->anim_bind[i].mi = i;
+				sub_v3_v3v3(diff, n.co, co);
+				copy_v3_v3(fmd->anim_bind[i].offset, diff);
+				normal_short_to_float_v3(fmd->anim_bind[i].no, mvert[n.index].no);
+			}
+			else
+			{
+				activate(mi);
+			}
 
-			copy_v3_v3(fmd->anim_bind[i].offset, diff);
-			normal_short_to_float_v3(fmd->anim_bind[i].no, mvert[n.index].no);
 			i++;
 		}
 
@@ -3957,6 +3982,9 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 			int index = -1;
 
 			index = fmd->anim_bind[i].mi;
+
+			if (index == -1)
+				continue;
 
 			//only let kinematic rbs do this, active ones are being taken care of by bullet
 			if (mi && mi->rigidbody && mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
@@ -3976,14 +4004,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 					{
 						if (mi->rigidbody->physics_object && mi->rigidbody->type == RBO_TYPE_ACTIVE)
 						{
-							RigidBodyOb* rbo = mi->rigidbody;
-
-							mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC;
-							mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-
-							RB_body_set_mass(rbo->physics_object, rbo->mass);
-							RB_body_set_kinematic_state(rbo->physics_object, false);
-							RB_body_activate(rbo->physics_object);
+							activate(mi);
 							continue;
 						}
 					}

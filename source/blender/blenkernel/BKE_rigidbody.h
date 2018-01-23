@@ -142,4 +142,6 @@ void BKE_rigidbody_object_sync_transforms(struct EvaluationContext *eval_ctx,
                                           struct Scene *scene,
                                           struct Object *ob);
 
+bool BKE_restoreKinematic(struct RigidBodyWorld *rbw, bool override_bind);
+
 #endif /* __BKE_RIGIDBODY_H__ */

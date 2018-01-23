@@ -60,6 +60,8 @@ class PHYSICS_PT_fracture_anim_mesh(PhysicButtonsPanel, Panel):
         row.prop(md, "use_animated_mesh")
         row.prop(md, "use_animated_mesh_rotation")
         row = layout.row()
+        row.prop(md, "animated_mesh_limit")
+        row = layout.row()
         row.prop(md, "animated_mesh_input")
         row = layout.row()
         row.operator("object.fracture_anim_bind", text="Bind", icon="UV_VERTEXSEL")
