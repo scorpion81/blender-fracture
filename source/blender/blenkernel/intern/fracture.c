@@ -554,7 +554,8 @@ bool BKE_get_shard_minmax(FracMesh *mesh, ShardID id, float min_r[3], float max_
 	return false;
 }
 
-Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, MEdge* medge,  int totvert, int totpoly, int totloop, int totedge, bool copy)
+Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, MEdge* medge,  int totvert, int totpoly,
+                                 int totloop, int totedge, bool copy)
 {
 	Shard *shard = MEM_mallocN(sizeof(Shard), __func__);
 	shard->totvert = totvert;
@@ -3744,15 +3745,23 @@ void BKE_update_velocity_layer(FractureModifierData *fmd, MeshIsland *mi)
 	float *velX=NULL, *velY=NULL, *velZ = NULL;
 	RigidBodyOb *rbo = mi->rigidbody;
 	Shard *s, *t = NULL;
-	void *pX, *pY, *pZ;
+	void *pX, *pY, *pZ, *spX = NULL, *spY = NULL, *spZ = NULL;
 	float *sX=NULL, *sY=NULL, *sZ=NULL;
 	int i = 0;
+	ListBase *lb;
 
 	if (!dm)
 		return;
 
 	//XXX TODO deal with split shards to islands etc, here take only "real" shards for now
-	for (s = fmd->frac_mesh->shard_map.first; s; s = s->next)
+	if (fmd->shards_to_islands) {
+		lb = &fmd->islandShards;
+	}
+	else {
+		lb = &fmd->frac_mesh->shard_map;
+	}
+
+	for (s = lb->first; s; s = s->next)
 	{
 		if (s->shard_id == mi->id)
 		{
@@ -3777,15 +3786,19 @@ void BKE_update_velocity_layer(FractureModifierData *fmd, MeshIsland *mi)
 
 	if (t)
 	{
-		sX = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velX");
-		sY = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velY");
-		sZ = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velZ");
+		spX = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velX");
+		spY = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velY");
+		spZ = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velZ");
 	}
 
 	for (i = 0; i < mi->vertex_count; i++)
 	{
-		if (sX && sY && sZ)
+		if (spX && spY && spZ)
 		{
+			sX = (float*)spX;
+			sY = (float*)spY;
+			sZ = (float*)spZ;
+
 			sX[i] = rbo->lin_vel[0] + rbo->ang_vel[0];
 			sY[i] = rbo->lin_vel[1] + rbo->ang_vel[1];
 			sZ[i] = rbo->lin_vel[2] + rbo->ang_vel[2];

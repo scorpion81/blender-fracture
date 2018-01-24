@@ -1985,8 +1985,10 @@ static int do_shard_to_island(FractureModifierData *fmd, BMesh* bm_new, ShardID 
 		int id = 0;
 
 		dmtemp = CDDM_from_bmesh(bm_new, true);
-		s = BKE_create_fracture_shard(dmtemp->getVertArray(dmtemp), dmtemp->getPolyArray(dmtemp), dmtemp->getLoopArray(dmtemp), dmtemp->getEdgeArray(dmtemp),
-		                              dmtemp->getNumVerts(dmtemp), dmtemp->getNumPolys(dmtemp), dmtemp->getNumLoops(dmtemp), dmtemp->getNumEdges(dmtemp),
+		s = BKE_create_fracture_shard(dmtemp->getVertArray(dmtemp), dmtemp->getPolyArray(dmtemp),
+		                              dmtemp->getLoopArray(dmtemp), dmtemp->getEdgeArray(dmtemp),
+		                              dmtemp->getNumVerts(dmtemp), dmtemp->getNumPolys(dmtemp),
+		                              dmtemp->getNumLoops(dmtemp), dmtemp->getNumEdges(dmtemp),
 		                              true);
 		s = BKE_custom_data_to_shard(s, dmtemp);
 
