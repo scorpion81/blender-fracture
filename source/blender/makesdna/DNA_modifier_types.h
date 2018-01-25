@@ -1699,6 +1699,8 @@ typedef struct FractureSetting {
 
 typedef struct AnimBind {
 	int v;
+	int v1;
+	int v2;
 	int mi;
 	float offset[3];
 	float no[3];

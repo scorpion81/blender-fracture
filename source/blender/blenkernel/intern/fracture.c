@@ -3924,6 +3924,8 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 		{
 			fmd->anim_bind[i].mi = -1;
 			fmd->anim_bind[i].v = -1;
+			fmd->anim_bind[i].v1 = -1;
+			fmd->anim_bind[i].v2 = -1;
 			zero_v3(fmd->anim_bind[i].offset);
 			zero_v3(fmd->anim_bind[i].no);
 		}
@@ -3960,20 +3962,31 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 		i = 0;
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 		{
-			KDTreeNearest n;
+			KDTreeNearest n[3];
 			float co[3], diff[3] = {0, 0, 0};
+			int x = 0;
 
 			copy_v3_v3(co, mi->rigidbody->pos);
 			mul_m4_v3(imat, co);
-			BLI_kdtree_find_nearest(tree, co, &n);
+			x = BLI_kdtree_find_nearest_n(tree, co, n, 3);
 
-			if (n.dist <= fmd->anim_bind_limit || fmd->anim_bind_limit == 0)
+			if (n[0].dist <= fmd->anim_bind_limit || fmd->anim_bind_limit == 0)
 			{
-				fmd->anim_bind[i].v = n.index;
+				fmd->anim_bind[i].v = n[0].index;
+				fmd->anim_bind[i].v1 = n[1].index;
+				fmd->anim_bind[i].v2 = n[2].index;
 				fmd->anim_bind[i].mi = i;
-				sub_v3_v3v3(diff, n.co, co);
+				sub_v3_v3v3(diff, n[0].co, co);
 				copy_v3_v3(fmd->anim_bind[i].offset, diff);
-				normal_short_to_float_v3(fmd->anim_bind[i].no, mvert[n.index].no);
+				if (x < 3 || n[1].index == -1 || n[2].index == -1) {
+					//fallback if not enough verts around
+					normal_short_to_float_v3(fmd->anim_bind[i].no, mvert[n[0].index].no);
+					fmd->anim_bind[i].v1 = -1;
+					fmd->anim_bind[i].v2 = -1;
+				}
+				else {
+					normal_tri_v3(fmd->anim_bind[i].no, mvert[n[0].index].co, mvert[n[1].index].co, mvert[n[2].index].co);
+				}
 			}
 			else
 			{
@@ -4026,7 +4039,17 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 				if (fmd->anim_mesh_rot)
 				{
 					copy_v3_v3(vec, fmd->anim_bind[i].no);
-					normal_short_to_float_v3(no, mvert[v].no);
+					if (fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1) {
+						//fallback if not enough verts around
+						normal_short_to_float_v3(no, mvert[v].no);
+					}
+					else
+					{
+						normal_tri_v3(no, mvert[fmd->anim_bind[i].v].co,
+										  mvert[fmd->anim_bind[i].v1].co,
+										  mvert[fmd->anim_bind[i].v2].co);
+					}
+
 					rotation_between_vecs_to_quat(quat, vec, no);
 				}
 
