@@ -1993,6 +1993,8 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 						write_meshIsland(wd, mi, true);
 					}
 				}
+
+				writestruct(wd, DATA, AnimBind, fmd->anim_bind_len, fmd->anim_bind);
 			}
 		}
 		else if (md->type == eModifierType_SurfaceDeform) {

@@ -343,8 +343,8 @@ static void free_simulation(FractureModifierData *fmd, bool do_free_seq, bool do
 			{
 				ssq = fmd->shard_sequence.first;
 				BLI_remlink(&fmd->shard_sequence, ssq);
-				//BKE_fracmesh_free(ssq->frac_mesh, true);
-				//MEM_freeN(ssq->frac_mesh);
+				BKE_fracmesh_free(ssq->frac_mesh, true);
+				MEM_freeN(ssq->frac_mesh);
 				MEM_freeN(ssq);
 			}
 
@@ -509,7 +509,7 @@ static void freeData(ModifierData *md)
 {
 	FractureModifierData *fmd = (FractureModifierData *) md;
 
-	freeData_internal(fmd, fmd->fracture_mode == MOD_FRACTURE_DYNAMIC, false);
+	freeData_internal(fmd, fmd->fracture_mode == MOD_FRACTURE_DYNAMIC, true);
 
 	/*force deletion of meshshards here, it slips through improper state detection*/
 	/*here we know the modifier is about to be deleted completely*/
@@ -4709,8 +4709,16 @@ static ShardSequence* shard_sequence_add(FractureModifierData* fmd, float frame,
 		}
 		else {
 			/* create first shard covering the entire mesh */
-			s = BKE_create_fracture_shard(dm->getVertArray(dm), dm->getPolyArray(dm), dm->getLoopArray(dm), dm->getEdgeArray(dm),
-			                                     dm->numVertData, dm->numPolyData, dm->numLoopData, dm->numEdgeData, true);
+			s = BKE_create_fracture_shard(dm->getVertArray(dm),
+			                              dm->getPolyArray(dm),
+			                              dm->getLoopArray(dm),
+			                              dm->getEdgeArray(dm),
+			                              dm->numVertData,
+			                              dm->numPolyData,
+			                              dm->numLoopData,
+			                              dm->numEdgeData,
+			                              true);
+
 			s = BKE_custom_data_to_shard(s, dm);
 			s->flag = SHARD_INTACT;
 			s->shard_id = 0;
@@ -4726,7 +4734,7 @@ static ShardSequence* shard_sequence_add(FractureModifierData* fmd, float frame,
 		ssq->frac_mesh = fmd->frac_mesh;
 	}
 	else {
-		ssq->frac_mesh = fmd->frac_mesh; //copy_fracmesh(fmd->frac_mesh);
+		ssq->frac_mesh = copy_fracmesh(fmd->frac_mesh);
 	}
 
 	ssq->is_new = true;
