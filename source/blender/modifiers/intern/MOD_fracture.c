@@ -351,7 +351,7 @@ static void free_simulation(FractureModifierData *fmd, bool do_free_seq, bool do
 			fmd->shard_sequence.first = NULL;
 			fmd->shard_sequence.last = NULL;
 			fmd->current_shard_entry = NULL;
-			BKE_fracmesh_free(fmd->frac_mesh, true);
+//			BKE_fracmesh_free(fmd->frac_mesh, true);
 			fmd->frac_mesh = NULL;
 		}
 	}
@@ -5004,7 +5004,7 @@ static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, Deriv
 	{
 		/*hack to force update of rigidbody world after loading*/
 		BKE_rigidbody_cache_reset(rbw);
-		BKE_rigidbody_rebuild_world(scene, -1.0f);
+		BKE_rigidbody_rebuild_world(scene, -1.0f, false);
 	}
 
 	if (do_refresh) {

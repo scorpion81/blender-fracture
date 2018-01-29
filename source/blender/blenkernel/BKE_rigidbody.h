@@ -124,7 +124,7 @@ void BKE_rigidbody_aftertrans_update(struct Object *ob, float loc[3], float rot[
 void BKE_rigidbody_sync_transforms(struct RigidBodyWorld *rbw, struct Object *ob, float ctime);
 bool BKE_rigidbody_check_sim_running(struct RigidBodyWorld *rbw, float ctime);
 void BKE_rigidbody_cache_reset(struct RigidBodyWorld *rbw);
-void BKE_rigidbody_rebuild_world(struct Scene *scene, float ctime);
+void BKE_rigidbody_rebuild_world(struct Scene *scene, float ctime, bool do_resetDynamic);
 void BKE_rigidbody_do_simulation(struct Scene *scene, float ctime);
 
 /* -------------------- */

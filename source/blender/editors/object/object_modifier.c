@@ -357,7 +357,7 @@ static bool object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
 		 * AFTER the modifier is gone...  but only from the operator ?*/
 		if (scene->rigidbody_world)
 		{
-			BKE_rigidbody_rebuild_world(scene, -1);
+			BKE_rigidbody_rebuild_world(scene, -1, false);
 		}
 		BKE_scene_frame_set(scene, 1.0);
 	}
@@ -2581,8 +2581,10 @@ static int fracture_anim_bind_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 
 	//restore kinematic here, before bind (and not afterwards !)
-	if (scene && scene->rigidbody_world)
+	if (scene && scene->rigidbody_world) {
 		BKE_restoreKinematic(scene->rigidbody_world, true);
+		BKE_rigidbody_rebuild_world(scene, scene->rigidbody_world->pointcache->startframe, true);
+	}
 	BKE_read_animated_loc_rot(rmd, obact, true);
 
 	DAG_relations_tag_update(G.main);

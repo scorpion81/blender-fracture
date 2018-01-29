@@ -84,7 +84,7 @@
 
 /* Fracture Modifier related prototypes */
 
-static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always);
+static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always, bool override_bind);
 static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed, float size[3]);
 static void rigidbody_passive_fake_parenting(FractureModifierData *fmd, Object *ob, RigidBodyOb *rbo, float imat[4][4]);
 static void rigidbody_passive_hook(FractureModifierData *fmd, MeshIsland *mi, Object* ob);
@@ -2251,7 +2251,7 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 		rbw->pointcache->flag |= PTCACHE_OUTDATED;
 		//restoreKinematic(rbw);
 		//if (!(rbw->pointcache->flag & PTCACHE_BAKED))
-		resetDynamic(rbw, true);
+		resetDynamic(rbw, false, false);
 		//resetPrefractured(rbw);
 	}
 }
@@ -2260,7 +2260,7 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 
 /* Rebuild rigid body world */
 /* NOTE: this needs to be called before frame update to work correctly */
-void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
+void BKE_rigidbody_rebuild_world(Scene *scene, float ctime, bool do_resetDynamic)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	PointCache *cache;
@@ -2294,7 +2294,7 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 			//if we destroy the cache, also reset dynamic data (if not baked)
 			if (!(cache->flag & PTCACHE_BAKED))
 			{
-				resetDynamic(rbw, true);
+				resetDynamic(rbw, true, do_resetDynamic);
 				//resetExternal(rbw);
 				//resetPrefractured(rbw);
 			}
@@ -2449,7 +2449,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], float quat[4], float rotAxis[3], float rotAngle) {}
 bool BKE_rigidbody_check_sim_running(RigidBodyWorld *rbw, float ctime) { return false; }
 void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw) {}
-void BKE_rigidbody_rebuild_world(Scene *scene, float ctime) {}
+void BKE_rigidbody_rebuild_world(Scene *scene, float ctime, bool do_resetDynamic) {}
 void BKE_rigidbody_do_simulation(Scene *scene, float ctime) {}
 
 #ifdef __GNUC__
@@ -2472,7 +2472,7 @@ void BKE_rigidbody_rebuild_sim(EvaluationContext *UNUSED(eval_ctx),
 
 	/* rebuild sim data (i.e. after resetting to start of timeline) */
 	if (BKE_scene_check_rigidbody_active(scene)) {
-		BKE_rigidbody_rebuild_world(scene, ctime);
+		BKE_rigidbody_rebuild_world(scene, ctime, false);
 	}
 }
 
@@ -5097,8 +5097,8 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		BKE_object_where_is_calc(scene, ob);
 		fmd->constraint_island_count = 1;
 
-		if ((ob->rigidbody_object && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC) &&
-		     fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED)) {
+		if ((ob->rigidbody_object && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC) //&&
+		     /*fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED*/)) {
 
 			if (fmd->use_animated_mesh && fmd->anim_mesh_ob)
 			{
@@ -5539,7 +5539,7 @@ bool BKE_restoreKinematic(RigidBodyWorld *rbw, bool override_bind)
 }
 
 static ThreadMutex reset_lock = BLI_MUTEX_INITIALIZER;
-static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
+static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always, bool override_bind)
 {
 	GroupObject *go;
 	if (!rbw->group)
@@ -5562,7 +5562,7 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 			//Scene *scene = fmd->modifier.scene;
 			MeshIsland *mi;
 
-			if (do_reset_always)
+			if (do_reset_always && (!fmd->use_animated_mesh || (fmd->use_animated_mesh && override_bind)))
 			{
 				ModifierData *md;
 				DerivedMesh *dm = NULL;

@@ -3882,11 +3882,13 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 	//rotation is optional, remesher + particlesystem can provide it
 	float *quatX, *quatY, *quatZ, *quatW;
 	MVert *mvert = NULL;
+	MLoopTri *mlooptri = NULL;
+	MLoop *mloop = NULL;
 	MeshIsland *mi;
 	DerivedMesh *dm = NULL;
-	int totvert, count = 0, i = 0, *orig_index = NULL;
+	int totvert, count = 0, i = 0, *orig_index = NULL, tottri, items;
 	KDTree *tree = NULL;
-	float obquat[4], imat[4][4];
+	float anim_quat[4], anim_imat[4][4], imat[4][4];
 
 	if (!fmd->anim_mesh_ob)
 		return;
@@ -3900,19 +3902,22 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 		return;
 
 	totvert = dm->getNumVerts(dm);
-	invert_m4_m4(imat, fmd->anim_mesh_ob->obmat);
+	tottri = dm->getNumLoopTri(dm);
+
+	invert_m4_m4(anim_imat, fmd->anim_mesh_ob->obmat);
+	invert_m4_m4(imat, ob->obmat);
 
 	if (totvert == 0) {
 		dm->release(dm);
 		return;
 	}
 
-	mat4_to_quat(obquat, ob->obmat);
-
 	if (do_bind) {
 
+		items = tottri > 0 ? tottri : totvert;
+
 		count = BLI_listbase_count(&fmd->meshIslands);
-		tree = BLI_kdtree_new(totvert);
+		tree = BLI_kdtree_new(items);
 		fmd->anim_bind_len = count;
 		if (fmd->anim_bind) {
 			MEM_freeN(fmd->anim_bind);
@@ -3933,13 +3938,31 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 
 	i = 0;
 	mvert = dm->getVertArray(dm);
+	mlooptri = dm->getLoopTriArray(dm);
+	mloop = dm->getLoopArray(dm);
 	if (do_bind)
 	{
-		for (i = 0; i < totvert; i++)
+		if (tottri > 0)
 		{
-			float co[3];
-			copy_v3_v3(co, mvert[i].co);
-			BLI_kdtree_insert(tree, i, co);
+			//looptri based bind
+			for (i = 0; i < tottri; i++)
+			{
+				float co[3];
+				copy_v3_v3(co, mvert[mloop[mlooptri[i].tri[0]].v].co);
+				//copy_v3_v3(co[1], mvert[mloop[mlooptri[i].tri[1]].v].co);
+				//copy_v3_v3(co[2], mvert[mloop[mlooptri[i].tri[2]].v].co);
+				BLI_kdtree_insert(tree, i, co);
+			}
+		}
+		else
+		{
+			//no faces -> vertex based bind
+			for (i = 0; i < totvert; i++)
+			{
+				float co[3];
+				copy_v3_v3(co, mvert[i].co);
+				BLI_kdtree_insert(tree, i, co);
+			}
 		}
 
 		BLI_kdtree_balance(tree);
@@ -3962,30 +3985,42 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 		i = 0;
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 		{
-			KDTreeNearest n[3];
+			KDTreeNearest n;
 			float co[3], diff[3] = {0, 0, 0};
-			int x = 0;
 
 			copy_v3_v3(co, mi->rigidbody->pos);
-			mul_m4_v3(imat, co);
-			x = BLI_kdtree_find_nearest_n(tree, co, n, 3);
+			mul_m4_v3(anim_imat, co);
+			BLI_kdtree_find_nearest(tree, co, &n);
 
-			if (n[0].dist <= fmd->anim_bind_limit || fmd->anim_bind_limit == 0)
+			if (n.dist <= fmd->anim_bind_limit || fmd->anim_bind_limit == 0)
 			{
-				fmd->anim_bind[i].v = n[0].index;
-				fmd->anim_bind[i].v1 = n[1].index;
-				fmd->anim_bind[i].v2 = n[2].index;
-				fmd->anim_bind[i].mi = i;
-				sub_v3_v3v3(diff, n[0].co, co);
-				copy_v3_v3(fmd->anim_bind[i].offset, diff);
-				if (x < 3 || n[1].index == -1 || n[2].index == -1) {
-					//fallback if not enough verts around
-					normal_short_to_float_v3(fmd->anim_bind[i].no, mvert[n[0].index].no);
+				if (tottri > 0)
+				{
+					fmd->anim_bind[i].v = mloop[mlooptri[n.index].tri[0]].v;
+					fmd->anim_bind[i].v1 = mloop[mlooptri[n.index].tri[1]].v;
+					fmd->anim_bind[i].v2 = mloop[mlooptri[n.index].tri[2]].v;
+				}
+				else {
+					fmd->anim_bind[i].v = n.index;
 					fmd->anim_bind[i].v1 = -1;
 					fmd->anim_bind[i].v2 = -1;
 				}
+				fmd->anim_bind[i].mi = i;
+				sub_v3_v3v3(diff, n.co, co);
+				//mul_m4_v3(imat, diff);
+
+				copy_v3_v3(fmd->anim_bind[i].offset, diff);
+
+				if (fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1) {
+					//fallback if not enough verts around
+					normal_short_to_float_v3(fmd->anim_bind[i].no, mvert[n.index].no);
+					normalize_v3(fmd->anim_bind[i].no);
+				}
 				else {
-					normal_tri_v3(fmd->anim_bind[i].no, mvert[n[0].index].co, mvert[n[1].index].co, mvert[n[2].index].co);
+					tri_to_quat(fmd->anim_bind[i].quat,
+					        mvert[fmd->anim_bind[i].v].co,
+					        mvert[fmd->anim_bind[i].v1].co,
+					        mvert[fmd->anim_bind[i].v2].co);
 				}
 			}
 			else
@@ -4024,9 +4059,9 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 					continue;
 				}
 
-				if (orig_index)
+				if (orig_index && (fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1))
 				{
-					if (orig_index[v] != v  && orig_index[v] != -1)
+					//in particle (no faces) case, dont allow jump around of shards, instead activate them
 					{
 						if (mi->rigidbody->physics_object && mi->rigidbody->type == RBO_TYPE_ACTIVE)
 						{
@@ -4036,48 +4071,56 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 					}
 				}
 
+				copy_v3_v3(co, mvert[v].co);
+				copy_v3_v3(off, fmd->anim_bind[i].offset);
+
 				if (fmd->anim_mesh_rot)
 				{
-					copy_v3_v3(vec, fmd->anim_bind[i].no);
-					if (fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1) {
-						//fallback if not enough verts around
-						normal_short_to_float_v3(no, mvert[v].no);
+					//float ob_quat[4];
+					//mat4_to_quat(ob_quat, ob->obmat);
+					//invert_qt(ob_quat);
+
+					if (quats)
+					{
+						quat[0] = quatX[v];
+						quat[1] = quatY[v];
+						quat[2] = quatZ[v];
+						quat[3] = quatW[v];
 					}
 					else
 					{
-						normal_tri_v3(no, mvert[fmd->anim_bind[i].v].co,
-										  mvert[fmd->anim_bind[i].v1].co,
-										  mvert[fmd->anim_bind[i].v2].co);
+						copy_v3_v3(vec, fmd->anim_bind[i].no);
+						if (fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1) {
+							//fallback if not enough verts around;
+							normal_short_to_float_v3(no, mvert[v].no);
+							normalize_v3(no);
+							rotation_between_vecs_to_quat(quat, vec, no);
+						}
+						else {
+							float rot[4], iquat[4];
+							tri_to_quat(rot, mvert[fmd->anim_bind[i].v].co,
+											  mvert[fmd->anim_bind[i].v1].co,
+											  mvert[fmd->anim_bind[i].v2].co);
+							invert_qt_qt(iquat, fmd->anim_bind[i].quat);
+							mul_qt_qtqt(quat, rot, iquat);
+						}
 					}
 
-					rotation_between_vecs_to_quat(quat, vec, no);
+					//mul_qt_qtqt(quat, quat, ob_quat);
 				}
 
-				copy_v3_v3(co, mvert[v].co);
-				copy_v3_v3(off, fmd->anim_bind[i].offset);
 				mul_qt_v3(quat, off);
+				//mul_m4_v3(ob->obmat, off);
 				sub_v3_v3(co, off);
 				mul_m4_v3(fmd->anim_mesh_ob->obmat, co);
 
 				copy_v3_v3(mi->rigidbody->pos, co);
 
-				if (quats)
+				if (fmd->anim_mesh_rot)
 				{
-					quat[0] = quatX[v];
-					quat[1] = quatY[v];
-					quat[2] = quatZ[v];
-					quat[3] = quatW[v];
-
-					if (fmd->anim_mesh_rot) {
-						mul_qt_qtqt(quat, obquat, quat);
-						copy_qt_qt(mi->rigidbody->orn, quat);
-					}
-				}
-				else {
-					if (fmd->anim_mesh_rot) {
-						mul_qt_qtqt(quat, obquat, quat);
-						copy_qt_qt(mi->rigidbody->orn, quat);
-					}
+					mat4_to_quat(anim_quat, fmd->anim_mesh_ob->obmat);
+					mul_qt_qtqt(quat, anim_quat, quat);
+					copy_qt_qt(mi->rigidbody->orn, quat);
 				}
 
 				mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;

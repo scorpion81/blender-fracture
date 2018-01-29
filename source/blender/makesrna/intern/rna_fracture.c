@@ -670,12 +670,14 @@ static void rna_Modifier_update(Main *UNUSED(bmain), Scene *UNUSED(scene), Point
 				return;
 			}
 		}
+#if 0
 		else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			// do purge
 			fmd->last_frame = INT_MAX;
 			fmd->refresh = true;
 		}
+#endif
 	}
 
 	DAG_id_tag_update(ptr->id.data, OB_RECALC_DATA);
