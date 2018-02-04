@@ -648,9 +648,9 @@ static AVStream *alloc_video_stream(FFMpegContext *context, RenderData *rd, int 
 	}
 
 	if (codec_id == AV_CODEC_ID_QTRLE) {
-		if (rd->im_format.planes == R_IMF_PLANES_RGBA) {
+//		if (rd->im_format.planes == R_IMF_PLANES_RGBA) {
 			c->pix_fmt = AV_PIX_FMT_ARGB;
-		}
+//		}
 	}
 
 	if (codec_id == AV_CODEC_ID_PNG) {
