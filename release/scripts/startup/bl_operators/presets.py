@@ -678,6 +678,7 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.mass_threshold_factor",
         "fracture.autohide_filter_group",
         "fracture.uv_layer",
+        "fracture.inner_material",
         "fracture.boolean_solver",
         "fracture.boolean_double_threshold",
         "fracture.dynamic_percentage",
