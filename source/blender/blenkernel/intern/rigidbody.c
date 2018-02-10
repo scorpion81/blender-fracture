@@ -5502,7 +5502,7 @@ bool BKE_restoreKinematic(RigidBodyWorld *rbw, bool override_bind)
 			triggered = go->ob->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION;
 
 			FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
-			if (fmd && triggered && (!fmd->use_animated_mesh || (fmd->use_animated_mesh && override_bind)))
+			if (fmd && triggered)
 			{
 				MeshIsland* mi;
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
@@ -5512,7 +5512,16 @@ bool BKE_restoreKinematic(RigidBodyWorld *rbw, bool override_bind)
 						mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC_REBUILD;
 						if (kinematic)
 						{
-							mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
+							if(!fmd->use_animated_mesh ||
+							  (fmd->use_animated_mesh && (override_bind || mi->rigidbody->flag & RBO_FLAG_KINEMATIC_BOUND)))
+							{
+								if (fmd->use_animated_mesh && override_bind)
+								{
+									mi->rigidbody->flag |= RBO_FLAG_KINEMATIC_BOUND;
+								}
+
+								mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
+							}
 						}
 						else
 						{

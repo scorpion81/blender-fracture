@@ -183,7 +183,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             row.prop(md, "min_acceleration")
             row.prop(md, "max_acceleration")
             row.prop(md, "acceleration_fade")
-            if (md.frac_algorithm in {'BISECT_FAST', 'BISECT_FAST_FILL'}):
+            if (md.frac_algorithm in {'BISECT_FAST', 'BISECT_FAST_FILL', 'BOOLEAN_FRACTAL'}):
                 box.prop(md, "orthogonality_factor", text="Rectangular Alignment")
 
         layout.context_pointer_set("modifier", md)

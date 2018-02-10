@@ -3926,14 +3926,14 @@ static void rna_def_modifier_remesh(BlenderRNA *brna)
 	/*mball remesh related */
 	prop = RNA_def_property(srna, "mball_resolution", PROP_FLOAT, PROP_DISTANCE);
 	RNA_def_property_float_sdna(prop, NULL, "wiresize");
-	RNA_def_property_range(prop, 0.005f, 10000.0f);
+	RNA_def_property_range(prop, 0.0001f, 10000.0f);
 	RNA_def_property_ui_range(prop, 0.05f, 1000.0f, 2.5f, 3);
 	RNA_def_property_ui_text(prop, "Wire Size", "Polygonization resolution in the 3D viewport");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "mball_render_resolution", PROP_FLOAT, PROP_DISTANCE);
 	RNA_def_property_float_sdna(prop, NULL, "rendersize");
-	RNA_def_property_range(prop, 0.005f, 10000.0f);
+	RNA_def_property_range(prop, 0.0001f, 10000.0f);
 	RNA_def_property_ui_range(prop, 0.025f, 1000.0f, 2.5f, 3);
 	RNA_def_property_ui_text(prop, "Render Size", "Polygonization resolution in rendering");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
@@ -3946,7 +3946,7 @@ static void rna_def_modifier_remesh(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "mball_size", PROP_FLOAT, PROP_XYZ);
 	RNA_def_property_float_sdna(prop, NULL, "basesize");
-	RNA_def_property_ui_range(prop, 0.001f, 10.0f, 0.1f, 3);
+	RNA_def_property_ui_range(prop, 0.0001f, 10.0f, 0.1f, 3);
 	RNA_def_property_range(prop, 0.001f, 100.0f);
 	RNA_def_property_array(prop, 3);
 	RNA_def_property_ui_text(prop, "Size",
