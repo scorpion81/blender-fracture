@@ -4202,10 +4202,10 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 				{
 					float ob_quat[4];
 					mat4_to_quat(ob_quat, ob->obmat);
-					//invert_qt(ob_quat);
-					mat4_to_quat(anim_quat, fmd->anim_mesh_ob->obmat);
-					mul_qt_qtqt(quat, quat, anim_quat);
-					mul_qt_qtqt(quat, quat, ob_quat);
+					//mat4_to_quat(anim_quat, fmd->anim_mesh_ob->obmat);
+					//invert_qt(anim_quat);
+					//mul_qt_qtqt(quat, anim_quat, quat);
+					mul_qt_qtqt(quat, ob_quat, quat);
 					copy_qt_qt(mi->rigidbody->orn, quat);
 				}
 
