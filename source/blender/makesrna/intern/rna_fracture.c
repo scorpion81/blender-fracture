@@ -1451,7 +1451,7 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_range(prop, 1, 10000);
 	RNA_def_property_array(prop, 3);
 	RNA_def_property_int_default(prop, 10);
-	RNA_def_property_ui_text(prop, "Grid resolution", "How many grid cells per Bounding Box Axis");
+	RNA_def_property_ui_text(prop, "Grid Resolution", "How many grid cells per Bounding Box Axis");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -1527,6 +1527,24 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0, FLT_MAX);
 	RNA_def_property_ui_text(prop, "Limit", "Maximal distance between shards and verts to perform a bind between");
 	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.1f, 4);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "grid_offset", PROP_FLOAT, PROP_XYZ);
+	RNA_def_property_float_sdna(prop, NULL, "grid_offset");
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_array(prop, 3);
+	RNA_def_property_float_default(prop, 0.0f);
+	RNA_def_property_ui_text(prop, "Grid Offset", "How far odd rows are relatively offset compared to even ones");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "grid_spacing", PROP_FLOAT, PROP_XYZ);
+	RNA_def_property_float_sdna(prop, NULL, "grid_spacing");
+	RNA_def_property_range(prop, 0.0f, 0.99f);
+	RNA_def_property_array(prop, 3);
+	RNA_def_property_float_default(prop, 0.0f);
+	RNA_def_property_ui_text(prop, "Grid Spacing", "How much space inbetween the bricks, in each direction");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 

@@ -1937,15 +1937,16 @@ static FractureData segment_cells(cell *voro_cells, int startcell, int totcells,
 
 void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short
                                   inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
-                                  bool reset, int active_setting, int num_settings, char uv_layer[64], bool threaded, int solver, float thresh,
-                                  bool shards_to_islands, int override_count, float factor)
+                                  bool reset, int active_setting, int num_settings, char uv_layer[64], bool threaded, int solver,
+                                  float thresh, bool shards_to_islands, int override_count, float factor, int point_source,
+                                  int resolution[3], float spacing[3])
 {
 	int n_size = 8;
 	
 	Shard *shard;
 	
 	float min[3], max[3];
-	float theta = 0.1f; /* TODO, container enlargement, because boundbox exact container and boolean might create artifacts */
+	float theta = 0.001f; /* TODO, container enlargement, because boundbox exact container and boolean might create artifacts */
 	int p, i = 0, num = 0, totcell = 0, remainder_start = 0;
 	
 	container *voro_container;
@@ -1990,9 +1991,42 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	mul_m4_v3(mat, max);
 
 	
-	voro_container = container_new(min[0], max[0], min[1], max[1], min[2], max[2],
-	                               n_size, n_size, n_size, false, false, false,
-	                               pointcloud->totpoints);
+	if (point_source & MOD_FRACTURE_GRID)
+	{
+		float off[3] =  {0, 0, 0};
+		for (p = 0; p < pointcloud->totpoints; p++)
+		{
+			//find "max" offset (where atleast 1 axis is > 0)
+			if (pointcloud->points[p].offset[0] > 0 ||
+			    pointcloud->points[p].offset[1] > 0 ||
+			    pointcloud->points[p].offset[2] > 0)
+			{
+				copy_v3_v3(off, pointcloud->points[p].offset);
+				break;
+			}
+		}
+
+		if (off[0] > 0 || off[1] > 0 || off[2] > 0)
+		{
+			sub_v3_v3(min, off);
+
+			//special treatment for grid pointsource... with offsets
+			voro_container = container_new(min[0], max[0], min[1], max[1], min[2], max[2],
+										   resolution[0] * 2, resolution[1] * 2, resolution[2] * 2, false, false, false,
+										   pointcloud->totpoints);
+
+		}
+		else {
+			voro_container = container_new(min[0], max[0], min[1], max[1], min[2], max[2],
+										   n_size, n_size, n_size, false, false, false,
+										   pointcloud->totpoints);
+		}
+	}
+	else {
+		voro_container = container_new(min[0], max[0], min[1], max[1], min[2], max[2],
+									   n_size, n_size, n_size, false, false, false,
+									   pointcloud->totpoints);
+	}
 	
 	voro_particle_order = particle_order_new();
 	for (p = 0; p < pointcloud->totpoints; p++) {
@@ -2009,6 +2043,31 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 
 	/*Compute directly...*/
 	container_compute_cells(voro_container, voro_cells);
+
+	/*Apply offsets (if any, grid only */
+	if (point_source & MOD_FRACTURE_GRID)
+	{
+		int v = 0;
+		float fact[3] = {1 - spacing[0], 1 - spacing[1], 1 - spacing[2]};
+		for (p = 0; p < pointcloud->totpoints; p++)
+		{
+			//adjust centroid and...
+			float off[3], cent[3];
+			copy_v3_v3(off, pointcloud->points[p].offset);
+			add_v3_v3(voro_cells[p].centroid, off);
+			copy_v3_v3(cent, voro_cells[p].centroid);
+			mul_v3_v3(cent, fact);
+
+			//vertex coordinates
+			for (v = 0; v < voro_cells[p].totvert; v++)
+			{
+				add_v3_v3(voro_cells[p].verts[v], off);
+				//print_v3("Vert", voro_cells[p].verts[v]);
+				sub_v3_v3(voro_cells[p].verts[v], cent);
+				add_v3_v3(voro_cells[p].verts[v], voro_cells[p].centroid);
+			}
+		}
+	}
 
 	/*Disable for fast bisect/fill, dynamic and mousebased for now -> errors and crashes */
 	if (mode != MOD_FRACTURE_DYNAMIC && reset == true && algorithm != MOD_FRACTURE_BISECT_FAST && algorithm != MOD_FRACTURE_BISECT_FAST_FILL && threaded == true) {

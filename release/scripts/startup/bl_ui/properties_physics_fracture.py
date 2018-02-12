@@ -152,7 +152,10 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             col = box.column()
             col.prop(md, "point_source")
             if 'GRID' in md.point_source:
-                col.prop(md, "grid_resolution")
+                sub = col.split(0.33)
+                sub.prop(md, "grid_resolution")
+                sub.prop(md, "grid_offset")
+                sub.prop(md, "grid_spacing")
             if 'GREASE_PENCIL' in md.point_source:
                 col.prop(md, "use_greasepencil_edges")
                 col.prop(md, "grease_offset")

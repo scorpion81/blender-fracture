@@ -1811,6 +1811,8 @@ typedef struct FractureModifierData {
 	float max_acceleration;
 	float acceleration_fade;
 	float anim_bind_limit;
+	float grid_offset[3];
+	float grid_spacing[3];
 
 	/* flags */
 	int refresh;

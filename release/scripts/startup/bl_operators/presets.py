@@ -710,6 +710,8 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.use_animated_mesh",
         "fracture.animated_mesh_input",
         "fracture.use_animated_mesh_rotation",
+        "fracture.grid_offset",
+        "fracture.grid_spacing",
     ]
 
     preset_subdir = "fracture"

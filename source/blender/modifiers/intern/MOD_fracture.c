@@ -268,6 +268,8 @@ static void initData(ModifierData *md)
 	fmd->anim_bind_len = 0;
 	fmd->anim_mesh_rot = false;
 	fmd->anim_bind_limit = 0.0f;
+	zero_v3(fmd->grid_offset);
+	zero_v3(fmd->grid_spacing);
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -989,6 +991,7 @@ static void points_from_verts(Object **ob, int totobj, FracPointCloud *points, f
 							{
 								points->points = MEM_reallocN(points->points, (pt + 1) * sizeof(FracPoint));
 								copy_v3_v3(points->points[pt].co, co);
+								zero_v3(points->points[pt].offset);
 								pt++;
 							}
 						}
@@ -997,6 +1000,7 @@ static void points_from_verts(Object **ob, int totobj, FracPointCloud *points, f
 					{
 						points->points = MEM_reallocN(points->points, (pt + 1) * sizeof(FracPoint));
 						copy_v3_v3(points->points[pt].co, co);
+						zero_v3(points->points[pt].offset);
 						pt++;
 					}
 				}
@@ -1066,6 +1070,7 @@ static void points_from_particles(Object **ob, int totobj, Scene *scene, FracPoi
 								{
 									points->points = MEM_reallocN(points->points, (pt + 1) * sizeof(FracPoint));
 									copy_v3_v3(points->points[pt].co, co);
+									zero_v3(points->points[pt].offset);
 									pt++;
 								}
 							}
@@ -1074,6 +1079,7 @@ static void points_from_particles(Object **ob, int totobj, Scene *scene, FracPoi
 						{
 							points->points = MEM_reallocN(points->points, (pt + 1) * sizeof(FracPoint));
 							copy_v3_v3(points->points[pt].co, co);
+							zero_v3(points->points[pt].offset);
 							pt++;
 						}
 					}
@@ -1112,6 +1118,7 @@ static void points_from_greasepencil(Object **ob, int totobj, FracPointCloud *po
 								mul_m4_v3(imat, point);
 
 								copy_v3_v3(points->points[pt].co, point);
+								zero_v3(points->points[pt].offset);
 								pt++;
 							}
 						}
@@ -1300,6 +1307,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 					{
 						points.points = MEM_reallocN(points.points, sizeof(FracPoint) * (points.totpoints + 1));
 						copy_v3_v3(points.points[points.totpoints].co, co);
+						zero_v3(points.points[points.totpoints].offset);
 						points.totpoints++;
 					}
 				}
@@ -1307,6 +1315,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 				{
 					points.points = MEM_reallocN(points.points, sizeof(FracPoint) * (points.totpoints + 1));
 					copy_v3_v3(points.points[points.totpoints].co, co);
+					zero_v3(points.points[points.totpoints].offset);
 					points.totpoints++;
 				}
 			}
@@ -1316,7 +1325,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 	if (emd->point_source & MOD_FRACTURE_GRID)
 	{
 		float cent[3], bmin[3], bmax[3];
-		int x, y, z;
+		int x, y, z, k = 0;
 
 		if (emd->grid_resolution[0] < 1)
 		{	//sanity check
@@ -1345,13 +1354,35 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 		add_v3_v3v3(bmin, min, cent);
 
 		//centroid of grid cells is
-		for (x = 0; x < emd->grid_resolution[0]; ++x) {
-			for (y = 0; y < emd->grid_resolution[1]; ++y) {
-				for (z = 0; z < emd->grid_resolution[2]; ++z) {
-					float co[3];
+		for (z = 0; z < emd->grid_resolution[2]; z++) {
+			for (y = 0; y < emd->grid_resolution[1]; y++) {
+				for (x = 0; x < emd->grid_resolution[0]; x++) {
+					float co[3], off[3] =  {0, 0, 0};
 					co[0] = min[0] + (max[0] - min[0]) * ((float)x + 0.5f)/(float)emd->grid_resolution[0];
 					co[1] = min[1] + (max[1] - min[1]) * ((float)y + 0.5f)/(float)emd->grid_resolution[1];
 					co[2] = min[2] + (max[2] - min[2]) * ((float)z + 0.5f)/(float)emd->grid_resolution[2];
+
+
+					//alternating offset for bricks
+					if (((x % 2) == 1) && (emd->grid_offset[0] == 0))
+					{
+						off[1] = emd->grid_offset[1] * ((max[1] - min[1]) / (float)emd->grid_resolution[1]);
+						off[2] = emd->grid_offset[2] * ((max[2] - min[2]) / (float)emd->grid_resolution[2]);
+					}
+
+					if (((y % 2) == 1) && (emd->grid_offset[1] == 0))
+					{
+						off[0] = emd->grid_offset[0] * ((max[0] - min[0]) / (float)emd->grid_resolution[0]);
+						off[2] = emd->grid_offset[2] * ((max[2] - min[2]) / (float)emd->grid_resolution[2]);
+					}
+
+					if (((z % 2) == 1) && (emd->grid_offset[2] == 0))
+					{
+						off[0] = emd->grid_offset[0] * ((max[0] - min[0]) / (float)emd->grid_resolution[0]);
+						off[1] = emd->grid_offset[1] * ((max[1] - min[1]) / (float)emd->grid_resolution[1]);
+					}
+
+					print_v3("offset", off);
 
 					if (id > 0 && emd->cutter_group == NULL)
 					{
@@ -1359,6 +1390,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 						{
 							points.points = MEM_reallocN(points.points, sizeof(FracPoint) * (points.totpoints + 1));
 							copy_v3_v3(points.points[points.totpoints].co, co);
+							copy_v3_v3(points.points[points.totpoints].offset, off);
 							points.totpoints++;
 						}
 					}
@@ -1366,8 +1398,11 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 					{
 						points.points = MEM_reallocN(points.points, sizeof(FracPoint) * (points.totpoints + 1));
 						copy_v3_v3(points.points[points.totpoints].co, co);
+						copy_v3_v3(points.points[points.totpoints].offset, off);
 						points.totpoints++;
 					}
+
+					k++;
 				}
 			}
 		}
@@ -1648,7 +1683,8 @@ static void do_fracture_points(FractureModifierData *fmd, Object* obj, DerivedMe
 			                             fmd->fractal_cuts, fmd->fractal_amount, fmd->use_smooth, fmd->fractal_iterations,
 			                             fmd->fracture_mode, fmd->reset_shards, fmd->active_setting, num_settings, fmd->uvlayer_name,
 			                             fmd->execute_threaded, fmd->boolean_solver, fmd->boolean_double_threshold, fmd->shards_to_islands,
-			                             override_count, fmd->orthogonality_factor);
+			                             override_count, fmd->orthogonality_factor, fmd->point_source,
+			                             fmd->grid_resolution, fmd->grid_spacing);
 		}
 
 		/*TODO, limit this to settings shards !*/
@@ -1885,6 +1921,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 	//memcpy(trmd->anim_bind, rmd->anim_bind, sizeof(int) * trmd->anim_bind_len);
 	trmd->anim_mesh_rot = rmd->anim_mesh_rot;
 	trmd->anim_bind_limit = rmd->anim_bind_limit;
+	copy_v3_v3(trmd->grid_offset, rmd->grid_offset);
+	copy_v3_v3(trmd->grid_spacing, rmd->grid_spacing);
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
