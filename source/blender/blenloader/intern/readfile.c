@@ -5378,6 +5378,8 @@ static void load_fracture_modifier(FileData* fd, FractureModifierData *fmd)
 		fmd->refresh_images = false;
 		fmd->islandShards.first = NULL;
 		fmd->islandShards.last = NULL;
+		fmd->anim_bind = NULL;
+		fmd->anim_bind_len = 0;
 	}
 	else {
 		MeshIsland *mi;
@@ -9181,7 +9183,7 @@ static void fix_fracture_image_hack(Main* main)
 
 	for (ob = main->object.first; ob; ob = ob->id.next) {
 		FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
-		if (fmd && fmd->dm_group && !fmd->use_constraint_group) {
+		if (fmd && fmd->dm_group) {
 			fmd->refresh_images = true;
 			fmd->refresh = true;
 		}

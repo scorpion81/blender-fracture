@@ -235,6 +235,11 @@ static void rna_FractureModifier_use_constraints_set(PointerRNA* ptr, int value)
 	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
 	rmd->use_constraints = value;
 	rmd->refresh_constraints = true;
+
+	/*if (rmd->dm_group)
+	{
+		rmd->refresh = true;
+	}*/
 }
 
 static void rna_FractureModifier_use_constraint_collision_set(PointerRNA* ptr, int value)
@@ -657,7 +662,12 @@ static void rna_FractureModifier_use_constraint_group_set(PointerRNA* ptr, int v
 {
 	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
 	rmd->use_constraint_group = value;
-	//rmd->refresh_constraints = true;
+	rmd->refresh_constraints = true;
+
+	/*if (rmd->dm_group)
+	{
+		rmd->refresh = true;
+	}*/
 }
 
 

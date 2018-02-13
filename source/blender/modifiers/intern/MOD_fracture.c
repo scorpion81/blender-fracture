@@ -15,9 +15,6 @@
  * along with this program; if not, write to the Free Software  Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * The Original Code is Copyright (C) Blender Foundation
- * All rights reserved.
- *
  * The Original Code is: all of this file.
  *
  * Contributor(s): Martin Felke
@@ -97,6 +94,7 @@ static void free_shared_verts(ListBase *lb);
 static void reset_automerge(FractureModifierData *fmd);
 static void do_refresh_automerge(FractureModifierData *fmd);
 static void free_shards(FractureModifierData *fmd);
+static void do_island_index_map(FractureModifierData *fmd);
 
 //TODO XXX Make BKE
 static FracMesh* copy_fracmesh(FracMesh* fm)
@@ -2685,6 +2683,14 @@ static void connect_meshislands(FractureModifierData *fmd, MeshIsland *mi1, Mesh
 
 					if (fmd1 && fmd2)
 					{
+						if (!fmd1->vertex_island_map) {
+							do_island_index_map(fmd1);
+						}
+
+						if (!fmd2->vertex_island_map) {
+							do_island_index_map(fmd2);
+						}
+
 						mi_1 = BLI_ghash_lookup(fmd1->vertex_island_map, SET_INT_IN_POINTER(mi1->vertex_indices[0] - v1));
 						mi_2 = BLI_ghash_lookup(fmd2->vertex_island_map, SET_INT_IN_POINTER(mi2->vertex_indices[0] - v2));
 
@@ -4598,8 +4604,9 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 
 			/* 2 cases, we can have a visible mesh or a cached visible mesh, the latter primarily when loading blend from file or using halving */
 			/* free cached mesh in case of "normal refracture here if we have a visible mesh, does that mean REfracture ?*/
-			if (fmd->visible_mesh != NULL && !fmd->shards_to_islands && fmd->frac_mesh->shard_count > 0 && fmd->refresh) {
-
+			if (fmd->visible_mesh != NULL && !fmd->shards_to_islands && fmd->frac_mesh &&
+			    fmd->frac_mesh->shard_count > 0 && fmd->refresh)
+			{
 				if (fmd->visible_mesh_cached) {
 					fmd->visible_mesh_cached->needsFree = 1;
 					fmd->visible_mesh_cached->release(fmd->visible_mesh_cached);
@@ -5100,7 +5107,7 @@ static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, Deriv
 	/* hrm need to differentiate between on startframe and on startframe directly after loading */
 	/* in latter case the rigidbodyworld is still empty, so if loaded do not execute (it damages FM data) */
 	bool is_start = scene && rbw && cache && rbw->numbodies > 0 ? frame == cache->startframe : false;
-	bool do_refresh = fmd->auto_execute && is_start;
+	bool do_refresh = (fmd->auto_execute && is_start) || (fmd->dm_group && fmd->use_constraint_group && fmd->refresh_constraints);
 
 	DerivedMesh *final_dm = derivedData;
 	DerivedMesh *group_dm = get_group_dm(fmd, derivedData, ob, do_refresh || fmd->refresh);
