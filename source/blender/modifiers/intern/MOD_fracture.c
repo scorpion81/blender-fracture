@@ -5145,11 +5145,23 @@ static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, Deriv
 
 	if (fmd->dm_group && fmd->use_constraint_group)
 	{
-		//remove collected mesh here
-		final_dm = derivedData;
-
 		//remove own, unnecessary meshislands and rigidbodies
 		free_meshislands(fmd, &fmd->meshIslands, true);
+		free_shards(fmd);
+		if (fmd->dm) {
+			fmd->dm->needsFree = 1;
+			fmd->dm->release(fmd->dm);
+			fmd->dm = NULL;
+		}
+
+		if (fmd->visible_mesh_cached) {
+			fmd->visible_mesh_cached->needsFree = 1;
+			fmd->visible_mesh_cached->release(fmd->visible_mesh_cached);
+			fmd->visible_mesh_cached = NULL;
+		}
+
+		//remove collected mesh here
+		final_dm = derivedData;
 	}
 
 	/* free newly created derivedmeshes only, but keep derivedData and final_dm*/
