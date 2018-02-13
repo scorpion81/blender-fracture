@@ -163,6 +163,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
                 col.prop(md, "cutter_axis")
             col.prop(md, "extra_group")
             col.prop(md, "dm_group")
+            col.prop(md, "use_constraint_group")
             col.prop(md, "cutter_group")
             if (md.cutter_group):
                 col.prop(md, "keep_cutter_shards")

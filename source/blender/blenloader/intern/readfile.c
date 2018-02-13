@@ -9181,7 +9181,7 @@ static void fix_fracture_image_hack(Main* main)
 
 	for (ob = main->object.first; ob; ob = ob->id.next) {
 		FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
-		if (fmd && fmd->dm_group) {
+		if (fmd && fmd->dm_group && !fmd->use_constraint_group) {
 			fmd->refresh_images = true;
 			fmd->refresh = true;
 		}

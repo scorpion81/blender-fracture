@@ -270,6 +270,7 @@ static void initData(ModifierData *md)
 	fmd->anim_bind_limit = 0.0f;
 	zero_v3(fmd->grid_offset);
 	zero_v3(fmd->grid_spacing);
+	fmd->use_constraint_group = false;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1923,6 +1924,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 	trmd->anim_bind_limit = rmd->anim_bind_limit;
 	copy_v3_v3(trmd->grid_offset, rmd->grid_offset);
 	copy_v3_v3(trmd->grid_spacing, rmd->grid_spacing);
+
+	trmd->use_constraint_group = rmd->use_constraint_group;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
@@ -2631,7 +2634,72 @@ static void connect_meshislands(FractureModifierData *fmd, MeshIsland *mi1, Mesh
 	}
 
 	if (!con_found && ok) {
-		BKE_meshisland_constraint_create(fmd, mi1, mi2, con_type, thresh);
+
+		if (fmd->dm_group && fmd->use_constraint_group) {
+			//map back to "original" mesh islands and only create here if objects differ
+			int index1 = GET_INT_FROM_POINTER(BLI_ghash_lookup(fmd->vert_index_map, SET_INT_IN_POINTER(mi1->vertex_indices[0])));
+			int index2 = GET_INT_FROM_POINTER(BLI_ghash_lookup(fmd->vert_index_map, SET_INT_IN_POINTER(mi2->vertex_indices[0])));
+			bool error = false;
+
+			if (index1 != index2)
+			{
+				//different index in group, different objects
+				Object *ob1 = NULL, *ob2 = NULL;
+				FractureModifierData *fmd1 = NULL, *fmd2 = NULL;
+				MeshIsland *mi_1 = NULL, *mi_2 = NULL;
+				int i = 0;
+				int v = 0, v1 = 0, v2 = 0;
+
+				GroupObject *go;
+				DerivedMesh *dm;
+
+				for (go = fmd->dm_group->gobject.first; go; go = go->next)
+				{
+					if (i == index1)
+					{
+						ob1 = go->ob;
+						v1 = v;
+					}
+
+					if (i == index2)
+					{
+						ob2 = go->ob;
+						v2 = v;
+					}
+
+					i++;
+
+					dm = get_object_dm(go->ob);
+					if (!dm) {
+						error = true;
+						break;
+					}
+
+					v += dm->getNumVerts(dm);
+				}
+
+				if (ob1 && ob2 && !error)
+				{
+					fmd1 = (FractureModifierData*)modifiers_findByType(ob1, eModifierType_Fracture);
+					fmd2 = (FractureModifierData*)modifiers_findByType(ob2, eModifierType_Fracture);
+
+					if (fmd1 && fmd2)
+					{
+						mi_1 = BLI_ghash_lookup(fmd1->vertex_island_map, SET_INT_IN_POINTER(mi1->vertex_indices[0] - v1));
+						mi_2 = BLI_ghash_lookup(fmd2->vertex_island_map, SET_INT_IN_POINTER(mi2->vertex_indices[0] - v2));
+
+						if (mi_1 && mi_2)
+						{
+							BKE_meshisland_constraint_create(fmd, mi_1, mi_2, con_type, thresh);
+						}
+					}
+				}
+			}
+		}
+		else
+		{
+			BKE_meshisland_constraint_create(fmd, mi1, mi2, con_type, thresh);
+		}
 	}
 }
 
@@ -5073,6 +5141,15 @@ static DerivedMesh *do_prefractured(FractureModifierData *fmd, Object *ob, Deriv
 	}
 	else {
 		final_dm = doSimulate(fmd, ob, clean_dm, clean_dm, NULL, 0);
+	}
+
+	if (fmd->dm_group && fmd->use_constraint_group)
+	{
+		//remove collected mesh here
+		final_dm = derivedData;
+
+		//remove own, unnecessary meshislands and rigidbodies
+		free_meshislands(fmd, &fmd->meshIslands, true);
 	}
 
 	/* free newly created derivedmeshes only, but keep derivedData and final_dm*/

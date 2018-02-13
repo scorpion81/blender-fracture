@@ -4119,6 +4119,11 @@ static bool check_constraint_island(FractureModifierData* fmd, MeshIsland *mi1, 
 
 	}
 
+	if (fmd)
+	{
+		return !(fmd->dm_group && fmd->use_constraint_collision);
+	}
+
 	return true;
 }
 
@@ -4229,10 +4234,12 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || ((ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0);
 		validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || ((mi2 && mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
 
-		validOb = validOb && (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) && check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2)));
+		validOb = validOb && (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) &&
+		          check_constraint_island(fmd2, mi2, mi1)) || ((ob1 != ob2) && !(fmd1 && fmd2))));
 	}
 	else {
-		validOb = (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) && check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2)));
+		validOb = (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) &&
+		          check_constraint_island(fmd2, mi2, mi1)) || ((ob1 != ob2) && !(fmd1 && fmd2))));
 	}
 
 	return activate ? validOb : check_activate || validOb;

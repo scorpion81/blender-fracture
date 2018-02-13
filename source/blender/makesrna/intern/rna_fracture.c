@@ -653,6 +653,14 @@ static void rna_FractureModifier_anim_mesh_ob_set(PointerRNA* ptr, PointerRNA va
 	rmd->anim_mesh_ob = value.data;
 }
 
+static void rna_FractureModifier_use_constraint_group_set(PointerRNA* ptr, int value)
+{
+	FractureModifierData *rmd = (FractureModifierData *)ptr->data;
+	rmd->use_constraint_group = value;
+	//rmd->refresh_constraints = true;
+}
+
+
 static void rna_Modifier_update(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
 {
 	ModifierData* md = ptr->data;
@@ -1545,6 +1553,13 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_array(prop, 3);
 	RNA_def_property_float_default(prop, 0.0f);
 	RNA_def_property_ui_text(prop, "Grid Spacing", "How much space inbetween the bricks, in each direction");
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "use_constraint_group", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "use_constraint_group", false);
+	//RNA_def_property_boolean_funcs(prop, NULL, "rna_FractureModifier_use_constraint_group_set");
+	RNA_def_property_ui_text(prop, "Constraints Only", "Only manage the external constraints in this Fracture Modifier");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
