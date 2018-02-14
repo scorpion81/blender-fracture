@@ -1497,9 +1497,10 @@ typedef struct MeshIsland {
 	int linear_index;  /* index in rigidbody world */
 	int particle_index;
 	int constraint_index;
+	int object_index;
 	int totcol; /*store number of used materials here, from the original object*/
 	int totdef; /*store number of used vertexgroups here, from the original object*/
-	//char pad[4];
+	char pad[4];
 } MeshIsland;
 
 
