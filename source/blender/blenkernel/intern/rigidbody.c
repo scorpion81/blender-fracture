@@ -2566,7 +2566,10 @@ static bool isModifierActive(FractureModifierData *rmd) {
 static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle, bool exact)
 {
 	float q1[4], q2[4], qdiff[4], axis[3];
-	if ((con->mi1->rigidbody == NULL) || (con->mi2->rigidbody == NULL)) {
+
+	if (con == NULL || con->mi1 == NULL || con->mi2 == NULL ||
+	    con->mi1->rigidbody == NULL || con->mi2->rigidbody == NULL)
+	{
 		*dist = 0;
 		*angle = 0;
 		return;
@@ -5026,11 +5029,17 @@ static void handle_solver_iterations(RigidBodyWorld *rbw, FractureModifierData *
 		iterations = rbw->num_solver_iterations;
 	}
 	else {
-		if ((rbsc->mi1->particle_index != -1) && (rbsc->mi1->particle_index == rbsc->mi2->particle_index)) {
-			iterations = fmd->cluster_solver_iterations_override;
+		if (rbsc && rbsc->mi1 && rbsc->mi2)
+		{
+			if ((rbsc->mi1->particle_index != -1) && (rbsc->mi1->particle_index == rbsc->mi2->particle_index)) {
+				iterations = fmd->cluster_solver_iterations_override;
+			}
+			else {
+				iterations = fmd->solver_iterations_override;
+			}
 		}
 		else {
-			iterations = fmd->solver_iterations_override;
+			iterations = rbw->num_solver_iterations;
 		}
 	}
 
@@ -5170,6 +5179,10 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		frame = BKE_scene_frame_get(scene);
 
 		for (rbsc = fmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
+
+			//sanity check
+			if (!rbsc || !rbsc->mi1 || !rbsc->mi2)
+				continue;
 
 			if (rebuild)
 			{

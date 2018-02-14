@@ -2645,6 +2645,22 @@ void BKE_free_constraints(FractureModifierData *fmd)
 
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 		if (mi->participating_constraints != NULL && mi->participating_constraint_count > 0) {
+			int i = 0;
+
+			for (i = 0; i < mi->participating_constraint_count; i++)
+			{
+				RigidBodyShardCon *con = mi->participating_constraints[i];
+				if (con) {
+					if (con->mi1 == mi) {
+						con->mi1 = NULL;
+					}
+
+					if (con->mi2 == mi) {
+						con->mi2 = NULL;
+					}
+				}
+			}
+
 			MEM_freeN(mi->participating_constraints);
 			mi->participating_constraints = NULL;
 			mi->participating_constraint_count = 0;
@@ -3647,7 +3663,12 @@ static void remove_participants(RigidBodyShardCon* con, MeshIsland *mi)
 	RigidBodyShardCon **cons;
 	/* Probably wrong, would need to shrink array size... listbase would have been better here */
 	/* info not necessary so omit */
-	int count = mi->participating_constraint_count;
+	int count = 0;
+
+	if (!mi)
+		return;
+
+	count = mi->participating_constraint_count;
 
 	if (count > 1)
 	{
