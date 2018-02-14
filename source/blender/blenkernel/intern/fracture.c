@@ -93,6 +93,7 @@ static void parse_cell_polys(cell c, MPoly *mpoly, int totpoly, int *r_totloop);
 static void parse_cell_loops(cell c, MLoop *mloop, int totloop, MPoly *mpoly, int totpoly);
 static void parse_cell_neighbors(cell c, int *neighbors, int totpoly);
 static void fracture_collect_layers(Shard *shard, DerivedMesh *result, int vertstart, int polystart, int loopstart, int edgestart);
+static void remove_participants(RigidBodyShardCon *con, MeshIsland *mi);
 
 static void add_shard(FracMesh *fm, Shard *s, float mat[4][4])
 {
@@ -2653,6 +2654,9 @@ void BKE_free_constraints(FractureModifierData *fmd)
 	while (fmd->meshConstraints.first) {
 		rbsc = fmd->meshConstraints.first;
 		BLI_remlink(&fmd->meshConstraints, rbsc);
+		remove_participants(rbsc, rbsc->mi1);
+		remove_participants(rbsc, rbsc->mi2);
+
 		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->modifier.scene)
 		{
 			BKE_rigidbody_remove_shard_con(fmd->modifier.scene, rbsc);
@@ -3397,6 +3401,21 @@ void BKE_fracture_free_mesh_island(FractureModifierData *rmd, MeshIsland *mi, bo
 	}
 
 	if (mi->participating_constraints != NULL) {
+		int i = 0;
+		for (i = 0; i < mi->participating_constraint_count; i++)
+		{
+			RigidBodyShardCon *con = mi->participating_constraints[i];
+			if (con) {
+				if (con->mi1 == mi) {
+					con->mi1 = NULL;
+				}
+
+				if (con->mi2 == mi) {
+					con->mi2 = NULL;
+				}
+			}
+		}
+
 		MEM_freeN(mi->participating_constraints);
 		mi->participating_constraints = NULL;
 		mi->participating_constraint_count = 0;

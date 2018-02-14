@@ -2616,7 +2616,7 @@ static void connect_meshislands(FractureModifierData *fmd, MeshIsland *mi1, Mesh
 		int i;
 		for (i = 0; i < mi1->participating_constraint_count; i++) {
 			con = mi1->participating_constraints[i];
-			if ((con->mi1 == mi2) || (con->mi2 == mi2)) {
+			if (con && ((con->mi1 == mi2) || (con->mi2 == mi2))) {
 				con_found = true;
 				break;
 			}
@@ -2625,7 +2625,7 @@ static void connect_meshislands(FractureModifierData *fmd, MeshIsland *mi1, Mesh
 		if (!con_found) {
 			for (i = 0; i < mi2->participating_constraint_count; i++) {
 				con = mi2->participating_constraints[i];
-				if ((con->mi1 == mi1) || (con->mi2 == mi1)) {
+				if (con && ((con->mi1 == mi1) || (con->mi2 == mi1))) {
 					con_found = true;
 					break;
 				}
