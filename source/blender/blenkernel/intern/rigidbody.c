@@ -1595,18 +1595,9 @@ static int object_sort_eval(const void *s1, const void *s2, void* context)
 	FractureModifierData *fmd1 = (FractureModifierData*)modifiers_findByType(*o1, eModifierType_Fracture);
 	FractureModifierData *fmd2 = (FractureModifierData*)modifiers_findByType(*o2, eModifierType_Fracture);
 
-	if (!fmd1 || !fmd2) {
-		return 0;
-	}
 
 	if ((fmd1 && fmd1->dm_group && fmd1->use_constraint_group) &&
 	   (fmd2 && fmd2->dm_group && fmd2->use_constraint_group))
-	{
-		return 0;
-	}
-
-	if ((fmd1 && !(fmd1->dm_group && fmd1->use_constraint_group)) &&
-	   (fmd2 && !(fmd2->dm_group && fmd2->use_constraint_group)))
 	{
 		return 0;
 	}
@@ -1617,8 +1608,18 @@ static int object_sort_eval(const void *s1, const void *s2, void* context)
 		return 1;
 	}
 
+	if ((fmd1 && fmd1->dm_group && fmd1->use_constraint_group) && !fmd2)
+	{
+		return 1;
+	}
+
 	if ((fmd1 && !(fmd1->dm_group && fmd1->use_constraint_group)) &&
 	   (fmd2 && (fmd2->dm_group && fmd2->use_constraint_group)))
+	{
+		return -1;
+	}
+
+	if ((!fmd1) && (fmd2 && fmd2->dm_group && fmd2->use_constraint_group))
 	{
 		return -1;
 	}
