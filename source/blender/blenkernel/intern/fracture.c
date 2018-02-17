@@ -2643,21 +2643,17 @@ void BKE_free_constraints(FractureModifierData *fmd)
 		}
 	}
 
+
+
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 		if (mi->participating_constraints != NULL && mi->participating_constraint_count > 0) {
-			int i = 0;
-
+			int i;
 			for (i = 0; i < mi->participating_constraint_count; i++)
 			{
 				RigidBodyShardCon *con = mi->participating_constraints[i];
 				if (con) {
-					if (con->mi1 == mi) {
-						con->mi1 = NULL;
-					}
-
-					if (con->mi2 == mi) {
-						con->mi2 = NULL;
-					}
+					con->mi1 = NULL;
+					con->mi2 = NULL;
 				}
 			}
 
@@ -2670,8 +2666,6 @@ void BKE_free_constraints(FractureModifierData *fmd)
 	while (fmd->meshConstraints.first) {
 		rbsc = fmd->meshConstraints.first;
 		BLI_remlink(&fmd->meshConstraints, rbsc);
-		remove_participants(rbsc, rbsc->mi1);
-		remove_participants(rbsc, rbsc->mi2);
 
 		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->modifier.scene)
 		{
@@ -3422,13 +3416,8 @@ void BKE_fracture_free_mesh_island(FractureModifierData *rmd, MeshIsland *mi, bo
 		{
 			RigidBodyShardCon *con = mi->participating_constraints[i];
 			if (con) {
-				if (con->mi1 == mi) {
-					con->mi1 = NULL;
-				}
-
-				if (con->mi2 == mi) {
-					con->mi2 = NULL;
-				}
+				con->mi1 = NULL;
+				con->mi2 = NULL;
 			}
 		}
 
@@ -3794,22 +3783,27 @@ void BKE_meshisland_constraint_create(FractureModifierData* fmd, MeshIsland *mi1
 
 	BLI_addtail(&fmd->meshConstraints, rbsc);
 
-	/* store constraints per meshisland too, to allow breaking percentage */
-	if (mi1->participating_constraints == NULL) {
-		mi1->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon *), "part_constraints_mi1");
-		mi1->participating_constraint_count = 0;
-	}
-	mi1->participating_constraints = MEM_reallocN(mi1->participating_constraints, sizeof(RigidBodyShardCon *) * (mi1->participating_constraint_count + 1));
-	mi1->participating_constraints[mi1->participating_constraint_count] = rbsc;
-	mi1->participating_constraint_count++;
+	if ((mi1->object_index == -1) && (mi2->object_index == -1))
+	{
+		/* store constraints per meshisland too, to allow breaking percentage */
+		if (mi1->participating_constraints == NULL) {
+			mi1->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon *), "part_constraints_mi1");
+			mi1->participating_constraint_count = 0;
+		}
+		mi1->participating_constraints = MEM_reallocN(mi1->participating_constraints,
+		                                              sizeof(RigidBodyShardCon *) * (mi1->participating_constraint_count + 1));
+		mi1->participating_constraints[mi1->participating_constraint_count] = rbsc;
+		mi1->participating_constraint_count++;
 
-	if (mi2->participating_constraints == NULL) {
-		mi2->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon *), "part_constraints_mi2");
-		mi2->participating_constraint_count = 0;
+		if (mi2->participating_constraints == NULL) {
+			mi2->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon *), "part_constraints_mi2");
+			mi2->participating_constraint_count = 0;
+		}
+		mi2->participating_constraints = MEM_reallocN(mi2->participating_constraints,
+		                                              sizeof(RigidBodyShardCon *) * (mi2->participating_constraint_count + 1));
+		mi2->participating_constraints[mi2->participating_constraint_count] = rbsc;
+		mi2->participating_constraint_count++;
 	}
-	mi2->participating_constraints = MEM_reallocN(mi2->participating_constraints, sizeof(RigidBodyShardCon *) * (mi2->participating_constraint_count + 1));
-	mi2->participating_constraints[mi2->participating_constraint_count] = rbsc;
-	mi2->participating_constraint_count++;
 }
 
 void BKE_update_acceleration_map(FractureModifierData *fmd, MeshIsland* mi, Object* ob, int ctime, float acc, RigidBodyWorld *rbw)

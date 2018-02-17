@@ -44,6 +44,7 @@
 #include "BLI_math.h"
 #include "BLI_kdtree.h"
 #include "BLI_rand.h"
+#include "BLI_sort.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
@@ -1586,6 +1587,45 @@ static int rigidbody_group_count_items(const ListBase *group, int *r_num_objects
 	return num_gobjects;
 }
 
+static int object_sort_eval(const void *s1, const void *s2, void* context)
+{
+	Object **o1 = (Object**)s1;
+	Object **o2 = (Object**)s2;
+
+	FractureModifierData *fmd1 = (FractureModifierData*)modifiers_findByType(*o1, eModifierType_Fracture);
+	FractureModifierData *fmd2 = (FractureModifierData*)modifiers_findByType(*o2, eModifierType_Fracture);
+
+	if (!fmd1 || !fmd2) {
+		return 0;
+	}
+
+	if ((fmd1 && fmd1->dm_group && fmd1->use_constraint_group) &&
+	   (fmd2 && fmd2->dm_group && fmd2->use_constraint_group))
+	{
+		return 0;
+	}
+
+	if ((fmd1 && !(fmd1->dm_group && fmd1->use_constraint_group)) &&
+	   (fmd2 && !(fmd2->dm_group && fmd2->use_constraint_group)))
+	{
+		return 0;
+	}
+
+	if ((fmd1 && fmd1->dm_group && fmd1->use_constraint_group) &&
+	   (fmd2 && !(fmd2->dm_group && fmd2->use_constraint_group)))
+	{
+		return 1;
+	}
+
+	if ((fmd1 && !(fmd1->dm_group && fmd1->use_constraint_group)) &&
+	   (fmd2 && (fmd2->dm_group && fmd2->use_constraint_group)))
+	{
+		return -1;
+	}
+
+	return 0;
+}
+
 /* ************************************** */
 /* Simulation Interface - Bullet */
 
@@ -1626,15 +1666,25 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw, bool do_bake_correction)
 
 	printf("RigidbodyCount changed: %d\n", rbw->numbodies);
 
-	//correct map if baked, it might be shifted
+	//pre-sort rbw->objects... put such with fmd->dm_group and fmd->use_constraint_group after all without,
+	//to enforce proper eval order
+
 	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
 
 		if (go->ob->rigidbody_object)
 		{
 			rbw->objects[i] = go->ob;
 		}
+	}
 
-		rmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
+	BLI_qsort_r(rbw->objects, l, sizeof(Object *), object_sort_eval, NULL);
+
+	//correct map if baked, it might be shifted
+	for (i = 0; i < l; i++) {
+		Object *ob = rbw->objects[i];
+		printf("%s\n", ob->id.name + 2);
+
+		rmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 		if (rmd) {
 			for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
 				//store original position of the object in the object array, to be able to rearrange it later so it matches the baked cache
@@ -1651,11 +1701,11 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw, bool do_bake_correction)
 			ismapped = true;
 		}
 
-		if (!ismapped && go->ob->rigidbody_object) {
-			tmp_index[counter] = go->ob->rigidbody_object; /*1 object 1 index here (normal case)*/
+		if (!ismapped && ob->rigidbody_object) {
+			tmp_index[counter] = ob->rigidbody_object; /*1 object 1 index here (normal case)*/
 			tmp_offset[counter] = i;
-			if (go->ob->rigidbody_object && !do_bake_correction)
-				go->ob->rigidbody_object->meshisland_index = counter;
+			if (ob->rigidbody_object && !do_bake_correction)
+				ob->rigidbody_object->meshisland_index = counter;
 			counter++;
 		}
 
@@ -1887,6 +1937,8 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 	bool did_modifier = false;
 	float centroid[3] = {0, 0, 0};
 	float size[3] = {1.0f, 1.0f, 1.0f};
+	float count = BLI_listbase_count(&rbw->group->gobject);
+	int i = 0;
 
 	/* update world */
 	if (rebuild) {
@@ -1896,8 +1948,8 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 	rigidbody_update_sim_world(scene, rbw, rebuild);
 
 	/* update objects */
-	for (go = rbw->group->gobject.first; go; go = go->next) {
-		Object *ob = go->ob;
+	for (i = 0; i < count; i++) {
+		Object *ob = rbw->objects[i];
 
 		if (ob && (ob->type == OB_MESH || ob->type == OB_CURVE || ob->type == OB_SURF || ob->type == OB_FONT)) {
 			did_modifier = do_update_modifier(scene, ob, rbw, rebuild);
@@ -3920,7 +3972,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, FractureMo
 		return;
 	}
 
-	if (ELEM(NULL, rbc->mi1, rbc->mi1->rigidbody, rbc->mi2, rbc->mi2->rigidbody)) {
+	if (ELEM(NULL, rbc->mi1, rbc->mi2)) {
 		if (rbc->physics_constraint) {
 			RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
 			RB_constraint_delete(rbc->physics_constraint);
@@ -3931,6 +3983,10 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, FractureMo
 
 	if (rbc->mi1 == rbc->mi2) {
 		//owch, this happened... better check for sanity  here
+		return;
+	}
+
+	if (ELEM(NULL, rbc->mi1->rigidbody, rbc->mi2->rigidbody)) {
 		return;
 	}
 

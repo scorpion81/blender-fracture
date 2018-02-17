@@ -2608,8 +2608,8 @@ static void connect_meshislands(FractureModifierData *fmd, MeshIsland *mi1, Mesh
 	bool ok = mi1 && mi1->rigidbody;
 	ok = ok && mi2 && mi2->rigidbody;
 	ok = ok && fmd->use_constraints;
-	ok = ok && (!(fmd->dm_group && fmd->use_constraint_group) ||
-	     (fmd->dm_group && fmd->use_constraint_group && mi1->object_index != mi2->object_index));
+	ok = ok && ((!(fmd->dm_group && fmd->use_constraint_group) && (mi1->object_index == -1) && (mi2->object_index == -1))||
+	     (fmd->dm_group && fmd->use_constraint_group && (mi1->object_index != mi2->object_index)));
 
 	if (ok) {
 		/* search local constraint list instead of global one !!! saves lots of time */
@@ -2771,6 +2771,7 @@ static int prepareConstraintSearch(FractureModifierData *rmd, MeshIsland ***mesh
 				if (fmdi) {
 					for (mi = fmdi->meshIslands.first; mi; mi = mi->next) {
 						mi->object_index = j;
+						sprintf(mi->name, "%d", j);
 						(*mesh_islands)[i] = mi;
 						i++;
 					}
@@ -2783,7 +2784,8 @@ static int prepareConstraintSearch(FractureModifierData *rmd, MeshIsland ***mesh
 	else {
 
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
-			mi->object_index = 0;
+			mi->object_index = -1;
+			sprintf(mi->name, "%d", -1);
 			(*mesh_islands)[i] = mi;
 			i++;
 		}
@@ -4297,10 +4299,11 @@ static void do_post_island_creation(FractureModifierData *fmd, Object *ob, Deriv
 static void do_refresh_constraints(FractureModifierData *fmd, Object *ob)
 {
 	double start = PIL_check_seconds_timer();
+
 	do_clusters(fmd, ob);
 	printf("Clustering done, %g\n", PIL_check_seconds_timer() - start);
 
-	start = PIL_check_seconds_timer();
+	start = PIL_check_seconds_timer();	
 
 	if (fmd->use_constraints) {
 		int count = 0;
@@ -4315,7 +4318,7 @@ static void do_refresh_constraints(FractureModifierData *fmd, Object *ob)
 			create_constraints(fmd, ob); /* check for actually creating the constraints inside*/
 		}
 	}
-	fmd->refresh_constraints = false;
+	//fmd->refresh_constraints = false;
 
 	printf("Building constraints done, %g\n", PIL_check_seconds_timer() - start);
 	printf("Constraints: %d\n", BLI_listbase_count(&fmd->meshConstraints));
@@ -4722,7 +4725,40 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 
 //	do_reset_automerge(fmd);
 
-	if (fmd->refresh_constraints) {
+	if (fmd->refresh_constraints || fmd->refresh) {
+
+		Object *pob = NULL;
+		FractureModifierData *pfmd = NULL;
+
+		Scene *scene = fmd->modifier.scene;
+		fmd->refresh_constraints = false;
+
+		//force-refresh other FMs if they have "us" in our group (shouldnt be 1000s, so should be ok performance wise)
+		if (scene && scene->rigidbody_world) {
+			GroupObject *go;
+			for (go = scene->rigidbody_world->group->gobject.first; go; go = go->next)
+			{
+				FractureModifierData *fmdi = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
+				if (fmdi && fmdi->dm_group && fmdi->use_constraint_group)
+				{
+					GroupObject *go2;
+					for (go2 = fmdi->dm_group->gobject.first; go2; go2 = go2->next)
+					{
+						if (go2->ob == ob)
+						{
+							pfmd = fmdi;
+							pob = go->ob;
+
+							fmdi->refresh_constraints = true;
+							BKE_free_constraints(fmdi);
+							break;
+						}
+					}
+				}
+			}
+		}
+
+
 		do_island_index_map(fmd, ob);
 		do_refresh_constraints(fmd, ob);
 
@@ -4734,6 +4770,14 @@ static DerivedMesh *doSimulate(FractureModifierData *fmd, Object *ob, DerivedMes
 
 			ob->rigidbody_object->flag |= RBO_FLAG_KINEMATIC;
 			ob->rigidbody_object->flag |= RBO_FLAG_IS_GHOST;
+		}
+
+		if (pfmd && pob) {
+			double start = PIL_check_seconds_timer();
+			do_island_index_map(pfmd, pob);
+			do_refresh_constraints(pfmd, pob);
+			pfmd->refresh_constraints = false;
+			printf("Rebuilding external constraints done, %g\n", PIL_check_seconds_timer() - start);
 		}
 	}
 
