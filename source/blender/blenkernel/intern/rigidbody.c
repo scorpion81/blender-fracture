@@ -1409,7 +1409,7 @@ void BKE_rigidbody_remove_shard(Scene *scene, MeshIsland *mi)
 	}
 }
 
-static bool do_remove_modifier(RigidBodyWorld* rbw, ModifierData *md)
+static bool do_remove_modifier(RigidBodyWorld* rbw, ModifierData *md, Object *ob)
 {
 	RigidBodyShardCon *con;
 	MeshIsland *mi;
@@ -1420,6 +1420,8 @@ static bool do_remove_modifier(RigidBodyWorld* rbw, ModifierData *md)
 	{
 		fmd = (FractureModifierData *)md;
 		modFound = true;
+		GroupObject *go;
+
 		for (con = fmd->meshConstraints.first; con; con = con->next) {
 			if (rbw && rbw->physics_world && con->physics_constraint) {
 				RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
@@ -1427,6 +1429,23 @@ static bool do_remove_modifier(RigidBodyWorld* rbw, ModifierData *md)
 				con->physics_constraint = NULL;
 			}
 		}
+
+		/*if we are part of a connected object, delete the parent's constraints here too*/
+		for (go = rbw->group->gobject.first; go; go = go->next)
+		{
+			FractureModifierData *fmdi = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
+			if (fmdi && ob != go->ob)
+			{
+				for (con = fmdi->meshConstraints.first; con; con = con->next) {
+					if (rbw && rbw->physics_world && con->physics_constraint) {
+						RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
+						RB_constraint_delete(con->physics_constraint);
+						con->physics_constraint = NULL;
+					}
+				}
+			}
+		}
+
 
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 			if (mi->rigidbody != NULL) {
@@ -1474,7 +1493,7 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 
 	if (rbw) {
 		for (md = ob->modifiers.first; md; md = md->next) {
-			modFound = do_remove_modifier(rbw, md);
+			modFound = do_remove_modifier(rbw, md, ob);
 		}
 
 		if (!modFound) {
