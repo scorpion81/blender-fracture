@@ -2820,7 +2820,7 @@ static int prepareConstraintSearch(FractureModifierData *rmd, MeshIsland ***mesh
 				{
 					float imat[4][4];
 					FractureModifierData *fmdi = (FractureModifierData *)modifiers_findByType(go->ob, eModifierType_Fracture);
-					if (fmdi) {
+					if (fmdi && fmdi->visible_mesh_cached) {
 						int v = fmdi->visible_mesh_cached->getNumVerts(fmdi->visible_mesh_cached);
 						int x = 0;
 
@@ -2840,28 +2840,32 @@ static int prepareConstraintSearch(FractureModifierData *rmd, MeshIsland ***mesh
 				}
 			}
 		}
-		else {
+		else if (rmd && rmd->visible_mesh_cached) {
 			totvert = rmd->visible_mesh_cached->getNumVerts(rmd->visible_mesh_cached);
 			mvert = rmd->visible_mesh_cached->getVertArray(rmd->visible_mesh_cached);
 		}
 
-		*combined_tree = BLI_kdtree_new(totvert);
-		for (i = 0, mv = mvert; i < totvert; i++, mv++) {
-			float co[3];
-			if (rmd->dm_group && rmd->use_constraint_group)
-			{
-				copy_v3_v3(co, mv->co);
-			}
-			else {
-				mul_v3_m4v3(co, ob->obmat, mv->co);
+		if (totvert > 0)
+		{
+
+			*combined_tree = BLI_kdtree_new(totvert);
+			for (i = 0, mv = mvert; i < totvert; i++, mv++) {
+				float co[3];
+				if (rmd->dm_group && rmd->use_constraint_group)
+				{
+					copy_v3_v3(co, mv->co);
+				}
+				else {
+					mul_v3_m4v3(co, ob->obmat, mv->co);
+				}
+
+				BLI_kdtree_insert(*combined_tree, i, co);
 			}
 
-			BLI_kdtree_insert(*combined_tree, i, co);
+			BLI_kdtree_balance(*combined_tree);
+			ret = totvert;
+			*mverts = mvert;
 		}
-
-		BLI_kdtree_balance(*combined_tree);
-		ret = totvert;
-		*mverts = mvert;
 	}
 
 	return ret;
@@ -2917,7 +2921,7 @@ static void create_constraints(FractureModifierData *rmd, Object *ob)
 
 	MEM_freeN(mesh_islands);
 
-	if (rmd->dm_group && rmd->use_constraint_group)
+	if (rmd->dm_group && rmd->use_constraint_group && mvert)
 	{	//was copied from modifiers... so remove now
 		MEM_freeN(mvert);
 	}
