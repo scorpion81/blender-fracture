@@ -2771,7 +2771,6 @@ static int prepareConstraintSearch(FractureModifierData *rmd, MeshIsland ***mesh
 				if (fmdi) {
 					for (mi = fmdi->meshIslands.first; mi; mi = mi->next) {
 						mi->object_index = j;
-						sprintf(mi->name, "%d", j);
 						(*mesh_islands)[i] = mi;
 						i++;
 					}
@@ -2785,7 +2784,6 @@ static int prepareConstraintSearch(FractureModifierData *rmd, MeshIsland ***mesh
 
 		for (mi = rmd->meshIslands.first; mi; mi = mi->next) {
 			mi->object_index = -1;
-			sprintf(mi->name, "%d", -1);
 			(*mesh_islands)[i] = mi;
 			i++;
 		}

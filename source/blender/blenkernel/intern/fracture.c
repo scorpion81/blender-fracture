@@ -15,9 +15,6 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * The Original Code is Copyright (C) Blender Foundation
- * All rights reserved.
- *
  * The Original Code is: all of this file.
  *
  * Contributor(s): Martin Felke
@@ -3985,15 +3982,23 @@ static DerivedMesh *eval_mod_stack_simple(Object *ob)
 	return dm;
 }
 
-void activate(MeshIsland *mi)
+void activate(MeshIsland *mi, AnimBind *bind)
 {
+	bind->v = -1;
+	bind->v1 = -1;
+	bind->v2 = -1;
+	bind->mi = -1;
+	zero_v3(bind->no);
+	zero_v3(bind->offset);
+	unit_qt(bind->quat);
+
 	if (mi->rigidbody->type == RBO_TYPE_ACTIVE)
 	{
 		RigidBodyOb* rbo = mi->rigidbody;
 
-		mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC;
-		mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC_BOUND;
-		mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+		rbo->flag &= ~RBO_FLAG_KINEMATIC;
+		rbo->flag &= ~RBO_FLAG_KINEMATIC_BOUND;
+		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
 		if (rbo->physics_object)
 		{
@@ -4002,34 +4007,6 @@ void activate(MeshIsland *mi)
 			RB_body_activate(rbo->physics_object);
 		}
 	}
-}
-
-bool is_too_close(MVert* mvert, MLoop* mloop, MPoly poly, float limit)
-{
-	float co[3], co1[3];
-	int i, j;
-
-	if (poly.totloop < 3)
-		return true;
-
-	for (i = 0; i < 3; i++)
-	{
-		for (j = 0; j < i+1; j++)
-		{
-			if ((mloop[poly.loopstart + i].v != mloop[poly.loopstart + j].v) || (i != j))
-			{
-				copy_v3_v3(co, mvert[mloop[poly.loopstart + i].v].co);
-				copy_v3_v3(co1, mvert[mloop[poly.loopstart + j].v].co);
-
-				if (compare_v3v3(co, co1, limit))
-				{
-					return true;
-				}
-			}
-		}
-	}
-
-	return false;
 }
 
 void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bind)
@@ -4107,8 +4084,6 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 			{
 				float co[3];
 				copy_v3_v3(co, mvert[mloop[mpoly[i].loopstart].v].co);
-				//copy_v3_v3(co[1], mvert[mloop[mlooptri[i].tri[1]].v].co);
-				//copy_v3_v3(co[2], mvert[mloop[mlooptri[i].tri[2]].v].co);
 				BLI_kdtree_insert(tree, i, co);
 			}
 		}
@@ -4141,10 +4116,10 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 	if (do_bind)
 	{
 		i = 0;
-		for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+		for (mi = fmd->meshIslands.first; mi; mi = mi->next, i++)
 		{
 			KDTreeNearest n;
-			float co[3], diff[3] = {0, 0, 0};
+			float co[3], diff[3] = {0, 0, 0}, f_no[3];
 			int j = 0;
 
 			copy_v3_v3(co, mi->rigidbody->pos);
@@ -4155,46 +4130,69 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 			{
 				if (totpoly > 0)
 				{
-					//do not bind to potentially problematic verts (doubles)
-					if (is_too_close(mvert, mloop, mpoly[n.index], 0.0001f)) {
-						activate(mi);
-						i++;
+					int v1, v2, v3;
+					float limit = 0.0001f;
+					MPoly *mp  = mpoly + n.index;
+					MLoop *ml = mloop + mp->loopstart;
+					BKE_mesh_calc_poly_normal(mp, ml, mvert, f_no);
+
+					v1 = ml->v;
+					v2 = (ml + 1)->v;
+					v3 = (ml + 2)->v;
+
+					if (mpoly[n.index].totloop < 3)
+					{
+						printf("Degenerate face, skipping\n");
+						activate(mi, &fmd->anim_bind[i]);
 						continue;
 					}
 
-					fmd->anim_bind[i].v = mloop[mpoly[n.index].loopstart].v;
-					fmd->anim_bind[i].v1 = mloop[mpoly[n.index].loopstart + 1].v;
-					fmd->anim_bind[i].v2 = mloop[mpoly[n.index].loopstart + 2].v;
+					if (compare_v3v3(mvert[v1].co, mvert[v2].co, limit) ||
+					    compare_v3v3(mvert[v1].co, mvert[v3].co, limit) ||
+					    compare_v3v3(mvert[v2].co, mvert[v3].co, limit))
+					{
+						printf("Very close coordinates, skipping %d %d %d in %d\n", v1, v2, v3, mi->id);
+						activate(mi, &fmd->anim_bind[i]);
+						continue;
+					}
+
+					fmd->anim_bind[i].v = v1;
+					fmd->anim_bind[i].v1 = v2;
+					fmd->anim_bind[i].v2 = v3;
+					mi->rigidbody->flag |= RBO_FLAG_KINEMATIC_BOUND;
 				}
 				else {
 					fmd->anim_bind[i].v = n.index;
 					fmd->anim_bind[i].v1 = -1;
 					fmd->anim_bind[i].v2 = -1;
+					mi->rigidbody->flag |= RBO_FLAG_KINEMATIC_BOUND;
 				}
-				fmd->anim_bind[i].mi = i;
-				sub_v3_v3v3(diff, n.co, co);
-				//mul_m4_v3(imat, diff);
 
-				copy_v3_v3(fmd->anim_bind[i].offset, diff);
+				if (fmd->anim_bind[i].v != -1)
+				{
+					fmd->anim_bind[i].mi = i;
+					sub_v3_v3v3(diff, n.co, co);
 
-				if (fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1) {
-					//fallback if not enough verts around
-					normal_short_to_float_v3(fmd->anim_bind[i].no, mvert[n.index].no);
-					normalize_v3(fmd->anim_bind[i].no);
-				}
-				else {
-					tri_to_quat(fmd->anim_bind[i].quat,
-					        mvert[fmd->anim_bind[i].v].co,
-					        mvert[fmd->anim_bind[i].v1].co,
-					        mvert[fmd->anim_bind[i].v2].co);
+					copy_v3_v3(fmd->anim_bind[i].offset, diff);
+
+					if ((fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1)) {
+						//fallback if not enough verts around
+						normal_short_to_float_v3(fmd->anim_bind[i].no, mvert[n.index].no);
+						normalize_v3(fmd->anim_bind[i].no);
+					}
+					else if (totpoly > 0) {
+						tri_to_quat_ex(fmd->anim_bind[i].quat,
+								mvert[fmd->anim_bind[i].v].co,
+								mvert[fmd->anim_bind[i].v1].co,
+								mvert[fmd->anim_bind[i].v2].co, f_no);
+						copy_v3_v3(fmd->anim_bind[i].no, f_no);
+					}
 				}
 			}
 			else
 			{
-				activate(mi);
+				activate(mi, &fmd->anim_bind[i]);
 			}
-
-			i++;
 		}
 
 		if (tree)
@@ -4207,46 +4205,35 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 		{
 			float co[3];
 			int index = -1;
+			int vindex = -1;
 
 			index = fmd->anim_bind[i].mi;
+			vindex = fmd->anim_bind[i].v;
 
-			if (index == -1)
+			if (index == -1 || vindex == -1)
 			{
-				if (mi->rigidbody->type == RBO_TYPE_ACTIVE)
-				{
-					activate(mi);
-				}
+				activate(mi, &fmd->anim_bind[i]);
 				continue;
 			}
 
 			//only let kinematic rbs do this, active ones are being taken care of by bullet
-			if (mi && mi->rigidbody && mi->rigidbody->flag & RBO_FLAG_KINEMATIC)
+			if (mi && mi->rigidbody && (mi->rigidbody->flag & RBO_FLAG_KINEMATIC))
 			{
 				//the 4 rot layers *should* be aligned, caller needs to ensure !
 				bool quats = quatX && quatY && quatZ && quatW;
-				float quat[4] = { 1, 0, 0, 0}, vec[3], no[3], off[3];
+				float quat[4], vec[3], no[3], off[3];
 				int v = fmd->anim_bind[i].v;
+				unit_qt(quat);
 
 				if (v >= totvert) {
-					if (mi->rigidbody->type == RBO_TYPE_ACTIVE)
-					{
-						activate(mi);
-					}
+					activate(mi, &fmd->anim_bind[i]);
 					continue;
 				}
 
-				if ((orig_index && orig_index[v] != v && (fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1))) // ||
-				   //(fmd->anim_bind[i].v == -1 || fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1))
+				if ((orig_index && orig_index[v] != v && (fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1)))
 				{
-					//in particle (no faces) case, dont allow jump around of shards, instead activate them
-					{
-						if (mi->rigidbody->type == RBO_TYPE_ACTIVE)
-						{
-							activate(mi);
-
-						}
-						continue;
-					}
+					activate(mi, &fmd->anim_bind[i]);
+					continue;
 				}
 
 				copy_v3_v3(co, mvert[v].co);
@@ -4272,15 +4259,12 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 						}
 						else {
 							float rot[4], iquat[4];
-							tri_to_quat(rot, mvert[fmd->anim_bind[i].v].co,
+							tri_to_quat_ex(rot, mvert[fmd->anim_bind[i].v].co,
 											  mvert[fmd->anim_bind[i].v1].co,
-											  mvert[fmd->anim_bind[i].v2].co);
+											  mvert[fmd->anim_bind[i].v2].co,
+											  fmd->anim_bind[i].no);
 							invert_qt_qt(iquat, fmd->anim_bind[i].quat);
-							mul_qt_qtqt(quat, rot, iquat);
-
-							/*if (dot_qtqt(fmd->anim_bind[i].quat, quat) < 0.0) {
-								negate_v4(quat);
-							}*/
+							mul_qt_qtqt(quat, iquat, rot);
 						}
 					}
 				}
@@ -4295,15 +4279,11 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 				{
 					float ob_quat[4];
 					mat4_to_quat(ob_quat, ob->obmat);
-					//mat4_to_quat(anim_quat, fmd->anim_mesh_ob->obmat);
-					//invert_qt(anim_quat);
-					//mul_qt_qtqt(quat, anim_quat, quat);
 					mul_qt_qtqt(quat, ob_quat, quat);
 					copy_qt_qt(mi->rigidbody->orn, quat);
 				}
 
 				mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
-				//mi->rigidbody->flag |= RBO_FLAG_NEEDS_RESHAPE;
 				if (mi->rigidbody->physics_object)
 				{
 					RB_body_set_loc_rot(mi->rigidbody->physics_object, mi->rigidbody->pos, mi->rigidbody->orn);
