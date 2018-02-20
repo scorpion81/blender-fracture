@@ -4159,6 +4159,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 					fmd->anim_bind[i].v = v1;
 					fmd->anim_bind[i].v1 = v2;
 					fmd->anim_bind[i].v2 = v3;
+					fmd->anim_bind[i].poly = n.index;
 					mi->rigidbody->flag |= RBO_FLAG_KINEMATIC_BOUND;
 				}
 				else {
@@ -4258,13 +4259,17 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 							rotation_between_vecs_to_quat(quat, vec, no);
 						}
 						else {
-							float rot[4], iquat[4];
+							float rot[4], iquat[4], fno[3];
+							MPoly *mp = mpoly + fmd->anim_bind[i].poly;
+							MLoop *ml = mloop + mp->loopstart;
+							BKE_mesh_calc_poly_normal(mp, ml, mvert, fno);
+
 							tri_to_quat_ex(rot, mvert[fmd->anim_bind[i].v].co,
 											  mvert[fmd->anim_bind[i].v1].co,
 											  mvert[fmd->anim_bind[i].v2].co,
-											  fmd->anim_bind[i].no);
+											  fno);
 							invert_qt_qt(iquat, fmd->anim_bind[i].quat);
-							mul_qt_qtqt(quat, iquat, rot);
+							mul_qt_qtqt(quat, rot, iquat);
 						}
 					}
 				}

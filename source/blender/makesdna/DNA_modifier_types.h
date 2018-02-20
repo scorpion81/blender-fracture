@@ -1703,6 +1703,7 @@ typedef struct AnimBind {
 	int v1;
 	int v2;
 	int mi;
+	int poly;
 	float offset[3];
 	float no[3];
 	float quat[4];
