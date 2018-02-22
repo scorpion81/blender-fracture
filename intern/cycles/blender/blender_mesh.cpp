@@ -1126,7 +1126,7 @@ Mesh *BlenderSync::sync_mesh(BL::Object& b_ob,
 			sync_mesh_precalculated_motion(b_mesh, b_scene, scene, mesh);
 
 			/* free derived mesh */
-			b_data.meshes.remove(b_mesh, false);
+			b_data.meshes.remove(b_mesh, false, true, false);
 		}
 	}
 	mesh->geometry_flags = requested_geometry_flags;
@@ -1352,7 +1352,7 @@ void BlenderSync::sync_mesh_motion(BL::Object& b_ob,
 		sync_curves(mesh, b_mesh, b_ob, true, time_index);
 
 	/* free derived mesh */
-	b_data.meshes.remove(b_mesh, false);
+	b_data.meshes.remove(b_mesh, false, true, false);
 }
 
 CCL_NAMESPACE_END

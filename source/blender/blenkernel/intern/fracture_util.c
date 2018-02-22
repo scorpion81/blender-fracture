@@ -597,7 +597,7 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 		output_dm = NewBooleanDerivedMesh(right_dm, obj, left_dm, obj, 1); /*1 == intersection, 3 == difference*/
 	}
 	else {
-		output_dm = NewBooleanDerivedMeshBMesh(right_dm, obj, left_dm, obj, 0, thresh); /*0 == intersection, 2 == difference*/
+		output_dm = NewBooleanDerivedMeshBMesh(right_dm, obj, left_dm, obj, 0, thresh, NULL); /*0 == intersection, 2 == difference*/
 	}
 
 	/*check for watertightness, but for fractal only*/
@@ -613,7 +613,7 @@ Shard *BKE_fracture_shard_boolean(Object *obj, DerivedMesh *dm_parent, Shard *ch
 			other_dm = NewBooleanDerivedMesh(left_dm, obj, right_dm, obj, 3);
 		}
 		else {
-			other_dm = NewBooleanDerivedMeshBMesh(left_dm, obj, right_dm, obj, 2, thresh);
+			other_dm = NewBooleanDerivedMeshBMesh(left_dm, obj, right_dm, obj, 2, thresh, NULL);
 		}
 
 		/*check for watertightness again, true means do return NULL here*/

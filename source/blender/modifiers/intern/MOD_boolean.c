@@ -59,6 +59,7 @@
 #include "BLI_alloca.h"
 #include "BLI_math_geom.h"
 #include "BKE_material.h"
+#include "BKE_global.h"  /* only to check G.debug */
 #include "MEM_guardedalloc.h"
 
 #include "bmesh.h"

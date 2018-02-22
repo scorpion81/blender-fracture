@@ -1456,6 +1456,8 @@ typedef struct ThreadedObjectUpdateState {
 	bool has_mballs;
 #endif
 
+	int num_threads;
+
 	/* Execution statistics */
 	bool has_updated_objects;
 	ListBase *statistics;
@@ -1555,7 +1557,6 @@ static void scene_update_object_add_task(void *node, void *user_data)
 
 static void print_threads_statistics(ThreadedObjectUpdateState *state)
 {
-	int i, tot_thread;
 	double finish_time;
 
 	if ((G.debug & G_DEBUG_DEPSGRAPH) == 0) {
@@ -1583,10 +1584,9 @@ static void print_threads_statistics(ThreadedObjectUpdateState *state)
 	}
 #else
 	finish_time = PIL_check_seconds_timer();
-	tot_thread = BLI_system_thread_count();
 	int total_objects = 0;
 
-	for (i = 0; i < tot_thread; i++) {
+	for (int i = 0; i < state->num_threads; i++) {
 		int thread_total_objects = 0;
 		double thread_total_time = 0.0;
 		StatisicsEntry *entry;
@@ -1683,6 +1683,7 @@ static void scene_update_objects(EvaluationContext *eval_ctx, Main *bmain, Scene
 		                               "scene update objects stats");
 		state.has_updated_objects = false;
 		state.base_time = PIL_check_seconds_timer();
+		state.num_threads = tot_thread;
 	}
 
 #ifdef MBALL_SINGLETHREAD_HACK
@@ -1847,8 +1848,6 @@ void BKE_scene_update_tagged(EvaluationContext *eval_ctx, Main *bmain, Scene *sc
 #endif
 	{
 		DEG_evaluate_on_refresh(eval_ctx, scene->depsgraph, scene);
-		/* TODO(sergey): This is to beocme a node in new depsgraph. */
-		BKE_mask_update_scene(bmain, scene);
 	}
 
 	/* update sound system animation (TODO, move to depsgraph) */
@@ -1965,10 +1964,9 @@ void BKE_scene_update_for_newframe_ex(EvaluationContext *eval_ctx, Main *bmain, 
 		/* Following 2 functions are recursive
 		 * so don't call within 'scene_update_tagged_recursive' */
 		DAG_scene_update_flags(bmain, sce, lay, true, do_invisible_flush);   // only stuff that moves or needs display still
+		BKE_mask_evaluate_all_masks(bmain, ctime, true);
 	}
 #endif
-
-	BKE_mask_evaluate_all_masks(bmain, ctime, true);
 
 	/* Update animated cache files for modifiers. */
 	BKE_cachefile_update_frame(bmain, sce, ctime, (((double)sce->r.frs_sec) / (double)sce->r.frs_sec_base));
