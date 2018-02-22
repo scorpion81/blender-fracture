@@ -214,7 +214,7 @@ static DerivedMesh *applyModifier_bmesh(
 		result = get_quick_derivedMesh(ob, dm, bmd->object, dm_other, bmd->operation);
 
 		if (result == NULL) {
-			result = NewBooleanDerivedMeshBMesh(dm, ob, dm_other, bmd->object, bmd->operation, bmd->double_threshold);
+			result = NewBooleanDerivedMeshBMesh(dm, ob, dm_other, bmd->object, bmd->operation, bmd->double_threshold, bmd);
 		}
 
 		/* if new mesh returned, return it; otherwise there was
