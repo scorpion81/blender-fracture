@@ -1621,7 +1621,7 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 		copy_v3_v3(rbo->lin_vel, keys->vel);
 		copy_v3_v3(rbo->ang_vel, keys->ave);
 
-		if (fmd && mi)
+		if (fmd && mi && G.is_rendering)
 		{
 			BKE_update_velocity_layer(fmd, mi);
 		}

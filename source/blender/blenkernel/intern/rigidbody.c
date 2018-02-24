@@ -5516,7 +5516,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 
 					//reset at start, there no cache read seems to happen
 					BKE_update_acceleration_map(fmd, mi, ob, (int)ctime, 0.0f, rbw);
-					BKE_update_velocity_layer(fmd, mi);
+					//BKE_update_velocity_layer(fmd, mi);
 				}
 
 				if ((ob->rigidbody_object->type == RBO_TYPE_ACTIVE) && (rbo->type == RBO_TYPE_ACTIVE || rbo->flag & RBO_FLAG_KINEMATIC)) {
