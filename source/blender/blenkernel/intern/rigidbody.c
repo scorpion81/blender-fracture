@@ -4087,7 +4087,7 @@ static bool do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 
 			RigidBodyOb* rbo = mi->rigidbody;
 			if ((((rbo->flag & RBO_FLAG_KINEMATIC) || different_cluster) &&
-			     ((mi_compare == mi) /*|| (same_cluster && !dissolve)*/)) && valid)
+			     ((mi_compare == mi) || (same_cluster && !dissolve && fmd->activate_broken))) && valid)
 			{
 				if (rbo->physics_object && activate) {
 					activateRigidbody(rbo, rbw, mi, ob);
@@ -4703,7 +4703,7 @@ static void activateCluster(MeshIsland *mi, int particle_index, RigidBodyWorld *
 		{
 			if (con->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) {
 				activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
-				activateCluster(con->mi1, particle_index, rbw, ob);
+				//activateCluster(con->mi1, particle_index, rbw, ob);
 			}
 		}
 
@@ -4711,7 +4711,7 @@ static void activateCluster(MeshIsland *mi, int particle_index, RigidBodyWorld *
 		{
 			if (con->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) {
 				activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
-				activateCluster(con->mi2, particle_index, rbw, ob);
+				//activateCluster(con->mi2, particle_index, rbw, ob);
 			}
 		}
 	}
@@ -4780,14 +4780,15 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 
 							RB_constraint_set_enabled(con->physics_constraint, false);
 							/*if (con->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC ||
-							    con->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC )
+							    con->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC ) */
+							if (fmd->activate_broken)
 							{
 								activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
 								activateCluster(con->mi1, con->mi1->particle_index, rbw, ob);
 
 								activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
 								activateCluster(con->mi2, con->mi2->particle_index, rbw, ob);
-							}*/
+							}
 						}
 					}
 				}
@@ -4804,8 +4805,11 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 				{
 					if (con->physics_constraint) {
 						RB_constraint_set_enabled(con->physics_constraint, false);
-						//activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
-						//activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
+						if (fmd->activate_broken)
+						{
+							activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
+							activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
+						}
 					}
 				}
 			}
@@ -4917,8 +4921,11 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 				//break constraint
 				if (rbsc->physics_constraint) {
 					RB_constraint_set_enabled(rbsc->physics_constraint, false);
-					//activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
-					//activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+					if (fmd->activate_broken)
+					{
+						activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
+						activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+					}
 				}
 			}
 		}
@@ -4931,8 +4938,11 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 		{
 			if (rbsc->physics_constraint) {
 				RB_constraint_set_enabled(rbsc->physics_constraint, false);
-				//activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
-				//activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+				if (fmd->activate_broken)
+				{
+					activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
+					activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+				}
 			}
 		}
 	}
@@ -4952,8 +4962,11 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 			{
 				if (rbsc->physics_constraint) {
 					RB_constraint_set_enabled(rbsc->physics_constraint, false);
-					//activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
-					//activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+					if (fmd->activate_broken)
+					{
+						activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
+						activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+					}
 				}
 			}
 		}
@@ -4966,8 +4979,11 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 		{
 			if (rbsc->physics_constraint) {
 				RB_constraint_set_enabled(rbsc->physics_constraint, false);
-				//activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
-				//activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+				if (fmd->activate_broken)
+				{
+					activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
+					activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+				}
 			}
 		}
 	}

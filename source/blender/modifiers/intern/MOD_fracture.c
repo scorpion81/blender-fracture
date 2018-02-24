@@ -269,6 +269,7 @@ static void initData(ModifierData *md)
 	zero_v3(fmd->grid_offset);
 	zero_v3(fmd->grid_spacing);
 	fmd->use_constraint_group = false;
+	fmd->activate_broken = false;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1924,6 +1925,7 @@ static void copyData(ModifierData *md, ModifierData *target)
 	copy_v3_v3(trmd->grid_spacing, rmd->grid_spacing);
 
 	trmd->use_constraint_group = rmd->use_constraint_group;
+	trmd->activate_broken = rmd->activate_broken;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?

@@ -217,6 +217,7 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
         row.prop(md, "use_self_collision")
         row = layout.row()
         row.prop(md, "use_compounds")
+        row.prop(md, "activate_broken")
 
         col = layout.column(align=True)
         col.prop(md, "constraint_target")
