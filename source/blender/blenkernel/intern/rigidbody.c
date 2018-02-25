@@ -1714,6 +1714,10 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw, bool do_bake_correction)
 				if (mi->rigidbody && !do_bake_correction) {
 					//as we search by id now in the pointcache, we set the id here too
 					mi->rigidbody->meshisland_index = counter;
+					if (mi->object_index != -1)
+					{
+						mi->object_index = i;
+					}
 				}
 				counter++;
 				j++;
