@@ -2066,6 +2066,22 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 				}
 				rbc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
 			}
+
+			if (rbc->physics_constraint)
+			{
+				RigidBodyOb *rbo1 = rbc->ob1->rigidbody_object;
+				RigidBodyOb *rbo2 = rbc->ob2->rigidbody_object;
+
+				if ((rbo1->force_thresh > 0 || rbo2->force_thresh > 0))
+				{
+					if (RB_constraint_get_applied_impulse(rbc->physics_constraint) >= rbo1->force_thresh + rbo2->force_thresh)
+					{
+						RB_constraint_set_enabled(rbc->physics_constraint, false);
+						activateRigidbody(rbo1, rbw, NULL, rbc->ob1);
+						activateRigidbody(rbo2, rbw, NULL, rbc->ob2);
+					}
+				}
+			}
 		}
 	}
 }
@@ -4291,14 +4307,21 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	if (validOb || (ob1->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) || (ob2->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) ||
 	   (ob1->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER) || (ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER))
 	{
+		//override for 2 regular rigidbodies to enable ghost trigger functionality; else bullet wont call this again here with "activate == true"
+
+
 		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			check_activate = do_activate(ob1, ob2, mi1, rbw, mi2, activate);
+			bool override = activate || (!mi1 && !mi2 && (ob2->rigidbody_object->flag & RBO_FLAG_IS_GHOST) &&
+			                                             (ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER));
+			check_activate = do_activate(ob1, ob2, mi1, rbw, mi2, override);
 		}
 
 		if (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			check_activate = do_activate(ob2, ob1, mi2, rbw, mi1, activate);
+			bool override = activate || (!mi1 && !mi2 && (ob1->rigidbody_object->flag & RBO_FLAG_IS_GHOST) &&
+			                                             (ob1->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER));
+			check_activate = do_activate(ob2, ob1, mi2, rbw, mi1, override);
 		}
 	}
 
@@ -4309,9 +4332,9 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	if (activate)
 	{
 		validOb = ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0) || ((ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0);
-		validOb = validOb || ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0) || ((mi2 && mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
+		validOb = validOb || ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0) || (mi2 && (mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
 		validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || ((ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0);
-		validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || ((mi2 && mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
+		validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || (mi2 && (mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
 
 		validOb = validOb && (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) &&
 		          check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2)));
@@ -5357,6 +5380,23 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 			    (rbsc->flag & RBC_FLAG_USE_BREAKING) && !rebuild)
 			{
 				handle_plastic_breaking(rbsc, rbw, laststeps, lastscale);
+			}
+
+			if (rbsc->physics_constraint)
+			{
+				RigidBodyOb *rbo1 = rbsc->mi1->rigidbody;
+				RigidBodyOb *rbo2 = rbsc->mi2->rigidbody;
+
+				if ((rbo1->force_thresh > 0 || rbo2->force_thresh > 0))
+				{
+					if (RB_constraint_get_applied_impulse(rbsc->physics_constraint) >= rbo1->force_thresh + rbo2->force_thresh)
+					{
+						//TODO, should be the actual objects, not just "ob"... can differ in case of external constraints...
+						RB_constraint_set_enabled(rbsc->physics_constraint, false);
+						activateRigidbody(rbo1, rbw, NULL, ob);
+						activateRigidbody(rbo2, rbw, NULL, ob);
+					}
+				}
 			}
 
 			set_constraint_index(fmd, rbsc);
