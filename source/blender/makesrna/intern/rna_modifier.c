@@ -490,6 +490,7 @@ RNA_MOD_VGROUP_NAME_SET(Lattice, name);
 RNA_MOD_VGROUP_NAME_SET(Mask, vgroup);
 RNA_MOD_VGROUP_NAME_SET(MeshDeform, defgrp_name);
 RNA_MOD_VGROUP_NAME_SET(NormalEdit, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(Remesh, size_defgrp_name);
 RNA_MOD_VGROUP_NAME_SET(Shrinkwrap, vgroup_name);
 RNA_MOD_VGROUP_NAME_SET(SimpleDeform, vgroup_name);
 RNA_MOD_VGROUP_NAME_SET(Smooth, defgrp_name);
@@ -3987,6 +3988,12 @@ static void rna_def_modifier_remesh(BlenderRNA *brna)
 	RNA_def_property_enum_items(prop, filter_items);
 	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
 	RNA_def_property_ui_text(prop, "Filter", "Which particles to consider in remeshing");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "size_vertex_group", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "size_defgrp_name");
+	RNA_def_property_ui_text(prop, "Size Vertex Group", "Vertex group name which optionally defines metaball size");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_RemeshModifier_size_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 

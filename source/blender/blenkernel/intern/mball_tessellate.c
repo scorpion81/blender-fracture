@@ -1337,13 +1337,15 @@ void BKE_mball_polygonize(EvaluationContext *eval_ctx, Scene *scene, Object *ob,
 	freepolygonize(&process);
 }
 
-static void init_meta_dm(PROCESS* process, DerivedMesh *dm, float stiffness, float radius, float size[3], bool override_size)
+static void init_meta_dm(PROCESS* process, DerivedMesh *dm, float stiffness, float radius, float size[3],
+                         bool override_size, int defgrp_size)
 {
 	float quat[4];
 	unsigned int i;
 	int totvert = dm->getNumVerts(dm), j;
 	MVert* mvert = dm->getVertArray(dm);
 	float* psize = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "psize");
+	MDeformVert *dvert = CustomData_get_layer(&dm->vertData, CD_MDEFORMVERT);
 
 	unit_qt(quat);
 
@@ -1382,6 +1384,23 @@ static void init_meta_dm(PROCESS* process, DerivedMesh *dm, float stiffness, flo
 
 		/* if metaball is negative, set stiffness negative */
 		//if (new_ml->flag & MB_NEGATIVE) new_ml->s = -new_ml->s;
+
+		if (dvert && defgrp_size > -1)
+		{
+			MDeformVert *dv = dvert + j;
+			if (dv && dv->dw)
+			{
+				float w = dv->dw[defgrp_size].weight - 0.5f;
+				//map 0..1 weights to -0.5f ... + 0.5f size factor, to allow also negative sizes... 0.5f weight is 0 size
+				mul_v3_fl(sz, w);
+
+				/* if metaball is negative, set stiffness negative, indicated by weight < 0.5f here */
+				if (w < 0.5f)
+				{
+					new_ml->s = -new_ml->s;
+				}
+			}
+		}
 
 		/* Translation of MetaElem */
 		/*unit_m4(pos);
@@ -1574,7 +1593,7 @@ void BKE_dm_from_metaball(DispList *dl, DerivedMesh *dm, DerivedMesh *odm, int *
 
 
 DerivedMesh* BKE_repolygonize_dm(DerivedMesh *dm, float thresh, float basesize[3], float wiresize, float rendersize,
-                                 bool render, bool override_size)
+                                 bool render, bool override_size, int defgrp_size)
 {
 	DerivedMesh *result = NULL;
 	DispList *dl;
@@ -1605,7 +1624,7 @@ DerivedMesh* BKE_repolygonize_dm(DerivedMesh *dm, float thresh, float basesize[3
 	process.pgn_elements = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, "Metaball memarena");
 
 	/* initialize from DM */
-	init_meta_dm(&process, dm, 2.0f, 2.0f, basesize, override_size);
+	init_meta_dm(&process, dm, 2.0f, 2.0f, basesize, override_size, defgrp_size);
 
 	if (process.totelem > 0) {
 		build_bvh_spatial(&process, &process.metaball_bvh, 0, process.totelem, &process.allbb);

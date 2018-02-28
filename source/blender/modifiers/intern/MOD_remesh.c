@@ -35,6 +35,7 @@
 #include "BKE_cdderivedmesh.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_mball_tessellate.h"
+#include "BKE_deform.h"
 
 #include "DNA_meshdata_types.h"
 #include "DNA_modifier_types.h"
@@ -236,6 +237,14 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 	int i = 0, n = 0, *index, *orig_index;
 	bool override_size = rmd->pflag & eRemeshFlag_Size;
 	bool verts_only = rmd->pflag & eRemeshFlag_Verts;
+	MDeformVert *dvert = NULL;
+	int defgrp_size = -1;
+
+	if (rmd->size_defgrp_name[0])
+	{
+		defgrp_size = defgroup_name_index(ob, rmd->size_defgrp_name);
+		dvert = CustomData_get_layer(&derived->vertData, CD_MDEFORMVERT);
+	}
 
 	if (((rmd->input & MOD_REMESH_VERTICES)==0) && (rmd->input & MOD_REMESH_PARTICLES))
 	{
@@ -260,7 +269,6 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		quatW = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatW");
 
 		orig_index = CustomData_add_layer(&dm->vertData, CD_ORIGINDEX, CD_CALLOC, NULL, n);
-
 
 #pragma omp parallel for
 		for (i = 0; i < n; i++)
@@ -287,7 +295,8 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		else {
 			BLI_memarena_free(pardata);
 //#pragma omp parallel num_threads(4)
-			result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
+			result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render,
+			                             override_size, defgrp_size);
 			dm->release(dm);
 			return result;
 		}
@@ -297,7 +306,8 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		//verts only
 		DerivedMesh *result = NULL;
 //#pragma omp parallel
-		result = BKE_repolygonize_dm(derived, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
+		result = BKE_repolygonize_dm(derived, rmd->thresh, rmd->basesize, rmd->wiresize,
+		                             rmd->rendersize, render, override_size, defgrp_size);
 		return result;
 	}
 	else if ((rmd->input & MOD_REMESH_VERTICES) && (rmd->input & MOD_REMESH_PARTICLES))
@@ -306,6 +316,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		float* ovX, *ovY, *ovZ, *oqX, *oqY, *oqZ, *oqW;
 		n = 0;
 		MemArena *pardata = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, "pardata");
+		MDeformVert *dvert_new = NULL;
 
 		if (psys)
 			n = get_particle_data(rmd, psys, ob, &pos, &size, &vel, &rot, &index, pardata);
@@ -322,6 +333,10 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		quatW = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "quatW");
 
 		orig_index = CustomData_add_layer(&dm->vertData, CD_ORIGINDEX, CD_CALLOC, NULL, n + derived->numVertData);
+
+		if (dvert && defgrp_size > -1) {
+			dvert_new = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC, NULL, n + derived->numVertData);
+		}
 
 		mv = dm->getVertArray(dm);
 		mv2 = derived->getVertArray(derived);
@@ -351,6 +366,11 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 			quatW[i] = rot[i][3];
 
 			orig_index[i] = index[i];
+
+			if (dvert_new && dvert && defgrp_size > -1)
+			{
+				defvert_add_index_notest(dvert_new + i, defgrp_size, 1.0f);
+			}
 		}
 
 #pragma omp parallel for
@@ -368,6 +388,18 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 			quatW[i] = oqW ? oqW[i-n] : 0.0f;
 
 			orig_index[i] = i;
+			if (dvert_new && dvert && defgrp_size > -1)
+			{
+				int ind = i-n;
+				MDeformWeight *dw = (dvert + ind)->dw;
+				float w = 1.0f;
+				if (dw)
+				{
+					w = dw[defgrp_size].weight;
+				}
+
+				defvert_add_index_notest(dvert_new + i, defgrp_size, w);
+			}
 		}
 
 		if (verts_only)
@@ -378,7 +410,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		else {
 			BLI_memarena_free(pardata);
 //#pragma omp parallel
-			result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size);
+			result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size, defgrp_size);
 			dm->release(dm);
 			return result;
 		}

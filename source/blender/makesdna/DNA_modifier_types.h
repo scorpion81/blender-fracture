@@ -1275,6 +1275,7 @@ typedef struct RemeshModifierData {
 	int input;
 	int pflag;
 	int psys;
+	char size_defgrp_name[64];  /* MAX_VGROUP_NAME */
 
 	/* octree depth */
 	char depth;

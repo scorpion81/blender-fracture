@@ -1142,6 +1142,7 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
             col.prop(md, "mball_threshold")
             col.prop(md, "mball_resolution")
             col.prop(md, "mball_render_resolution")
+            layout.prop_search(md, "size_vertex_group", ob, "vertex_groups", text = "Size Vertex Group")
             layout.prop(md, "use_smooth_shade")
 
         else:
