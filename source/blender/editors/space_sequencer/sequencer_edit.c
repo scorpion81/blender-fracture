@@ -674,6 +674,10 @@ static Sequence *cut_seq_hard(Scene *scene, Sequence *seq, int cutframe)
 	Sequence *seqn = NULL;
 	bool skip_dup = false;
 
+	/* The frame is exactly on the endpoint,
+	 * this needs special handling for soft cut (not needed for hard cut). */
+	const bool is_end_exact = ((seq->start + seq->len) == cutframe);
+
 	/* backup values */
 	ts.start = seq->start;
 	ts.machine = seq->machine;
@@ -686,7 +690,7 @@ static Sequence *cut_seq_hard(Scene *scene, Sequence *seq, int cutframe)
 	ts.anim_startofs = seq->anim_startofs;
 	ts.anim_endofs = seq->anim_endofs;
 	ts.len = seq->len;
-	
+
 	/* First Strip! */
 	/* strips with extended stillfames before */
 	
@@ -698,6 +702,8 @@ static Sequence *cut_seq_hard(Scene *scene, Sequence *seq, int cutframe)
 		BKE_sequence_calc(scene, seq);
 	}
 
+	/* Important to offset the start when 'cutframe == seq->start'
+	 * because we need at least one frame of content after start/end still have clipped it. */
 	if ((seq->startstill) && (cutframe <= seq->start)) {
 		/* don't do funny things with METAs ... */
 		if (seq->type == SEQ_TYPE_META) {
@@ -712,13 +718,15 @@ static Sequence *cut_seq_hard(Scene *scene, Sequence *seq, int cutframe)
 		}
 	}
 	/* normal strip */
-	else if ((cutframe >= seq->start) && (cutframe < (seq->start + seq->len))) {
+	else if ((is_end_exact == false) &&
+	         ((cutframe >= seq->start) && (cutframe <= (seq->start + seq->len))))
+	{
 		seq->endofs = 0;
 		seq->endstill = 0;
 		seq->anim_endofs += (seq->start + seq->len) - cutframe;
 	}
 	/* strips with extended stillframes after */
-	else if (((seq->start + seq->len) == cutframe) ||
+	else if ((is_end_exact == true) ||
 	         (((seq->start + seq->len) < cutframe) && (seq->endstill)))
 	{
 		seq->endstill -= seq->enddisp - cutframe;
@@ -738,7 +746,11 @@ static Sequence *cut_seq_hard(Scene *scene, Sequence *seq, int cutframe)
 	
 	if (seqn) {
 		seqn->flag |= SELECT;
-			
+
+		/* Important not to re-assign this (unlike soft-cut) */
+#if 0
+		is_end_exact = ((seqn->start + seqn->len) == cutframe);
+#endif
 		/* Second Strip! */
 		/* strips with extended stillframes before */
 		if ((seqn->startstill) && (cutframe == seqn->start + 1)) {
@@ -747,9 +759,11 @@ static Sequence *cut_seq_hard(Scene *scene, Sequence *seq, int cutframe)
 			seqn->anim_endofs = ts.anim_endofs;
 			seqn->endstill = ts.endstill;
 		}
-		
+
 		/* normal strip */
-		else if ((cutframe >= seqn->start) && (cutframe < (seqn->start + seqn->len))) {
+		else if ((is_end_exact == false) &&
+		         ((cutframe >= seqn->start) && (cutframe <= (seqn->start + seqn->len))))
+		{
 			seqn->start = cutframe;
 			seqn->startstill = 0;
 			seqn->startofs = 0;
@@ -758,9 +772,9 @@ static Sequence *cut_seq_hard(Scene *scene, Sequence *seq, int cutframe)
 			seqn->anim_endofs = ts.anim_endofs;
 			seqn->endstill = ts.endstill;
 		}
-		
+
 		/* strips with extended stillframes after */
-		else if (((seqn->start + seqn->len) == cutframe) ||
+		else if ((is_end_exact == true) ||
 		         (((seqn->start + seqn->len) < cutframe) && (seqn->endstill)))
 		{
 			seqn->start = cutframe;
@@ -769,7 +783,7 @@ static Sequence *cut_seq_hard(Scene *scene, Sequence *seq, int cutframe)
 			seqn->endstill = ts.enddisp - cutframe - 1;
 			seqn->startstill = 0;
 		}
-		
+
 		BKE_sequence_reload_new_file(scene, seqn, false);
 		BKE_sequence_calc(scene, seqn);
 	}
@@ -781,6 +795,10 @@ static Sequence *cut_seq_soft(Scene *scene, Sequence *seq, int cutframe)
 	TransSeq ts;
 	Sequence *seqn = NULL;
 	bool skip_dup = false;
+
+	/* The frame is exactly on the endpoint,
+	 * this needs special handling for soft cut (not needed for hard cut). */
+	bool is_end_exact = ((seq->start + seq->len) == cutframe);
 
 	/* backup values */
 	ts.start = seq->start;
@@ -794,10 +812,12 @@ static Sequence *cut_seq_soft(Scene *scene, Sequence *seq, int cutframe)
 	ts.anim_startofs = seq->anim_startofs;
 	ts.anim_endofs = seq->anim_endofs;
 	ts.len = seq->len;
-	
+
 	/* First Strip! */
 	/* strips with extended stillfames before */
-	
+
+	/* Important to offset the start when 'cutframe == seq->start'
+	 * because we need at least one frame of content after start/end still have clipped it. */
 	if ((seq->startstill) && (cutframe <= seq->start)) {
 		/* don't do funny things with METAs ... */
 		if (seq->type == SEQ_TYPE_META) {
@@ -812,11 +832,13 @@ static Sequence *cut_seq_soft(Scene *scene, Sequence *seq, int cutframe)
 		}
 	}
 	/* normal strip */
-	else if ((cutframe >= seq->start) && (cutframe < (seq->start + seq->len))) {
+	else if ((is_end_exact == false) &&
+	         (cutframe >= seq->start) && (cutframe <= (seq->start + seq->len)))
+	{
 		seq->endofs = (seq->start + seq->len) - cutframe;
 	}
 	/* strips with extended stillframes after */
-	else if (((seq->start + seq->len) == cutframe) ||
+	else if ((is_end_exact == true) ||
 	         (((seq->start + seq->len) < cutframe) && (seq->endstill)))
 	{
 		seq->endstill -= seq->enddisp - cutframe;
@@ -835,7 +857,9 @@ static Sequence *cut_seq_soft(Scene *scene, Sequence *seq, int cutframe)
 	
 	if (seqn) {
 		seqn->flag |= SELECT;
-			
+
+		is_end_exact = ((seqn->start + seqn->len) == cutframe);
+
 		/* Second Strip! */
 		/* strips with extended stillframes before */
 		if ((seqn->startstill) && (cutframe == seqn->start + 1)) {
@@ -846,15 +870,17 @@ static Sequence *cut_seq_soft(Scene *scene, Sequence *seq, int cutframe)
 		}
 
 		/* normal strip */
-		if ((cutframe >= seqn->start) && (cutframe < (seqn->start + seqn->len))) {
+		else if ((is_end_exact == false) &&
+		         (cutframe >= seqn->start) && (cutframe <= (seqn->start + seqn->len)))
+		{
 			seqn->startstill = 0;
 			seqn->startofs = cutframe - ts.start;
 			seqn->endofs = ts.endofs;
 			seqn->endstill = ts.endstill;
 		}
-		
+
 		/* strips with extended stillframes after */
-		else if (((seqn->start + seqn->len) == cutframe) ||
+		else if ((is_end_exact == true) ||
 		         (((seqn->start + seqn->len) < cutframe) && (seqn->endstill)))
 		{
 			seqn->start = cutframe - ts.len + 1;
@@ -862,7 +888,7 @@ static Sequence *cut_seq_soft(Scene *scene, Sequence *seq, int cutframe)
 			seqn->endstill = ts.enddisp - cutframe - 1;
 			seqn->startstill = 0;
 		}
-		
+
 		BKE_sequence_calc(scene, seqn);
 	}
 	return seqn;

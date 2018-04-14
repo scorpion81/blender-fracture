@@ -17,6 +17,8 @@
  *
  * The Original Code is Copyright (C) 2011 by Nicholas Bishop.
  *
+ * Contributors: Martin Felke
+ *
  * ***** END GPL LICENSE BLOCK *****
  */
 

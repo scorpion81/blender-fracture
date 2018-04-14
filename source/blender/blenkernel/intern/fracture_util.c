@@ -15,12 +15,12 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * The Original Code is Copyright (C) Blender Foundation
+ * Copyright (C) 2014 by Martin Felke.
  * All rights reserved.
  *
  * The Original Code is: all of this file.
  *
- * Contributor(s): Martin Felke
+ * Contributor(s): none yet.
  *
  * ***** END GPL LICENSE BLOCK *****
  */

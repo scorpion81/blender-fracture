@@ -1051,7 +1051,7 @@ static int psys_thread_context_init_distribute(ParticleThreadContext *ctx, Parti
 		}
 	}
 
-	if (totmapped < 2) {
+	if (totmapped < 1) {
 		/* We are not allowed to distribute particles anywhere... */
 		return 0;
 	}
