@@ -686,11 +686,11 @@ static void rna_MeshCon_use_limit_lin_x(PointerRNA *ptr, int value)
 }
 
 
-static void rna_MeshCon_limit_lin_x_lower(PointerRNA *ptr, int value)
+static void rna_MeshCon_limit_lin_x_lower(PointerRNA *ptr, float value)
 {
 	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
 
-	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_LIMIT_LIN_X);
+	rbc->limit_lin_x_lower = value;
 
 #ifdef WITH_BULLET
 	if (rbc->physics_constraint) {
