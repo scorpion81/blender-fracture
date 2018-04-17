@@ -15,7 +15,7 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * Contributor(s): Blender Foundation 2013, Joshua Leung, Sergej Reich
+ * Contributor(s): Blender Foundation 2013, Joshua Leung, Sergej Reich, Martin Felke
  *
  * ***** END GPL LICENSE BLOCK *****
  */
@@ -969,6 +969,551 @@ static void rna_RigidBodyWorld_convex_sweep_test(
 #endif
 }
 
+
+
+static void rna_RigidBodyCon_use_limit_lin_x(PointerRNA *ptr, int value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_LIMIT_LIN_X);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_X)
+				{
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_X, 0.0f, -1.0f);
+				}
+				break;
+
+			case RBC_TYPE_SLIDER:
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_X)
+				{
+					RB_constraint_set_limits_slider(rbc->physics_constraint, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_slider(rbc->physics_constraint, 0.0f, -1.0f);
+				}
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_RigidBodyCon_limit_lin_x_lower(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->limit_lin_x_lower = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+				break;
+			case RBC_TYPE_SLIDER:
+				RB_constraint_set_limits_slider(rbc->physics_constraint, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_limit_lin_x_upper(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->limit_lin_x_upper = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+				break;
+			case RBC_TYPE_SLIDER:
+				RB_constraint_set_limits_slider(rbc->physics_constraint, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_RigidBodyCon_use_limit_lin_y(PointerRNA *ptr, int value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_LIMIT_LIN_Y);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_Y)
+				{
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->limit_lin_y_lower, rbc->limit_lin_y_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Y, 0.0f, -1.0f);
+				}
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_limit_lin_y_lower(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->limit_lin_y_lower = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->limit_lin_y_lower, rbc->limit_lin_y_upper);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_limit_lin_y_upper(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->limit_lin_y_upper = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->limit_lin_y_lower, rbc->limit_lin_y_upper);
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_RigidBodyCon_use_limit_lin_z(PointerRNA *ptr, int value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_LIMIT_LIN_Z);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_Z)
+				{
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->limit_lin_z_lower, rbc->limit_lin_z_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Z, 0.0f, -1.0f);
+				}
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_limit_lin_z_lower(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->limit_lin_z_lower = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->limit_lin_z_lower, rbc->limit_lin_z_upper);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_limit_lin_z_upper(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->limit_lin_z_upper = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->limit_lin_z_lower, rbc->limit_lin_z_upper);
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_RigidBodyCon_use_limit_ang_x(PointerRNA *ptr, int value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_LIMIT_ANG_X);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_X)
+				{
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->limit_ang_x_lower, rbc->limit_ang_x_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_X, 0.0f, -1.0f);
+				}
+				break;
+		}
+	}
+#endif
+}
+
+
+
+static void rna_RigidBodyCon_limit_ang_x_lower(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->limit_ang_x_lower = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->limit_ang_x_lower, rbc->limit_ang_x_upper);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_limit_ang_x_upper(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->limit_ang_x_upper = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->limit_ang_x_lower, rbc->limit_ang_x_upper);
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_RigidBodyCon_use_limit_ang_y(PointerRNA *ptr, int value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_LIMIT_ANG_Y);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Y)
+				{
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Y, rbc->limit_ang_y_lower, rbc->limit_ang_y_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Y, 0.0f, -1.0f);
+				}
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_RigidBodyCon_limit_ang_y_lower(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->limit_ang_y_lower = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Y, rbc->limit_ang_y_lower, rbc->limit_ang_y_upper);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_limit_ang_y_upper(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->limit_ang_y_upper = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Y, rbc->limit_ang_y_lower, rbc->limit_ang_y_upper);
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_RigidBodyCon_use_limit_ang_z(PointerRNA *ptr, int value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_LIMIT_ANG_Z);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Z)
+				{
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, 0.0f, -1.0f);
+				}
+				break;
+
+			case RBC_TYPE_HINGE:
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Z)
+				{
+					RB_constraint_set_limits_hinge(rbc->physics_constraint, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_hinge(rbc->physics_constraint, 0.0f, -1.0f);
+				}
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_RigidBodyCon_limit_ang_z_lower(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->limit_ang_z_lower = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+				break;
+			case RBC_TYPE_HINGE:
+				RB_constraint_set_limits_hinge(rbc->physics_constraint, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+		}
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_limit_ang_z_upper(PointerRNA *ptr, float value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	rbc->limit_ang_z_upper = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+				break;
+			case RBC_TYPE_HINGE:
+				RB_constraint_set_limits_hinge(rbc->physics_constraint, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+		}
+	}
+#endif
+}
+
+
+
+static void rna_RigidBodyCon_use_spring_x(PointerRNA *ptr, int value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_SPRING_X);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->flag & RBC_FLAG_USE_SPRING_X);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_use_spring_y(PointerRNA *ptr, int value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_SPRING_Y);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->flag & RBC_FLAG_USE_SPRING_Y);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_use_spring_z(PointerRNA *ptr, int value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_SPRING_Z);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->flag & RBC_FLAG_USE_SPRING_Z);
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_RigidBodyCon_use_spring_ang_x(PointerRNA *ptr, int value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_SPRING_ANG_X);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->flag & RBC_FLAG_USE_SPRING_ANG_X);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_use_spring_ang_y(PointerRNA *ptr, int value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_SPRING_ANG_Y);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_Y, rbc->flag & RBC_FLAG_USE_SPRING_ANG_Y);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_RigidBodyCon_use_spring_ang_z(PointerRNA *ptr, int value)
+{
+	RigidBodyCon *rbc = (RigidBodyCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_SPRING_ANG_Z);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->flag & RBC_FLAG_USE_SPRING_ANG_Z);
+				break;
+		}
+	}
+#endif
+}
+
 #else
 
 static void rna_def_rigidbody_world(BlenderRNA *brna)
@@ -1410,61 +1955,73 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 	/* Limits */
 	prop = RNA_def_property(srna, "use_limit_lin_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_LIN_X);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_limit_lin_x");
 	RNA_def_property_ui_text(prop, "X Axis", "Limit translation on X axis");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "use_limit_lin_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_LIN_Y);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_limit_lin_y");
 	RNA_def_property_ui_text(prop, "Y Axis", "Limit translation on Y axis");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "use_limit_lin_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_LIN_Z);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_limit_lin_z");
 	RNA_def_property_ui_text(prop, "Z Axis", "Limit translation on Z axis");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "use_limit_ang_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_ANG_X);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_limit_ang_x");
 	RNA_def_property_ui_text(prop, "X Angle", "Limit rotation around X axis");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "use_limit_ang_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_ANG_Y);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_limit_ang_y");
 	RNA_def_property_ui_text(prop, "Y Angle", "Limit rotation around Y axis");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "use_limit_ang_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_ANG_Z);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_limit_ang_z");
 	RNA_def_property_ui_text(prop, "Z Angle", "Limit rotation around Z axis");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "use_spring_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_X);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_spring_x");
 	RNA_def_property_ui_text(prop, "X Spring", "Enable spring on X axis");
 	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "use_spring_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_Y);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_spring_y");
 	RNA_def_property_ui_text(prop, "Y Spring", "Enable spring on Y axis");
 	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "use_spring_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_Z);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_spring_z");
 	RNA_def_property_ui_text(prop, "Z Spring", "Enable spring on Z axis");
 	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "use_spring_ang_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_ANG_X);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_spring_ang_x");
 	RNA_def_property_ui_text(prop, "X Angle Spring", "Enable spring on X rotational axis");
 	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "use_spring_ang_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_ANG_Y);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_spring_ang_y");
 	RNA_def_property_ui_text(prop, "Y Angle Spring", "Enable spring on Y rotational axis");
 	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "use_spring_ang_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_ANG_Z);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_RigidBodyCon_use_spring_ang_z");
 	RNA_def_property_ui_text(prop, "Z Angle Spring", "Enable spring on Z rotational axis");
 	RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
 
@@ -1482,42 +2039,49 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "limit_lin_x_lower", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_x_lower");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_limit_lin_x_lower", NULL);
 	RNA_def_property_float_default(prop, -1.0f);
 	RNA_def_property_ui_text(prop, "Lower X Limit", "Lower limit of X axis translation");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "limit_lin_x_upper", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_x_upper");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_limit_lin_x_upper", NULL);
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_ui_text(prop, "Upper X Limit", "Upper limit of X axis translation");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "limit_lin_y_lower", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_y_lower");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_limit_lin_y_lower", NULL);
 	RNA_def_property_float_default(prop, -1.0f);
 	RNA_def_property_ui_text(prop, "Lower Y Limit", "Lower limit of Y axis translation");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "limit_lin_y_upper", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_y_upper");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_limit_lin_y_upper", NULL);
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_ui_text(prop, "Upper Y Limit", "Upper limit of Y axis translation");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "limit_lin_z_lower", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_z_lower");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_limit_lin_z_lower", NULL);
 	RNA_def_property_float_default(prop, -1.0f);
 	RNA_def_property_ui_text(prop, "Lower Z Limit", "Lower limit of Z axis translation");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "limit_lin_z_upper", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_z_upper");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_limit_lin_z_upper", NULL);
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_ui_text(prop, "Upper Z Limit", "Upper limit of Z axis translation");
 	RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "limit_ang_x_lower", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_x_lower");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_limit_ang_x_lower", NULL);
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, -M_PI_4);
 	RNA_def_property_ui_text(prop, "Lower X Angle Limit", "Lower limit of X axis rotation");
@@ -1525,6 +2089,7 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "limit_ang_x_upper", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_x_upper");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_limit_ang_x_upper", NULL);
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, M_PI_4);
 	RNA_def_property_ui_text(prop, "Upper X Angle Limit", "Upper limit of X axis rotation");
@@ -1532,6 +2097,7 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "limit_ang_y_lower", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_y_lower");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_limit_ang_y_lower", NULL);
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, -M_PI_4);
 	RNA_def_property_ui_text(prop, "Lower Y Angle Limit", "Lower limit of Y axis rotation");
@@ -1539,6 +2105,7 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "limit_ang_y_upper", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_y_upper");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_limit_ang_y_upper", NULL);
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, M_PI_4);
 	RNA_def_property_ui_text(prop, "Upper Y Angle Limit", "Upper limit of Y axis rotation");
@@ -1546,6 +2113,7 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "limit_ang_z_lower", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_z_lower");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_limit_ang_z_lower", NULL);
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, -M_PI_4);
 	RNA_def_property_ui_text(prop, "Lower Z Angle Limit", "Lower limit of Z axis rotation");
@@ -1553,6 +2121,7 @@ static void rna_def_rigidbody_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "limit_ang_z_upper", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_z_upper");
+	RNA_def_property_float_funcs(prop, NULL, "rna_RigidBodyCon_limit_ang_z_upper", NULL);
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, M_PI_4);
 	RNA_def_property_ui_text(prop, "Upper Z Angle Limit", "Upper limit of Z axis rotation");
