@@ -4293,6 +4293,7 @@ static void do_post_island_creation(FractureModifierData *fmd, Object *ob, Deriv
 	fmd->refresh = false;
 	fmd->refresh_constraints = true;
 	fmd->refresh_autohide = true;
+	fmd->distortion_cached = false;
 
 #if 0
 	if (fmd->execute_threaded) {
