@@ -272,7 +272,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 
 		orig_index = CustomData_add_layer(&dm->vertData, CD_ORIGINDEX, CD_CALLOC, NULL, n);
 
-#pragma omp parallel for
+//#pragma omp parallel for
 		for (i = 0; i < n; i++)
 		{
 			copy_v3_v3(mv[i].co, pos[i]);
@@ -353,7 +353,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		oqW = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "quatW");
 
 
-#pragma omp parallel for
+//#pragma omp parallel for
 		for (i = 0; i < n; i++)
 		{
 			copy_v3_v3(mv[i].co, pos[i]);
@@ -375,7 +375,7 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 			}
 		}
 
-#pragma omp parallel for
+//#pragma omp parallel for
 		for (i = n; i < n + derived->numVertData; i++)
 		{
 			copy_v3_v3(mv[i].co, mv2[i-n].co);

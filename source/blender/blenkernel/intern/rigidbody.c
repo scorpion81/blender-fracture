@@ -1884,7 +1884,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 	/* only dynamic bodies need effector update */
 	else if (rbo->type == RBO_TYPE_ACTIVE /* && ((ob->pd == NULL) || (ob->pd->forcefield == PFIELD_NULL))*/) {
 		EffectorWeights *effector_weights = rbw->effector_weights;
-		EffectedPoint epoint;
+		EffectedPoint epoint = {0};
 		ListBase *effectors;
 
 		/* get effectors present in the group specified by effector_weights */

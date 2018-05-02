@@ -267,7 +267,7 @@ rbCollisionShape *RB_shape_new_gimpact_mesh(rbMeshData *mesh);
 
 int RB_shape_get_num_verts(rbCollisionShape *shape);
 
-rbCollisionShape *RB_shape_new_compound();
+rbCollisionShape *RB_shape_new_compound(void);
 void RB_shape_add_compound_child(rbCollisionShape** compound, rbCollisionShape* child, float loc[3], float rot[4]);
 
 /* Cleanup --------------------------- */
