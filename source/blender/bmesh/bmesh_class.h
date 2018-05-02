@@ -421,7 +421,7 @@ typedef bool (*BMLoopFilterFunc)(const BMLoop *, void *user_data);
 #ifdef DEBUG
 #  define BM_OMP_LIMIT 0
 #else
-#  define BM_OMP_LIMIT 10000
+#  define BM_OMP_LIMIT 1000000
 #endif
 
 #endif /* __BMESH_CLASS_H__ */
