@@ -103,7 +103,7 @@ static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED_rbw, Mesh
 static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bool rebuild);
 static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, float ctime);
 static void DM_mesh_boundbox(DerivedMesh *bm, float r_loc[3], float r_size[3]);
-static void test_deactivate_rigidbody(RigidBodyOb *rbo);
+static void test_deactivate_rigidbody(RigidBodyOb *rbo, MeshIsland *mi);
 static float box_volume(float size[3]);
 
 #endif
@@ -4119,7 +4119,7 @@ static bool do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 			if ((mi_compare == mi) && antiValid && activate)
 			{
 				if (rbo->physics_object) {
-					test_deactivate_rigidbody(rbo);
+					test_deactivate_rigidbody(rbo, mi);
 				}
 			}
 		}
@@ -4140,7 +4140,7 @@ static bool do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 
 		if (rbo && antiValid && activate)
 		{
-			test_deactivate_rigidbody(rbo);
+			test_deactivate_rigidbody(rbo, NULL);
 		}
 	}
 
@@ -4308,8 +4308,11 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		          ((ob1->rigidbody_object->type == RBO_TYPE_ACTIVE) && (ob2->rigidbody_object->type == RBO_TYPE_ACTIVE)));
 	}
 
-	if (validOb || (ob1->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) || (ob2->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) ||
-	   (ob1->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER) || (ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER))
+	if (validOb || ((colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups) &&
+	               ((ob1->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) ||
+	                (ob2->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) ||
+                    (ob1->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER) ||
+	                (ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER)))))
 	{
 		//override for 2 regular rigidbodies to enable ghost trigger functionality; else bullet wont call this again here with "activate == true"
 
@@ -4317,14 +4320,18 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
 			bool override = activate || (!mi1 && !mi2 && (ob2->rigidbody_object->flag & RBO_FLAG_IS_GHOST) &&
-			                                             (ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER));
+			                                             (ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER)) ||
+			                ((ob2->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && (ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER));
+
 			check_activate = do_activate(ob1, ob2, mi1, rbw, mi2, override);
 		}
 
 		if (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
 			bool override = activate || (!mi1 && !mi2 && (ob1->rigidbody_object->flag & RBO_FLAG_IS_GHOST) &&
-			                                             (ob1->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER));
+			                                             (ob1->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER)) ||
+			                ((ob1->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && (ob1->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER));
+
 			check_activate = do_activate(ob2, ob1, mi2, rbw, mi1, override);
 		}
 	}
@@ -4844,13 +4851,13 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 	}
 }
 
-static void test_deactivate_rigidbody(RigidBodyOb *rbo)
+static void test_deactivate_rigidbody(RigidBodyOb *rbo, MeshIsland* mi)
 {
 	//make kinematic again (un-trigger)
 	//printf("Untrigger\n");
 	//if (rbo->physics_object)
 
-	if (rbo->physics_object) {
+	if (rbo->physics_object && ((rbo->flag & RBO_FLAG_KINEMATIC) == 0)) {
 		float lin_vel[3], ang_vel[3];
 
 		RB_body_get_linear_velocity(rbo->physics_object, lin_vel);
@@ -4864,9 +4871,36 @@ static void test_deactivate_rigidbody(RigidBodyOb *rbo)
 			//rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 			//RB_body_deactivate(rbo->physics_object);
 
+			int i = 0;
+
 			rbo->flag |= RBO_FLAG_KINEMATIC;
 			rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
 			rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+			if (mi != NULL)
+			{
+				for (i = 0; i < mi->participating_constraint_count; i++)
+				{
+					RigidBodyShardCon *con;
+					con = mi->participating_constraints[i];
+
+					if (con && con->physics_constraint && RB_constraint_is_enabled(con->physics_constraint))
+					{
+						RigidBodyOb *rb1 = con->mi1->rigidbody;
+						RigidBodyOb *rb2 = con->mi2->rigidbody;
+
+						RB_constraint_set_enabled(con->physics_constraint, false);
+
+						rb1->flag |= RBO_FLAG_KINEMATIC;
+						rb1->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+						rb1->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+						rb2->flag |= RBO_FLAG_KINEMATIC;
+						rb2->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+						rb2->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					}
+				}
+			}
 		}
 	}
 }
