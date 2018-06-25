@@ -2364,7 +2364,10 @@ static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData, bool
 		CDDM_calc_edges(result);
 	}
 
-	do_marking(fmd, result);
+	if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+	{
+		do_marking(fmd, result);
+	}
 	
 	result->dirty |= DM_DIRTY_NORMALS;
 	CDDM_calc_normals_mapping(result);
