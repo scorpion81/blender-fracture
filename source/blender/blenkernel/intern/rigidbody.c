@@ -4315,20 +4315,12 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 
 		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			bool override = activate || (!mi1 && !mi2 && (ob2->rigidbody_object->flag & RBO_FLAG_IS_GHOST) &&
-			                                             (ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER)) ||
-			                ((ob2->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && (ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER));
-
-			check_activate = do_activate(ob1, ob2, mi1, rbw, mi2, override);
+			check_activate = do_activate(ob1, ob2, mi1, rbw, mi2, activate);
 		}
 
 		if (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			bool override = activate || (!mi1 && !mi2 && (ob1->rigidbody_object->flag & RBO_FLAG_IS_GHOST) &&
-			                                             (ob1->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER)) ||
-			                ((ob1->rigidbody_object->flag & RBO_FLAG_IS_GHOST) && (ob1->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER));
-
-			check_activate = do_activate(ob2, ob1, mi2, rbw, mi1, override);
+			check_activate = do_activate(ob2, ob1, mi2, rbw, mi1, activate);
 		}
 	}
 
@@ -4336,20 +4328,8 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	fake_dynamic_collide(ob1, ob2, mi1, mi2, rbw);
 	fake_dynamic_collide(ob2, ob1, mi2, mi1, rbw);
 
-	if (activate)
-	{
-		validOb = ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0) || ((ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0);
-		validOb = validOb || ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0) || (mi2 && (mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
-		validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || ((ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0);
-		validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || (mi2 && (mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
-
-		validOb = validOb && (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) &&
+	validOb = (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) &&
 		          check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2)));
-	}
-	else {
-		validOb = (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) &&
-		          check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2)));
-	}
 
 	return activate ? validOb : check_activate || validOb;
 }
