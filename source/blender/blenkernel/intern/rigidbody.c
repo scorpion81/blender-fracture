@@ -4315,12 +4315,14 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 
 		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			check_activate = do_activate(ob1, ob2, mi1, rbw, mi2, activate);
+			bool override = activate || (ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER);
+			check_activate = do_activate(ob1, ob2, mi1, rbw, mi2, override);
 		}
 
 		if (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			check_activate = do_activate(ob2, ob1, mi2, rbw, mi1, activate);
+			bool override = activate || (ob1->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER);
+			check_activate = do_activate(ob2, ob1, mi2, rbw, mi1, override);
 		}
 	}
 
