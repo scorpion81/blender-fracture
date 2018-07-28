@@ -2419,6 +2419,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 		if (BKE_rigidbody_check_sim_running(rbw, cfra) &&
 		   (rbw->ltime > rbw->pointcache->startframe || rbw->ltime == rbw->pointcache->endframe))
 		{
+			BKE_report(op->reports, RPT_WARNING, "Please jump back to cache start frame in order to refracture");
 			return OPERATOR_CANCELLED;
 		}
 	}
