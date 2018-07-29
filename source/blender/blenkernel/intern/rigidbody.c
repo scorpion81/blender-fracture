@@ -4333,7 +4333,8 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 	validOb = (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) &&
 		          check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2)));
 
-	return activate ? validOb : check_activate || validOb;
+	//return activate ? validOb : check_activate || validOb;
+	return validOb;
 }
 
 static bool can_break(Object* collider, Object* ob, bool limit)

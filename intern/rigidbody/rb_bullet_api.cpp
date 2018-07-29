@@ -767,7 +767,7 @@ struct rbFilterCallback : public btOverlapFilterCallback
 		           (rb0->blenderOb != rb1->blenderOb)));
 
 		//only apply to trigger and triggered, to improve performance, but do not actually activate
-		return this->check_collision(rb0, rb1, false, collides);
+		return collides; // this->check_collision(rb0, rb1, false, collides);
 	}
 };
 
@@ -854,7 +854,11 @@ static void idCallback(void *userPtr, int* objectId, int* shardId)
 class CollisionFilterDispatcher : public btCollisionDispatcher
 {
 	public:
-		virtual bool needsCollision(const btCollisionObject *body0, const btCollisionObject *body1);
+		//virtual bool needsCollision(const btCollisionObject *body0, const btCollisionObject *body1);
+		virtual void dispatchAllCollisionPairs(btOverlappingPairCache* pairCache,
+		                                                         const btDispatcherInfo& dispatchInfo,
+		                                                         btDispatcher* dispatcher);
+
 		rbFilterCallback *filterCallback;
 		CollisionFilterDispatcher(btDefaultCollisionConfiguration *configuration, rbFilterCallback* callback);
 };
@@ -865,6 +869,53 @@ CollisionFilterDispatcher::CollisionFilterDispatcher(btDefaultCollisionConfigura
 	this->filterCallback = callback;
 }
 
+class CollisionPairCallback : public btOverlapCallback
+{
+	const btDispatcherInfo& m_dispatchInfo;
+	btCollisionDispatcher*	m_dispatcher;
+
+public:
+
+	CollisionPairCallback(const btDispatcherInfo& dispatchInfo,btCollisionDispatcher*	dispatcher)
+	:m_dispatchInfo(dispatchInfo),
+	m_dispatcher(dispatcher)
+	{
+	}
+
+	virtual ~CollisionPairCallback() {}
+
+
+	virtual bool	processOverlap(btBroadphasePair& pair)
+	{
+		(*m_dispatcher->getNearCallback())(pair,*m_dispatcher,m_dispatchInfo);
+
+		bool do_collide = false;
+
+		//true will remove this collision pair again...
+		btCollisionObject* colObj0 = (btCollisionObject*)pair.m_pProxy0->m_clientObject;
+		btCollisionObject* colObj1 = (btCollisionObject*)pair.m_pProxy1->m_clientObject;
+
+		rbRigidBody *rb0 = (rbRigidBody*)colObj0->getUserPointer();
+		rbRigidBody *rb1 = (rbRigidBody*)colObj1->getUserPointer();
+
+		do_collide = ((rbFilterCallback*)(rb0->world->filterCallback))->callback(rb0->world->blenderWorld,
+		                                                                             rb0->meshIsland, rb1->meshIsland,
+																				     rb0->blenderOb, rb1->blenderOb, false);
+		return !do_collide;
+	}
+};
+
+void	CollisionFilterDispatcher::dispatchAllCollisionPairs(btOverlappingPairCache* pairCache,
+                                                               const btDispatcherInfo& dispatchInfo,
+                                                               btDispatcher* dispatcher)
+{
+
+	CollisionPairCallback	collisionCallback(dispatchInfo,this);
+
+	pairCache->processAllOverlappingPairs(&collisionCallback,dispatcher);
+}
+
+#if 0
 bool CollisionFilterDispatcher::needsCollision(const btCollisionObject *body0, const btCollisionObject *body1)
 {
 	rbRigidBody *rb0 = (rbRigidBody *)((btFractureBody *)body0)->getUserPointer();
@@ -872,6 +923,7 @@ bool CollisionFilterDispatcher::needsCollision(const btCollisionObject *body0, c
 
 	if (((btRigidBody*)body0)->checkCollideWithOverride(body1))
 	{
+
 		if (this->filterCallback)
 		{
 			return this->filterCallback->check_collision(rb0, rb1, false, true);
@@ -882,6 +934,7 @@ bool CollisionFilterDispatcher::needsCollision(const btCollisionObject *body0, c
 
 	return false;
 }
+#endif
 
 /*taken from btCollisionDispatcher defaultNearCallback */
 static void nearCallback(btBroadphasePair &collisionPair, btCollisionDispatcher &dispatcher, const btDispatcherInfo &dispatchInfo)
@@ -901,9 +954,8 @@ static void nearCallback(btBroadphasePair &collisionPair, btCollisionDispatcher 
 			btManifoldResult contactPointResult(&obj0Wrap, &obj1Wrap);
 
 			if (dispatchInfo.m_dispatchFunc == btDispatcherInfo::DISPATCH_DISCRETE) {
-			//discrete collision detection query
-
-			collisionPair.m_algorithm->processCollision(&obj0Wrap, &obj1Wrap, dispatchInfo, &contactPointResult);
+				//discrete collision detection query
+				collisionPair.m_algorithm->processCollision(&obj0Wrap, &obj1Wrap, dispatchInfo, &contactPointResult);
 			}
 			else
 			{
@@ -915,8 +967,8 @@ static void nearCallback(btBroadphasePair &collisionPair, btCollisionDispatcher 
 
 			btPersistentManifold *manifold = contactPointResult.getPersistentManifold();
 			if (manifold && manifold->getNumContacts() > 0) {
-				rbRigidBody *rb0 = (rbRigidBody *)((btRigidBody *)collisionPair.m_pProxy0->m_clientObject)->getUserPointer();
-				rbRigidBody *rb1 = (rbRigidBody *)((btRigidBody *)collisionPair.m_pProxy1->m_clientObject)->getUserPointer();
+				rbRigidBody *rb0 = (rbRigidBody*)colObj0->getUserPointer();
+				rbRigidBody *rb1 = (rbRigidBody*)colObj1->getUserPointer();
 
 				//handle_activation(manifold, rb0, rb1);
 				//handle_activation(manifold, rb1, rb0);
