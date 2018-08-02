@@ -1385,7 +1385,7 @@ static FracPointCloud get_points_global(FractureModifierData *emd, Object *ob, D
 						off[1] = emd->grid_offset[1] * ((max[1] - min[1]) / (float)emd->grid_resolution[1]);
 					}
 
-					print_v3("offset", off);
+					//print_v3("offset", off);
 
 					if (id > 0 && emd->cutter_group == NULL)
 					{

@@ -2010,18 +2010,12 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 		if (off[0] > 0 || off[1] > 0 || off[2] > 0)
 		{
 			sub_v3_v3(min, off);
-
-			//special treatment for grid pointsource... with offsets
-			voro_container = container_new(min[0], max[0], min[1], max[1], min[2], max[2],
-										   resolution[0] * 2, resolution[1] * 2, resolution[2] * 2, false, false, false,
-										   pointcloud->totpoints);
-
 		}
-		else {
-			voro_container = container_new(min[0], max[0], min[1], max[1], min[2], max[2],
-										   n_size, n_size, n_size, false, false, false,
-										   pointcloud->totpoints);
-		}
+
+		//special treatment for grid pointsource... with offsets
+		voro_container = container_new(min[0], max[0], min[1], max[1], min[2], max[2],
+										n_size, n_size, n_size, false, false, false,
+										pointcloud->totpoints);
 	}
 	else {
 		voro_container = container_new(min[0], max[0], min[1], max[1], min[2], max[2],
@@ -2043,7 +2037,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	voro_cells = cells_new(pointcloud->totpoints);
 
 	/*Compute directly...*/
-	container_compute_cells(voro_container, voro_cells);
+	container_compute_cells(voro_container, voro_particle_order, voro_cells);
 
 	/*Apply offsets (if any, grid only */
 	if (point_source & MOD_FRACTURE_GRID)
@@ -2054,6 +2048,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 		{
 			//adjust centroid and...
 			float off[3], cent[3];
+
 			copy_v3_v3(off, pointcloud->points[p].offset);
 			add_v3_v3(voro_cells[p].centroid, off);
 			copy_v3_v3(cent, voro_cells[p].centroid);
@@ -2063,6 +2058,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 			for (v = 0; v < voro_cells[p].totvert; v++)
 			{
 				add_v3_v3(voro_cells[p].verts[v], off);
+
 				//print_v3("Vert", voro_cells[p].verts[v]);
 				sub_v3_v3(voro_cells[p].verts[v], cent);
 				add_v3_v3(voro_cells[p].verts[v], voro_cells[p].centroid);
