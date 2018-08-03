@@ -2043,7 +2043,7 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	if (point_source & MOD_FRACTURE_GRID)
 	{
 		int v = 0;
-		float fact[3] = {1 - spacing[0], 1 - spacing[1], 1 - spacing[2]};
+		float fact[3] = {1 + spacing[0], 1 + spacing[1], 1 + spacing[2]};
 		for (p = 0; p < pointcloud->totpoints; p++)
 		{
 			//adjust centroid and...
@@ -2060,8 +2060,8 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 				add_v3_v3(voro_cells[p].verts[v], off);
 
 				//print_v3("Vert", voro_cells[p].verts[v]);
-				sub_v3_v3(voro_cells[p].verts[v], cent);
-				add_v3_v3(voro_cells[p].verts[v], voro_cells[p].centroid);
+				add_v3_v3(voro_cells[p].verts[v], cent);
+				sub_v3_v3(voro_cells[p].verts[v], voro_cells[p].centroid);
 			}
 		}
 	}

@@ -1564,7 +1564,7 @@ void RNA_def_fracture(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "grid_spacing", PROP_FLOAT, PROP_XYZ);
 	RNA_def_property_float_sdna(prop, NULL, "grid_spacing");
-	RNA_def_property_range(prop, 0.0f, 0.99f);
+	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_array(prop, 3);
 	RNA_def_property_float_default(prop, 0.0f);
 	RNA_def_property_ui_text(prop, "Grid Spacing", "How much space inbetween the bricks, in each direction");
