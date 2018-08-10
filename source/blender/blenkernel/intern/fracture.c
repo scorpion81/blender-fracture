@@ -3867,6 +3867,7 @@ void BKE_update_acceleration_map(FractureModifierData *fmd, MeshIsland* mi, Obje
 
 void BKE_update_velocity_layer(FractureModifierData *fmd, MeshIsland *mi)
 {
+#if 0
 	DerivedMesh *dm = fmd->visible_mesh_cached;
 	float *velX=NULL, *velY=NULL, *velZ = NULL;
 	RigidBodyOb *rbo = mi->rigidbody;
@@ -3934,6 +3935,7 @@ void BKE_update_velocity_layer(FractureModifierData *fmd, MeshIsland *mi)
 		velY[mi->vertex_indices[i]] = rbo->lin_vel[1] + rbo->ang_vel[1];
 		velZ[mi->vertex_indices[i]] = rbo->lin_vel[2] + rbo->ang_vel[2];
 	}
+#endif
 }
 
 /* gah, it could be that simple, if each mod handled its stuff itself */
