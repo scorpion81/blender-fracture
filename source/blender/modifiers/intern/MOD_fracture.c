@@ -3653,6 +3653,7 @@ static DerivedMesh* centroids_to_verts(FractureModifierData* fmd, BMesh* bm, Obj
 
 static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Object *ob)
 {
+
 	int totpoly = dm->getNumPolys(dm);
 	int i = 0;
 	BMesh *bm = BM_mesh_create(&bm_mesh_allocsize_default,  &((struct BMeshCreateParams){.use_toolflags = true,}));
@@ -3660,6 +3661,9 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 	BMFace **faces = MEM_mallocN(sizeof(BMFace *), "faces");
 	int del_faces = 0;
 	bool do_merge = fmd->do_merge;
+
+	//just before we mess up the mesh, ensure velocity precalculation.
+	BKE_update_velocity_layer(fmd);
 
 	if (fmd->use_centroids && !fmd->use_vertices)
 	{

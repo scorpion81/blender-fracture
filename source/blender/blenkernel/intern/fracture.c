@@ -205,29 +205,6 @@ static int shard_sortsize(const void *s1, const void *s2, void* UNUSED(context))
 	return 0;
 }
 
-void* check_add_layer(CustomData *src, CustomData *dst, int type, int totelem, const char* name)
-{
-	void *layer =  CustomData_get_layer_named(dst, type, name);
-
-	if (!layer) {
-		void* orig = NULL;
-
-		if (src) {
-			orig = CustomData_get_layer_named(src, type, name);
-		}
-
-		if (orig) {
-			return CustomData_add_layer_named(dst, type, CD_DUPLICATE, orig, totelem, name);
-		}
-		else{
-			return CustomData_add_layer_named(dst, type, CD_CALLOC, NULL, totelem, name);
-		}
-	}
-	else {
-		return layer;
-	}
-}
-
 Shard *BKE_custom_data_to_shard(Shard *s, DerivedMesh *dm)
 {
 	CustomData_reset(&s->vertData);
@@ -239,11 +216,6 @@ Shard *BKE_custom_data_to_shard(Shard *s, DerivedMesh *dm)
 	CustomData_copy(&dm->loopData, &s->loopData, CD_MASK_MLOOPUV, CD_DUPLICATE, s->totloop);
 	CustomData_copy(&dm->polyData, &s->polyData, CD_MASK_MTEXPOLY, CD_DUPLICATE, s->totpoly);
 	CustomData_copy(&dm->edgeData, &s->edgeData, CD_MASK_CREASE | CD_MASK_BWEIGHT | CD_MASK_MEDGE, CD_DUPLICATE, s->totedge);
-
-	//add velocity vertex layers...
-	check_add_layer(&dm->vertData, &s->vertData, CD_PROP_FLT, s->totvert, "velX");
-	check_add_layer(&dm->vertData, &s->vertData, CD_PROP_FLT, s->totvert, "velY");
-	check_add_layer(&dm->vertData, &s->vertData, CD_PROP_FLT, s->totvert, "velZ");
 
 	return s;
 }
@@ -3865,77 +3837,44 @@ void BKE_update_acceleration_map(FractureModifierData *fmd, MeshIsland* mi, Obje
 	}
 }
 
-void BKE_update_velocity_layer(FractureModifierData *fmd, MeshIsland *mi)
+void BKE_update_velocity_layer(FractureModifierData *fmd)
 {
-#if 0
 	DerivedMesh *dm = fmd->visible_mesh_cached;
 	float *velX=NULL, *velY=NULL, *velZ = NULL;
-	RigidBodyOb *rbo = mi->rigidbody;
-	Shard *s, *t = NULL;
-	void *pX, *pY, *pZ, *spX = NULL, *spY = NULL, *spZ = NULL;
-	float *sX=NULL, *sY=NULL, *sZ=NULL;
+	RigidBodyOb *rbo = NULL;
 	int i = 0;
-	ListBase *lb;
+	MeshIsland *mi;
+	int totvert;
 
 	if (!dm)
 		return;
 
-	//XXX TODO deal with split shards to islands etc, here take only "real" shards for now
-	if (fmd->shards_to_islands) {
-		lb = &fmd->islandShards;
-	}
-	else {
-		lb = &fmd->frac_mesh->shard_map;
-	}
+	totvert = dm->getNumVerts(dm);
 
-	for (s = lb->first; s; s = s->next)
+	velX = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velX");
+	velY = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velY");
+	velZ = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velZ");
+
+	if (!velX)
+		velX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, totvert, "velX");
+
+	if (!velY)
+		velY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, totvert, "velY");
+
+	if (!velZ)
+		velZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, totvert, "velZ");
+
+	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
 	{
-		if (s->shard_id == mi->id)
+		rbo = mi->rigidbody;
+
+		for (i = 0; i < mi->vertex_count; i++)
 		{
-			t = s;
-			break;
+			velX[mi->vertex_indices[i]] = rbo->lin_vel[0] + rbo->ang_vel[0];
+			velY[mi->vertex_indices[i]] = rbo->lin_vel[1] + rbo->ang_vel[1];
+			velZ[mi->vertex_indices[i]] = rbo->lin_vel[2] + rbo->ang_vel[2];
 		}
 	}
-
-	pX = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velX");
-	pY = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velY");
-	pZ = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velZ");
-
-	if (!pX ||!pY || !pZ)
-		return;
-
-	velX = (float*)pX;
-	velY = (float*)pY;
-	velZ = (float*)pZ;
-
-	//XXX how to represent this in mblur ?
-	//zero_v3(rbo->ang_vel);
-
-	if (t)
-	{
-		spX = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velX");
-		spY = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velY");
-		spZ = check_add_layer(NULL, &t->vertData, CD_PROP_FLT, t->totvert, "velZ");
-	}
-
-	for (i = 0; i < mi->vertex_count; i++)
-	{
-		if (spX && spY && spZ)
-		{
-			sX = (float*)spX;
-			sY = (float*)spY;
-			sZ = (float*)spZ;
-
-			sX[i] = rbo->lin_vel[0] + rbo->ang_vel[0];
-			sY[i] = rbo->lin_vel[1] + rbo->ang_vel[1];
-			sZ[i] = rbo->lin_vel[2] + rbo->ang_vel[2];
-		}
-
-		velX[mi->vertex_indices[i]] = rbo->lin_vel[0] + rbo->ang_vel[0];
-		velY[mi->vertex_indices[i]] = rbo->lin_vel[1] + rbo->ang_vel[1];
-		velZ[mi->vertex_indices[i]] = rbo->lin_vel[2] + rbo->ang_vel[2];
-	}
-#endif
 }
 
 /* gah, it could be that simple, if each mod handled its stuff itself */

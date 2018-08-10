@@ -1364,13 +1364,6 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 			RB_body_get_linear_velocity(rbo->physics_object, rbo->lin_vel);
 			RB_body_get_angular_velocity(rbo->physics_object, rbo->ang_vel);
 
-			//this is only for motionblur, so its enough to be updated when rendering
-			if (fmd && G.is_rendering)
-			{
-				mi = find_meshisland(fmd, rbo->meshisland_index);
-				BKE_update_velocity_layer(fmd, mi);
-			}
-
 			/*if (cfra > rbw->pointcache->startframe)
 			{
 				sub_v3_v3v3(rbo->lin_vel, linvel, rbo->lin_vel);
@@ -1487,13 +1480,6 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 						BKE_update_acceleration_map(fmd, mi, ob, frame, acc, rbw);
 					}
 				}
-			}
-
-			//this is only for motionblur, so its enough to be updated when rendering
-			if (fmd && G.is_rendering)
-			{
-				mi = find_meshisland(fmd, rbo->meshisland_index);
-				BKE_update_velocity_layer(fmd, mi);
 			}
 		}
 	}
@@ -1620,11 +1606,6 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 		copy_qt_qt(rbo->orn, keys->rot);
 		copy_v3_v3(rbo->lin_vel, keys->vel);
 		copy_v3_v3(rbo->ang_vel, keys->ave);
-
-		if (fmd && mi && G.is_rendering)
-		{
-			BKE_update_velocity_layer(fmd, mi);
-		}
 	}
 }
 static int ptcache_rigidbody_totpoint(void *rb_v, int UNUSED(cfra))
