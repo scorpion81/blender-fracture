@@ -1824,6 +1824,7 @@ typedef struct FractureModifierData {
 	float anim_bind_limit;
 	float grid_offset[3];
 	float grid_spacing[3];
+	float autohide_filter_dist;
 
 	/* flags */
 	int refresh;
@@ -1885,7 +1886,7 @@ typedef struct FractureModifierData {
 	short mat_ofs_intersect;
 	short mat_ofs_difference;
 
-	char pad[4];
+	//char pad[4];
 } FractureModifierData;
 
 typedef struct DataTransferModifierData {

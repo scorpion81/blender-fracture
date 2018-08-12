@@ -303,7 +303,10 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
         md = context.fracture
-        layout.prop(md, "autohide_filter_group", text = "Filter Group")
+        col = layout.column()
+        col.prop(md, "autohide_filter_group", text = "Filter Group")
+        if md.autohide_filter_group:
+            col.prop(md, "autohide_filter_dist")
         col = layout.column(align=True)
         col.prop(md, "autohide_dist")
         col.prop(md, "automerge_dist")

@@ -273,6 +273,7 @@ static void initData(ModifierData *md)
 	zero_v3(fmd->grid_spacing);
 	fmd->use_constraint_group = false;
 	fmd->activate_broken = false;
+	fmd->autohide_filter_dist = 0.1f;
 }
 
 //XXX TODO, freeing functionality should be in BKE too
@@ -1929,6 +1930,8 @@ static void copyData(ModifierData *md, ModifierData *target)
 
 	trmd->use_constraint_group = rmd->use_constraint_group;
 	trmd->activate_broken = rmd->activate_broken;
+
+	trmd->autohide_filter_dist = rmd->autohide_filter_dist;
 }
 
 //XXXX TODO, is BB really useds still ? aint there exact volume calc now ?
@@ -3389,22 +3392,71 @@ static void find_other_face(FractureModifierData *fmd, int i, BMesh* bm, Object*
 				/*if not in any filter range, delete... else keep */
 				Object* obj = go->ob;
 				float f1_loc[3], f2_loc[3];
-				float radius = MAX3(obj->size[0], obj->size[1], obj->size[2]);
+
+				float radius = fmd->autohide_filter_dist;
 
 				/* TODO XXX watch out if go->ob is parented to ob (Transformation error ?) */
 				mul_v3_m4v3(f1_loc, ob->obmat, f_centr);
 				mul_v3_m4v3(f2_loc, ob->obmat, f_centr_other);
 				radius = radius * radius;
 
-				if ((len_squared_v3v3(f1_loc, obj->loc) < radius) &&
-					(len_squared_v3v3(f2_loc, obj->loc) < radius))
+				if (obj->type == OB_MESH)
 				{
-					in_filter = true;
-					break;
+					//use geometry of meshes
+					MVert* mvert = NULL, *mv = NULL;
+					DerivedMesh *dm = obj->derivedFinal;
+					bool final = true;
+					int totvert, v;
+
+					if (!dm) {
+						dm = CDDM_from_mesh(obj->data);
+						final = false;
+					}
+
+					mvert = dm->getVertArray(dm);
+					totvert = dm->getNumVerts(dm);
+
+					for (v = 0, mv = mvert; v < totvert; v++, mv++)
+					{
+						float loc[3];
+						mul_v3_m4v3(loc, obj->obmat, mv->co);
+
+						if ((len_squared_v3v3(f1_loc, loc) < radius) &&
+							(len_squared_v3v3(f2_loc, loc) < radius))
+						{
+							in_filter = true;
+							break;
+						}
+						else
+						{
+							in_filter = false;
+						}
+					}
+
+					if (!final && dm)
+					{
+						dm->needsFree = 1;
+						dm->release(dm);
+						dm = NULL;
+					}
+
+					if (in_filter)
+						break;
 				}
-				else
-				{
-					in_filter = false;
+				else {
+					//override with object size here, makes more sense
+					radius = MAX3(obj->size[0], obj->size[1], obj->size[2]);
+
+					if ((len_squared_v3v3(f1_loc, obj->loc) < radius) &&
+						(len_squared_v3v3(f2_loc, obj->loc) < radius))
+					{
+						in_filter = true;
+						break;
+					}
+					else
+					{
+						in_filter = false;
+					}
 				}
 			}
 		}

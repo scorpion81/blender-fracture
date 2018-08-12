@@ -715,6 +715,7 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.grid_offset",
         "fracture.grid_spacing",
         "fracture.use_constraint_group",
+        "fracture.autohide_filter_dist",
     ]
 
     preset_subdir = "fracture"

@@ -1584,5 +1584,13 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
+	prop = RNA_def_property(srna, "autohide_filter_dist", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "autohide_filter_dist");
+	RNA_def_property_range(prop, 0, FLT_MAX);
+	RNA_def_property_ui_text(prop, "Filter Distance", "Distance between verts of filter objects and face centers of object");
+	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.1f, 3);
+	//RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
 	RNA_api_fracture(brna, srna);
 }
