@@ -4856,7 +4856,7 @@ static void test_deactivate_rigidbody(RigidBodyOb *rbo, MeshIsland* mi)
 			rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
 			rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 
-			if (mi != NULL)
+			if ((mi != NULL) && (rbo->flag & RBO_FLAG_PROPAGATE_TRIGGER))
 			{
 				for (i = 0; i < mi->participating_constraint_count; i++)
 				{
