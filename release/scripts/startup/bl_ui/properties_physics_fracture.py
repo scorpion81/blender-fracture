@@ -220,10 +220,10 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
         row.prop(md, "activate_broken")
 
         col = layout.column(align=True)
-        col.prop(md, "constraint_target")
         col.prop(md, "constraint_type")
+        col.prop(md, "constraint_target")
         col = layout.column(align=True)
-        col.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
+        col.prop(md, "constraint_limit")
         col.prop(md, "contact_dist")
 
         layout.label("Constraint Cluster Settings")

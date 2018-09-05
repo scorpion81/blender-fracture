@@ -839,7 +839,7 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_contact_dist_set", NULL);
-	RNA_def_property_ui_text(prop, "Search Radius", "Limit search radius up to which two mesh islands are being connected, 0 for entire boundingbox");
+	RNA_def_property_ui_text(prop, "Search Radius", "Limit search radius up to which two shards are being connected, 0 for entire boundingbox");
 	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.1f, 2);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
@@ -854,7 +854,7 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_int_sdna(prop, NULL, "constraint_limit");
 	RNA_def_property_range(prop, 0, INT_MAX);
 	RNA_def_property_int_funcs(prop, NULL, "rna_FractureModifier_constraint_limit_set", NULL);
-	RNA_def_property_ui_text(prop, "Constraint Search Limit", "Maximum number of neighbors being searched per mesh island during constraint creation, 0 for unlimited");
+	RNA_def_property_ui_text(prop, "Search Limit", "Maximum number of surrounding shards being taken into account per shard during constraint creation, 0 for unlimited");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -1235,7 +1235,7 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_enum_items(prop, prop_constraint_targets);
 	RNA_def_property_enum_funcs(prop, NULL, "rna_FractureModifier_constraint_target_set", NULL);
 	RNA_def_property_enum_default(prop, MOD_FRACTURE_CENTROID);
-	RNA_def_property_ui_text(prop, "Constraint Method", "Method to build constraints");
+	RNA_def_property_ui_text(prop, "Search Method", "Method to search constraints among surrounding shards");
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
