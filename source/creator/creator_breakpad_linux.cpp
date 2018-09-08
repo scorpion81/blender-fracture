@@ -51,7 +51,25 @@ using namespace google_breakpad;
 
 namespace {
 
+
+	static void sendMinidump(const MinidumpDescriptor &descriptor);
 	static bool dumpCallback(const MinidumpDescriptor& descriptor, void* context, bool succeeded)
+	{
+		int buttonid;
+		printf("Minidump file ready to send: %s\n", descriptor.path());
+
+		//the simplest solutions are often the best, lol... SDL and co just dont work here anymore
+		buttonid = system("xmessage -buttons 'Yes':0,'No':1 -title 'Uh-Ow something unexpected has happened' "
+	"'Would you like to submit information about this crash to blender.org \nto help improving future versions of blender?' ");
+
+		if (buttonid == 0) {
+			sendMinidump(descriptor);
+		}
+
+		return succeeded;
+	}
+
+	static void sendMinidump(const MinidumpDescriptor& descriptor)
 	{
 		  std::map<std::string, std::string> files;
 		  std::map<std::string, std::string> annotations;
@@ -101,20 +119,10 @@ namespace {
 		  }
 		  printf("Response:\n");
 		  printf("%s\n", response.c_str());
-
-		  return succeeded;
 	}
 
 	static void startCrashHandler()
 	{
-#if 0
-		 MinidumpDescriptor descriptor("/tmp");
-	 	 ExceptionHandler eh(descriptor, NULL, dumpCallback, NULL, true, -1);
-		 printf("Exception Handler registered!\n");
-
-		 //int* whoops = (int*)0;
-		 //*whoops = 41;	
-#endif
 		ExceptionHandler::WriteMinidump("/tmp", dumpCallback, NULL);
 	}
 }
@@ -126,4 +134,3 @@ extern "C"
 		startCrashHandler();
 	}
 }
-
