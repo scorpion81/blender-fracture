@@ -405,6 +405,8 @@ int main(
 	psys_init_rng();
 	/* end second init */
 
+	//int* whoops = (int*)0;
+	//*whoops = 41;
 
 #if defined(WITH_PYTHON_MODULE) || defined(WITH_HEADLESS)
 	G.background = true; /* python module mode ALWAYS runs in background mode (for now) */
@@ -523,7 +525,7 @@ int main(
 			WM_init_splash(C);
 		}
 	}
-
+	
 	WM_main(C);
 
 	return 0;

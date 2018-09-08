@@ -376,6 +376,13 @@ mark_as_advanced(WITH_SYSTEM_GLOG)
 # Freestyle
 option(WITH_FREESTYLE     "Enable Freestyle (advanced edges rendering)" ON)
 
+# Crashpad / Breakpad
+option(WITH_CRASHPAD     "Enable crashpad or breakpad (crash reporting)" OFF)
+set(CRASHPAD_URL         "http://127.0.0.1:1234" CACHE STRING "URL to report crash reports to")
+
+mark_as_advanced(WITH_CRASHPAD)
+mark_as_advanced(CRASHPAD_URL)
+
 # Misc
 if(WIN32)
 	option(WITH_INPUT_IME "Enable Input Method Editor (IME) for complex Asian character input" ON)

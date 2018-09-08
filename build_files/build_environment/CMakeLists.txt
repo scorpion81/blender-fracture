@@ -45,6 +45,11 @@ cmake_minimum_required(VERSION 3.5)
 include(ExternalProject)
 include(cmake/options.cmake)
 include(cmake/versions.cmake)
+
+if(UNIX AND NOT APPLE)
+	include(cmake/breakpad.cmake)
+endif()
+
 include(cmake/zlib.cmake)
 include(cmake/blendthumb.cmake)
 include(cmake/openal.cmake)

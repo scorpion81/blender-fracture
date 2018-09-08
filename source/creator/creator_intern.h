@@ -74,7 +74,7 @@ extern struct ApplicationState app_state;  /* creator.c */
 
 /* from buildinfo.c */
 #ifdef BUILD_DATE
- extern char build_date[];
+extern char build_date[];
 extern char build_time[];
 extern char build_hash[];
 extern unsigned long build_commit_timestamp;

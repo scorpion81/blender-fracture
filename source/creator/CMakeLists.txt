@@ -62,6 +62,21 @@ if(WITH_CODEC_FFMPEG)
 	add_definitions(-DWITH_FFMPEG)
 endif()
 
+if(WITH_CRASHPAD)
+	add_definitions(-DWITH_CRASHPAD)
+	add_definitions(-DCRASHPAD_URL="${CRASHPAD_URL}")
+	blender_include_dirs(${CRASHPAD_INCLUDE_DIRS})
+	if(MSVC)
+		set(CRASHPAD_SRC creator_crashpad_win.cpp)
+	endif()
+	if(APPLE)
+		set(CRASHPAD_SRC creator_crashpad_apple.cpp)
+	endif()
+	if(UNIX)
+		set(CRASHPAD_SRC creator_breakpad_linux.cpp)
+	endif()
+endif()
+
 if(WITH_PYTHON)
 	blender_include_dirs(../blender/python)
 	add_definitions(-DWITH_PYTHON)
@@ -104,6 +119,7 @@ set(SRC
 	creator.c
 	creator_args.c
 	creator_signals.c
+	${CRASHPAD_SRC}
 
 	creator_intern.h
 )
@@ -323,6 +339,7 @@ install(
 	"file(REMOVE_RECURSE ${TARGETDIR_VER})"
 )
 
+
 if(WITH_PYTHON)
 	# install(CODE "message(\"copying blender scripts...\")")
 	
@@ -420,6 +437,25 @@ if("${CMAKE_GENERATOR}" MATCHES ".*Makefiles.*")
 		COMMAND ${CMAKE_COMMAND} -E
 		        echo 'now run: \"make install\" to copy runtime files and scripts to ${TARGETDIR_VER}'
 	)
+endif()
+
+if(WITH_CRASHPAD)
+	if(MSVC)
+	add_custom_command(
+		TARGET blender POST_BUILD MAIN_DEPENDENCY blender
+		COMMAND ${LIBDIR}/crashpad/bin/dump_syms $<TARGET_FILE_DIR:blender>/blender.pdb > $<TARGET_FILE_DIR:blender>/blender.syms
+		COMMAND ${LIBDIR}/crashpad/bin/sentry-cli-Windows-x86_64.exe upload-dif $<TARGET_FILE_DIR:blender>/blender.syms
+	)
+	install(
+		FILES ${LIBDIR}/crashpad/bin/crashpad_handler.exe
+		DESTINATION "."
+	)
+elseif(APPLE)
+	install(
+	PROGRAMS ${LIBDIR}/crashpad/bin/crashpad_handler
+	DESTINATION $<TARGET_FILE_DIR:blender>/../Resources/crashpad/
+	)
+	endif()
 endif()
 
 

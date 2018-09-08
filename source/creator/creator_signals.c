@@ -75,6 +75,14 @@
 
 #include "creator_intern.h"  /* own include */
 
+#ifdef WITH_CRASHPAD
+	void crashpad_init(void);
+	void breakpad_write(void);
+	#ifdef WIN32
+		void crashpad_activate(void *ExceptionInfo);
+	#endif
+#endif
+
 /* set breakpoints here when running in debug mode, useful to catch floating point errors */
 #if defined(__linux__) || defined(_WIN32) || defined(OSX_SSE_FPE)
 static void sig_handle_fpe(int UNUSED(sig))
@@ -174,6 +182,12 @@ static void sig_handle_crash(int signum)
 	/* Delete content of temp dir! */
 	BKE_tempdir_session_purge();
 
+#if defined(WITH_CRASHPAD) && !defined(__APPLE__)
+	//linux only, try to write the dump now (instead of relying on own exception handler)
+	//this generates DUMP_REQUESTED issues
+	breakpad_write();
+#endif 
+
 	/* really crash */
 	signal(signum, SIG_DFL);
 #ifndef WIN32
@@ -258,7 +272,11 @@ LONG WINAPI windows_exception_handler(EXCEPTION_POINTERS *ExceptionInfo)
 	 * where the error happened */
 	if (EXCEPTION_STACK_OVERFLOW != ExceptionInfo->ExceptionRecord->ExceptionCode) {
 #ifdef NDEBUG
+	#ifdef WITH_CRASHPAD
+		crashpad_activate(ExceptionInfo);
+	#else
 		TerminateProcess(GetCurrentProcess(), SIGSEGV);
+	#endif
 #else
 		sig_handle_crash(SIGSEGV);
 #endif
@@ -279,10 +297,16 @@ void main_signal_setup(void)
 {
 	if (app_state.signal.use_crash_handler) {
 #ifdef WIN32
-		SetUnhandledExceptionFilter(windows_exception_handler);
+	#ifdef WITH_CRASHPAD
+		crashpad_init();
+	#endif
+	SetUnhandledExceptionFilter(windows_exception_handler);
 #else
+	#if defined(WITH_CRASHPAD) && defined(__APPLE__)
+		crashpad_init();
+	#endif	
 		/* after parsing args */
-		signal(SIGSEGV, sig_handle_crash);
+	signal(SIGSEGV, sig_handle_crash);
 #endif
 	}
 

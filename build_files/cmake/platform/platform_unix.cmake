@@ -49,6 +49,23 @@ find_package_wrapper(PNG REQUIRED)
 find_package_wrapper(ZLIB REQUIRED)
 find_package_wrapper(Freetype REQUIRED)
 
+if(WITH_CRASHPAD)
+	set(CRASHPAD_DIR ${LIBDIR}/breakpad)
+	find_library(CRASHPAD_LIB_CLIENT NAMES libbreakpad_client.a PATHS ${CRASHPAD_DIR}/lib)
+	find_library(CRASHPAD_LIB NAMES libbreakpad.a PATHS ${CRASHPAD_DIR}/lib)
+
+	list(APPEND CRASHPAD_LIBRARIES ${CRASHPAD_LIB_CLIENT} ${CRASHPAD_LIB})
+
+	find_path(CRASHPAD_INCLUDE_DIRS client/linux/handler/exception_handler.h PATHS ${CRASHPAD_DIR}/include)
+
+	if(CRASHPAD_INCLUDE_DIRS AND CRASHPAD_LIBRARIES)
+		set(WITH_CRASHPAD TRUE)
+	else()
+		message(STATUS "Crashpad not found")
+		set(WITH_CRASHPAD FALSE)
+	endif()
+endif()
+
 if(WITH_LZO AND WITH_SYSTEM_LZO)
 	find_package_wrapper(LZO)
 	if(NOT LZO_FOUND)

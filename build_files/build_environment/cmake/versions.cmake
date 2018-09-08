@@ -16,6 +16,8 @@
 #
 # ***** END GPL LICENSE BLOCK *****
 
+set(BREAKPAD_URI https://chromium.googlesource.com/breakpad/breakpad)
+
 set(ZLIB_VERSION 1.2.8)
 set(ZLIB_URI https://netcologne.dl.sourceforge.net/project/libpng/zlib/${ZLIB_VERSION}/zlib-${ZLIB_VERSION}.tar.gz)
 set(ZLIB_HASH 44d667c142d7cda120332623eab69f40)
@@ -34,6 +36,8 @@ set(JPEG_HASH f9804884c1c41eb7f4febb9353a2cb27)
 
 set(BOOST_VERSION 1.60.0)
 set(BOOST_VERSION_NODOTS 1_60_0)
+#set(BOOST_URI https://dl.bintray.com/boostorg/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_NODOTS}.tar.gz)
+#set(BOOST_MD5 5d8b4503582fffa9eefdb9045359c239)
 set(BOOST_URI http://sourceforge.net/projects/boost/files/boost/${BOOST_VERSION}/boost_${BOOST_VERSION_NODOTS}.tar.bz2/download)
 set(BOOST_MD5 65a840e1a0b13a558ff19eeb2c4f0cbe)
 
@@ -104,11 +108,14 @@ set(OPENCOLORIO_URI https://github.com/imageworks/OpenColorIO/archive/6de971097c
 set(OPENCOLORIO_HASH c9de0fd98f26ce6f2e08d617ca68b8e4)
 
 set(LLVM_VERSION 3.4.2)
-set(LLVM_URI http://releases.llvm.org/${LLVM_VERSION}/llvm-${LLVM_VERSION}.src.tar.gz)
+#set(LLVM_VERSION 6.0.1)
+set(LLVM_URI http://releases.llvm.org/${LLVM_VERSION}/llvm-${LLVM_VERSION}.src.tar.gz) #3.4.2 uses tar.gz, same with clang
 set(LLVM_HASH a20669f75967440de949ac3b1bad439c)
+#set(LLVM_HASH c88c98709300ce2c285391f387fecce0)
 
 set(CLANG_URI http://releases.llvm.org/${LLVM_VERSION}/cfe-${LLVM_VERSION}.src.tar.gz)
 set(CLANG_HASH 87945973b7c73038871c5f849a818588)
+#set(CLANG_HASH 4e419bd4e3b55aa06d872320f754bd85)
 
 set(OPENIMAGEIO_VERSION 1.7.15)
 set(OPENIMAGEIO_URI https://github.com/OpenImageIO/oiio/archive/Release-${OPENIMAGEIO_VERSION}.zip)
@@ -128,8 +135,10 @@ set(FLEXBISON_URI http://prdownloads.sourceforge.net/winflexbison//win_flex_biso
 set(FLEXBISON_HASH d87a3938194520d904013abef3df10ce)
 
 set(OSL_VERSION 1.7.5)
+#set(OSL_VERSION 1.9.9)
 set(OSL_URI https://github.com/imageworks/OpenShadingLanguage/archive/Release-${OSL_VERSION}.zip)
 set(OSL_HASH 6924dd5d453159e7b6eb106a08c358cf)
+#set(OSL_HASH 1c34112d8f3cf81f2fc415424bd38ae8)
 
 set(PYTHON_VERSION 3.5.3)
 set(PYTHON_SHORT_VERSION 3.5)

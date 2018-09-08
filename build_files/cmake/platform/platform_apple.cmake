@@ -410,6 +410,26 @@ if(WITH_CYCLES_OSL)
 	endif()
 endif()
 
+if(WITH_CRASHPAD)
+	set(CRASHPAD_DIR ${LIBDIR}/crashpad)
+	find_library(CRASHPAD_LIB_CLIENT NAMES client PATHS ${CRASHPAD_DIR}/lib)
+	find_library(CRASHPAD_LIB_BASE NAMES base PATHS ${CRASHPAD_DIR}/lib)
+	find_library(CRASHPAD_LIB_UTIL NAMES util PATHS ${CRASHPAD_DIR}/lib)
+
+	list(APPEND CRASHPAD_LIBRARIES ${CRASHPAD_LIB_CLIENT} ${CRASHPAD_LIB_BASE} ${CRASHPAD_LIB_UTIL})
+
+	find_path(CRASHPAD_INCLUDE_DIRS build/build_config.h PATHS ${CRASHPAD_DIR}/include)
+
+	if(CRASHPAD_INCLUDE_DIRS AND CRASHPAD_LIBRARIES)
+		set(WITH_CRASHPAD TRUE)
+	else()
+		message(STATUS "Crashpad not found")
+		set(WITH_CRASHPAD FALSE)
+	endif()
+endif()
+
+
+
 if(WITH_OPENMP)
 	execute_process(COMMAND ${CMAKE_C_COMPILER} --version OUTPUT_VARIABLE COMPILER_VENDOR)
 	string(SUBSTRING "${COMPILER_VENDOR}" 0 5 VENDOR_NAME) # truncate output

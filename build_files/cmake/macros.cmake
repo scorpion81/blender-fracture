@@ -338,6 +338,10 @@ function(SETUP_LIBDIRS)
 		link_directories(${HDF5_LIBPATH})
 	endif()
 
+	if(WITH_CRASHPAD)
+		link_directories(${CRASHPAD_LIBPATH})
+	endif()
+
 	if(WIN32 AND NOT UNIX)
 		link_directories(${PTHREADS_LIBPATH})
 	endif()
@@ -349,6 +353,7 @@ function(setup_liblinks
 
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${PLATFORM_LINKFLAGS}" PARENT_SCOPE)
 	set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} ${PLATFORM_LINKFLAGS_DEBUG}" PARENT_SCOPE)
+	set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS} ${PLATFORM_LINKFLAGS_RELEASE}" PARENT_SCOPE)
 
 	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${PLATFORM_LINKFLAGS}" PARENT_SCOPE)
 	set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} ${PLATFORM_LINKFLAGS_DEBUG}" PARENT_SCOPE)
@@ -373,6 +378,15 @@ function(setup_liblinks
 			unset(PYTHON_LIBRARIES_DEBUG)
 		else()
 			target_link_libraries(${target} ${PYTHON_LIBRARIES})
+		endif()
+	endif()
+
+	if(WITH_CRASHPAD)
+		target_link_libraries(${target} ${CRASHPAD_LIBRARIES})
+		if(APPLE)
+			find_library(BSM_LIB NAMES bsm)
+			find_library(SECURITY_LIB NAMES Security)
+			target_link_libraries(${target} ${SECURITY_LIB} ${BSM_LIB})
 		endif()
 	endif()
 
