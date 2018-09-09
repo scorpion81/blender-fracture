@@ -450,10 +450,17 @@ if(WITH_CRASHPAD)
 		FILES ${LIBDIR}/crashpad/bin/crashpad_handler.exe
 		DESTINATION "."
 	)
-elseif(APPLE)
+	elseif(APPLE)
 	install(
 	PROGRAMS ${LIBDIR}/crashpad/bin/crashpad_handler
 	DESTINATION $<TARGET_FILE_DIR:blender>/../Resources/crashpad/
+	)
+	elseif(UNIX)
+		add_custom_command(
+		TARGET blender POST_BUILD MAIN_DEPENDENCY blender
+		COMMAND ${LIBDIR}/breakpad/bin/dump_syms $<TARGET_FILE_DIR:blender>/blender > $<TARGET_FILE_DIR:blender>/blender.syms
+		# ToDo, make sure sentry-cli has been installed and configured
+		COMMAND sentry-cli upload-dif -t breakpad $<TARGET_FILE_DIR:blender>/blender.syms
 	)
 	endif()
 endif()

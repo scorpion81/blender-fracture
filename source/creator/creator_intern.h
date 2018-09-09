@@ -30,6 +30,13 @@
 struct bArgs;
 struct bContext;
 
+/* for passing information between creator and gameengine */
+#ifdef WITH_GAMEENGINE
+#  include "BL_System.h"
+#else /* dummy */
+#  define SYS_SystemHandle int
+#endif
+
 #ifndef WITH_PYTHON_MODULE
 
 /* creator_args.c */

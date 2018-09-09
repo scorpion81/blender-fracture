@@ -77,7 +77,7 @@
 
 #ifdef WITH_CRASHPAD
 	void crashpad_init(void);
-	void breakpad_write(void);
+	void breakpad_init(void (*crash_handler)(int), void (*abort_handler)(int));
 	#ifdef WIN32
 		void crashpad_activate(void *ExceptionInfo);
 	#endif
@@ -181,12 +181,6 @@ static void sig_handle_crash(int signum)
 
 	/* Delete content of temp dir! */
 	BKE_tempdir_session_purge();
-
-#if defined(WITH_CRASHPAD) && !defined(__APPLE__)
-	//linux only, try to write the dump now (instead of relying on own exception handler)
-	//this generates DUMP_REQUESTED issues
-	breakpad_write();
-#endif 
 
 	/* really crash */
 	signal(signum, SIG_DFL);
@@ -302,17 +296,25 @@ void main_signal_setup(void)
 	#endif
 	SetUnhandledExceptionFilter(windows_exception_handler);
 #else
-	#if defined(WITH_CRASHPAD) && defined(__APPLE__)
-		crashpad_init();
-	#endif	
+	#if defined(WITH_CRASHPAD)
+		#if defined(__APPLE__)
+			crashpad_init();
+		#else
+			//pass the old handlers here so they will be executed after the new handler from breakpad
+			breakpad_init(sig_handle_crash, sig_handle_abort);
+		#endif
+	#else
 		/* after parsing args */
-	signal(SIGSEGV, sig_handle_crash);
+		signal(SIGSEGV, sig_handle_crash);
+	#endif
 #endif
 	}
 
+#if !defined(WITH_CRASHPAD) || (defined(WITH_CRASHPAD) && defined(__APPLE__))
 	if (app_state.signal.use_abort_handler) {
 		signal(SIGABRT, sig_handle_abort);
 	}
+#endif
 }
 
 void main_signal_setup_background(void)

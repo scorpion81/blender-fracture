@@ -31,15 +31,6 @@
 extern "C"
 {
 
-//old dummy shit for game engine... taken from creator.c
-
-/* for passing information between creator and gameengine */
-#ifdef WITH_GAMEENGINE
-#  include "BL_System.h"
-#else /* dummy */
-#  define SYS_SystemHandle int
-#endif
-
 #include "BLI_path_util.h"
 #include "BLI_utildefines.h"
 #include "BKE_appdir.h"
@@ -47,10 +38,15 @@ extern "C"
 #include "creator_intern.h"
 }
 
+#include <signal.h>
+
 using namespace google_breakpad;
 
 namespace {
 
+	static ExceptionHandler *eh;
+	static void (*crash_handler)(int);
+	static void (*abort_handler)(int);
 
 	static void sendMinidump(const MinidumpDescriptor &descriptor);
 	static bool dumpCallback(const MinidumpDescriptor& descriptor, void* context, bool succeeded)
@@ -121,16 +117,54 @@ namespace {
 		  printf("%s\n", response.c_str());
 	}
 
-	static void startCrashHandler()
+	static void handleSignals(int signum, siginfo_t* info, void *uc)
 	{
-		ExceptionHandler::WriteMinidump("/tmp", dumpCallback, NULL);
+		eh->HandleSignal(signum, info, uc);
+		delete eh;
+
+		//additionally try to call blenders old passed in function pointers here (old handler routines)
+		if (signum == SIGSEGV) {
+			crash_handler(signum);
+		}
+
+		if (signum == SIGABRT) {
+			abort_handler(signum);
+		}
+	}
+
+	static void startCrashHandler(void (*crash)(int), void (*abort)(int))
+	{
+		const int kExceptionSignals[] = {
+		  SIGSEGV, SIGABRT, SIGFPE, SIGILL, SIGBUS, SIGTRAP
+		};
+
+		int size = sizeof(kExceptionSignals) / sizeof(int);
+
+		//ExceptionHandler::WriteMinidump("/tmp", dumpCallback, NULL);
+		MinidumpDescriptor descriptor("/tmp");
+		eh = new ExceptionHandler(descriptor, NULL, dumpCallback, NULL, false, -1);
+		crash_handler = crash;
+		abort_handler = abort;
+
+		//try to manually install handlers here (ExceptionHandlers own installation routine seems a bit brittle)
+		struct sigaction handler;
+		memset(&handler, 0, sizeof(handler));
+		sigemptyset(&handler.sa_mask);
+
+		handler.sa_flags = SA_ONSTACK | SA_SIGINFO;
+		handler.sa_sigaction = handleSignals;
+
+		for (int i = 0; i < size; i++)
+		{
+			sigaction(kExceptionSignals[i], &handler, NULL);
+		}
 	}
 }
 
 extern "C" 
 {
-	void breakpad_write()
+	void breakpad_init(void (*crash_handler)(int), void (*abort_handler)(int))
 	{
-		startCrashHandler();
+		startCrashHandler(crash_handler, abort_handler);
 	}
 }
