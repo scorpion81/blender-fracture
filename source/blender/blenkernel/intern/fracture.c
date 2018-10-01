@@ -163,7 +163,7 @@ static int shard_sortdist(const void *s1, const void *s2, void* context)
 {
 	Shard **sh1 = (Shard **)s1;
 	Shard **sh2 = (Shard **)s2;
-	cell *sh = (cell*)context;
+	Shard *sh = (Shard*)context; //representing raw cell
 
 	float val_a,  val_b;
 
@@ -687,8 +687,8 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 			(*tempresults)[i] = s;
 			(*tempresults)[i + 1] = s2;
 
-			//BLI_qsort_r(*tempresults, i + 1, sizeof(Shard *), shard_sortdist, &(cells[i]));
-			BLI_qsort_r(*tempresults, i + 1, sizeof(Shard *), shard_sortsize, &(cells[i]));
+			BLI_qsort_r(*tempresults, i + 1, sizeof(Shard *), shard_sortsize, i);
+			BLI_qsort_r(*tempresults, i + 1, sizeof(Shard *), shard_sortdist, t);
 
 			while ((*tempresults)[j] == NULL && j < (i + 1)) {
 				/* ignore invalid shards */
@@ -802,6 +802,8 @@ static void handle_boolean_fractal(Shard* p, Shard* t, int expected_shards, Deri
 		(*tempresults)[*i] = s2;
 
 		BLI_qsort_r(*tempresults, (*i) + 1, sizeof(Shard *), shard_sortsize, i);
+		BLI_qsort_r(*tempresults, (*i) + 1, sizeof(Shard *), shard_sortdist, t);
+
 		while ((*tempresults)[j] == NULL && j < ((*i) + 1)) {
 			/* ignore invalid shards */
 			j++;
