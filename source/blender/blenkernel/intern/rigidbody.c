@@ -1702,7 +1702,7 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw, bool do_bake_correction)
 	//correct map if baked, it might be shifted
 	for (i = 0; i < l; i++) {
 		Object *ob = rbw->objects[i];
-		printf("%s\n", ob->id.name + 2);
+		//printf("%s\n", ob->id.name + 2);
 
 		rmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
 		if (rmd) {
