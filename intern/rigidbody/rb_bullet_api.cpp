@@ -761,6 +761,10 @@ struct rbFilterCallback : public btOverlapFilterCallback
 		           (proxy0->m_collisionFilterMask | btBroadphaseProxy::StaticFilter |
 		            btBroadphaseProxy::KinematicFilter));
 
+		if (!rb0 || !rb1) {
+			return collides;
+		}
+
 		//no self collisions between kinematic shards in own object allowed
 		collides = collides && ((!rb0->body->isStaticOrKinematicObject() || !rb1->body->isStaticOrKinematicObject()) ||
 		           ((rb0->body->isStaticOrKinematicObject() && rb1->body->isStaticOrKinematicObject()) &&

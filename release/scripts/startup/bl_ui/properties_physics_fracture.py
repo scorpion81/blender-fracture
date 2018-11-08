@@ -248,32 +248,32 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             #col.prop(md, "impulse_dampening")
             #col.prop(md, "directional_factor")
             col.prop(md, "mass_threshold_factor")
-        else:
-            layout.label("Constraint Special Breaking Settings")
-            col = layout.column(align=True)
-            row = col.row(align=True)
-            row.prop(md, "breaking_percentage", text="Percentage")
-            row.prop(md, "cluster_breaking_percentage", text="Cluster Percentage")
 
-            row = col.row(align=True)
-            row.prop(md, "breaking_angle", text="Angle")
-            row.prop(md, "cluster_breaking_angle", text="Cluster Angle")
+        layout.label("Constraint Special Breaking Settings")
+        col = layout.column(align=True)
+        row = col.row(align=True)
+        row.prop(md, "breaking_percentage", text="Percentage")
+        row.prop(md, "cluster_breaking_percentage", text="Cluster Percentage")
 
-            row = col.row(align=True)
-            row.prop(md, "breaking_distance", text="Distance")
-            row.prop(md, "cluster_breaking_distance", text="Cluster Distance")
+        row = col.row(align=True)
+        row.prop(md, "breaking_angle", text="Angle")
+        row.prop(md, "cluster_breaking_angle", text="Cluster Angle")
 
-            col = layout.column(align=True)
-            col.prop(md, "solver_iterations_override")
-            col.prop(md, "cluster_solver_iterations_override")
+        row = col.row(align=True)
+        row.prop(md, "breaking_distance", text="Distance")
+        row.prop(md, "cluster_breaking_distance", text="Cluster Distance")
 
-            row = layout.row(align=True)
-            row.prop(md, "breaking_angle_weighted")
-            row.prop(md, "breaking_distance_weighted")
+        col = layout.column(align=True)
+        col.prop(md, "solver_iterations_override")
+        col.prop(md, "cluster_solver_iterations_override")
 
-            row = layout.row(align=True)
-            row.prop(md, "breaking_percentage_weighted")
-            row.prop(md, "use_mass_dependent_thresholds", text="Mass Dependent Thresholds")
+        row = layout.row(align=True)
+        row.prop(md, "breaking_angle_weighted")
+        row.prop(md, "breaking_distance_weighted")
+
+        row = layout.row(align=True)
+        row.prop(md, "breaking_percentage_weighted")
+        row.prop(md, "use_mass_dependent_thresholds", text="Mass Dependent Thresholds")
 
         if not md.use_compounds:
             layout.label("Constraint Deform Settings")
