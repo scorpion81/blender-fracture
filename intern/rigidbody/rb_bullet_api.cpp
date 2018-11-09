@@ -293,14 +293,33 @@ static bool weakenCompound(const btCollisionObject *body, btScalar force, btVect
 	return false;
 }
 
+static void manifold_callback(TickDiscreteDynamicsWorld* tworld, btManifoldPoint& pt,
+                              btCollisionObject *obA,  btCollisionObject *obB)
+{
+	btFractureDynamicsWorld *fworld = (btFractureDynamicsWorld*)tworld;
+
+	if (pt.getDistance()<0.f)
+	{
+		if (tworld->m_contactCallback)
+		{
+			rbContactPoint* cp = tworld->make_contact_point(pt, obA, obB);
+			//broken = weakenCompound(obA, cp->contact_force, pt.getPositionWorldOnA(), fworld);
+			//broken = broken || weakenCompound(obB, cp->contact_force, pt.getPositionWorldOnB(), fworld);
+			tworld->m_contactCallback(cp, tworld->m_bworld);
+			delete cp;
+		}
+	}
+}
+
 static void tickCallback(btDynamicsWorld *world, btScalar timeStep)
 {
 	btFractureDynamicsWorld *fworld = (btFractureDynamicsWorld*)world;
 	fworld->updateBodies();
 
 	TickDiscreteDynamicsWorld* tworld = (TickDiscreteDynamicsWorld*)world;
-	bool broken = false;
+	//bool broken = false;
 
+#if 0
 	int numManifolds = world->getDispatcher()->getNumManifolds();
 	for (int i=0;i<numManifolds;i++)
 	{
@@ -311,6 +330,9 @@ static void tickCallback(btDynamicsWorld *world, btScalar timeStep)
 		int numContacts = contactManifold->getNumContacts();
 		for (int j=0;j<numContacts;j++)
 		{
+			manifold_callback(tworld, pt, obA, obB);
+
+
 			btManifoldPoint& pt = contactManifold->getContactPoint(j);
 			if (pt.getDistance()<0.f)
 			{
@@ -338,6 +360,7 @@ static void tickCallback(btDynamicsWorld *world, btScalar timeStep)
 		if (broken)
 			break;
 	}
+#endif
 
 	if (tworld->m_tickCallback)
 	{
@@ -976,6 +999,11 @@ static void nearCallback(btBroadphasePair &collisionPair, btCollisionDispatcher 
 
 				//handle_activation(manifold, rb0, rb1);
 				//handle_activation(manifold, rb1, rb0);
+				for (int i = 0; i < manifold->getNumContacts(); i++)
+				{
+					manifold_callback(rb0->world->dynamicsWorld, manifold->getContactPoint(i), colObj0, colObj1);
+				}
+
 				((rbFilterCallback*)(rb0->world->filterCallback))->callback(rb0->world->blenderWorld, rb0->meshIsland, rb1->meshIsland,
 							   rb0->blenderOb, rb1->blenderOb, true);
 			}

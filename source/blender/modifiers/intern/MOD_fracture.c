@@ -4183,7 +4183,7 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 			copy_v3_v3(mi->rigidbody->lin_vel, par->rigidbody->lin_vel);
 			copy_v3_v3(mi->rigidbody->ang_vel, par->rigidbody->ang_vel);
 			mi->rigidbody->flag = par->rigidbody->flag;
-
+#if 0
 			//keep 1st level shards kinematic if parent is triggered
 			if ((par->rigidbody->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION) && fmd->limit_impact && !fmd->is_dynamic_external) {
 
@@ -4213,6 +4213,7 @@ static void do_island_from_shard(FractureModifierData *fmd, Object *ob, Shard* s
 					mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 				}
 			}
+#endif
 		}
 
 		mi->rigidbody->meshisland_index = mi->id;

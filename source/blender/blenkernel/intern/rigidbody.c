@@ -4326,9 +4326,9 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		}
 	}
 
-	//if ghost is involved, and dynafrac trigger is enabled, try to call check_fracture manually here, without forces and with centroid as contact point
-	fake_dynamic_collide(ob1, ob2, mi1, mi2, rbw);
-	fake_dynamic_collide(ob2, ob1, mi2, mi1, rbw);
+	//if ghost is involved, and dynafrac trigger is enabled, try to call check_fracture manually here, without forces and with centroid as contact point... Update: should have real contact point now from bullet
+	//fake_dynamic_collide(ob1, ob2, mi1, mi2, rbw);
+	//fake_dynamic_collide(ob2, ob1, mi2, mi1, rbw);
 
 	validOb = (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) &&
 		          check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2)));
