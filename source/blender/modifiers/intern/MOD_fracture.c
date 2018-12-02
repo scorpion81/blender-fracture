@@ -2675,17 +2675,12 @@ static void search_tree_based(FractureModifierData *rmd, MeshIsland *mi, MeshIsl
 	}
 #endif
 
-	if (rmd->constraint_target == MOD_FRACTURE_CENTROID) {
-		mul_v3_m4v3(obj_centr, ob->obmat, mi->centroid);
+	if (!(rmd->dm_group && rmd->use_constraint_group))
+	{
+		mul_v3_m4v3(obj_centr, ob->obmat, co);
 	}
-	else if (rmd->constraint_target == MOD_FRACTURE_VERTEX){
-		if (!(rmd->dm_group && rmd->use_constraint_group))
-		{
-			mul_v3_m4v3(obj_centr, ob->obmat, co);
-		}
-		else {
-			copy_v3_v3(obj_centr, co);
-		}
+	else {
+		copy_v3_v3(obj_centr, co);
 	}
 
 	r = BLI_kdtree_range_search(*combined_tree, obj_centr, &n3, dist);
@@ -2802,7 +2797,15 @@ static int prepareConstraintSearch(FractureModifierData *rmd, MeshIsland ***mesh
 		*combined_tree = BLI_kdtree_new(islands);
 		for (i = 0; i < islands; i++) {
 			float obj_centr[3];
-			mul_v3_m4v3(obj_centr, ob->obmat, (*mesh_islands)[i]->centroid);
+
+			if (rmd->dm_group && rmd->use_constraint_group) {
+				GroupObject *go = BLI_findlink(&rmd->dm_group->gobject, (*mesh_islands)[i]->object_index);
+				mul_v3_m4v3(obj_centr, go->ob->obmat, (*mesh_islands)[i]->centroid);
+			}
+			else {
+				mul_v3_m4v3(obj_centr, ob->obmat, (*mesh_islands)[i]->centroid);
+			}
+
 			BLI_kdtree_insert(*combined_tree, i, obj_centr);
 		}
 
@@ -2909,7 +2912,17 @@ static void create_constraints(FractureModifierData *rmd, Object *ob)
 
 	for (i = 0; i < count; i++) {
 		if (rmd->constraint_target == MOD_FRACTURE_CENTROID) {
-			search_tree_based(rmd, mesh_islands[i], mesh_islands, &coord_tree, NULL, ob);
+			float co[3];
+
+			if (rmd->dm_group && rmd->use_constraint_group) {
+				GroupObject *go = BLI_findlink(&rmd->dm_group->gobject, mesh_islands[i]->object_index);
+				mul_v3_m4v3(co, go->ob->obmat, mesh_islands[i]->centroid);
+			}
+			else {
+				copy_v3_v3(co, mesh_islands[i]->centroid);
+			}
+
+			search_tree_based(rmd, mesh_islands[i], mesh_islands, &coord_tree, co, ob);
 		}
 		else if (rmd->constraint_target == MOD_FRACTURE_VERTEX) {
 			//MVert mv;
