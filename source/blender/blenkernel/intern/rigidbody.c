@@ -2989,7 +2989,7 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland *mi, DerivedMesh *orig
 	}
 
 	if (mi->rigidbody->type == RBO_TYPE_ACTIVE) {
-		if (mi->rigidbody->mass == 0)
+		if (mi->rigidbody->mass < 0.001)
 			mi->rigidbody->mass = 0.001;  /* set a minimum mass for active objects */
 	}
 

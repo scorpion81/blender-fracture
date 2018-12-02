@@ -824,7 +824,7 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_threshold_set", NULL);
 	RNA_def_property_ui_text(prop, "Inner Breaking threshold", "Threshold to break constraints between shards in the same object");
-	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.0001f, 5);
+	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.1f, 5);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -880,7 +880,7 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0, FLT_MAX);
 	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_breaking_distance_set", NULL);
 	RNA_def_property_ui_text(prop, "Breaking Distance", "Distance above which constraint should break");
-	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.1f, 2);
+	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.1, 4);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -894,7 +894,7 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0.0f, FLT_MAX);
 	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_cluster_threshold_set", NULL);
 	RNA_def_property_ui_text(prop, "Cluster Breaking threshold", "Threshold to break constraints INSIDE a cluster of shards");
-	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.01f, 5);
+	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 1.0, 5);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
@@ -1116,7 +1116,7 @@ void RNA_def_fracture(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0, FLT_MAX);
 	RNA_def_property_float_funcs(prop, NULL, "rna_FractureModifier_cluster_breaking_distance_set", NULL);
 	RNA_def_property_ui_text(prop, "Cluster Breaking Distance", "Distance above which constraint between different clusters should break");
-	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.1f, 2);
+	RNA_def_property_ui_range(prop, 0.0f, FLT_MAX, 0.1, 4);
 	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
