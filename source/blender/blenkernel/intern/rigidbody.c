@@ -2316,6 +2316,12 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 			do_reset_rigidbody(rbo, ob, mi, loc, rot, quat, rotAxis, rotAngle);
 			if (rbo->flag & RBO_FLAG_KINEMATIC)
 			{
+
+				if (rmd->use_animated_mesh && rmd->anim_mesh_ob)
+				{
+					BKE_read_animated_loc_rot(rmd, ob, false);
+				}
+
 				rigidbody_passive_fake_parenting(rmd, ob, rbo, imat);
 			}
 			else
@@ -5245,6 +5251,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		BKE_object_where_is_calc(scene, ob);
 		fmd->constraint_island_count = 1;
 
+#if 0
 		if ((ob->rigidbody_object && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC) //&&
 		     /*fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED*/)) {
 
@@ -5253,6 +5260,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				BKE_read_animated_loc_rot(fmd, ob, false);
 			}
 		}
+#endif
 
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 			if (mi->rigidbody == NULL) {
@@ -5543,6 +5551,13 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 						}
 					}
 #endif
+					if ((ob->rigidbody_object && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)))
+					{
+						if (fmd->use_animated_mesh && fmd->anim_mesh_ob)
+						{
+							BKE_read_animated_loc_rot(fmd, ob, false);
+						}
+					}
 					rigidbody_passive_fake_parenting(fmd, ob, rbo, imat);
 				}
 
