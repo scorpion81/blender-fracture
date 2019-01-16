@@ -320,9 +320,14 @@ static DerivedMesh *rigidbody_get_mesh(Object *ob)
 	else if (ob->rigidbody_object->mesh_source == RBO_MESH_FINAL) {
 		return ob->derivedFinal;
 	}
-	else if (ob->rigidbody_object->mesh_source == RBO_MESH_FINAL_SOLID)
-	{
-		return dm_solidify(ob->derivedFinal, ob->rigidbody_object->margin);
+	else if (ob->rigidbody_object->mesh_source == RBO_MESH_FINAL_SOLID) {
+		if (ob->derivedFinal) {
+			return dm_solidify(ob->derivedFinal, ob->rigidbody_object->margin);
+		}
+		else {
+			// fallback to avoid crash
+			return CDDM_from_mesh(ob->data);
+		}
 	}
 	else {
 		return CDDM_from_mesh(ob->data);
