@@ -3191,7 +3191,7 @@ install_RPM() {
   OGG_DEV="libogg-devel"
   THEORA_DEV="libtheora-devel"
 
-  _packages="python3-devel OpenEXR-devel OpenColorIO-devel gcc gcc-c++ git make cmake tar bzip2 xz findutils flex bison \
+  _packages="python3-devel pubixml-devel OpenEXR-devel OpenImageIO-devel OpenColorIO-devel gcc gcc-c++ git make cmake tar bzip2 xz findutils flex bison \
              libtiff-devel libjpeg-devel libpng-devel sqlite-devel fftw-devel SDL-devel \
              libX11-devel libXi-devel libXcursor-devel libXrandr-devel libXinerama-devel \
              wget ncurses-devel readline-devel $OPENJPEG_DEV openal-soft-devel \
