@@ -199,10 +199,23 @@ if(UNIX AND NOT APPLE)
 	set(WITH_X11 ON)
 	set(WITH_QT ON)
 	set(PYTHON_INCLUDE_DIR /usr/include/python3.6m)
-	set(PYTHON_LIBRARY libpython3.so)
-	set(PYTHON_LIBPATH /usr/lib64)
+	set(PYTHON_LIBRARY /usr/lib64/libpython3.6m.so)
+	set(PYTHON_LIBPATH /usr/lib64/python3.6)
 	set(OPENIMAGEIO_LIBRARY /usr/lib64/libOpenImageIO.so)
 	set(OPENIMAGEIO_INCLUDE_DIR /usr/include)
+
+	SET(QT_MIN_VERSION "4.6.0" COMPONENTS QtCore QtGui QtXml QtScript)
+	FIND_PACKAGE(Qt4 REQUIRED)
+	#SET(QT_LIBRARIES
+	#	Qt4::QtScript
+	#)
+	#LIST(APPEND QT_LIBRARIES Qt4::QtScript Qt4::QtDeclarative ${X11_LIBRARIES})
+	MESSAGE("${QT_LIBRARIES}")
+
+	SET(QT_USE_QTXML 1)
+	SET(QT_USE_QTSCRIPT 1)
+	SET(QT_USE_QTDECLARATIVE 1)
+
 endif()
 
 # Blender internal features
