@@ -2793,7 +2793,7 @@ install_DEB() {
     fi
   fi
 
-## use system installed python by default on linux
+## always use system installed python by default on debian
 #  if $_do_compile_python; then
 #    compile_Python
 #    PRINT ""
@@ -3191,7 +3191,7 @@ install_RPM() {
   OGG_DEV="libogg-devel"
   THEORA_DEV="libtheora-devel"
 
-  _packages="python3-devel pubixml-devel OpenEXR-devel OpenImageIO-devel OpenColorIO-devel gcc gcc-c++ git make cmake tar bzip2 xz findutils flex bison \
+  _packages="python3-devel pugixml-devel OpenEXR-devel OpenImageIO-devel OpenColorIO-devel gcc gcc-c++ git make cmake tar bzip2 xz findutils flex bison \
              libtiff-devel libjpeg-devel libpng-devel sqlite-devel fftw-devel SDL-devel \
              libX11-devel libXi-devel libXcursor-devel libXrandr-devel libXinerama-devel \
              wget ncurses-devel readline-devel $OPENJPEG_DEV openal-soft-devel \
@@ -3332,15 +3332,15 @@ install_RPM() {
     fi
   fi
 
-  if [ "$_do_compile_python" = true ]; then
-    compile_Python
-    PRINT ""
-    if [ "$NUMPY_SKIP" = true ]; then
-      WARNING "Skipping NumPy installation, as requested..."
-    else
-      compile_Numpy
-    fi
-  fi
+#  if [ "$_do_compile_python" = true ]; then
+#    compile_Python
+#    PRINT ""
+#    if [ "$NUMPY_SKIP" = true ]; then
+#      WARNING "Skipping NumPy installation, as requested..."
+#    else
+#     compile_Numpy
+#    fi
+#  fi
 
 
   PRINT ""
@@ -3386,9 +3386,10 @@ install_RPM() {
       else
         compile_OCIO
       fi
-    # XXX Fedora/RHEL OCIO still depends on libyaml-cpp v0.3 even when system default is v0.5!
+    # XXX Fedora28 works. RHEL? OCIO still depends on libyaml-cpp v0.3 even when system default is v0.5!
     else
-      compile_OCIO
+        install_packages_RPM OpenColorIO-devel
+        clean_OCIO
     fi
   fi
 
@@ -3417,14 +3418,8 @@ install_RPM() {
     INFO "Forced OpenImageIO building, as requested..."
     compile_OIIO
   else
-    # XXX RPM distros pulls in too much and depends on old libs, so better to build for now...
-    #check_package_version_ge_lt_RPM OpenImageIO-devel $OIIO_VERSION_MIN $OIIO_VERSION_MAX
-    #if [ $? -eq 0 -a $_with_built_openexr == false ]; then
-    #  install_packages_RPM OpenImageIO-devel
-    #  clean_OIIO
-    #else
-      compile_OIIO
-    #fi
+    install_packages_RPM OpenImageIO-devel
+    clean_OIIO
   fi
 
 
@@ -3446,12 +3441,12 @@ install_RPM() {
     # XXX RHEL has 3.4 in repo but OSL complains about not finding MCJIT_LIBRARY, so compile for now...
     #check_package_version_match_RPM $CLANG_DEV $LLVM_VERSION
     #if [ $? -eq 0 ]; then
-    #  install_packages_RPM llvm-devel $CLANG_DEV
-    #  have_llvm=true
+    install_packages_RPM llvm-devel $CLANG_DEV
+    have_llvm=true
     #  LLVM_VERSION_FOUND=$LLVM_VERSION
-    #  clean_LLVM
+    clean_LLVM
     #else
-      _do_compile_llvm=true
+    #  _do_compile_llvm=true
     #fi
   fi
 
@@ -3474,8 +3469,9 @@ install_RPM() {
     INFO "Forced OpenShadingLanguage building, as requested..."
     _do_compile_osl=true
   else
-    # No package currently!
-    _do_compile_osl=true
+    #no offical packages, last unoffical from fedora 20
+    #install_packages_RPM OpenShadingLanguage-devel
+    INFO "OpenShadingLanguage is DEPRECATED"
   fi
 
   if [ "$_do_compile_osl" = true ]; then
@@ -3507,8 +3503,7 @@ install_RPM() {
     INFO "Forced OpenVDB building, as requested..."
     compile_OPENVDB
   else
-    # No package currently!
-    compile_OPENVDB
+      install_packages_RPM openvdb-devel
   fi
 
   PRINT ""
@@ -3518,8 +3513,7 @@ install_RPM() {
     INFO "Forced Alembic building, as requested..."
     compile_ALEMBIC
   else
-    # No package currently!
-    compile_ALEMBIC
+    install_packages_RPM alembic-devel
   fi
 
 
@@ -3532,8 +3526,7 @@ install_RPM() {
       INFO "Forced OpenCollada building, as requested..."
       _do_compile_collada=true
     else
-      # No package...
-      _do_compile_collada=true
+      install_packages_RPM openCOLLADA-devel
     fi
 
     if [ "$_do_compile_collada" = true ]; then
