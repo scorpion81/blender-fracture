@@ -1614,6 +1614,14 @@ void RB_body_apply_force(rbRigidBody* object, const float force[3], const float 
 	body->applyForce(btVector3(force[0], force[1], force[2]), btVector3(pos[0], pos[1], pos[2]));
 }
 
+void RB_body_apply_torque(rbRigidBody* object, const float torque[3])
+{
+	btRigidBody *body = object->body;
+
+	body->applyTorque(btVector3(torque[0], torque[1], torque[2]));
+}
+
+
 /* ********************************** */
 /* Collision Shape Methods */
 

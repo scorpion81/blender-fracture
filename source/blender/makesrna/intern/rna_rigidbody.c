@@ -126,6 +126,25 @@ static int rna_RigidBodyCon_is_intact(RigidBodyCon *con)
 	return 0;
 }
 
+static void rna_RigidBodyOb_force_apply(RigidBodyOb* rbo, float force[3], float position[3])
+{
+#ifdef WITH_BULLET
+	if (rbo && rbo->physics_object) {
+			RB_body_apply_force(rbo->physics_object, force, position);
+	}
+#endif
+}
+
+
+static void rna_RigidBodyOb_torque_apply(RigidBodyOb* rbo, float torque[3])
+{
+#ifdef WITH_BULLET
+	if (rbo && rbo->physics_object) {
+		RB_body_apply_torque(rbo->physics_object, torque);
+	}
+#endif
+}
+
 /* ******************************** */
 
 static void rna_RigidBodyWorld_reset(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *ptr)
@@ -1651,7 +1670,8 @@ static void rna_def_rigidbody_world(BlenderRNA *brna)
 static void rna_def_rigidbody_object(BlenderRNA *brna)
 {
 	StructRNA *srna;
-	PropertyRNA *prop;
+	PropertyRNA *prop, *parm;
+	FunctionRNA *func;
 	
 	
 	srna = RNA_def_struct(brna, "RigidBodyObject", NULL);
@@ -1875,6 +1895,22 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Randomize Margin",
 	                         "Randomize the custom collision margin for better packing when shapes stack up");
 	RNA_def_property_update(prop, NC_OBJECT | ND_POINTCACHE, "rna_RigidBodyOb_shape_reset");
+
+
+	//expose force and torque application as RNA functions
+	func = RNA_def_function(srna, "apply_force", "rna_RigidBodyOb_force_apply");
+	parm = RNA_def_float_vector_xyz(func, "force", 3, NULL, -FLT_MAX, FLT_MAX,
+	                                "Applied Force", "The currently applied force on this rigid body",
+	                                -FLT_MIN, FLT_MAX);
+
+	parm = RNA_def_float_vector_xyz(func, "position", 3, NULL, -FLT_MAX, FLT_MAX,
+	                                "Position", "The position of the applied force on this rigid body",
+	                                -FLT_MIN, FLT_MAX);
+
+	func = RNA_def_function(srna, "apply_torque", "rna_RigidBodyOb_torque_apply");
+	parm = RNA_def_float_vector_xyz(func, "torque", 3, NULL, -FLT_MAX, FLT_MAX,
+	                                "Applied Torque", "The currently applied torque on this rigid body",
+	                                -FLT_MIN, FLT_MAX);
 }
 
 static void rna_def_rigidbody_constraint(BlenderRNA *brna)
