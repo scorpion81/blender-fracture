@@ -82,11 +82,14 @@
 #  include "FRS_freestyle.h"
 #endif
 
+#if 0
+//moved to creator_intern.h, gave compiler error on windows with crashpad
 /* for passing information between creator and gameengine */
 #ifdef WITH_GAMEENGINE
 #  include "BL_System.h"
 #else /* dummy */
 #  define SYS_SystemHandle int
+#endif
 #endif
 
 #include <signal.h>
@@ -405,6 +408,9 @@ int main(
 	psys_init_rng();
 	/* end second init */
 
+	//Test crash for crashpad / breakpad testing
+	//int* whoops = (int*)0;
+	//*whoops = 41;
 
 #if defined(WITH_PYTHON_MODULE) || defined(WITH_HEADLESS)
 	G.background = true; /* python module mode ALWAYS runs in background mode (for now) */
@@ -523,7 +529,7 @@ int main(
 			WM_init_splash(C);
 		}
 	}
-
+	
 	WM_main(C);
 
 	return 0;

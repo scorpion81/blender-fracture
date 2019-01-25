@@ -351,13 +351,13 @@ static bool object_modifier_remove(Main *bmain, Object *ob, ModifierData *md,
 	modifier_free(md);
 	BKE_object_free_derived_caches(ob);
 
-	if (do_rigidbody_cleanup)
+	if (do_rigidbody_cleanup && scene)
 	{
 		/* need to clean up modifier remainders inside the rigidbody world
 		 * AFTER the modifier is gone...  but only from the operator ?*/
 		if (scene->rigidbody_world)
 		{
-			BKE_rigidbody_rebuild_world(scene, -1);
+			BKE_rigidbody_rebuild_world(scene, -1, false);
 		}
 		BKE_scene_frame_set(scene, 1.0);
 	}
@@ -2419,6 +2419,7 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 		if (BKE_rigidbody_check_sim_running(rbw, cfra) &&
 		   (rbw->ltime > rbw->pointcache->startframe || rbw->ltime == rbw->pointcache->endframe))
 		{
+			BKE_report(op->reports, RPT_WARNING, "Please jump back to cache start frame in order to refracture");
 			return OPERATOR_CANCELLED;
 		}
 	}
@@ -2459,6 +2460,12 @@ static int fracture_refresh_exec(bContext *C, wmOperator *op)
 		apply_loc_rot_scale(obact, scene);
 	}
 #endif
+
+	if (rmd->anim_bind) {
+		MEM_freeN(rmd->anim_bind);
+		rmd->anim_bind = NULL;
+		rmd->anim_bind_len = 0;
+	}
 
 	BKE_scene_frame_set(scene, start);
 	DAG_relations_tag_update(G.main);
@@ -2559,6 +2566,45 @@ static int fracture_refresh_invoke(bContext *C, wmOperator *op, const wmEvent *U
 	{
 		apply_scale(ob, scene);
 		return fracture_refresh_exec(C, op);
+	}
+
+	return OPERATOR_CANCELLED;
+}
+
+static int fracture_anim_bind_exec(bContext *C, wmOperator *op)
+{
+	Object *obact = ED_object_active_context(C);
+	Scene* scene = CTX_data_scene(C);
+	FractureModifierData *rmd;
+
+	rmd = (FractureModifierData *)modifiers_findByType(obact, eModifierType_Fracture);
+	if (!rmd)
+		return OPERATOR_CANCELLED;
+
+	//restore kinematic here, before bind (and not afterwards !)
+	if (scene && scene->rigidbody_world) {
+		BKE_restoreKinematic(scene->rigidbody_world, true);
+		BKE_rigidbody_rebuild_world(scene, scene->rigidbody_world->pointcache->startframe, true);
+	}
+	BKE_read_animated_loc_rot(rmd, obact, true);
+
+	DAG_relations_tag_update(G.main);
+	WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, NULL);
+	WM_event_add_notifier(C, NC_OBJECT | ND_PARENT, NULL);
+	WM_event_add_notifier(C, NC_SCENE | ND_FRAME, NULL);
+
+	DAG_id_tag_update(&obact->id, OB_RECALC_DATA);
+	WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, obact);
+
+	return OPERATOR_FINISHED;
+}
+
+
+static int fracture_anim_bind_invoke(bContext *C, wmOperator *op, const wmEvent *UNUSED(event))
+{
+	if (edit_modifier_invoke_properties(C, op))
+	{
+		return fracture_anim_bind_exec(C, op);
 	}
 
 	return OPERATOR_CANCELLED;
@@ -3716,5 +3762,17 @@ void OBJECT_OT_rigidbody_convert_to_keyframes(wmOperatorType *ot)
 	//edit_modifier_properties(ot);
 }
 
+void OBJECT_OT_fracture_anim_bind(wmOperatorType *ot)
+{
+	ot->name = "Fracture Animated Mesh Bind";
+	ot->description = "Bind animated mesh vertices to mesh islands in Fracture Modifier";
+	ot->idname = "OBJECT_OT_fracture_anim_bind";
 
+	ot->poll = fracture_poll;
+	ot->invoke = fracture_anim_bind_invoke;
+	ot->exec = fracture_anim_bind_exec;
 
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+	edit_modifier_properties(ot);
+}

@@ -30,6 +30,7 @@
 #include "BLI_alloca.h"
 #include "BLI_math_geom.h"
 #include "BKE_material.h"
+#include "BKE_global.h"  /* only to check G.debug */
 #include "MEM_guardedalloc.h"
 
 #include "bmesh.h"
@@ -45,6 +46,7 @@
 #include "DNA_material_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_object_types.h"
+#include "DNA_modifier_types.h"
 #include "BLI_utildefines.h"
 
 #include "MOD_boolean_util.h"
@@ -61,10 +63,12 @@ static int bm_face_isect_pair(BMFace *f, void *UNUSED(user_data))
 }
 
 DerivedMesh *NewBooleanDerivedMeshBMesh(DerivedMesh *dm, struct Object *ob,
-                                   DerivedMesh *dm_other, struct Object *ob_other, int op_type, float double_threshold)
+                                   DerivedMesh *dm_other, struct Object *ob_other, int op_type,
+                                   float double_threshold, struct BooleanModifierData *bmd)
 {
 	BMesh *bm;
 	const BMAllocTemplate allocsize = BMALLOC_TEMPLATE_FROM_DM(dm, dm_other);
+	const bool is_flip = (is_negative_m4(ob->obmat) != is_negative_m4(ob_other->obmat));
 	DerivedMesh *result;
 
 	#ifdef DEBUG_TIME
@@ -75,6 +79,16 @@ DerivedMesh *NewBooleanDerivedMeshBMesh(DerivedMesh *dm, struct Object *ob,
 			 &((struct BMeshCreateParams){.use_toolflags = false,}));
 
 	DM_to_bmesh_ex(dm_other, bm, true);
+
+	if (UNLIKELY(is_flip)) {
+		const int cd_loop_mdisp_offset = CustomData_get_offset(&bm->ldata, CD_MDISPS);
+		BMIter iter;
+		BMFace *efa;
+		BM_ITER_MESH (efa, &iter, bm, BM_FACES_OF_MESH) {
+			BM_face_normal_flip_ex(bm, efa, cd_loop_mdisp_offset, true);
+		}
+	}
+	
 	DM_to_bmesh_ex(dm, bm, true);
 
 	/* main bmesh intersection setup */
@@ -146,10 +160,16 @@ DerivedMesh *NewBooleanDerivedMeshBMesh(DerivedMesh *dm, struct Object *ob,
 		 * currently this is ok for 'BM_mesh_intersect' */
 		// BM_mesh_normals_update(bm);
 
-		/* change for testing */
 		bool use_separate = false;
 		bool use_dissolve = true;
 		bool use_island_connect = true;
+
+		/* change for testing */
+		if (G.debug & G_DEBUG) {
+			use_separate = (bmd->bm_flag & eBooleanModifierBMeshFlag_BMesh_Separate) != 0;
+			use_dissolve = (bmd->bm_flag & eBooleanModifierBMeshFlag_BMesh_NoDissolve) == 0;
+			use_island_connect = (bmd->bm_flag & eBooleanModifierBMeshFlag_BMesh_NoConnectRegions) == 0;
+		}
 
 		BM_mesh_intersect(
 				bm,

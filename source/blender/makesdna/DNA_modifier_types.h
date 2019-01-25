@@ -655,7 +655,8 @@ typedef struct BooleanModifierData {
 	struct Object *object;
 	char operation;
 	char solver;
-	char pad[2];
+	char pad;
+	char bm_flag;
 	float double_threshold;
 } BooleanModifierData;
 
@@ -669,6 +670,13 @@ typedef enum {
 	eBooleanModifierSolver_Carve    = 0,
 	eBooleanModifierSolver_BMesh = 1,
 } BooleanSolver;
+
+/* bm_flag (only used when G_DEBUG) */
+enum {
+	eBooleanModifierBMeshFlag_BMesh_Separate            = (1 << 0),
+	eBooleanModifierBMeshFlag_BMesh_NoDissolve          = (1 << 1),
+	eBooleanModifierBMeshFlag_BMesh_NoConnectRegions    = (1 << 2),
+};
 
 typedef struct MDefInfluence {
 	int vertex;
@@ -1230,7 +1238,23 @@ typedef enum RemeshModifierMode {
 	MOD_REMESH_MASS_POINT     = 1,
 	/* keeps sharp edges */
 	MOD_REMESH_SHARP_FEATURES = 2,
+	/* turns vertices into metaballs */
+	MOD_REMESH_MBALL          = 3,
 } RemeshModifierMode;
+
+
+typedef enum MetaballRemeshFlags {
+	MOD_REMESH_VERTICES = (1 << 0),
+	MOD_REMESH_PARTICLES = (1 << 1),
+} MetaballRemeshFlags;
+
+typedef enum {
+	eRemeshFlag_Alive    = (1 << 0),
+	eRemeshFlag_Dead     = (1 << 1),
+	eRemeshFlag_Unborn   = (1 << 2),
+	eRemeshFlag_Size     = (1 << 3),
+	eRemeshFlag_Verts    = (1 << 4),
+} MetaballRemeshPsysFlag;
 
 typedef struct RemeshModifierData {
 	ModifierData modifier;
@@ -1243,12 +1267,23 @@ typedef struct RemeshModifierData {
 
 	float hermite_num;
 
+	/*mball related params*/
+	float rendersize;
+	float wiresize;
+	float thresh;
+	float basesize[3];
+	int input;
+	int pflag;
+	int psys;
+	char size_defgrp_name[64];  /* MAX_VGROUP_NAME */
+
 	/* octree depth */
 	char depth;
 
 	char flag;
 	char mode;
 	char pad;
+	char pad2[4];
 } RemeshModifierData;
 
 /* Skin modifier */
@@ -1456,6 +1491,7 @@ typedef struct MeshIsland {
 	struct RigidBodyShardCon **participating_constraints;
 	float *locs;
 	float *rots;
+	float *acc_sequence;
 
 	char name[66]; /* MAX_ID_NAME */
 	char pad1[2];
@@ -1470,9 +1506,10 @@ typedef struct MeshIsland {
 	int linear_index;  /* index in rigidbody world */
 	int particle_index;
 	int constraint_index;
+	int object_index;
 	int totcol; /*store number of used materials here, from the original object*/
 	int totdef; /*store number of used vertexgroups here, from the original object*/
-	//char pad[4];
+	char pad[4];
 } MeshIsland;
 
 
@@ -1534,6 +1571,7 @@ enum {
 	MOD_FRACTURE_EXTRA_PARTICLES = (1 << 3),
 	MOD_FRACTURE_GREASEPENCIL    = (1 << 4),
 	MOD_FRACTURE_UNIFORM         = (1 << 5),
+	MOD_FRACTURE_GRID            = (1 << 6),
 };
 
 enum {
@@ -1669,6 +1707,17 @@ typedef struct FractureSetting {
 	//char pad[4];
 } FractureSetting;
 
+typedef struct AnimBind {
+	int v;
+	int v1;
+	int v2;
+	int mi;
+	int poly;
+	float offset[3];
+	float no[3];
+	float quat[4];
+} AnimBind;
+
 typedef struct FractureModifierData {
 	ModifierData modifier;
 	struct FracMesh *frac_mesh; /* store only the current fracmesh here first, later maybe an entire history...*/
@@ -1685,6 +1734,7 @@ typedef struct FractureModifierData {
 	char thresh_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char ground_defgrp_name[64];  /* MAX_VGROUP_NAME */
 	char inner_defgrp_name[64];  /* MAX_VGROUP_NAME */
+	char acceleration_defgrp_name[64]; /* MAX_VGROUP_NAME */
 	char uvlayer_name[64];  /* MAX_CUSTOMDATA_LAYER_NAME */
 	struct KDTree *nor_tree; /* store original vertices here (coords), to find them later and reuse their normals */
 	struct Material *inner_material;
@@ -1693,6 +1743,9 @@ typedef struct FractureModifierData {
 	struct GHash *vertex_island_map; /* used for constraint building based on vertex proximity, temporary data */
 	struct GHash *material_index_map; /* used to collect materials from objects to be packed, temporary data */
 	struct GHash *defgrp_index_map; /*used to collect vertexgroups from objects to be packed, temporary data */
+	struct Object *anim_mesh_ob; /*input object for animated mesh */
+	struct AnimBind *anim_bind; /* bound animation data */
+
 	ListBase shard_sequence; /* used as mesh cache / history for dynamic fracturing, for shards (necessary for conversion to DM) */
 	ListBase meshIsland_sequence; /* used as mesh cache / history for dynamic fracturing, for meshIslands (necessary for loc/rot "pointcache") */
 	ShardSequence *current_shard_entry; /*volatile storage of current shard entry, so we dont have to search in the list */
@@ -1703,6 +1756,9 @@ typedef struct FractureModifierData {
 	ListBase pack_storage; /*used to store packed geometry when switching modes */
 
 	int active_setting;
+
+	int anim_bind_len;
+	int anim_mesh_rot;
 
 	/* values */
 	int frac_algorithm;
@@ -1729,6 +1785,7 @@ typedef struct FractureModifierData {
 	int boolean_solver;
 	int dynamic_percentage;
 	int constraint_type;
+	int grid_resolution[3];
 
 	float breaking_angle;
 	float breaking_distance;
@@ -1761,6 +1818,13 @@ typedef struct FractureModifierData {
 	float dynamic_min_size;
 	float inner_crease;
 	float orthogonality_factor;
+	float min_acceleration;
+	float max_acceleration;
+	float acceleration_fade;
+	float anim_bind_limit;
+	float grid_offset[3];
+	float grid_spacing[3];
+	float autohide_filter_dist;
 
 	/* flags */
 	int refresh;
@@ -1776,6 +1840,9 @@ typedef struct FractureModifierData {
 	int use_smooth;
 	int use_greasepencil_edges;
 	int use_constraint_collision;
+	int use_self_collision;
+	int use_animated_mesh;
+	int use_constraint_group;
 
 	int shards_to_islands;
 	int execute_threaded;
@@ -1794,6 +1861,9 @@ typedef struct FractureModifierData {
 	int do_merge;
 	int deform_angle_weighted;
 	int deform_distance_weighted;
+	int use_centroids;
+	int use_vertices;
+	int activate_broken;
 
 	/* internal flags */
 	int use_experimental;

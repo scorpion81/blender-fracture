@@ -7388,7 +7388,13 @@ static int bpy_class_validate_recursive(PointerRNA *dummyptr, StructRNA *srna, v
 		identifier = RNA_property_identifier(prop);
 		item = PyObject_GetAttrString(py_class, identifier);
 
+		/* TODO(campbell): Use Python3.7x _PyObject_LookupAttr(), also in the macro below. */
+		/* backported fix from 2.79 master to allow 2.79b based fracture_modifier branch
+		 * running with Python 3.7x which would throw an error here,
+		 * symptom was no rendered UI elements,
+		 * https://developer.blender.org/T56969 - Martin Felke */
 		if (item == NULL) {
+			PyErr_Clear();
 			/* Sneaky workaround to use the class name as the bl_idname */
 
 #define     BPY_REPLACEMENT_STRING(rna_attr, py_attr)                         \
@@ -7403,6 +7409,9 @@ static int bpy_class_validate_recursive(PointerRNA *dummyptr, StructRNA *srna, v
 						}                                                     \
 					}                                                         \
 					Py_DECREF(item);                                          \
+				}                                                             \
+				else {                                                        \
+					PyErr_Clear();                                            \
 				}                                                             \
 			}  /* intentionally allow else here */
 

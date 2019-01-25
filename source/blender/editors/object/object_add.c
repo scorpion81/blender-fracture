@@ -45,6 +45,7 @@
 #include "DNA_object_fluidsim.h"
 #include "DNA_object_force.h"
 #include "DNA_object_types.h"
+#include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_vfont_types.h"
 #include "DNA_actuator_types.h"
@@ -1121,6 +1122,12 @@ void ED_base_object_free_and_unlink(Main *bmain, Scene *scene, Base *base)
 		return;
 	}
 
+	/* here we need to invalidate the bake too*/
+	if (scene->rigidbody_world && scene->rigidbody_world->pointcache && base->object->rigidbody_object)
+	{
+		scene->rigidbody_world->pointcache->flag &= ~PTCACHE_BAKED;
+	}
+
 	BKE_scene_base_unlink(scene, base);
 	object_delete_check_glsl_update(base->object);
 	BKE_libblock_free_us(bmain, base->object);
@@ -2013,6 +2020,12 @@ static Base *object_add_duplicate_internal(Main *bmain, Scene *scene, Base *base
 	else {
 		obn = ID_NEW_SET(ob, BKE_object_copy(bmain, ob));
 		DAG_id_tag_update(&obn->id, OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME);
+
+		/*invalidate rigidbody bake and cache if it was a rigidbody object*/
+		if (scene->rigidbody_world && scene->rigidbody_world->pointcache && ob->rigidbody_object)
+		{
+			scene->rigidbody_world->pointcache->flag &= ~PTCACHE_BAKED;
+		}
 
 		basen = MEM_mallocN(sizeof(Base), "duplibase");
 		*basen = *base;

@@ -25,19 +25,20 @@ void container_put(container* con, particle_order* p_order, int n,double x,doubl
 	{
 		c->put(*po, n, x, y, z);
 	}
-	else
+	/*else
 	{
 		c->put(n, x, y, z);
-	}
+	}*/
 	
 }
 
-void container_compute_cells(container* con, cell* cells)
+void container_compute_cells(container* con, particle_order* p_order, cell* cells)
 {
 	int i = 0, v = 0, fo = 0, fv = 0, n = 0;
 	voro::container* cn = (voro::container*)con;
+	voro::particle_order* po = (voro::particle_order*)p_order;
 	voro::voronoicell_neighbor vc;
-	voro::c_loop_all vl(*cn);
+	voro::c_loop_order vl(*cn, *po);
 	cell c;
 	if(vl.start()) {
 		do {

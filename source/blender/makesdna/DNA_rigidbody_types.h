@@ -190,6 +190,10 @@ typedef enum eRigidBodyOb_Flag {
 	RBO_FLAG_PLASTIC_DISSOLVE = (1 << 15),
 	/* anti (stop) trigger flag, make simulated objects kinematic again */
 	RBO_FLAG_ANTI_TRIGGER = (1 << 16),
+	/* randomize margin for better packing (especially for spheres) */
+	RBO_FLAG_RANDOM_MARGIN = (1 << 17),
+	/* marks bound kinematic rigidbodies (to properly handle restoreKinematic for them) */
+	RBO_FLAG_KINEMATIC_BOUND = (1 << 18),
 
 } eRigidBodyOb_Flag;
 
@@ -221,7 +225,9 @@ typedef enum eRigidBody_MeshSource {
 	/* only deformations */
 	RBO_MESH_DEFORM,
 	/* final derived mesh */
-	RBO_MESH_FINAL
+	RBO_MESH_FINAL,
+	/* solidifed final mesh (physics only) */
+	RBO_MESH_FINAL_SOLID
 } eRigidBody_MeshSource;
 
 /* ******************************** */
@@ -314,6 +320,8 @@ typedef struct RigidBodyShardCon {
 	float breaking_dist;
 	float plastic_angle;
 	float plastic_dist;
+	float start_angle_deform;
+	float start_dist_deform;
 
 	float orn[4];
 	float pos[3];

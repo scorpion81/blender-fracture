@@ -43,6 +43,8 @@
 #include "BLI_callbacks.h"
 #include "BLI_math.h"
 #include "BLI_kdtree.h"
+#include "BLI_rand.h"
+#include "BLI_sort.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
@@ -62,6 +64,7 @@
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_depsgraph.h"
+#include "BKE_deform.h"
 #include "BKE_effect.h"
 #include "BKE_fracture.h"
 #include "BKE_global.h"
@@ -76,12 +79,13 @@
 #include "BKE_depsgraph.h"
 #include "BKE_scene.h"
 #include "PIL_time.h"
+#include "bmesh.h"
 
 #ifdef WITH_BULLET
 
 /* Fracture Modifier related prototypes */
 
-static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always);
+static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always, bool override_bind);
 static void validateShard(RigidBodyWorld *rbw, MeshIsland *mi, Object *ob, int rebuild, int transfer_speed, float size[3]);
 static void rigidbody_passive_fake_parenting(FractureModifierData *fmd, Object *ob, RigidBodyOb *rbo, float imat[4][4]);
 static void rigidbody_passive_hook(FractureModifierData *fmd, MeshIsland *mi, Object* ob);
@@ -95,12 +99,11 @@ static void contactCallback(rbContactPoint* cp, void* world);
 static void idCallback(void *world, void* island, int* objectId, int* islandId);
 static void tickCallback(float timestep, void *scene);
 static bool isModifierActive(FractureModifierData *rmd);
-static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), MeshIsland *mi, Object *ob);
+static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED_rbw, MeshIsland *mi, Object *ob);
 static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bool rebuild);
 static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, float ctime);
-static bool restoreKinematic(RigidBodyWorld *rbw);
 static void DM_mesh_boundbox(DerivedMesh *bm, float r_loc[3], float r_size[3]);
-static void test_deactivate_rigidbody(RigidBodyOb *rbo);
+static void test_deactivate_rigidbody(RigidBodyOb *rbo, MeshIsland *mi);
 static float box_volume(float size[3]);
 
 #endif
@@ -275,6 +278,36 @@ RigidBodyCon *BKE_rigidbody_copy_constraint(const Object *ob)
 	return rbcN;
 }
 
+/* although this may be slow, it also may help to correct the mesh bounding problem */
+static DerivedMesh* dm_solidify(DerivedMesh *dm, float thickness)
+{
+	DerivedMesh *result = NULL;
+	BMesh *bm = BM_mesh_create(&bm_mesh_allocsize_default, &((struct BMeshCreateParams){.use_toolflags = true,}));
+	BMOperator bmop;
+
+	DM_to_bmesh_ex(dm, bm, true);
+
+	BMO_op_initf(bm, &bmop, BMO_FLAG_DEFAULTS, "solidify geom=%af thickness=%f offset=%f", thickness, 0.0f, true);
+
+	/* deselect only the faces in the region to be solidified (leave wire
+	 * edges and loose verts selected, as there will be no corresponding
+	 * geometry selected below) */
+	BMO_slot_buffer_hflag_disable(bm, bmop.slots_in, "geom", BM_FACE, BM_ELEM_SELECT, true);
+
+	/* run the solidify operator */
+	BMO_op_exec(bm, &bmop);
+
+	/* select the newly generated faces */
+	BMO_slot_buffer_hflag_enable(bm, bmop.slots_out, "geom.out", BM_FACE, BM_ELEM_SELECT, true);
+
+	BMO_op_finish(bm, &bmop);
+
+	result = CDDM_from_bmesh(bm, true);
+	BM_mesh_free(bm);
+
+	return result;
+}
+
 /* ************************************** */
 /* Setup Utilities - Validate Sim Instances */
 
@@ -286,6 +319,15 @@ static DerivedMesh *rigidbody_get_mesh(Object *ob)
 	}
 	else if (ob->rigidbody_object->mesh_source == RBO_MESH_FINAL) {
 		return ob->derivedFinal;
+	}
+	else if (ob->rigidbody_object->mesh_source == RBO_MESH_FINAL_SOLID) {
+		if (ob->derivedFinal) {
+			return dm_solidify(ob->derivedFinal, ob->rigidbody_object->margin);
+		}
+		else {
+			// fallback to avoid crash
+			return CDDM_from_mesh(ob->data);
+		}
 	}
 	else {
 		return CDDM_from_mesh(ob->data);
@@ -348,7 +390,7 @@ static void rigidbody_validate_sim_shape(Object *ob, bool rebuild)
 			break;
 
 		case RB_SHAPE_SPHERE:
-			new_shape = RB_shape_new_sphere(radius);
+			new_shape = RB_shape_new_sphere(radius + RBO_GET_MARGIN(rbo));
 			break;
 
 		case RB_SHAPE_CAPSULE:
@@ -922,6 +964,8 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, Object *target
 	{
 		rbo = BKE_rigidbody_copy_object(target);
 		mat4_to_loc_quat(rbo->pos, rbo->orn, target->obmat);
+		zero_v3(rbo->lin_vel);
+		zero_v3(rbo->ang_vel);
 	}
 	else
 	{
@@ -938,6 +982,8 @@ RigidBodyOb *BKE_rigidbody_create_shard(Scene *scene, Object *ob, Object *target
 		mul_v3_v3(centr, size);
 		mul_qt_v3(rbo->orn, centr);
 		add_v3_v3(rbo->pos, centr);
+		zero_v3(rbo->lin_vel);
+		zero_v3(rbo->ang_vel);
 	}
 
 	/* return this object */
@@ -987,23 +1033,23 @@ void BKE_rigidbody_world_id_loop(RigidBodyWorld *rbw, RigidbodyWorldIDFunc func,
 	 * of the rigidbody world... the rbw->objects array would contain group objects only anyway, also dont forget
 	 * regular constraints if there are any */
 
-	/*
-	if (rbw->objects) {
+	/*if (rbw->objects) {
 		int i;
-		for (i = 0; i < rbw->numbodies; i++) {
+		int count = BLI_listbase_count(&rbw->group->gobject);
+		for (i = 0; i < count; i++) {
 			func(rbw, (ID **)&rbw->objects[i], userdata, IDWALK_CB_NOP);
 		}
 	}*/
 
 	if (rbw->group) {
 		for (go = rbw->group->gobject.first; go; go = go->next) {
-			func(rbw, (ID **)&go->ob, userdata, IDWALK_NOP);
+			func(rbw, (ID **)&go->ob, userdata, IDWALK_CB_NOP);
 		}
 	}
 
 	if (rbw->constraints) {
 		for (go = rbw->constraints->gobject.first; go; go = go->next) {
-			func(rbw, (ID **)&go->ob, userdata, IDWALK_NOP);
+			func(rbw, (ID **)&go->ob, userdata, IDWALK_CB_NOP);
 		}
 	}
 }
@@ -1368,7 +1414,7 @@ void BKE_rigidbody_remove_shard(Scene *scene, MeshIsland *mi)
 	}
 }
 
-static bool do_remove_modifier(RigidBodyWorld* rbw, ModifierData *md)
+static bool do_remove_modifier(RigidBodyWorld* rbw, ModifierData *md, Object *ob)
 {
 	RigidBodyShardCon *con;
 	MeshIsland *mi;
@@ -1379,6 +1425,8 @@ static bool do_remove_modifier(RigidBodyWorld* rbw, ModifierData *md)
 	{
 		fmd = (FractureModifierData *)md;
 		modFound = true;
+		GroupObject *go;
+
 		for (con = fmd->meshConstraints.first; con; con = con->next) {
 			if (rbw && rbw->physics_world && con->physics_constraint) {
 				RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
@@ -1386,6 +1434,23 @@ static bool do_remove_modifier(RigidBodyWorld* rbw, ModifierData *md)
 				con->physics_constraint = NULL;
 			}
 		}
+
+		/*if we are part of a connected object, delete the parent's constraints here too*/
+		for (go = rbw->group->gobject.first; go; go = go->next)
+		{
+			FractureModifierData *fmdi = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
+			if (fmdi && ob != go->ob)
+			{
+				for (con = fmdi->meshConstraints.first; con; con = con->next) {
+					if (rbw && rbw->physics_world && con->physics_constraint) {
+						RB_dworld_remove_constraint(rbw->physics_world, con->physics_constraint);
+						RB_constraint_delete(con->physics_constraint);
+						con->physics_constraint = NULL;
+					}
+				}
+			}
+		}
+
 
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 			if (mi->rigidbody != NULL) {
@@ -1433,7 +1498,7 @@ void BKE_rigidbody_remove_object(Scene *scene, Object *ob)
 
 	if (rbw) {
 		for (md = ob->modifiers.first; md; md = md->next) {
-			modFound = do_remove_modifier(rbw, md);
+			modFound = do_remove_modifier(rbw, md, ob);
 		}
 
 		if (!modFound) {
@@ -1546,6 +1611,46 @@ static int rigidbody_group_count_items(const ListBase *group, int *r_num_objects
 	return num_gobjects;
 }
 
+static int object_sort_eval(const void *s1, const void *s2, void* context)
+{
+	Object **o1 = (Object**)s1;
+	Object **o2 = (Object**)s2;
+
+	FractureModifierData *fmd1 = (FractureModifierData*)modifiers_findByType(*o1, eModifierType_Fracture);
+	FractureModifierData *fmd2 = (FractureModifierData*)modifiers_findByType(*o2, eModifierType_Fracture);
+
+
+	if ((fmd1 && fmd1->dm_group && fmd1->use_constraint_group) &&
+	   (fmd2 && fmd2->dm_group && fmd2->use_constraint_group))
+	{
+		return 0;
+	}
+
+	if ((fmd1 && fmd1->dm_group && fmd1->use_constraint_group) &&
+	   (fmd2 && !(fmd2->dm_group && fmd2->use_constraint_group)))
+	{
+		return 1;
+	}
+
+	if ((fmd1 && fmd1->dm_group && fmd1->use_constraint_group) && !fmd2)
+	{
+		return 1;
+	}
+
+	if ((fmd1 && !(fmd1->dm_group && fmd1->use_constraint_group)) &&
+	   (fmd2 && (fmd2->dm_group && fmd2->use_constraint_group)))
+	{
+		return -1;
+	}
+
+	if ((!fmd1) && (fmd2 && fmd2->dm_group && fmd2->use_constraint_group))
+	{
+		return -1;
+	}
+
+	return 0;
+}
+
 /* ************************************** */
 /* Simulation Interface - Bullet */
 
@@ -1553,12 +1658,12 @@ static int rigidbody_group_count_items(const ListBase *group, int *r_num_objects
 void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw, bool do_bake_correction)
 {
 	GroupObject *go;
-	ModifierData *md;
 	FractureModifierData *rmd;
 	MeshIsland *mi;
-	int i, j = 0, l = 0, m = 0, n = 0, counter = 0, k = 0;
+	int i, j = 0, l = 0, m = 0, n = 0, counter = 0;
 	bool ismapped = false;
-	Object** temp_obj = NULL;
+	RigidBodyOb ** tmp_index = NULL;
+	int *tmp_offset = NULL;
 	
 	if (rbw->objects != NULL) {
 		MEM_freeN(rbw->objects);
@@ -1581,77 +1686,87 @@ void BKE_rigidbody_update_ob_array(RigidBodyWorld *rbw, bool do_bake_correction)
 	rbw->objects = MEM_mallocN(sizeof(Object *) * l, "objects");
 	rbw->cache_index_map = MEM_mallocN(sizeof(RigidBodyOb *) * rbw->numbodies, "cache_index_map");
 	rbw->cache_offset_map = MEM_mallocN(sizeof(int) * rbw->numbodies, "cache_offset_map");
+	tmp_index =  MEM_mallocN(sizeof(RigidBodyOb *) * rbw->numbodies, "cache_index_map temp");
+	tmp_offset = MEM_mallocN(sizeof(int) * rbw->numbodies, "cache_offset_map");
+
 	printf("RigidbodyCount changed: %d\n", rbw->numbodies);
 
-	//correct map if baked, it might be shifted
-	temp_obj = MEM_mallocN(sizeof(Object*) * l, "temp_obj");
+	//pre-sort rbw->objects... put such with fmd->dm_group and fmd->use_constraint_group after all without,
+	//to enforce proper eval order
+
 	for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
-		Object *ob = go->ob;
-		temp_obj[i] = ob;
+
+		if (go->ob->rigidbody_object)
+		{
+			rbw->objects[i] = go->ob;
+		}
 	}
 
-	i = 0;
-	for (k = 0; k < l; k++) {
+	BLI_qsort_r(rbw->objects, l, sizeof(Object *), object_sort_eval, NULL);
 
-		Object *ob = temp_obj[k];
-		if (!ob->rigidbody_object) {
-			//sort out non-rigidbodies which might be accidentally in the group...
-			continue;
-		}
+	//correct map if baked, it might be shifted
+	for (i = 0; i < l; i++) {
+		Object *ob = rbw->objects[i];
+		//printf("%s\n", ob->id.name + 2);
 
-		if (do_bake_correction && (ob->rigidbody_object->meshisland_index != i) && n > 0) {
-			//pick the correct object in case it doesnt match (when we are baked
-			if (ob->rigidbody_object->meshisland_index < l && ob->rigidbody_object->meshisland_index > -1) {
-				ob = temp_obj[ob->rigidbody_object->meshisland_index];
-			}
-		}
-
-		rbw->objects[i] = ob;
-
-		for (md = ob->modifiers.first; md; md = md->next) {
-
-			if (md->type == eModifierType_Fracture) {
-				rmd = (FractureModifierData *)md;
-				if (isModifierActive(rmd)) {
-					for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
-						//store original position of the object in the object array, to be able to rearrange it later so it matches the baked cache
-						if ((mi == rmd->meshIslands.first) && !do_bake_correction) {
-							ob->rigidbody_object->meshisland_index = i;
-						}
-						rbw->cache_index_map[counter] = mi->rigidbody; /* map all shards of an object to this object index*/
-						rbw->cache_offset_map[counter] = i;
-						mi->linear_index = counter;
-						if (mi->rigidbody) {
-							//as we search by id now in the pointcache, we set the id here too
-							mi->rigidbody->meshisland_index = mi->id;
-						}
-						counter++;
-						j++;
+		rmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
+		if (rmd) {
+			for (mi = rmd->meshIslands.first, j = 0; mi; mi = mi->next) {
+				//store original position of the object in the object array, to be able to rearrange it later so it matches the baked cache
+				tmp_index[counter] = mi->rigidbody; /* map all shards of an object to this object index*/
+				tmp_offset[counter] = i;
+				mi->linear_index = counter;
+				if (mi->rigidbody && !do_bake_correction) {
+					//as we search by id now in the pointcache, we set the id here too
+					mi->rigidbody->meshisland_index = counter;
+					if (mi->object_index != -1)
+					{
+						mi->object_index = i;
 					}
-					ismapped = true;
-					break;
 				}
+				counter++;
+				j++;
 			}
+			ismapped = true;
 		}
 
-		if (!ismapped) {
-			rbw->cache_index_map[counter] = ob->rigidbody_object; /*1 object 1 index here (normal case)*/
-			rbw->cache_offset_map[counter] = i;
+		if (!ismapped && ob->rigidbody_object) {
+			tmp_index[counter] = ob->rigidbody_object; /*1 object 1 index here (normal case)*/
+			tmp_offset[counter] = i;
 			if (ob->rigidbody_object && !do_bake_correction)
-				ob->rigidbody_object->meshisland_index = i;
+				ob->rigidbody_object->meshisland_index = counter;
 			counter++;
 		}
 
 		ismapped = false;
-		i++;
 	}
 
-	MEM_freeN(temp_obj);
+	//do shuffle for each rigidbody
+	for (i = 0; i < rbw->numbodies; i++)
+	{
+		RigidBodyOb *rbo = tmp_index[i];
+		int offset = tmp_offset[i];
+
+		if (rbo->meshisland_index != i && do_bake_correction)
+		{
+			rbw->cache_index_map[rbo->meshisland_index] = rbo;
+			rbw->cache_offset_map[rbo->meshisland_index] = offset;
+			//printf("Shuffle %d -> %d\n", i, rbo->meshisland_index);
+		}
+		else {
+			rbw->cache_index_map[i] = rbo;
+			rbw->cache_offset_map[i] = offset;
+		}
+	}
+
+	MEM_freeN(tmp_index);
+	MEM_freeN(tmp_offset);
 }
 
 static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw, bool rebuild)
 {
 	float adj_gravity[3];
+	bool skip_correction = rbw->flag & RBW_FLAG_REFRESH_MODIFIERS;
 
 	/* adjust gravity to take effector weights into account */
 	if (scene->physics_settings.flag & PHYS_GLOBAL_GRAVITY) {
@@ -1666,14 +1781,14 @@ static void rigidbody_update_sim_world(Scene *scene, RigidBodyWorld *rbw, bool r
 	RB_dworld_set_gravity(rbw->physics_world, adj_gravity);
 
 	/* update object array in case there are changes */
-	//if (!(rbw->flag & RBW_FLAG_REFRESH_MODIFIERS))
 	if (rebuild)
 	{
-		BKE_rigidbody_update_ob_array(rbw, rbw->pointcache->flag & PTCACHE_BAKED);
+		BKE_rigidbody_update_ob_array(rbw, (rbw->pointcache->flag & PTCACHE_BAKED) && !skip_correction);
 	}
 }
 
-static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *ob, RigidBodyOb *rbo, float centroid[3], MeshIsland *mi, float size[3])
+static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *ob, RigidBodyOb *rbo, float centroid[3],
+                                    MeshIsland *mi, float size[3], FractureModifierData *fmd)
 {
 	float loc[3];
 	float rot[4];
@@ -1691,6 +1806,10 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 		}
 		else if (rbo->mesh_source == RBO_MESH_FINAL) {
 			dm = ob->derivedFinal;
+		}
+		else if (rbo->mesh_source == RBO_MESH_FINAL_SOLID)
+		{
+			dm = dm_solidify(ob->derivedFinal, rbo->margin);
 		}
 
 		if (dm) {
@@ -1727,6 +1846,11 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 			{
 				RB_shape_trimesh_update(rbo->physics_shape, (float *)mvert, totvert, sizeof(MVert), bb->vec[0], bb->vec[6]);
 			}
+
+			if (rbo->mesh_source == RBO_MESH_FINAL_SOLID)
+			{
+				dm->release(dm);
+			}
 		}
 	}
 
@@ -1750,18 +1874,22 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 	if ((rbo->flag & RBO_FLAG_KINEMATIC && rbo->force_thresh == 0.0f) || (ob->flag & SELECT && G.moving & G_TRANSFORM_OBJ)) {
 		if (((rbo->type == RBO_TYPE_ACTIVE || mi == NULL) && (rbo->flag & RBO_FLAG_KINEMATIC_REBUILD) == 0))
 		{
-			mul_v3_v3(centr, scale);
-			mul_qt_v3(rot, centr);
-			add_v3_v3(loc, centr);
-			RB_body_activate(rbo->physics_object);
-			RB_body_set_loc_rot(rbo->physics_object, loc, rot);
+			if (!(fmd && fmd->anim_mesh_ob && fmd->use_animated_mesh))
+			{
+				//override for externally animated rbs
+				mul_v3_v3(centr, scale);
+				mul_qt_v3(rot, centr);
+				add_v3_v3(loc, centr);
+				RB_body_activate(rbo->physics_object);
+				RB_body_set_loc_rot(rbo->physics_object, loc, rot);
+			}
 		}
 	}
-	/* update influence of effectors - but don't do it on an effector */
+	/* update influence of effectors - but don't do it on an effector (why not ?)*/
 	/* only dynamic bodies need effector update */
-	else if (rbo->type == RBO_TYPE_ACTIVE && ((ob->pd == NULL) || (ob->pd->forcefield == PFIELD_NULL))) {
+	else if (rbo->type == RBO_TYPE_ACTIVE /* && ((ob->pd == NULL) || (ob->pd->forcefield == PFIELD_NULL))*/) {
 		EffectorWeights *effector_weights = rbw->effector_weights;
-		EffectedPoint epoint;
+		EffectedPoint epoint = {0};
 		ListBase *effectors;
 
 		/* get effectors present in the group specified by effector_weights */
@@ -1795,11 +1923,15 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 				if ((rbo->flag & RBO_FLAG_KINEMATIC_REBUILD) == 0)
 				{   //XXXXX TODO, maybe this is wrong here
 					/* do the same here as above, but here we needed the eff_force value to compare against threshold */
-					mul_v3_v3(centr, scale);
-					mul_qt_v3(rot, centr);
-					add_v3_v3(loc, centr);
-					RB_body_activate(rbo->physics_object);
-					RB_body_set_loc_rot(rbo->physics_object, loc, rot);
+
+					if (!(fmd && fmd->anim_mesh_ob && fmd->use_animated_mesh))
+					{	//same override as above
+						mul_v3_v3(centr, scale);
+						mul_qt_v3(rot, centr);
+						add_v3_v3(loc, centr);
+						RB_body_activate(rbo->physics_object);
+						RB_body_set_loc_rot(rbo->physics_object, loc, rot);
+					}
 				}
 			}
 			else
@@ -1839,6 +1971,8 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 	bool did_modifier = false;
 	float centroid[3] = {0, 0, 0};
 	float size[3] = {1.0f, 1.0f, 1.0f};
+	float count = BLI_listbase_count(&rbw->group->gobject);
+	int i = 0;
 
 	/* update world */
 	if (rebuild) {
@@ -1848,8 +1982,8 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 	rigidbody_update_sim_world(scene, rbw, rebuild);
 
 	/* update objects */
-	for (go = rbw->group->gobject.first; go; go = go->next) {
-		Object *ob = go->ob;
+	for (i = 0; i < count; i++) {
+		Object *ob = rbw->objects[i];
 
 		if (ob && (ob->type == OB_MESH || ob->type == OB_CURVE || ob->type == OB_SURF || ob->type == OB_FONT)) {
 			did_modifier = do_update_modifier(scene, ob, rbw, rebuild);
@@ -1901,7 +2035,7 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 			}
 
 			/* update simulation object... */
-			rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid, NULL, size);
+			rigidbody_update_sim_ob(scene, rbw, ob, rbo, centroid, NULL, size, NULL);
 		}
 	}
 
@@ -1945,6 +2079,22 @@ static void rigidbody_update_simulation(Scene *scene, RigidBodyWorld *rbw, bool 
 					rigidbody_validate_sim_constraint(rbw, ob, false);
 				}
 				rbc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
+			}
+
+			if (rbc->physics_constraint)
+			{
+				RigidBodyOb *rbo1 = rbc->ob1->rigidbody_object;
+				RigidBodyOb *rbo2 = rbc->ob2->rigidbody_object;
+
+				if ((rbo1->force_thresh > 0 || rbo2->force_thresh > 0))
+				{
+					if (RB_constraint_get_applied_impulse(rbc->physics_constraint) >= rbo1->force_thresh + rbo2->force_thresh)
+					{
+						RB_constraint_set_enabled(rbc->physics_constraint, false);
+						activateRigidbody(rbo1, rbw, NULL, rbc->ob1);
+						activateRigidbody(rbo2, rbw, NULL, rbc->ob2);
+					}
+				}
 			}
 		}
 	}
@@ -2174,6 +2324,7 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 		{
 			rbo = mi->rigidbody;
 			do_reset_rigidbody(rbo, ob, mi, loc, rot, quat, rotAxis, rotAngle);
+
 			if (rbo->flag & RBO_FLAG_KINEMATIC)
 			{
 				rigidbody_passive_fake_parenting(rmd, ob, rbo, imat);
@@ -2182,6 +2333,11 @@ void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], flo
 			{
 				rigidbody_passive_hook(rmd, mi, ob);
 			}
+		}
+
+		if (rmd->use_animated_mesh && rmd->anim_mesh_ob)
+		{
+			BKE_read_animated_loc_rot(rmd, ob, false);
 		}
 
 		//then update origmat
@@ -2203,7 +2359,7 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 		rbw->pointcache->flag |= PTCACHE_OUTDATED;
 		//restoreKinematic(rbw);
 		//if (!(rbw->pointcache->flag & PTCACHE_BAKED))
-		resetDynamic(rbw, true);
+		resetDynamic(rbw, false, false);
 		//resetPrefractured(rbw);
 	}
 }
@@ -2212,7 +2368,7 @@ void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw)
 
 /* Rebuild rigid body world */
 /* NOTE: this needs to be called before frame update to work correctly */
-void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
+void BKE_rigidbody_rebuild_world(Scene *scene, float ctime, bool do_resetDynamic)
 {
 	RigidBodyWorld *rbw = scene->rigidbody_world;
 	PointCache *cache;
@@ -2246,7 +2402,7 @@ void BKE_rigidbody_rebuild_world(Scene *scene, float ctime)
 			//if we destroy the cache, also reset dynamic data (if not baked)
 			if (!(cache->flag & PTCACHE_BAKED))
 			{
-				resetDynamic(rbw, true);
+				resetDynamic(rbw, true, do_resetDynamic);
 				//resetExternal(rbw);
 				//resetPrefractured(rbw);
 			}
@@ -2322,7 +2478,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 			BKE_ptcache_id_reset(scene, &pid, PTCACHE_RESET_OUTDATED);
 		}
 
-		BKE_rigidbody_update_ob_array(rbw, false);
+		BKE_rigidbody_update_ob_array(rbw, cache->flag & PTCACHE_BAKED);
 	}
 
 	/* try to read from cache */
@@ -2338,7 +2494,7 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	}
 	else if (rbw->ltime == startframe)
 	{
-		/*bool did_it = */restoreKinematic(rbw);
+		/*bool did_it = */BKE_restoreKinematic(rbw, false);
 		//if (did_it)
 
 		//make 1st run like later runs... hack...
@@ -2401,7 +2557,7 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 void BKE_rigidbody_aftertrans_update(Object *ob, float loc[3], float rot[3], float quat[4], float rotAxis[3], float rotAngle) {}
 bool BKE_rigidbody_check_sim_running(RigidBodyWorld *rbw, float ctime) { return false; }
 void BKE_rigidbody_cache_reset(RigidBodyWorld *rbw) {}
-void BKE_rigidbody_rebuild_world(Scene *scene, float ctime) {}
+void BKE_rigidbody_rebuild_world(Scene *scene, float ctime, bool do_resetDynamic) {}
 void BKE_rigidbody_do_simulation(Scene *scene, float ctime) {}
 
 #ifdef __GNUC__
@@ -2424,7 +2580,7 @@ void BKE_rigidbody_rebuild_sim(EvaluationContext *UNUSED(eval_ctx),
 
 	/* rebuild sim data (i.e. after resetting to start of timeline) */
 	if (BKE_scene_check_rigidbody_active(scene)) {
-		BKE_rigidbody_rebuild_world(scene, ctime);
+		BKE_rigidbody_rebuild_world(scene, ctime, false);
 	}
 }
 
@@ -2511,13 +2667,17 @@ static void activateRigidbody(RigidBodyOb* rbo, RigidBodyWorld *UNUSED(rbw), Mes
 }
 
 static bool isModifierActive(FractureModifierData *rmd) {
-	return ((rmd != NULL) && (rmd->modifier.mode & (eModifierMode_Realtime | eModifierMode_Render)) && (rmd->refresh == false || rmd->fracture_mode == MOD_FRACTURE_DYNAMIC));
+	return ((rmd != NULL) && (rmd->modifier.mode & (eModifierMode_Realtime | eModifierMode_Render)) &&
+	        (rmd->refresh == false || rmd->fracture_mode == MOD_FRACTURE_DYNAMIC));
 }
 
 static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle, bool exact)
 {
 	float q1[4], q2[4], qdiff[4], axis[3];
-	if ((con->mi1->rigidbody == NULL) || (con->mi2->rigidbody == NULL)) {
+
+	if (con == NULL || con->mi1 == NULL || con->mi2 == NULL ||
+	    con->mi1->rigidbody == NULL || con->mi2->rigidbody == NULL)
+	{
 		*dist = 0;
 		*angle = 0;
 		return;
@@ -2552,15 +2712,21 @@ static void calc_dist_angle(RigidBodyShardCon *con, float *dist, float *angle, b
 	}
 }
 
-void BKE_rigidbody_start_dist_angle(RigidBodyShardCon *con, bool exact)
+void BKE_rigidbody_start_dist_angle(RigidBodyShardCon *con, bool exact, bool both)
 {
 	/* store starting angle and distance per constraint*/
 	float dist, angle;
 	calc_dist_angle(con, &dist, &angle, exact);
 
-	//printf("Start Values(dist, angle) %f %f %f %f\n", con->start_dist, con->start_angle, dist, angle);
-	con->start_dist = dist;
-	con->start_angle = angle;
+	if (both)
+	{
+		con->start_dist = dist;
+		con->start_angle = angle;
+		//printf("Start Values(dist, angle) %f %f %f %f\n", con->start_dist, con->start_angle, dist, angle);
+	}
+
+	con->start_dist_deform = dist;
+	con->start_angle_deform = angle;
 }
 
 float BKE_rigidbody_calc_max_con_mass(Object *ob)
@@ -2839,7 +3005,7 @@ void BKE_rigidbody_calc_shard_mass(Object *ob, MeshIsland *mi, DerivedMesh *orig
 	}
 
 	if (mi->rigidbody->type == RBO_TYPE_ACTIVE) {
-		if (mi->rigidbody->mass == 0)
+		if (mi->rigidbody->mass < 0.001)
 			mi->rigidbody->mass = 0.001;  /* set a minimum mass for active objects */
 	}
 
@@ -2905,7 +3071,8 @@ static void initNormals(struct MeshIsland *mi, Object *ob, FractureModifierData 
 	}
 }
 
-void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], float rot[4], FractureModifierData *rmd, int frame)
+void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], float rot[4], FractureModifierData *rmd, int frame,
+                               struct RigidBodyWorld *rbw)
 {
 	float startco[3], centr[3], size[3];
 	short startno[3];
@@ -2931,11 +3098,12 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		n = frame - mi->start_frame + 1;
 		x = frame - mi->start_frame;
 
-		if (mi->locs == NULL || mi->rots == NULL)
+		if (mi->locs == NULL || mi->rots == NULL || mi->acc_sequence == NULL)
 		{
 			float loca[3], rota[4], quat[4];
 			mi->locs = MEM_mallocN(sizeof(float)*3, "mi->locs");
 			mi->rots = MEM_mallocN(sizeof(float)*4, "mi->rots");
+			mi->acc_sequence = MEM_callocN(sizeof(float) * 2, "mi->acc_sequence");
 			mi->frame_count = 0;
 
 			copy_v3_v3(loca, mi->centroid);
@@ -2958,6 +3126,9 @@ void BKE_rigidbody_update_cell(struct MeshIsland *mi, Object *ob, float loc[3], 
 		if (n > mi->frame_count) {
 			mi->locs = MEM_reallocN(mi->locs, sizeof(float) * 3 * n);
 			mi->rots = MEM_reallocN(mi->rots, sizeof(float) * 4 * n);
+			mi->acc_sequence = MEM_reallocN(mi->acc_sequence, sizeof(float) * (n+1));
+			//mi->acc_sequence[x] = 0.0f;
+			mi->acc_sequence[n] = 0.0f;
 
 			mi->locs[x*3] = loc[0];
 			mi->locs[x*3+1] = loc[1];
@@ -3255,7 +3426,7 @@ static rbCollisionShape *rigidbody_get_shape_trimesh_from_mesh(Object *ob)
 		}
 
 		/* cleanup temp data */
-		if (ob->rigidbody_object->mesh_source == RBO_MESH_BASE) {
+		if (ob->rigidbody_object->mesh_source == RBO_MESH_BASE || ob->rigidbody_object->mesh_source == RBO_MESH_FINAL_SOLID) {
 			dm->release(dm);
 		}
 	}
@@ -3282,7 +3453,7 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 	float hull_margin = 0.0f;
 	bool can_embed = true;
 	bool has_volume;
-	float min[3], max[3];
+	float min[3], max[3], margin;
 
 	/* sanity check */
 	if (rbo == NULL)
@@ -3320,7 +3491,8 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 	else if (rbo->shape == RB_SHAPE_SPHERE) {
 
 		/* take radius to the largest dimension to try and encompass everything */
-		radius = max_fff(size[0], size[1], size[2]) * 0.5f;
+		radius = (rbo->flag & RBO_FLAG_USE_MARGIN) ? min_fff(size[0], size[1], size[2]) :
+				 max_fff(size[0], size[1], size[2]);
 	}
 
 	/* create new shape */
@@ -3330,7 +3502,10 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 			break;
 
 		case RB_SHAPE_SPHERE:
-			new_shape = RB_shape_new_sphere(radius);
+			margin = (rbo->flag & RBO_FLAG_USE_MARGIN) ? rbo->margin : 0.0f;
+			margin = (rbo->flag & RBO_FLAG_RANDOM_MARGIN) ? BLI_frand() * margin : margin;
+
+			new_shape = RB_shape_new_sphere(radius + margin);
 			break;
 
 		case RB_SHAPE_CAPSULE:
@@ -3363,10 +3538,15 @@ void BKE_rigidbody_validate_sim_shard_shape(MeshIsland *mi, Object *ob, short re
 	}
 	/* assign new collision shape if creation was successful */
 	if (new_shape) {
+		margin = RBO_GET_MARGIN(rbo);
 		if (rbo->physics_shape)
 			RB_shape_delete(rbo->physics_shape);
 		rbo->physics_shape = new_shape;
-		RB_shape_set_margin(rbo->physics_shape, RBO_GET_MARGIN(rbo));
+
+		if ((rbo->flag & RBO_FLAG_RANDOM_MARGIN) && (rbo->shape != RB_SHAPE_SPHERE))
+			margin = (BLI_frand() * 0.5 - 1) * margin;
+
+		RB_shape_set_margin(rbo->physics_shape, margin);
 	}
 	else { /* otherwise fall back to box shape */
 		rbo->shape = RB_SHAPE_BOX;
@@ -3409,7 +3589,7 @@ void BKE_rigidbody_validate_sim_shard(RigidBodyWorld *rbw, MeshIsland *mi, Objec
 			RB_dworld_remove_body(rbw->physics_world, rbo->physics_object);
 	}
 
-	if (!rbo->physics_object || rebuild) {
+	if (!rbo->physics_object || rebuild /*|| (fmd->use_animated_mesh && fmd->anim_mesh_ob)*/) {
 		float size[3];
 
 		/* remove rigid body if it already exists before creating a new one */
@@ -3595,7 +3775,6 @@ static void rigidbody_set_springs_active(RigidBodyShardCon *rbc, bool active)
 			RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->spring_stiffness_z);
 			RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->spring_damping_z);
 
-#if 0
 			RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->flag & RBC_FLAG_USE_SPRING_ANG_X);
 			RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->spring_stiffness_ang_x);
 			RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->spring_damping_ang_x);
@@ -3607,7 +3786,6 @@ static void rigidbody_set_springs_active(RigidBodyShardCon *rbc, bool active)
 			RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->flag & RBC_FLAG_USE_SPRING_ANG_Z);
 			RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->spring_stiffness_ang_z);
 			RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->spring_damping_ang_z);
-#endif
 		}
 		else
 		{
@@ -3623,7 +3801,6 @@ static void rigidbody_set_springs_active(RigidBodyShardCon *rbc, bool active)
 			RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, 0);
 			RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->spring_damping_z);
 
-#if 0
 			RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->flag & RBC_FLAG_USE_SPRING_ANG_X);
 			RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_X, 0);
 			RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->spring_damping_ang_x);
@@ -3635,7 +3812,6 @@ static void rigidbody_set_springs_active(RigidBodyShardCon *rbc, bool active)
 			RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->flag & RBC_FLAG_USE_SPRING_ANG_Z);
 			RB_constraint_set_stiffness_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_Z, 0);
 			RB_constraint_set_damping_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->spring_damping_ang_z);
-#endif
 		}
 	}
 }
@@ -3848,7 +4024,7 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, FractureMo
 		return;
 	}
 
-	if (ELEM(NULL, rbc->mi1, rbc->mi1->rigidbody, rbc->mi2, rbc->mi2->rigidbody)) {
+	if (ELEM(NULL, rbc->mi1, rbc->mi2)) {
 		if (rbc->physics_constraint) {
 			RB_dworld_remove_constraint(rbw->physics_world, rbc->physics_constraint);
 			RB_constraint_delete(rbc->physics_constraint);
@@ -3859,6 +4035,10 @@ void BKE_rigidbody_validate_sim_shard_constraint(RigidBodyWorld *rbw, FractureMo
 
 	if (rbc->mi1 == rbc->mi2) {
 		//owch, this happened... better check for sanity  here
+		return;
+	}
+
+	if (ELEM(NULL, rbc->mi1->rigidbody, rbc->mi2->rigidbody)) {
 		return;
 	}
 
@@ -3939,7 +4119,7 @@ static bool do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 
 			RigidBodyOb* rbo = mi->rigidbody;
 			if ((((rbo->flag & RBO_FLAG_KINEMATIC) || different_cluster) &&
-			     ((mi_compare == mi) || (same_cluster && !dissolve))) && valid)
+			     ((mi_compare == mi) || (same_cluster && !dissolve && fmd->activate_broken))) && valid)
 			{
 				if (rbo->physics_object && activate) {
 					activateRigidbody(rbo, rbw, mi, ob);
@@ -3951,26 +4131,28 @@ static bool do_activate(Object* ob, Object *ob2, MeshIsland *mi_compare, RigidBo
 			if ((mi_compare == mi) && antiValid && activate)
 			{
 				if (rbo->physics_object) {
-					test_deactivate_rigidbody(rbo);
+					test_deactivate_rigidbody(rbo, mi);
 				}
 			}
 		}
 	}
 	else if (!fmd)
 	{
-		bool valid = ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER;
-		bool antiValid = ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER;
 		RigidBodyOb* rbo = ob->rigidbody_object;
+		valid = ob2->rigidbody_object->flag & RBO_FLAG_IS_TRIGGER;
+		antiValid = ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER;
 
 		if (rbo && valid && activate)
 		{
-			activateRigidbody(rbo, rbw, NULL, ob);
+			if (activate)
+				activateRigidbody(rbo, rbw, NULL, ob);
+
 			wouldActivate = true;
 		}
 
 		if (rbo && antiValid && activate)
 		{
-			test_deactivate_rigidbody(rbo);
+			test_deactivate_rigidbody(rbo, NULL);
 		}
 	}
 
@@ -4019,9 +4201,38 @@ static void fake_dynamic_collide(Object *ob1, Object *ob2, MeshIsland *mi1, Mesh
 }
 
 static bool check_constraint_island(FractureModifierData* fmd, MeshIsland *mi1, MeshIsland *mi2)
-{
-	if (mi1 && mi2 && !fmd->use_compounds && !fmd->use_constraint_collision) {
-		return mi1->constraint_index != mi2->constraint_index;
+{	
+	if (mi1 && mi2 && !fmd->use_compounds && (!fmd->use_constraint_collision || fmd->use_self_collision)) {
+
+		float dist_sq = len_squared_v3v3(mi1->centroid, mi2->centroid);
+		bool is_near = len_squared_v3v3(mi1->rigidbody->pos, mi2->rigidbody->pos) < dist_sq;
+		bool same_island = mi1->constraint_index == mi2->constraint_index;
+		bool same_near_self = same_island && fmd->use_self_collision && is_near;
+		bool diff_clust_near_self = mi1->particle_index != mi2->particle_index && fmd->use_self_collision && is_near;
+		bool regular_case = mi1 && mi2 && !fmd->use_constraint_collision && !same_island;
+
+		if (fmd->use_self_collision)
+		{
+			if (mi1->rigidbody->physics_shape)
+			{
+				RB_shape_set_margin(mi1->rigidbody->physics_shape, is_near ? 0.0f : RBO_GET_MARGIN(mi1->rigidbody));
+			}
+
+			if (mi2->rigidbody->physics_shape)
+			{
+				RB_shape_set_margin(mi2->rigidbody->physics_shape, is_near ? 0.0f : RBO_GET_MARGIN(mi2->rigidbody));
+			}
+		}
+
+		//collide if: same island and near, different cluster if clustered and same island and near
+
+		return regular_case || same_near_self || diff_clust_near_self;
+
+	}
+
+	if (fmd)
+	{
+		return !(fmd->dm_group && fmd->use_constraint_collision);
 	}
 
 	return true;
@@ -4109,38 +4320,37 @@ static int filterCallback(void* world, void* island1, void* island2, void *blend
 		          ((ob1->rigidbody_object->type == RBO_TYPE_ACTIVE) && (ob2->rigidbody_object->type == RBO_TYPE_ACTIVE)));
 	}
 
-	if (validOb || (ob1->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) || (ob2->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) ||
-	   (ob1->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER) || (ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER))
+	if (validOb || ((colgroup_check(ob1->rigidbody_object->col_groups, ob2->rigidbody_object->col_groups) &&
+	               ((ob1->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) ||
+	                (ob2->rigidbody_object->flag & RBO_FLAG_CONSTRAINT_DISSOLVE) ||
+                    (ob1->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER) ||
+	                (ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER)))))
 	{
+		//override for 2 regular rigidbodies to enable ghost trigger functionality; else bullet wont call this again here with "activate == true"
+
+
 		if (ob1->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			check_activate = do_activate(ob1, ob2, mi1, rbw, mi2, activate);
+			bool override = activate || (ob2->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER);
+			check_activate = do_activate(ob1, ob2, mi1, rbw, mi2, override);
 		}
 
 		if (ob2->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION)
 		{
-			check_activate = do_activate(ob2, ob1, mi2, rbw, mi1, activate);
+			bool override = activate || (ob1->rigidbody_object->flag & RBO_FLAG_ANTI_TRIGGER);
+			check_activate = do_activate(ob2, ob1, mi2, rbw, mi1, override);
 		}
 	}
 
-	//if ghost is involved, and dynafrac trigger is enabled, try to call check_fracture manually here, without forces and with centroid as contact point
-	fake_dynamic_collide(ob1, ob2, mi1, mi2, rbw);
-	fake_dynamic_collide(ob2, ob1, mi2, mi1, rbw);
+	//if ghost is involved, and dynafrac trigger is enabled, try to call check_fracture manually here, without forces and with centroid as contact point... Update: should have real contact point now from bullet
+	//fake_dynamic_collide(ob1, ob2, mi1, mi2, rbw);
+	//fake_dynamic_collide(ob2, ob1, mi2, mi1, rbw);
 
-	if (activate)
-	{
-		validOb = ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0) || ((ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0);
-		validOb = validOb || ((ob1->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0) || ((mi2 && mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
-		validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || ((ob2->rigidbody_object->flag & RBO_FLAG_KINEMATIC) == 0);
-		validOb = validOb || ((mi1 && (mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0)) || ((mi2 && mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) == 0);
+	validOb = (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) &&
+		          check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2)));
 
-		validOb = validOb && (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) && check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2)));
-	}
-	else {
-		validOb = (check_colgroup_ghost(ob1, ob2) && ((check_constraint_island(fmd1, mi1, mi2) && check_constraint_island(fmd2, mi2, mi1)) || (ob1 != ob2)));
-	}
-
-	return activate ? validOb : check_activate || validOb;
+	//return activate ? validOb : check_activate || validOb;
+	return validOb;
 }
 
 static bool can_break(Object* collider, Object* ob, bool limit)
@@ -4188,7 +4398,7 @@ static MeshIsland* findMeshIsland(FractureModifierData *fmd, int id)
 
 	while (mi)
 	{
-		if (mi->id == id)
+		if (mi->rigidbody->meshisland_index == id)
 		{
 			return mi;
 		}
@@ -4281,6 +4491,8 @@ static bool check_constraints(FractureModifierData *fmd, MeshIsland *mi, RigidBo
 	return false;
 }
 
+
+
 static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA, Object *obB)
 {
 	int linear_index1, linear_index2;
@@ -4325,8 +4537,8 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 			{
 				RigidBodyOb *rbo = rbw->cache_index_map[linear_index1];
 				int id = rbo->meshisland_index;
-				Shard *s = findShard(fmd1, id);
 				MeshIsland* mi = findMeshIsland(fmd1, id);
+				Shard *s = findShard(fmd1, mi->id);
 				if (mi->rigidbody->mass > 0) {
 					force = force / mi->rigidbody->mass;
 				}
@@ -4352,10 +4564,10 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 					}
 					/*only fracture on new entries, this is necessary because after loading a file
 					 *the pointcache thinks it is empty and a fracture is attempted ! */
-					if (check_shard_size(fmd1, id))
+					if (check_shard_size(fmd1, mi->id))
 					{
 						FractureID* fid1 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid1");
-						fid1->shardID = id;
+						fid1->shardID = mi->id;
 						BLI_addtail(&fmd1->fracture_ids, fid1);
 						fmd1->update_dynamic = true;
 					}
@@ -4379,8 +4591,8 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 			{
 				RigidBodyOb *rbo = rbw->cache_index_map[linear_index2];
 				int id = rbo->meshisland_index;
-				Shard *s = findShard(fmd2, id);
 				MeshIsland* mi = findMeshIsland(fmd2, id);
+				Shard *s = findShard(fmd2, mi->id);
 
 				if (mi->rigidbody->mass > 0) {
 					force = force / mi->rigidbody->mass;
@@ -4404,10 +4616,10 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 						copy_v3_v3(s->impact_size, size);
 					}
 
-					if (check_shard_size(fmd2, id))
+					if (check_shard_size(fmd2, mi->id))
 					{
 						FractureID* fid2 = MEM_mallocN(sizeof(FractureID), "contact_callback_fractureid2");
-						fid2->shardID = id;
+						fid2->shardID = mi->id;
 						BLI_addtail(&fmd2->fracture_ids, fid2);
 						fmd2->update_dynamic = true;
 					}
@@ -4419,10 +4631,14 @@ static void check_fracture(rbContactPoint* cp, RigidBodyWorld *rbw, Object *obA,
 	cp = NULL;
 }
 
+static ThreadMutex acceleration_lock = BLI_MUTEX_INITIALIZER;
 static void contactCallback(rbContactPoint* cp, void* world)
 {
 	RigidBodyWorld *rbw = (RigidBodyWorld*)world;
+
+	BLI_mutex_lock(&acceleration_lock);
 	check_fracture(cp, rbw, NULL, NULL);
+	BLI_mutex_unlock(&acceleration_lock);
 }
 
 static void idCallback(void *world, void* island, int* objectId, int* islandId)
@@ -4512,17 +4728,19 @@ static void activateCluster(MeshIsland *mi, int particle_index, RigidBodyWorld *
 	for (i = 0; i < mi->participating_constraint_count; i++)
 	{
 		con = mi->participating_constraints[i];
-		if (con->physics_constraint && con->mi1->particle_index == particle_index || particle_index == -1) {
+		if (con->physics_constraint && con->mi1->particle_index == particle_index) /*|| particle_index == -1)*/
+		{
 			if (con->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC) {
 				activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
-				activateCluster(con->mi1, particle_index, rbw, ob);
+				//activateCluster(con->mi1, particle_index, rbw, ob);
 			}
 		}
 
-		if (con->physics_constraint && con->mi2->particle_index == particle_index || particle_index == -1) {
+		if (con->physics_constraint && con->mi2->particle_index == particle_index) /*|| particle_index == -1)*/
+		{
 			if (con->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC) {
 				activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
-				activateCluster(con->mi2, particle_index, rbw, ob);
+				//activateCluster(con->mi2, particle_index, rbw, ob);
 			}
 		}
 	}
@@ -4589,15 +4807,16 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 					{
 						if (con->physics_constraint) {
 
-							//RB_constraint_set_enabled(con->physics_constraint, false);
-							if (con->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC ||
-							    con->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC )
+							RB_constraint_set_enabled(con->physics_constraint, false);
+							/*if (con->mi1->rigidbody->flag & RBO_FLAG_KINEMATIC ||
+							    con->mi2->rigidbody->flag & RBO_FLAG_KINEMATIC ) */
+							if (fmd->activate_broken)
 							{
 								activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
-								activateCluster(con->mi1, -1, rbw, ob);
+								activateCluster(con->mi1, con->mi1->particle_index, rbw, ob);
 
 								activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
-								activateCluster(con->mi2, -1, rbw, ob);
+								activateCluster(con->mi2, con->mi2->particle_index, rbw, ob);
 							}
 						}
 					}
@@ -4615,8 +4834,11 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 				{
 					if (con->physics_constraint) {
 						RB_constraint_set_enabled(con->physics_constraint, false);
-						activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
-						activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
+						if (fmd->activate_broken)
+						{
+							activateRigidbody(con->mi1->rigidbody, rbw, con->mi1, ob);
+							activateRigidbody(con->mi2->rigidbody, rbw, con->mi2, ob);
+						}
 					}
 				}
 			}
@@ -4624,13 +4846,13 @@ static void handle_breaking_percentage(FractureModifierData* fmd, Object *ob, Me
 	}
 }
 
-static void test_deactivate_rigidbody(RigidBodyOb *rbo)
+static void test_deactivate_rigidbody(RigidBodyOb *rbo, MeshIsland* mi)
 {
 	//make kinematic again (un-trigger)
 	//printf("Untrigger\n");
 	//if (rbo->physics_object)
 
-	if (rbo->physics_object) {
+	if (rbo->physics_object && ((rbo->flag & RBO_FLAG_KINEMATIC) == 0)) {
 		float lin_vel[3], ang_vel[3];
 
 		RB_body_get_linear_velocity(rbo->physics_object, lin_vel);
@@ -4644,26 +4866,53 @@ static void test_deactivate_rigidbody(RigidBodyOb *rbo)
 			//rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
 			//RB_body_deactivate(rbo->physics_object);
 
+			int i = 0;
+
 			rbo->flag |= RBO_FLAG_KINEMATIC;
 			rbo->flag |= RBO_FLAG_KINEMATIC_REBUILD;
 			rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+			if ((mi != NULL) && (rbo->flag & RBO_FLAG_PROPAGATE_TRIGGER))
+			{
+				for (i = 0; i < mi->participating_constraint_count; i++)
+				{
+					RigidBodyShardCon *con;
+					con = mi->participating_constraints[i];
+
+					if (con && con->physics_constraint && RB_constraint_is_enabled(con->physics_constraint))
+					{
+						RigidBodyOb *rb1 = con->mi1->rigidbody;
+						RigidBodyOb *rb2 = con->mi2->rigidbody;
+
+						RB_constraint_set_enabled(con->physics_constraint, false);
+
+						rb1->flag |= RBO_FLAG_KINEMATIC;
+						rb1->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+						rb1->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+						rb2->flag |= RBO_FLAG_KINEMATIC;
+						rb2->flag |= RBO_FLAG_KINEMATIC_REBUILD;
+						rb2->flag |= RBO_FLAG_NEEDS_VALIDATE;
+					}
+				}
+			}
 		}
 	}
 }
 
 static void deform_constraint(FractureModifierData *fmd, Object *ob, RigidBodyShardCon* rbsc, RigidBodyWorld *rbw)
 {
-	float thresh;
+	float thresh = RB_constraint_get_breaking_threshold(rbsc->physics_constraint);
 	float weakening = 1.0f - fmd->deform_weakening;
 
 	RB_dworld_remove_constraint(rbw->physics_world, rbsc->physics_constraint);
 
-	BKE_rigidbody_start_dist_angle(rbsc, true);
+	BKE_rigidbody_start_dist_angle(rbsc, true, false);
 	//rbsc->flag |= RBC_FLAG_DISABLE_COLLISIONS;
 	BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
 	//set_constraint_index(fmd, rbsc);
 
-	thresh = RB_constraint_get_breaking_threshold(rbsc->physics_constraint);
+	//thresh = RB_constraint_get_breaking_threshold(rbsc->physics_constraint);
 	RB_constraint_set_breaking_threshold(rbsc->physics_constraint, thresh * weakening);
 
 	RB_body_deactivate(rbsc->mi1->rigidbody->physics_object);
@@ -4720,16 +4969,19 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 		(anglediff > breaking_angle))
 	{
 		/* if we have cluster breaking angle, then only treat equal cluster indexes like the default, else all */
-		if ((fmd->cluster_breaking_angle > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index) ||
-			 fmd->cluster_breaking_angle == 0)
+		if ((fmd->cluster_breaking_angle > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index &&
+		     rbsc->mi1->particle_index != -1) || fmd->cluster_breaking_angle == 0)
 		{
 			if (fmd->use_breaking)
 			{
 				//break constraint
 				if (rbsc->physics_constraint) {
 					RB_constraint_set_enabled(rbsc->physics_constraint, false);
-					activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
-					activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+					if (fmd->activate_broken)
+					{
+						activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
+						activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+					}
 				}
 			}
 		}
@@ -4742,8 +4994,11 @@ static void handle_breaking_angle(FractureModifierData *fmd, Object *ob, RigidBo
 		{
 			if (rbsc->physics_constraint) {
 				RB_constraint_set_enabled(rbsc->physics_constraint, false);
-				activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
-				activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+				if (fmd->activate_broken)
+				{
+					activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
+					activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+				}
 			}
 		}
 	}
@@ -4756,15 +5011,18 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 		(distdiff > breaking_distance))
 	{
 		/* if we have cluster breaking distance, then only treat equal cluster indexes like the default, else all */
-		if ((fmd->cluster_breaking_distance > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index) ||
-			 fmd->cluster_breaking_distance == 0)
+		if ((fmd->cluster_breaking_distance > 0 && rbsc->mi1->particle_index == rbsc->mi2->particle_index &&
+		     rbsc->mi1->particle_index != -1) || fmd->cluster_breaking_distance == 0)
 		{
 			if (fmd->use_breaking)
 			{
 				if (rbsc->physics_constraint) {
 					RB_constraint_set_enabled(rbsc->physics_constraint, false);
-					activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
-					activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+					if (fmd->activate_broken)
+					{
+						activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
+						activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+					}
 				}
 			}
 		}
@@ -4777,8 +5035,11 @@ static void handle_breaking_distance(FractureModifierData *fmd, Object *ob, Rigi
 		{
 			if (rbsc->physics_constraint) {
 				RB_constraint_set_enabled(rbsc->physics_constraint, false);
-				activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
-				activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+				if (fmd->activate_broken)
+				{
+					activateRigidbody(rbsc->mi1->rigidbody, rbw, rbsc->mi1, ob);
+					activateRigidbody(rbsc->mi2->rigidbody, rbw, rbsc->mi2, ob);
+				}
 			}
 		}
 	}
@@ -4898,8 +5159,8 @@ static void handle_regular_breaking(FractureModifierData *fmd, Object *ob, Rigid
 		if (rbsc->physics_constraint && RB_constraint_is_enabled(rbsc->physics_constraint))
 		{
 			calc_dist_angle(rbsc, &dist, &angle, false);
-			anglediff = fabs(angle - rbsc->start_angle);
-			distdiff = fabs(dist - rbsc->start_dist);
+			anglediff = fabs(angle - rbsc->start_angle_deform);
+			distdiff = fabs(dist - rbsc->start_dist_deform);
 
 			/* handle deform */
 			handle_deform_angle(fmd, ob, rbsc, rbw, anglediff, weight, deform_angle);
@@ -4916,11 +5177,17 @@ static void handle_solver_iterations(RigidBodyWorld *rbw, FractureModifierData *
 		iterations = rbw->num_solver_iterations;
 	}
 	else {
-		if ((rbsc->mi1->particle_index != -1) && (rbsc->mi1->particle_index == rbsc->mi2->particle_index)) {
-			iterations = fmd->cluster_solver_iterations_override;
+		if (rbsc && rbsc->mi1 && rbsc->mi2)
+		{
+			if ((rbsc->mi1->particle_index != -1) && (rbsc->mi1->particle_index == rbsc->mi2->particle_index)) {
+				iterations = fmd->cluster_solver_iterations_override;
+			}
+			else {
+				iterations = fmd->solver_iterations_override;
+			}
 		}
 		else {
-			iterations = fmd->solver_iterations_override;
+			iterations = rbw->num_solver_iterations;
 		}
 	}
 
@@ -4960,14 +5227,14 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		float locbb[3];
 
 		//hacky check for ob->derivedFinal validity
-		if (ob->derivedFinal && ob->derivedFinal->getNumLoopTri(ob->derivedFinal) > 0)
+		/*if (ob->derivedFinal && ob->derivedFinal->getNumLoopTri(ob->derivedFinal) > 0)
 		{
 			DM_mesh_boundbox(ob->derivedFinal, locbb, bbsize);
 		}
 		else
 		{
 			BKE_mesh_boundbox_calc((Mesh*)ob->data, locbb, bbsize);
-		}
+		}*/
 
 
 		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
@@ -4994,6 +5261,15 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		BKE_object_where_is_calc(scene, ob);
 		fmd->constraint_island_count = 1;
 
+		if ((ob->rigidbody_object && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC) //&&
+		     /*fmd->fracture_mode == MOD_FRACTURE_PREFRACTURED*/)) {
+
+			if (fmd->use_animated_mesh && fmd->anim_mesh_ob)
+			{
+				BKE_read_animated_loc_rot(fmd, ob, false);
+			}
+		}
+
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 			if (mi->rigidbody == NULL) {
 				continue;
@@ -5003,12 +5279,14 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				/* refresh object... */
 				int do_rebuild = rebuild;
 
+				DM_mesh_boundbox(mi->physics_mesh, locbb, bbsize);
+
 				if ((rbw->flag & RBW_FLAG_REBUILD_CONSTRAINTS) && fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 				{
 					//reset speeds
 					//printf("ZEROIZING speed (shard)\n");
-					zero_v3(mi->rigidbody->lin_vel);
-					zero_v3(mi->rigidbody->ang_vel);
+					//zero_v3(mi->rigidbody->lin_vel);
+					//zero_v3(mi->rigidbody->ang_vel);
 					mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 					mi->rigidbody->flag &= ~RBO_FLAG_PROPAGATE_TRIGGER;
 				}
@@ -5039,7 +5317,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 					copy_v3_v3(size, s->impact_size);
 			}
 
-			rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid, mi, size);
+			rigidbody_update_sim_ob(scene, rbw, ob, mi->rigidbody, mi->centroid, mi, size, fmd);
 		}
 
 		if (fmd->use_mass_dependent_thresholds) {
@@ -5049,6 +5327,10 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		frame = BKE_scene_frame_get(scene);
 
 		for (rbsc = fmd->meshConstraints.first; rbsc; rbsc = rbsc->next) {
+
+			//sanity check
+			if (!rbsc || !rbsc->mi1 || !rbsc->mi2)
+				continue;
 
 			if (rebuild)
 			{
@@ -5112,7 +5394,7 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				/* World has been rebuilt so rebuild constraint */
 				BKE_rigidbody_validate_sim_shard_constraint(rbw, fmd, ob, rbsc, true);
 				BKE_rigidbody_start_dist_angle(rbsc, fmd->fracture_mode == MOD_FRACTURE_EXTERNAL ||
-				                               (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->is_dynamic_external));
+				                               (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->is_dynamic_external), true);
 				//TODO ensure evaluation on transform change too
 			}
 
@@ -5133,6 +5415,23 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 				handle_plastic_breaking(rbsc, rbw, laststeps, lastscale);
 			}
 
+			if (rbsc->physics_constraint)
+			{
+				RigidBodyOb *rbo1 = rbsc->mi1->rigidbody;
+				RigidBodyOb *rbo2 = rbsc->mi2->rigidbody;
+
+				if ((rbo1->force_thresh > 0 || rbo2->force_thresh > 0))
+				{
+					if (RB_constraint_get_applied_impulse(rbsc->physics_constraint) >= rbo1->force_thresh + rbo2->force_thresh)
+					{
+						//TODO, should be the actual objects, not just "ob"... can differ in case of external constraints...
+						RB_constraint_set_enabled(rbsc->physics_constraint, false);
+						activateRigidbody(rbo1, rbw, NULL, ob);
+						activateRigidbody(rbo2, rbw, NULL, ob);
+					}
+				}
+			}
+
 			set_constraint_index(fmd, rbsc);
 
 			rbsc->flag &= ~RBC_FLAG_NEEDS_VALIDATE;
@@ -5143,8 +5442,6 @@ static bool do_update_modifier(Scene* scene, Object* ob, RigidBodyWorld *rbw, bo
 		}
 
 		printf("Constraints: Frame %d , Total %d,  Intact %d,  Broken %d, Plastic %d\n", (int)frame, count, count-brokencount, brokencount, plastic);
-
-
 		return true;
 	}
 	else
@@ -5223,6 +5520,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 
 
 	if (md->type == eModifierType_Fracture) {
+
 		fmd = (FractureModifierData *)md;
 		bool mode = fmd->fracture_mode == MOD_FRACTURE_EXTERNAL;
 
@@ -5243,6 +5541,14 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 
 			invert_m4_m4(imat, fmd->passive_parent_mat);
 			invert_m4_m4(ob->imat, ob->obmat);
+
+			if ((ob->rigidbody_object && (ob->rigidbody_object->flag & RBO_FLAG_KINEMATIC)))
+			{
+				if (fmd->use_animated_mesh && fmd->anim_mesh_ob)
+				{
+					BKE_read_animated_loc_rot(fmd, ob, false);
+				}
+			}
 
 			for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 
@@ -5269,7 +5575,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 
 					/* keep original transform when the simulation is muted */
 					if (rbw->flag & RBW_FLAG_MUTED)
-						return true;
+						break;
 				}
 				/* otherwise set rigid body transform to current obmat*/
 				else {
@@ -5285,6 +5591,13 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 					{
 						mul_qt_qtqt(rbo->orn, rbo->orn, mi->rot);
 					}
+
+					zero_v3(rbo->lin_vel);
+					zero_v3(rbo->ang_vel);
+
+					//reset at start, there no cache read seems to happen
+					BKE_update_acceleration_map(fmd, mi, ob, (int)ctime, 0.0f, rbw);
+					//BKE_update_velocity_layer(fmd, mi);
 				}
 
 				if ((ob->rigidbody_object->type == RBO_TYPE_ACTIVE) && (rbo->type == RBO_TYPE_ACTIVE || rbo->flag & RBO_FLAG_KINEMATIC)) {
@@ -5301,7 +5614,7 @@ static bool do_sync_modifier(ModifierData *md, Object *ob, RigidBodyWorld *rbw, 
 						copy_qt_qt(quat, rbo->orn);
 					}
 
-					BKE_rigidbody_update_cell(mi, ob, rbo->pos, quat, fmd, (int)ctime);
+					BKE_rigidbody_update_cell(mi, ob, rbo->pos, quat, fmd, (int)ctime, rbw);
 				}
 			}
 
@@ -5368,7 +5681,7 @@ void rigidbody_passive_fake_parenting(FractureModifierData *fmd, Object *ob, Rig
 	}
 }
 
-static bool restoreKinematic(RigidBodyWorld *rbw)
+bool BKE_restoreKinematic(RigidBodyWorld *rbw, bool override_bind)
 {
 	GroupObject *go;
 	bool did_it = false;
@@ -5382,7 +5695,7 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 			triggered = go->ob->rigidbody_object->flag & RBO_FLAG_USE_KINEMATIC_DEACTIVATION;
 
 			FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(go->ob, eModifierType_Fracture);
-			if (fmd && kinematic && triggered)
+			if (fmd && triggered)
 			{
 				MeshIsland* mi;
 				for (mi = fmd->meshIslands.first; mi; mi = mi->next)
@@ -5390,7 +5703,24 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 					if (mi->rigidbody)
 					{
 						mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC_REBUILD;
-						mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
+						if (kinematic)
+						{
+							if(!fmd->use_animated_mesh ||
+							  (fmd->use_animated_mesh && (override_bind || mi->rigidbody->flag & RBO_FLAG_KINEMATIC_BOUND)))
+							{
+								if (fmd->use_animated_mesh && override_bind)
+								{
+									mi->rigidbody->flag |= RBO_FLAG_KINEMATIC_BOUND;
+								}
+
+								mi->rigidbody->flag |= RBO_FLAG_KINEMATIC;
+							}
+						}
+						else
+						{
+							//might happen if being hit by a stop trigger, remove kinematic here in this case
+							mi->rigidbody->flag &= ~RBO_FLAG_KINEMATIC;
+						}
 						mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
 						did_it = true;
 					}
@@ -5411,7 +5741,7 @@ static bool restoreKinematic(RigidBodyWorld *rbw)
 }
 
 static ThreadMutex reset_lock = BLI_MUTEX_INITIALIZER;
-static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
+static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always, bool override_bind)
 {
 	GroupObject *go;
 	if (!rbw->group)
@@ -5434,7 +5764,7 @@ static void resetDynamic(RigidBodyWorld *rbw, bool do_reset_always)
 			//Scene *scene = fmd->modifier.scene;
 			MeshIsland *mi;
 
-			if (do_reset_always)
+			if (do_reset_always && (!fmd->use_animated_mesh || (fmd->use_animated_mesh && override_bind)))
 			{
 				ModifierData *md;
 				DerivedMesh *dm = NULL;

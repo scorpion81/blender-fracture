@@ -15,12 +15,12 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * The Original Code is Copyright (C) Blender Foundation
+ * Copyright (C) 2014 by Martin Felke.
  * All rights reserved.
  *
  * The Original Code is: all of this file.
  *
- * Contributor(s): Martin Felke
+ * Contributor(s): none yet.
  *
  * ***** END GPL LICENSE BLOCK *****
  */
@@ -37,6 +37,7 @@
 struct FracMesh;
 struct Shard;
 
+struct RigidBodyWorld;
 struct FractureModifierData;
 struct FractureSetting;
 struct DerivedMesh;
@@ -58,6 +59,7 @@ typedef int ShardID;
 
 typedef struct FracPoint {
 	float co[3];
+	float offset[3];
 } FracPoint;
 
 typedef struct FracPointCloud {
@@ -96,7 +98,8 @@ struct DerivedMesh *BKE_shard_create_dm(struct Shard *s, bool doCustomData);
 void BKE_fracture_shard_by_points(struct FracMesh *fmesh, ShardID id, struct FracPointCloud *points, int algorithm,
                                   struct Object *obj, struct DerivedMesh *dm, short inner_material_index, float mat[4][4],
                                   int num_cuts, float fractal, bool smooth, int num_levels, int mode, bool reset, int active_setting,
-                                  int num_settings, char uv_layer[], bool threaded, int solver, float thresh, bool shards_to_islands, int override_count, float factor);
+                                  int num_settings, char uv_layer[], bool threaded, int solver, float thresh, bool shards_to_islands,
+                                  int override_count, float factor, int point_source, int resolution[], float spacing[]);
 
 /* create shards from a base mesh and a set of other objects / cutter planes */
 void BKE_fracture_shard_by_planes(struct FractureModifierData *fmd, struct Object *obj, short inner_material_index, float mat[4][4]);
@@ -126,5 +129,8 @@ short BKE_fracture_collect_materials(struct Object* o, struct Object* ob, int ma
 
 void BKE_bm_mesh_hflag_flush_vert(struct BMesh *bm, const char hflag);
 void BKE_meshisland_constraint_create(struct FractureModifierData* fmd, struct MeshIsland *mi1, struct MeshIsland *mi2, int con_type, float thresh);
+void BKE_update_acceleration_map(struct FractureModifierData *fmd, struct MeshIsland* mi, struct Object* ob, int ctime, float acc, struct RigidBodyWorld *rbw);
+void BKE_update_velocity_layer(struct FractureModifierData *fmd);
+void BKE_read_animated_loc_rot(struct FractureModifierData *fmd, Object *ob, bool do_bind);
 
 #endif /* BKE_FRACTURE_H */

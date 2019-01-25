@@ -40,21 +40,31 @@ class PhysicButtonsPanel():
         rd = context.scene.render
         return (ob and (ob.type == 'MESH' or ob.type == 'CURVE' or ob.type == 'SURFACE' or ob.type == 'FONT')) and (not rd.use_game_engine) and (context.fracture)
 
-class FRACTURE_UL_fracture_settings(UIList):
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        fl = item
-        if self.layout_type in {'DEFAULT', 'COMPACT'}:
-            layout.prop(fl, "name", text="", emboss=False, icon_value=icon)
-        elif self.layout_type in {'GRID'}:
-            layout.alignment = 'CENTER'
-            layout.label(text="", icon_value=icon)
+#class FRACTURE_UL_fracture_settings(UIList):
+#    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+#        fl = item
+#        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+#            layout.prop(fl, "name", text="", emboss=False, icon_value=icon)
+#        elif self.layout_type in {'GRID'}:
+#            layout.alignment = 'CENTER'
+#            layout.label(text="", icon_value=icon)
 
-#class PHYSICS_PT_fracture_settings(PhysicButtonsPanel, Panel):
-#    bl_label = "Fracture Settings"
+class PHYSICS_PT_fracture_anim_mesh(PhysicButtonsPanel, Panel):
+    bl_label = "Fracture Animated Mesh Settings"
 
-#    def draw(self, context):
-#       layout = self.layout
-#       md = context.fracture
+    def draw(self, context):
+        layout = self.layout
+        md = context.fracture
+        layout.context_pointer_set("modifier", md)
+        row = layout.row()
+        row.prop(md, "use_animated_mesh")
+        row.prop(md, "use_animated_mesh_rotation")
+        row = layout.row()
+        row.prop(md, "animated_mesh_limit")
+        row = layout.row()
+        row.prop(md, "animated_mesh_input")
+        row = layout.row()
+        row.operator("object.fracture_anim_bind", text="Bind", icon="UV_VERTEXSEL")
 
 #       layout.template_list("FRACTURE_UL_fracture_settings", "", md, "fracture_settings", md, "active_setting", rows=3)
 
@@ -112,12 +122,8 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
                 col.prop(md, "boolean_double_threshold")
         col = layout.column(align=True)
         col.prop(md, "shard_count")
-        col.prop(md, "cluster_count")
         col.prop(md, "point_seed")
-        layout.prop(md, "cluster_group")
-        col = layout.column(align=True)
-        col.prop(md, "constraint_type")
-        col.prop(md, "cluster_constraint_type")
+
         if md.frac_algorithm in {'BOOLEAN', 'BISECT_FILL', 'BISECT_FAST_FILL', 'BOOLEAN_FRACTAL'}:
             col = layout.column()
             col.prop(md, "inner_material")
@@ -132,8 +138,9 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             row.prop(md, "physics_mesh_scale")
         row = layout.row()
         row.prop(md, "shards_to_islands")
-        row.prop(md, "auto_execute")
         row.prop(md, "use_smooth")
+        row = layout.row()
+        row.prop(md, "auto_execute")
         row = layout.row(align=True)
         row.prop(md, "splinter_axis")
         layout.prop(md, "splinter_length")
@@ -144,6 +151,11 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             box.label("Fracture Point Source:")
             col = box.column()
             col.prop(md, "point_source")
+            if 'GRID' in md.point_source:
+                sub = col.split(0.33)
+                sub.prop(md, "grid_resolution")
+                sub.prop(md, "grid_offset")
+                sub.prop(md, "grid_spacing")
             if 'GREASE_PENCIL' in md.point_source:
                 col.prop(md, "use_greasepencil_edges")
                 col.prop(md, "grease_offset")
@@ -151,6 +163,7 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
                 col.prop(md, "cutter_axis")
             col.prop(md, "extra_group")
             col.prop(md, "dm_group")
+            col.prop(md, "use_constraint_group")
             col.prop(md, "cutter_group")
             if (md.cutter_group):
                 col.prop(md, "keep_cutter_shards")
@@ -168,7 +181,13 @@ class PHYSICS_PT_fracture(PhysicButtonsPanel, Panel):
             box.label("Inner Vertex Group:")
             box.prop_search(md, "inner_vertex_group", ob, "vertex_groups", text = "")
             box.prop(md, "inner_crease")
-            if (md.frac_algorithm in {'BISECT_FAST', 'BISECT_FAST_FILL'}):
+            box.label("Acceleration Map:")
+            box.prop_search(md, "acceleration_vertex_group", ob, "vertex_groups", text = "")
+            row = box.row(align=True)
+            row.prop(md, "min_acceleration")
+            row.prop(md, "max_acceleration")
+            row.prop(md, "acceleration_fade")
+            if (md.frac_algorithm in {'BISECT_FAST', 'BISECT_FAST_FILL', 'BOOLEAN_FRACTAL'}):
                 box.prop(md, "orthogonality_factor", text="Rectangular Alignment")
 
         layout.context_pointer_set("modifier", md)
@@ -193,13 +212,25 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
         row = layout.row()
         row.prop(md, "use_constraints")
         row.prop(md, "use_breaking")
-        row = layout.row();
+        row = layout.row()
         row.prop(md, "use_constraint_collision")
+        row.prop(md, "use_self_collision")
+        row = layout.row()
         row.prop(md, "use_compounds")
-        layout.prop(md, "constraint_target")
+        row.prop(md, "activate_broken")
+
         col = layout.column(align=True)
-        col.prop(md, "constraint_limit", text="Constraint limit, per MeshIsland")
+        col.prop(md, "constraint_type")
+        col.prop(md, "constraint_target")
+        col = layout.column(align=True)
+        col.prop(md, "constraint_limit")
         col.prop(md, "contact_dist")
+
+        layout.label("Constraint Cluster Settings")
+        layout.prop(md, "cluster_count")
+        col = layout.column(align=True)
+        col.prop(md, "cluster_group")
+        col.prop(md, "cluster_constraint_type", text="Cluster Type")
 
         if md.use_compounds:
             layout.label("Compound Breaking Settings")
@@ -217,30 +248,32 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             #col.prop(md, "impulse_dampening")
             #col.prop(md, "directional_factor")
             col.prop(md, "mass_threshold_factor")
-        else:
-            layout.label("Constraint Special Breaking Settings")
-            col = layout.column(align=True)
-            row = col.row(align=True)
-            row.prop(md, "breaking_percentage", text="Percentage")
-            row.prop(md, "cluster_breaking_percentage", text="Cluster Percentage")
 
-            row = col.row(align=True)
-            row.prop(md, "breaking_angle", text="Angle")
-            row.prop(md, "cluster_breaking_angle", text="Cluster Angle")
+        layout.label("Constraint Special Breaking Settings")
+        col = layout.column(align=True)
+        row = col.row(align=True)
+        row.prop(md, "breaking_percentage", text="Percentage")
+        row.prop(md, "cluster_breaking_percentage", text="Cluster Percentage")
 
-            row = col.row(align=True)
-            row.prop(md, "breaking_distance", text="Distance")
-            row.prop(md, "cluster_breaking_distance", text="Cluster Distance")
+        row = col.row(align=True)
+        row.prop(md, "breaking_angle", text="Angle")
+        row.prop(md, "cluster_breaking_angle", text="Cluster Angle")
 
-            row = col.row(align=True)
-            row.prop(md, "breaking_percentage_weighted")
-            row.prop(md, "breaking_angle_weighted")
-            row.prop(md, "breaking_distance_weighted")
+        row = col.row(align=True)
+        row.prop(md, "breaking_distance", text="Distance")
+        row.prop(md, "cluster_breaking_distance", text="Cluster Distance")
 
-            col = layout.column(align=True)
-            col.prop(md, "solver_iterations_override")
-            col.prop(md, "cluster_solver_iterations_override")
-            layout.prop(md, "use_mass_dependent_thresholds")
+        col = layout.column(align=True)
+        col.prop(md, "solver_iterations_override")
+        col.prop(md, "cluster_solver_iterations_override")
+
+        row = layout.row(align=True)
+        row.prop(md, "breaking_angle_weighted")
+        row.prop(md, "breaking_distance_weighted")
+
+        row = layout.row(align=True)
+        row.prop(md, "breaking_percentage_weighted")
+        row.prop(md, "use_mass_dependent_thresholds", text="Mass Dependent Thresholds")
 
         if not md.use_compounds:
             layout.label("Constraint Deform Settings")
@@ -253,13 +286,10 @@ class PHYSICS_PT_fracture_simulation(PhysicButtonsPanel, Panel):
             row.prop(md, "deform_distance", text="Deforming Distance")
             row.prop(md, "cluster_deform_distance", text="Cluster Deforming Distance")
 
-            row = col.row(align=True)
+            col.prop(md, "deform_weakening")
+            row = layout.row(align=True)
             row.prop(md, "deform_angle_weighted")
             row.prop(md, "deform_distance_weighted")
-
-            col.prop(md, "deform_weakening")
-
-
 
 
 class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
@@ -273,13 +303,19 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
     def draw(self, context):
         layout = self.layout
         md = context.fracture
-        layout.prop(md, "autohide_filter_group", text = "Filter Group")
+        col = layout.column()
+        col.prop(md, "autohide_filter_group", text = "Filter Group")
+        if md.autohide_filter_group:
+            col.prop(md, "autohide_filter_dist")
         col = layout.column(align=True)
         col.prop(md, "autohide_dist")
         col.prop(md, "automerge_dist")
         row = layout.row()
         row.prop(md, "keep_distort")
         row.prop(md, "do_merge")
+        row = layout.row()
+        row.prop(md, "use_centroids")
+        row.prop(md, "use_vertices")
         row = layout.row()
         row.prop(md, "fix_normals")
         row.prop(md, "nor_range")
@@ -291,10 +327,11 @@ class PHYSICS_PT_fracture_utilities(PhysicButtonsPanel, Panel):
 
 classes = (
     FRACTURE_MT_presets,
-    FRACTURE_UL_fracture_settings,
+    #FRACTURE_UL_fracture_settings,
     PHYSICS_PT_fracture,
     PHYSICS_PT_fracture_simulation,
     PHYSICS_PT_fracture_utilities,
+    PHYSICS_PT_fracture_anim_mesh,
 )
 
 if __name__ == "__main__":  # only for live edit.

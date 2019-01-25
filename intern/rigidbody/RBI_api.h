@@ -188,6 +188,10 @@ void RB_body_set_angular_sleep_thresh(rbRigidBody *body, float value);
 
 void RB_body_set_sleep_thresh(rbRigidBody *body, float linear, float angular);
 
+/* Force and Torque */
+void RB_body_get_total_force(rbRigidBody *body, float v_out[3]);
+void RB_body_get_total_torque(rbRigidBody *body, float v_out[3]);
+
 /* Linear Velocity */
 void RB_body_get_linear_velocity(rbRigidBody *body, float v_out[3]);
 void RB_body_set_linear_velocity(rbRigidBody *body, const float v_in[3]);
@@ -263,7 +267,7 @@ rbCollisionShape *RB_shape_new_gimpact_mesh(rbMeshData *mesh);
 
 int RB_shape_get_num_verts(rbCollisionShape *shape);
 
-rbCollisionShape *RB_shape_new_compound();
+rbCollisionShape *RB_shape_new_compound(void);
 void RB_shape_add_compound_child(rbCollisionShape** compound, rbCollisionShape* child, float loc[3], float rot[4]);
 
 /* Cleanup --------------------------- */

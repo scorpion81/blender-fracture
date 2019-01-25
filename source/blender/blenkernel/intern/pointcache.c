@@ -1282,7 +1282,7 @@ static MeshIsland *find_meshisland(FractureModifierData *fmd, int id)
 	MeshIsland *mi = (MeshIsland*)fmd->meshIslands.first;
 	while (mi)
 	{
-		if (mi->id == id)
+		if (mi->rigidbody->meshisland_index == id)
 		{
 			return mi;
 		}
@@ -1301,9 +1301,11 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 	/* clumsy, clumsy, but we need to access our own (meshisland based) cache here in case of dynamic fracture*/
 	Object* ob = NULL;
 	FractureModifierData *fmd = NULL;
+	float linvel[3] = {0.0f, 0.0f, 0.0f};
+	float angvel[3] = {0.0f, 0.0f, 0.0f};
 
-	//if (!rbw->cache_index_map || !rbw->cache_offset_map)
-	//	return 1;
+	if (!rbw->cache_index_map || !rbw->cache_offset_map)
+		return 1;
 
 	rbo = rbw->cache_index_map[index];
 	
@@ -1324,19 +1326,65 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 	{
 		if ((!fmd || fmd->fracture_mode != MOD_FRACTURE_DYNAMIC) && rbo->type == RBO_TYPE_ACTIVE)
 		{
+			MeshIsland *mi = NULL;
+
+			if (fmd && fmd->acceleration_defgrp_name[0])
+			{
+				mi = find_meshisland(fmd, rbo->meshisland_index);
+				if (cfra >= mi->start_frame && cfra <= mi->frame_count) {
+					float lastvel = 0.0f;
+					float vel = 0.0f;
+					float acc = 0.0f;
+
+					//rough framewise estimate of total force
+					if (mi->rigidbody->physics_object)
+					{
+						RB_body_get_linear_velocity(mi->rigidbody->physics_object, linvel);
+						RB_body_get_angular_velocity(mi->rigidbody->physics_object, angvel);
+						vel = len_v3(linvel) + len_v3(angvel);
+					}
+
+					if (cfra >= mi->start_frame + 1 && cfra == rbw->ltime + 1)
+					{
+						lastvel = mi->acc_sequence[cfra - mi->start_frame - 1];
+						acc = fabsf(vel - lastvel);
+						BKE_update_acceleration_map(fmd, mi, ob, cfra, acc, rbw);
+						mi->acc_sequence[cfra - mi->start_frame] = vel;
+					}
+				}
+			}
 
 #ifdef WITH_BULLET
-			RB_body_get_position(rbo->physics_object, rbo->pos);
-			RB_body_get_orientation(rbo->physics_object, rbo->orn);
+			if (!(fmd && fmd->use_animated_mesh && fmd->anim_mesh_ob && (rbo->flag & RBO_FLAG_KINEMATIC)))
+			{
+				RB_body_get_position(rbo->physics_object, rbo->pos);
+				RB_body_get_orientation(rbo->physics_object, rbo->orn);
+			}
+
+			RB_body_get_linear_velocity(rbo->physics_object, rbo->lin_vel);
+			RB_body_get_angular_velocity(rbo->physics_object, rbo->ang_vel);
+
+			/*if (cfra > rbw->pointcache->startframe)
+			{
+				sub_v3_v3v3(rbo->lin_vel, linvel, rbo->lin_vel);
+				sub_v3_v3v3(rbo->ang_vel, angvel, rbo->ang_vel);
+			}
+			else if (cfra == rbw->pointcache->startframe)
+			{
+				zero_v3(rbo->lin_vel);
+				zero_v3(rbo->ang_vel);
+			}*/
 #endif
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
+			PTCACHE_DATA_FROM(data, BPHYS_DATA_VELOCITY, rbo->lin_vel);
+			PTCACHE_DATA_FROM(data, BPHYS_DATA_AVELOCITY, rbo->ang_vel);
 		}
 		else if (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 		{
 			//MeshIsland *mi = BLI_findlink(&fmd->meshIslands, rbo->meshisland_index);
 			MeshIsland *mi = find_meshisland(fmd, rbo->meshisland_index);
-			int frame = (int)floor(cfra);
+			int frame = cfra;
 
 //			if (!mi)
 //				return 0;
@@ -1346,6 +1394,8 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 #ifdef WITH_BULLET
 			RB_body_get_position(rbo->physics_object, rbo->pos);
 			RB_body_get_orientation(rbo->physics_object, rbo->orn);
+			RB_body_get_linear_velocity(rbo->physics_object, rbo->lin_vel);
+			RB_body_get_angular_velocity(rbo->physics_object, rbo->ang_vel);
 #endif
 
 			frame =  frame - mi->start_frame;
@@ -1373,6 +1423,8 @@ static int  ptcache_rigidbody_write(int index, void *rb_v, void **data, int cfra
 			//dummy data
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_LOCATION, rbo->pos);
 			PTCACHE_DATA_FROM(data, BPHYS_DATA_ROTATION, rbo->orn);
+			PTCACHE_DATA_FROM(data, BPHYS_DATA_VELOCITY, rbo->lin_vel);
+			PTCACHE_DATA_FROM(data, BPHYS_DATA_AVELOCITY, rbo->ang_vel);
 
 		}
 	}
@@ -1399,6 +1451,8 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 	if (!fmd || (fmd && fmd->fracture_mode != MOD_FRACTURE_DYNAMIC))
 	{
 		if (rbo && rbo->type == RBO_TYPE_ACTIVE) {
+			MeshIsland *mi = NULL;
+
 			if (old_data) {
 				memcpy(rbo->pos, data, 3 * sizeof(float));
 				memcpy(rbo->orn, data + 3, 4 * sizeof(float));
@@ -1406,6 +1460,26 @@ static void ptcache_rigidbody_read(int index, void *rb_v, void **data, float cfr
 			else {
 				PTCACHE_DATA_TO(data, BPHYS_DATA_LOCATION, 0, rbo->pos);
 				PTCACHE_DATA_TO(data, BPHYS_DATA_ROTATION, 0, rbo->orn);
+				PTCACHE_DATA_TO(data, BPHYS_DATA_VELOCITY, 0, rbo->lin_vel);
+				PTCACHE_DATA_TO(data, BPHYS_DATA_AVELOCITY,0, rbo->ang_vel);
+			}
+
+			if (fmd && fmd->acceleration_defgrp_name[0])
+			{
+				int frame = (int)floor(cfra);
+				mi = find_meshisland(fmd, rbo->meshisland_index);
+				if (frame >= mi->start_frame && frame <= mi->frame_count) {
+					float vel = mi->acc_sequence[frame - mi->start_frame];
+					float lastvel = 0.0f;
+					float acc = 0.0f;
+
+					if (frame >= mi->start_frame + 1)
+					{
+						lastvel = mi->acc_sequence[frame - mi->start_frame - 1];
+						acc = fabsf(vel - lastvel);
+						BKE_update_acceleration_map(fmd, mi, ob, frame, acc, rbw);
+					}
+				}
 			}
 		}
 	}
@@ -1453,6 +1527,7 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 	float dfra;
 	Object* ob;
 	FractureModifierData *fmd;
+	MeshIsland *mi = NULL;
 	
 	rbo = rbw->cache_index_map[index];
 	if (rbo == NULL) {
@@ -1461,19 +1536,38 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 
 	ob = rbw->objects[rbw->cache_offset_map[index]];
 	fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
+	if (fmd)
+		mi = find_meshisland(fmd, rbo->meshisland_index);
 
 	if (rbo->type == RBO_TYPE_ACTIVE || (fmd && fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)) {
 
 		copy_v3_v3(keys[1].co, rbo->pos);
 		copy_qt_qt(keys[1].rot, rbo->orn);
+		copy_v3_v3(keys[1].vel, rbo->lin_vel);
+		copy_v3_v3(keys[1].ave, rbo->ang_vel);
 
 		if (!fmd || fmd->fracture_mode != MOD_FRACTURE_DYNAMIC)
 		{
 			if (old_data) {
 				memcpy(keys[2].co, data, 3 * sizeof(float));
 				memcpy(keys[2].rot, data + 3, 4 * sizeof(float));
+				memcpy(keys[2].vel, data + 7, 3 * sizeof(float));
+				memcpy(keys[2].ave, data + 10, 3 * sizeof(float));
 			}
 			else {
+				if (fmd)
+				{
+					//MeshIsland *mi = find_meshisland(fmd, rbo->meshisland_index);
+					float acc = mi->acc_sequence[((int)cfra)-mi->start_frame];
+					/*float acc1 = mi->acc_sequence[((int)cfra1)-mi->start_frame];
+					float acc2 = mi->acc_sequence[((int)cfra2)-mi->start_frame];
+					float t = (cfra - cfra1) / (cfra2 - cfra1);
+					const float s = 1.0f - t;
+					float acc = s * acc1 + t * acc2;*/
+
+					BKE_update_acceleration_map(fmd, mi, ob, (int)cfra, acc, rbw);
+				}
+
 				BKE_ptcache_make_particle_key(keys+2, 0, data, cfra2);
 			}
 		}
@@ -1481,7 +1575,7 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 		{
 			float loc[3], rot[4];
 
-			MeshIsland *mi = find_meshisland(fmd, rbo->meshisland_index);
+			//MeshIsland *mi = find_meshisland(fmd, rbo->meshisland_index);
 
 			int frame = (int)floor(cfra);
 			frame = frame - mi->start_frame;
@@ -1505,9 +1599,13 @@ static void ptcache_rigidbody_interpolate(int index, void *rb_v, void **data, fl
 		/* XXX temporary deform motion blur fix */
 		interp_v3_v3v3(keys->co, keys[1].co, keys[2].co, (cfra - cfra1) / dfra);
 		interp_qt_qtqt(keys->rot, keys[1].rot, keys[2].rot, (cfra - cfra1) / dfra);
+		interp_v3_v3v3(keys->vel, keys[1].vel, keys[2].vel, (cfra - cfra1) / dfra);
+		interp_v3_v3v3(keys->ave, keys[1].ave, keys[2].ave, (cfra - cfra1) / dfra);
 
 		copy_v3_v3(rbo->pos, keys->co);
 		copy_qt_qt(rbo->orn, keys->rot);
+		copy_v3_v3(rbo->lin_vel, keys->vel);
+		copy_v3_v3(rbo->ang_vel, keys->ave);
 	}
 }
 static int ptcache_rigidbody_totpoint(void *rb_v, int UNUSED(cfra))
@@ -1783,7 +1881,8 @@ void BKE_ptcache_id_from_rigidbody(PTCacheID *pid, Object *ob, RigidBodyWorld *r
 	pid->write_header			= ptcache_basic_header_write;
 	pid->read_header			= ptcache_basic_header_read;
 	
-	pid->data_types= (1<<BPHYS_DATA_LOCATION) | (1<<BPHYS_DATA_ROTATION);
+	pid->data_types= (1<<BPHYS_DATA_LOCATION) | (1<<BPHYS_DATA_ROTATION) |
+	                 (1<<BPHYS_DATA_VELOCITY) | (1<<BPHYS_DATA_AVELOCITY);
 	pid->info_types= 0;
 	
 	pid->stack_index = pid->cache->index;

@@ -1897,6 +1897,7 @@ static BMOpDefine bmo_solidify_def = {
 	/* slots_in */
 	{{"geom", BMO_OP_SLOT_ELEMENT_BUF, {BM_VERT | BM_EDGE | BM_FACE}},
 	 {"thickness", BMO_OP_SLOT_FLT},
+	 {"offset", BMO_OP_SLOT_FLT},
 	 {{'\0'}},
 	},
 	/* slots_out */

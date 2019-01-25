@@ -65,8 +65,10 @@ class AddPresetBase:
                 setattr(cls, attr, trans)
             return trans
 
+        name = name.lower().strip()
+        name = bpy.path.display_name_to_filepath(name)
         trans = maketrans_init()
-        return name.lower().strip().translate(trans)
+        return name.translate(trans)
 
     def execute(self, context):
         import os
@@ -678,6 +680,7 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.mass_threshold_factor",
         "fracture.autohide_filter_group",
         "fracture.uv_layer",
+        "fracture.inner_material",
         "fracture.boolean_solver",
         "fracture.boolean_double_threshold",
         "fracture.dynamic_percentage",
@@ -698,7 +701,21 @@ class AddPresetFracture(AddPresetBase, Operator):
         "fracture.deform_angle",
         "fracture.deform_angle_weighted",
         "fracture.cluster_deform_angle",
-        "fracture.deform_weakening"
+        "fracture.deform_weakening",
+        "fracture.use_centroids",
+        "fracture.use_vertices",
+        "fracture.use_self_collision",
+        "fracture.grid_resolution",
+        "fracture.min_acceleration",
+        "fracture.max_acceleration",
+        "fracture.acceleration_fade",
+        "fracture.use_animated_mesh",
+        "fracture.animated_mesh_input",
+        "fracture.use_animated_mesh_rotation",
+        "fracture.grid_offset",
+        "fracture.grid_spacing",
+        "fracture.use_constraint_group",
+        "fracture.autohide_filter_dist",
     ]
 
     preset_subdir = "fracture"

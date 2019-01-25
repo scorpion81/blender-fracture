@@ -648,9 +648,9 @@ static AVStream *alloc_video_stream(FFMpegContext *context, RenderData *rd, int 
 	}
 
 	if (codec_id == AV_CODEC_ID_QTRLE) {
-		if (rd->im_format.planes == R_IMF_PLANES_RGBA) {
+//		if (rd->im_format.planes == R_IMF_PLANES_RGBA) {
 			c->pix_fmt = AV_PIX_FMT_ARGB;
-		}
+//		}
 	}
 
 	if (codec_id == AV_CODEC_ID_PNG) {
@@ -681,6 +681,7 @@ static AVStream *alloc_video_stream(FFMpegContext *context, RenderData *rd, int 
 	/* xasp & yasp got float lately... */
 
 	st->sample_aspect_ratio = c->sample_aspect_ratio = av_d2q(((double) rd->xasp / (double) rd->yasp), 255);
+	st->avg_frame_rate = av_inv_q(c->time_base);
 
 	set_ffmpeg_properties(rd, c, "video", &opts);
 

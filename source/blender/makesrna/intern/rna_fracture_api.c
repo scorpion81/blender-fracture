@@ -15,7 +15,12 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * Contributor(s): Blender Foundation (2008), Martin Felke
+ * Copyright (C) 2017 by Martin Felke.
+ * All rights reserved.
+ *
+ * The Original Code is: all of this file
+ *
+ * Contributor(s): none yet.
  *
  * ***** END GPL LICENSE BLOCK *****
  */
@@ -98,6 +103,15 @@ static float rna_MeshCon_get_applied_impulse(RigidBodyShardCon *con)
 		return RB_constraint_get_applied_impulse(con->physics_constraint);
 #endif
 	return 0.0f;
+}
+
+static int rna_MeshCon_is_intact(RigidBodyShardCon *con)
+{
+#ifdef WITH_BULLET
+	if (con && con->physics_constraint)
+		return RB_constraint_is_enabled(con->physics_constraint);
+#endif
+	return 0;
 }
 
 #define RB_FLAG_SET(dest, value, flag) { \
@@ -544,6 +558,639 @@ static char *rna_MeshConstraint_path(PointerRNA *ptr)
 	}
 }
 
+static void rna_MeshIsland_cluster_index_set(PointerRNA *ptr, int value)
+{
+	MeshIsland *mi = (MeshIsland *)ptr->data;
+	Object* ob = ptr->id.data;
+	FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
+	int i = 0;
+
+	mi->particle_index = value;
+
+#ifdef WITH_BULLET
+	for (i = 0; i < mi->participating_constraint_count; i++)
+	{
+		RigidBodyShardCon* con = mi->participating_constraints[i];
+		float thresh = fmd->breaking_threshold;
+
+		if (con->mi1 == mi)
+		{
+			if (con->mi2->particle_index == mi->particle_index)
+			{
+				con->breaking_threshold = fmd->cluster_breaking_threshold; //TODO check against original constraint fn
+			}
+			else {
+				if (fmd->thresh_defgrp_name[0]) {
+					/* modify maximum threshold by minimum weight */
+					con->breaking_threshold = thresh * MIN2(con->mi1->thresh_weight, con->mi2->thresh_weight);
+				}
+				else {
+					con->breaking_threshold = thresh;
+				}
+			}
+		}
+		else if (con->mi2 == mi)
+		{
+			if (con->mi1->particle_index == mi->particle_index)
+			{
+				con->breaking_threshold = fmd->cluster_breaking_threshold; //TODO check against original constraint fn
+			}
+			else {
+				if (fmd->thresh_defgrp_name[0]) {
+					/* modify maximum threshold by minimum weight */
+					con->breaking_threshold = thresh * MIN2(con->mi1->thresh_weight, con->mi2->thresh_weight);
+				}
+				else {
+					con->breaking_threshold = thresh;
+				}
+			}
+		}
+	}
+#endif
+}
+
+static void rna_MeshIslandVertexGroup_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
+{
+	FractureModifierData *fmd = (FractureModifierData*)ptr->data;
+	DerivedMesh* dm = fmd->visible_mesh_cached;
+
+	if (dm)
+	{
+		MDeformVert *dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
+		int totvert = dm->getNumVerts(dm);
+		rna_iterator_array_begin(iter, (void *)dvert, sizeof(MDeformVert), totvert, 0, NULL);
+	}
+	else {
+		rna_iterator_array_begin(iter, NULL, 0, 0, 0, NULL);
+	}
+}
+
+static void rna_MeshIslandVertexGroupElement_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
+{
+	MDeformVert* dvert = (MDeformVert*)ptr->data;
+	rna_iterator_array_begin(iter, (void *)dvert->dw, sizeof(MDeformWeight), dvert->totweight, 0, NULL);
+}
+
+static int rna_MeshIslandVertex_index_get(PointerRNA *ptr)
+{
+	Object* ob = (Object*)ptr->id.data;
+	FractureModifierData *fmd = (FractureModifierData*)modifiers_findByType(ob, eModifierType_Fracture);
+	DerivedMesh* dm = fmd->visible_mesh_cached;
+	if (dm)
+	{
+		MVert *vert = (MVert *)ptr->data;
+		MVert *mv = dm->getVertArray(dm);
+		return (int)(vert - mv);
+	}
+	else {
+		return -1;
+	}
+}
+
+static void rna_MeshCon_use_limit_lin_x(PointerRNA *ptr, int value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_LIMIT_LIN_X);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_X)
+				{
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_X, 0.0f, -1.0f);
+				}
+				break;
+
+			case RBC_TYPE_SLIDER:
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_X)
+				{
+					RB_constraint_set_limits_slider(rbc->physics_constraint, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_slider(rbc->physics_constraint, 0.0f, -1.0f);
+				}
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_MeshCon_limit_lin_x_lower(PointerRNA *ptr, float value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	rbc->limit_lin_x_lower = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+				break;
+			case RBC_TYPE_SLIDER:
+				RB_constraint_set_limits_slider(rbc->physics_constraint, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_MeshCon_limit_lin_x_upper(PointerRNA *ptr, float value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	rbc->limit_lin_x_upper = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+				break;
+			case RBC_TYPE_SLIDER:
+				RB_constraint_set_limits_slider(rbc->physics_constraint, rbc->limit_lin_x_lower, rbc->limit_lin_x_upper);
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_MeshCon_use_limit_lin_y(PointerRNA *ptr, int value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_LIMIT_LIN_Y);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_Y)
+				{
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->limit_lin_y_lower, rbc->limit_lin_y_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Y, 0.0f, -1.0f);
+				}
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_MeshCon_limit_lin_y_lower(PointerRNA *ptr, float value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	rbc->limit_lin_y_lower = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->limit_lin_y_lower, rbc->limit_lin_y_upper);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_MeshCon_limit_lin_y_upper(PointerRNA *ptr, float value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	rbc->limit_lin_y_upper = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->limit_lin_y_lower, rbc->limit_lin_y_upper);
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_MeshCon_use_limit_lin_z(PointerRNA *ptr, int value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_LIMIT_LIN_Z);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_LIN_Z)
+				{
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->limit_lin_z_lower, rbc->limit_lin_z_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Z, 0.0f, -1.0f);
+				}
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_MeshCon_limit_lin_z_lower(PointerRNA *ptr, float value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	rbc->limit_lin_z_lower = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->limit_lin_z_lower, rbc->limit_lin_z_upper);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_MeshCon_limit_lin_z_upper(PointerRNA *ptr, float value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	rbc->limit_lin_z_upper = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->limit_lin_z_lower, rbc->limit_lin_z_upper);
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_MeshCon_use_limit_ang_x(PointerRNA *ptr, int value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_LIMIT_ANG_X);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_X)
+				{
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->limit_ang_x_lower, rbc->limit_ang_x_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_X, 0.0f, -1.0f);
+				}
+				break;
+		}
+	}
+#endif
+}
+
+
+
+static void rna_MeshCon_limit_ang_x_lower(PointerRNA *ptr, float value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	rbc->limit_ang_x_lower = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->limit_ang_x_lower, rbc->limit_ang_x_upper);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_MeshCon_limit_ang_x_upper(PointerRNA *ptr, float value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	rbc->limit_ang_x_upper = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->limit_ang_x_lower, rbc->limit_ang_x_upper);
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_MeshCon_use_limit_ang_y(PointerRNA *ptr, int value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_LIMIT_ANG_Y);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Y)
+				{
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Y, rbc->limit_ang_y_lower, rbc->limit_ang_y_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Y, 0.0f, -1.0f);
+				}
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_MeshCon_limit_ang_y_lower(PointerRNA *ptr, float value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	rbc->limit_ang_y_lower = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Y, rbc->limit_ang_y_lower, rbc->limit_ang_y_upper);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_MeshCon_limit_ang_y_upper(PointerRNA *ptr, float value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	rbc->limit_ang_y_upper = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Y, rbc->limit_ang_y_lower, rbc->limit_ang_y_upper);
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_MeshCon_use_limit_ang_z(PointerRNA *ptr, int value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_LIMIT_ANG_Z);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Z)
+				{
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, 0.0f, -1.0f);
+				}
+				break;
+
+			case RBC_TYPE_HINGE:
+				if (rbc->flag & RBC_FLAG_USE_LIMIT_ANG_Z)
+				{
+					RB_constraint_set_limits_hinge(rbc->physics_constraint, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+				}
+				else {
+					//validator in rigidbody.c will change properties.... but here ensure physics constraint is updated at once
+					RB_constraint_set_limits_hinge(rbc->physics_constraint, 0.0f, -1.0f);
+				}
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_MeshCon_limit_ang_z_lower(PointerRNA *ptr, float value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	rbc->limit_ang_z_lower = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+				break;
+			case RBC_TYPE_HINGE:
+				RB_constraint_set_limits_hinge(rbc->physics_constraint, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+		}
+	}
+#endif
+}
+
+static void rna_MeshCon_limit_ang_z_upper(PointerRNA *ptr, float value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	rbc->limit_ang_z_upper = value;
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF:
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_limits_6dof(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+				break;
+			case RBC_TYPE_HINGE:
+				RB_constraint_set_limits_hinge(rbc->physics_constraint, rbc->limit_ang_z_lower, rbc->limit_ang_z_upper);
+		}
+	}
+#endif
+}
+
+
+
+static void rna_MeshCon_use_spring_x(PointerRNA *ptr, int value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_SPRING_X);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_X, rbc->flag & RBC_FLAG_USE_SPRING_X);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_MeshCon_use_spring_y(PointerRNA *ptr, int value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_SPRING_Y);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Y, rbc->flag & RBC_FLAG_USE_SPRING_Y);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_MeshCon_use_spring_z(PointerRNA *ptr, int value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_SPRING_Z);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_LIN_Z, rbc->flag & RBC_FLAG_USE_SPRING_Z);
+				break;
+		}
+	}
+#endif
+}
+
+
+static void rna_MeshCon_use_spring_ang_x(PointerRNA *ptr, int value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_SPRING_ANG_X);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_X, rbc->flag & RBC_FLAG_USE_SPRING_ANG_X);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_MeshCon_use_spring_ang_y(PointerRNA *ptr, int value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_SPRING_ANG_Y);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_Y, rbc->flag & RBC_FLAG_USE_SPRING_ANG_Y);
+				break;
+		}
+	}
+#endif
+}
+
+static void rna_MeshCon_use_spring_ang_z(PointerRNA *ptr, int value)
+{
+	RigidBodyShardCon *rbc = (RigidBodyShardCon *)ptr->data;
+
+	RB_FLAG_SET(rbc->flag, value, RBC_FLAG_USE_SPRING_ANG_Z);
+
+#ifdef WITH_BULLET
+	if (rbc->physics_constraint) {
+		switch (rbc->type)
+		{
+			case RBC_TYPE_6DOF_SPRING:
+				RB_constraint_set_spring_6dof_spring(rbc->physics_constraint, RB_LIMIT_ANG_Z, rbc->flag & RBC_FLAG_USE_SPRING_ANG_Z);
+				break;
+		}
+	}
+#endif
+}
+
+
 #endif
 
 static void rna_def_mesh_island_vertex(BlenderRNA* brna)
@@ -567,6 +1214,10 @@ static void rna_def_mesh_island_vertex(BlenderRNA* brna)
 	RNA_def_property_float_funcs(prop, "rna_MeshVertex_normal_get", "rna_MeshVertex_normal_set", NULL);
 	RNA_def_property_ui_text(prop, "Normal", "Vertex Normal");*/
 
+	prop = RNA_def_property(srna, "index", PROP_INT, PROP_NONE);
+	RNA_def_property_int_funcs(prop, "rna_MeshIslandVertex_index_get", NULL, NULL);
+	RNA_def_property_ui_text(prop, "index", "Index of this vertex in global fracture modifier derived mesh");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
 }
 
 static void rna_def_mesh_island_vertices(BlenderRNA* brna, PropertyRNA* cprop)
@@ -613,6 +1264,18 @@ static void rna_def_mesh_island(BlenderRNA *brna)
 
 	rna_def_mesh_island_vertices(brna, prop);
 	rna_def_mesh_island_vertex(brna);
+
+	prop = RNA_def_property(srna, "constraints", PROP_COLLECTION, PROP_NONE);
+	RNA_def_property_collection_sdna(prop, NULL, "participating_constraints", "participating_constraint_count");
+	RNA_def_property_struct_type(prop, "MeshConstraint");
+	RNA_def_property_ui_text(prop, "Constraints", "Constraints where this mesh island participates in");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+
+	prop = RNA_def_property(srna, "cluster_index", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "particle_index");
+	RNA_def_property_int_funcs(prop, NULL, "rna_MeshIsland_cluster_index_set", NULL);
+	RNA_def_property_ui_text(prop, "Cluster Index", "To which cluster this mesh island belongs.");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
 static void rna_def_mesh_constraint(BlenderRNA *brna)
@@ -723,61 +1386,73 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 	/* Limits */
 	prop = RNA_def_property(srna, "use_limit_lin_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_LIN_X);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_limit_lin_x");
 	RNA_def_property_ui_text(prop, "X Axis", "Limit translation on X axis");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_limit_lin_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_LIN_Y);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_limit_lin_y");
 	RNA_def_property_ui_text(prop, "Y Axis", "Limit translation on Y axis");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_limit_lin_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_LIN_Z);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_limit_lin_z");
 	RNA_def_property_ui_text(prop, "Z Axis", "Limit translation on Z axis");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_limit_ang_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_ANG_X);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_limit_ang_x");
 	RNA_def_property_ui_text(prop, "X Angle", "Limit rotation around X axis");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_limit_ang_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_ANG_Y);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_limit_ang_y");
 	RNA_def_property_ui_text(prop, "Y Angle", "Limit rotation around Y axis");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_limit_ang_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_LIMIT_ANG_Z);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_limit_ang_z");
 	RNA_def_property_ui_text(prop, "Z Angle", "Limit rotation around Z axis");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_spring_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_X);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_spring_x");
 	RNA_def_property_ui_text(prop, "X Spring", "Enable spring on X axis");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_spring_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_Y);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_spring_y");
 	RNA_def_property_ui_text(prop, "Y Spring", "Enable spring on Y axis");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_spring_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_Z);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_spring_z");
 	RNA_def_property_ui_text(prop, "Z Spring", "Enable spring on Z axis");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "use_spring_ang_x", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_ANG_X);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_spring_ang_x");
 	RNA_def_property_ui_text(prop, "X Angle Spring", "Enable spring on X rotational axis");
 	//RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "use_spring_ang_y", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_ANG_Y);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_spring_ang_y");
 	RNA_def_property_ui_text(prop, "Y Angle Spring", "Enable spring on Y rotational axis");
 	//RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
 
 	prop = RNA_def_property(srna, "use_spring_ang_z", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBC_FLAG_USE_SPRING_ANG_Z);
+	RNA_def_property_boolean_funcs(prop, NULL, "rna_MeshCon_use_spring_ang_z");
 	RNA_def_property_ui_text(prop, "Z Angle Spring", "Enable spring on Z rotational axis");
 	//RNA_def_property_update(prop, NC_OBJECT, "rna_RigidBodyOb_reset");
 
@@ -795,42 +1470,49 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "limit_lin_x_lower", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_x_lower");
+	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_limit_lin_x_lower", NULL);
 	RNA_def_property_float_default(prop, -1.0f);
 	RNA_def_property_ui_text(prop, "Lower X Limit", "Lower limit of X axis translation");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_lin_x_upper", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_x_upper");
+	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_limit_lin_x_upper", NULL);
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_ui_text(prop, "Upper X Limit", "Upper limit of X axis translation");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_lin_y_lower", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_y_lower");
+	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_limit_lin_y_lower", NULL);
 	RNA_def_property_float_default(prop, -1.0f);
 	RNA_def_property_ui_text(prop, "Lower Y Limit", "Lower limit of Y axis translation");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_lin_y_upper", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_y_upper");
+	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_limit_lin_y_upper", NULL);
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_ui_text(prop, "Upper Y Limit", "Upper limit of Y axis translation");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_lin_z_lower", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_z_lower");
+	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_limit_lin_z_lower", NULL);
 	RNA_def_property_float_default(prop, -1.0f);
 	RNA_def_property_ui_text(prop, "Lower Z Limit", "Lower limit of Z axis translation");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_lin_z_upper", PROP_FLOAT, PROP_UNIT_LENGTH);
 	RNA_def_property_float_sdna(prop, NULL, "limit_lin_z_upper");
+	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_limit_lin_z_upper", NULL);
 	RNA_def_property_float_default(prop, 1.0f);
 	RNA_def_property_ui_text(prop, "Upper Z Limit", "Upper limit of Z axis translation");
 	//RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
 	prop = RNA_def_property(srna, "limit_ang_x_lower", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_x_lower");
+	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_limit_ang_x_lower", NULL);
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, -M_PI_4);
 	RNA_def_property_ui_text(prop, "Lower X Angle Limit", "Lower limit of X axis rotation");
@@ -838,6 +1520,7 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "limit_ang_x_upper", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_x_upper");
+	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_limit_ang_x_upper", NULL);
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, M_PI_4);
 	RNA_def_property_ui_text(prop, "Upper X Angle Limit", "Upper limit of X axis rotation");
@@ -845,6 +1528,7 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "limit_ang_y_lower", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_y_lower");
+	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_limit_ang_y_lower", NULL);
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, -M_PI_4);
 	RNA_def_property_ui_text(prop, "Lower Y Angle Limit", "Lower limit of Y axis rotation");
@@ -852,6 +1536,7 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "limit_ang_y_upper", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_y_upper");
+	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_limit_ang_y_upper", NULL);
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, M_PI_4);
 	RNA_def_property_ui_text(prop, "Upper Y Angle Limit", "Upper limit of Y axis rotation");
@@ -859,6 +1544,7 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "limit_ang_z_lower", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_z_lower");
+	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_limit_ang_z_lower", NULL);
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, -M_PI_4);
 	RNA_def_property_ui_text(prop, "Lower Z Angle Limit", "Lower limit of Z axis rotation");
@@ -866,6 +1552,7 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "limit_ang_z_upper", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "limit_ang_z_upper");
+	RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_limit_ang_z_upper", NULL);
 	RNA_def_property_range(prop, -M_PI * 2, M_PI * 2);
 	RNA_def_property_float_default(prop, M_PI_4);
 	RNA_def_property_ui_text(prop, "Upper Z Angle Limit", "Upper limit of Z axis rotation");
@@ -1011,6 +1698,7 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "breaking_distance", PROP_FLOAT, PROP_DISTANCE);
 	RNA_def_property_float_sdna(prop, NULL, "breaking_dist");
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_breaking_distance_set");
 	RNA_def_property_float_default(prop, 0.0f);
 	RNA_def_property_range(prop, -1.0f, FLT_MAX);
 	RNA_def_property_ui_text(prop, "Breaking Distance", "Breaking Distance Tolerance of this constraint, -1 disables");
@@ -1018,6 +1706,7 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "breaking_angle", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "breaking_angle");
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_breaking_angle_set");
 	RNA_def_property_float_default(prop, 0.0f);
 	RNA_def_property_range(prop, -1.0f, DEG2RADF(360.0));
 	RNA_def_property_ui_text(prop, "Breaking Angle", "Breaking Angle Tolerance of this constraint, -1 disables");
@@ -1025,6 +1714,7 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "plastic_distance", PROP_FLOAT, PROP_DISTANCE);
 	RNA_def_property_float_sdna(prop, NULL, "plastic_dist");
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_set_plastic_dist");
 	RNA_def_property_float_default(prop, 0.0f);
 	RNA_def_property_range(prop, -1.0f, FLT_MAX);
 	RNA_def_property_ui_text(prop, "Plastic Distance", "Distance Tolerance of this constraint, when exceeded enter plastic mode, -1 disables");
@@ -1032,6 +1722,7 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "plastic_angle", PROP_FLOAT, PROP_ANGLE);
 	RNA_def_property_float_sdna(prop, NULL, "plastic_angle");
+	//RNA_def_property_float_funcs(prop, NULL, "rna_MeshCon_set_plastic_angle");
 	RNA_def_property_float_default(prop, 0.0f);
 	RNA_def_property_range(prop, -1.0f, DEG2RADF(360.0));
 	RNA_def_property_ui_text(prop, "Plastic Angle", "Angle Tolerance of this constraint, when exceeded enter plastic mode, -1 disables");
@@ -1039,7 +1730,12 @@ static void rna_def_mesh_constraint(BlenderRNA *brna)
 
 	//do as function, dont need an dna value for storage, instead query from bullet directly
 	func = RNA_def_function(srna, "appliedImpulse", "rna_MeshCon_get_applied_impulse");
-	parm = RNA_def_float(func, "impulse", 0, -FLT_MAX, FLT_MAX, "Applied Impulse", "The currently applied impulse on this constraint", -FLT_MIN, FLT_MAX);
+	parm = RNA_def_float(func, "impulse", 0, -FLT_MAX, FLT_MAX, "Applied Impulse", "The currently applied impulse on this constraint",
+	                     -FLT_MIN, FLT_MAX);
+	RNA_def_function_return(func, parm);
+
+	func = RNA_def_function(srna, "isIntact", "rna_MeshCon_is_intact");
+	parm = RNA_def_boolean(func, "intactness", 0, "Is Intact", "Whether this constraint is still intact or already broken");
 	RNA_def_function_return(func, parm);
 }
 
@@ -1123,6 +1819,50 @@ static void rna_def_fracture_meshconstraints(BlenderRNA *brna, PropertyRNA *cpro
 	RNA_def_function_ui_description(func, "Delete all mesh constraints from fracture modifier");
 }
 
+
+
+static void rna_def_mesh_vertex_group_element(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna = RNA_def_struct(brna, "MeshIslandVertexGroupElement", NULL);
+	RNA_def_struct_sdna(srna, "MDeformWeight");
+	//RNA_def_struct_path_func(srna, "rna_MeshVertexGroupElement_path");
+	RNA_def_struct_ui_text(srna, "Vertex Group Element", "Weight value of a vertex in a vertex group");
+	//RNA_def_struct_ui_icon(srna, ICON_GROUP_VERTEX);
+
+	prop = RNA_def_property(srna, "group", PROP_INT, PROP_UNSIGNED);
+	RNA_def_property_int_sdna(prop, NULL, "def_nr");
+	RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+	RNA_def_property_ui_text(prop, "Group Index", "");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "weight", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_range(prop, 0.0f, 1.0f);
+	RNA_def_property_ui_text(prop, "Weight", "Vertex Weight");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+}
+
+static void rna_def_mesh_vertex_group(BlenderRNA *brna)
+{
+	StructRNA *srna;
+	PropertyRNA *prop;
+
+	srna = RNA_def_struct(brna, "MeshIslandVertexGroup", NULL);
+	RNA_def_struct_sdna(srna, "MDeformVert");
+	//RNA_def_struct_path_func(srna, "rna_MeshVertexGroup_path");
+	RNA_def_struct_ui_text(srna, "Vertex Group", "Weights of all vertex groups this deform vert is in");
+
+	prop = RNA_def_property(srna, "weights", PROP_COLLECTION, PROP_NONE);
+	rna_def_mesh_vertex_group_element(brna);
+
+	RNA_def_property_collection_funcs(prop, "rna_MeshIslandVertexGroupElement_begin", "rna_iterator_array_next",
+	                                  "rna_iterator_array_end", "rna_iterator_array_get", NULL, NULL, NULL, NULL);
+	RNA_def_property_struct_type(prop, "MeshIslandVertexGroupElement");
+	RNA_def_property_ui_text(prop, "weights", "Array of weights");
+}
+
 void RNA_api_fracture(BlenderRNA *brna, StructRNA *srna)
 {
 	PropertyRNA *prop;
@@ -1145,5 +1885,11 @@ void RNA_api_fracture(BlenderRNA *brna, StructRNA *srna)
 	RNA_def_property_ui_text(prop, "Mesh Constraints", "A connection between two Mesh Islands inside the modifier");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 	rna_def_fracture_meshconstraints(brna, prop);
-}
 
+	rna_def_mesh_vertex_group(brna);
+	prop = RNA_def_property(srna, "vertex_groups", PROP_COLLECTION, PROP_NONE);
+	RNA_def_property_collection_funcs(prop, "rna_MeshIslandVertexGroup_begin", "rna_iterator_array_next",
+	                                  "rna_iterator_array_end", "rna_iterator_array_get", NULL, NULL, NULL, NULL);
+	RNA_def_property_struct_type(prop, "MeshIslandVertexGroup");
+	RNA_def_property_ui_text(prop, "vertex_groups", "Global fracture modifier vertex group array");
+}

@@ -30,6 +30,13 @@
 struct bArgs;
 struct bContext;
 
+/* for passing information between creator and gameengine */
+#ifdef WITH_GAMEENGINE
+#  include "BL_System.h"
+#else /* dummy */
+#  define SYS_SystemHandle int
+#endif
+
 #ifndef WITH_PYTHON_MODULE
 
 /* creator_args.c */
@@ -74,7 +81,7 @@ extern struct ApplicationState app_state;  /* creator.c */
 
 /* from buildinfo.c */
 #ifdef BUILD_DATE
- extern char build_date[];
+extern char build_date[];
 extern char build_time[];
 extern char build_hash[];
 extern unsigned long build_commit_timestamp;

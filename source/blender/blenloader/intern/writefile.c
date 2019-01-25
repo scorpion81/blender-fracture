@@ -681,8 +681,10 @@ static void write_iddata(void *wd, const ID *id)
 
 static void write_previews(WriteData *wd, const PreviewImage *prv_orig)
 {
-	/* Never write previews when doing memsave (i.e. undo/redo)! */
-	if (prv_orig && !wd->current) {
+	/* Note we write previews also for undo steps. It takes up some memory,
+	 * but not doing so would causes all previews to be re-rendered after
+	 * undo which is too expensive. */
+	if (prv_orig) {
 		PreviewImage prv = *prv_orig;
 
 		/* don't write out large previews if not requested */
@@ -1749,6 +1751,7 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi, bool write_data)
 	if (write_data) {
 		writedata(wd, DATA, sizeof(float) * 3 * mi->frame_count, mi->locs);
 		writedata(wd, DATA, sizeof(float) * 4 * mi->frame_count, mi->rots);
+		writedata(wd, DATA, sizeof(float) * mi->frame_count, mi->acc_sequence);
 	}
 	else {
 		if (mi->locs) {
@@ -1759,6 +1762,11 @@ static void write_meshIsland(WriteData* wd, MeshIsland* mi, bool write_data)
 		if (mi->rots) {
 			MEM_freeN(mi->rots);
 			mi->rots = NULL;
+		}
+
+		if (mi->acc_sequence){
+			MEM_freeN(mi->acc_sequence);
+			mi->acc_sequence = NULL;
 		}
 
 		mi->frame_count = 0;
@@ -1963,6 +1971,8 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 						}
 					}
 				}
+
+				writestruct(wd, DATA, AnimBind, fmd->anim_bind_len, fmd->anim_bind);
 			}
 			else if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC)
 			{
@@ -1985,6 +1995,8 @@ static void write_modifiers(WriteData *wd, ListBase *modbase)
 						write_meshIsland(wd, mi, true);
 					}
 				}
+
+				writestruct(wd, DATA, AnimBind, fmd->anim_bind_len, fmd->anim_bind);
 			}
 		}
 		else if (md->type == eModifierType_SurfaceDeform) {

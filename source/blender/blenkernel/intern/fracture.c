@@ -15,12 +15,12 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * The Original Code is Copyright (C) Blender Foundation
+ * Copyright (C) 2014 by Martin Felke.
  * All rights reserved.
  *
  * The Original Code is: all of this file.
  *
- * Contributor(s): Martin Felke
+ * Contributor(s): none yet.
  *
  * ***** END GPL LICENSE BLOCK *****
  */
@@ -93,6 +93,7 @@ static void parse_cell_polys(cell c, MPoly *mpoly, int totpoly, int *r_totloop);
 static void parse_cell_loops(cell c, MLoop *mloop, int totloop, MPoly *mpoly, int totpoly);
 static void parse_cell_neighbors(cell c, int *neighbors, int totpoly);
 static void fracture_collect_layers(Shard *shard, DerivedMesh *result, int vertstart, int polystart, int loopstart, int edgestart);
+static void remove_participants(RigidBodyShardCon *con, MeshIsland *mi);
 
 static void add_shard(FracMesh *fm, Shard *s, float mat[4][4])
 {
@@ -162,7 +163,7 @@ static int shard_sortdist(const void *s1, const void *s2, void* context)
 {
 	Shard **sh1 = (Shard **)s1;
 	Shard **sh2 = (Shard **)s2;
-	cell *sh = (cell*)context;
+	Shard *sh = (Shard*)context; //representing raw cell
 
 	float val_a,  val_b;
 
@@ -526,7 +527,8 @@ bool BKE_get_shard_minmax(FracMesh *mesh, ShardID id, float min_r[3], float max_
 	return false;
 }
 
-Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, MEdge* medge,  int totvert, int totpoly, int totloop, int totedge, bool copy)
+Shard *BKE_create_fracture_shard(MVert *mvert, MPoly *mpoly, MLoop *mloop, MEdge* medge,  int totvert, int totpoly,
+                                 int totloop, int totedge, bool copy)
 {
 	Shard *shard = MEM_mallocN(sizeof(Shard), __func__);
 	shard->totvert = totvert;
@@ -685,8 +687,8 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 			(*tempresults)[i] = s;
 			(*tempresults)[i + 1] = s2;
 
-			//BLI_qsort_r(*tempresults, i + 1, sizeof(Shard *), shard_sortdist, &(cells[i]));
-			BLI_qsort_r(*tempresults, i + 1, sizeof(Shard *), shard_sortsize, &(cells[i]));
+			BLI_qsort_r(*tempresults, i + 1, sizeof(Shard *), shard_sortsize, i);
+			BLI_qsort_r(*tempresults, i + 1, sizeof(Shard *), shard_sortdist, t);
 
 			while ((*tempresults)[j] == NULL && j < (i + 1)) {
 				/* ignore invalid shards */
@@ -709,7 +711,7 @@ static void handle_fast_bisect(FracMesh *fm, int expected_shards, int algorithm,
 
 static void handle_boolean_fractal(Shard* p, Shard* t, int expected_shards, DerivedMesh* dm_parent, Object *obj, short inner_material_index,
                                    int num_cuts, float fractal, int num_levels, bool smooth,int parent_id, int* i, Shard ***tempresults,
-                                   DerivedMesh **dm_p, char uv_layer[64], int solver, int thresh)
+                                   DerivedMesh **dm_p, char uv_layer[64], int solver, int thresh, float fac)
 {
 	/* physics shard and fractalized shard, so we need to booleanize twice */
 	/* and we need both halves, so twice again */
@@ -717,6 +719,7 @@ static void handle_boolean_fractal(Shard* p, Shard* t, int expected_shards, Deri
 	Shard *s = NULL;
 	int index = 0;
 	int max_retries = 3;
+	float factor = 1 - fac;
 
 	/*continue with "halves", randomly*/
 	if ((*i) == 0) {
@@ -727,25 +730,50 @@ static void handle_boolean_fractal(Shard* p, Shard* t, int expected_shards, Deri
 
 		float radius;
 		float size[3];
-		float eul[3];
-		float loc[3];
+		float quat[4];
+		float loc[3], vec[3];
+		float min[3], max[3];
 		float one[3] = {1.0f, 1.0f, 1.0f};
 		float matrix[4][4];
+		int max_axis;
 
 		/*make a plane as cutter*/
-		//BKE_object_dimensions_get(obj, size);
-		shard_boundbox(p, loc, size);
-		//radius = MAX3(size[0], size[1], size[2]);
+//		shard_boundbox(p, loc, size);
+		INIT_MINMAX(min, max);
+		(*dm_p)->getMinMax(*dm_p, min, max);
+
+		mid_v3_v3v3(loc, min, max);
+		size[0] = (max[0] - min[0]) / 2.0f;
+		size[1] = (max[1] - min[1]) / 2.0f;
+		size[2] = (max[2] - min[2]) / 2.0f;
+
 		radius = sqrt(size[0]*size[0] + size[1]*size[1] + size[2]*size[2]);
-		//copy_v3_v3(loc, p->centroid);
 
-		eul[0] = BLI_frand() * M_PI;
-		eul[1] = BLI_frand() * M_PI;
-		eul[2] = BLI_frand() * M_PI;
+		vec[0] = BLI_frand() * 2 - 1;
+		vec[1] = BLI_frand() * 2 - 1;
+		vec[2] = BLI_frand() * 2 - 1;
 
-		//printf("(%f %f %f) (%f %f %f) \n", loc[0], loc[1], loc[2], eul[0], eul[1], eul[2]);
+		//multiply two minor dimensions with a factor to emphasize the max dimension
+		max_axis = axis_dominant_v3_single(size);
+		switch (max_axis) {
+			case 0:
+				vec[1] *= factor;
+				vec[2] *= factor;
+				break;
+			case 1:
+				vec[0] *= factor;
+				vec[2] *= factor;
+				break;
+			case 2:
+				vec[0] *= factor;
+				vec[1] *= factor;
+				break;
+		}
 
-		loc_eul_size_to_mat4(matrix, loc, eul, one);
+		//printf("(%f %f %f) (%f %f %f) \n", size[0], size[1], size[2], eul[0], eul[1], eul[2]);*/
+		//loc_eul_size_to_mat4(matrix, loc, vec, one);
+		vec_to_quat(quat, vec, OB_POSZ, OB_POSX);
+		loc_quat_size_to_mat4(matrix, loc, quat, one);
 
 		/*visual shards next, fractalized cuts */
 		s = BKE_fracture_shard_boolean(obj, *dm_p, t, inner_material_index, num_cuts,fractal, &s2, matrix, radius, smooth, num_levels, uv_layer, solver, thresh);
@@ -774,6 +802,8 @@ static void handle_boolean_fractal(Shard* p, Shard* t, int expected_shards, Deri
 		(*tempresults)[*i] = s2;
 
 		BLI_qsort_r(*tempresults, (*i) + 1, sizeof(Shard *), shard_sortsize, i);
+		BLI_qsort_r(*tempresults, (*i) + 1, sizeof(Shard *), shard_sortdist, t);
+
 		while ((*tempresults)[j] == NULL && j < ((*i) + 1)) {
 			/* ignore invalid shards */
 			j++;
@@ -803,7 +833,7 @@ static void handle_boolean_fractal(Shard* p, Shard* t, int expected_shards, Deri
 static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards, int algorithm, int parent_id, Shard **tempshards,
                                   DerivedMesh *dm_parent, BMesh* bm_parent, float obmat[4][4], short inner_material_index, int num_cuts,
                                   int num_levels, float fractal, int *i, bool smooth, Shard*** tempresults, DerivedMesh **dm_p, char uv_layer[64],
-                                  KDTree *preselect_tree, int solver, int thresh, Shard* p)
+                                  KDTree *preselect_tree, int solver, int thresh, Shard* p, float fac)
 {
 	Shard *s = NULL, *t = NULL;
 	if (fm->cancel == 1)
@@ -829,7 +859,7 @@ static bool handle_boolean_bisect(FracMesh *fm, Object *obj, int expected_shards
 	}
 	else if (algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL) {
 		handle_boolean_fractal(p, t, expected_shards, dm_parent, obj, inner_material_index, num_cuts, fractal,
-		                       num_levels, smooth, parent_id, i, tempresults, dm_p, uv_layer, solver, thresh);
+		                       num_levels, smooth, parent_id, i, tempresults, dm_p, uv_layer, solver, thresh, fac);
 	}
 	else if (algorithm == MOD_FRACTURE_BISECT || algorithm == MOD_FRACTURE_BISECT_FILL) {
 		float co[3] = {0, 0, 0}, quat[4] =  {1, 0, 0, 0};
@@ -1125,7 +1155,6 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 	}
 
 	unit_m4(obmat);
-
 	do_prepare_cells(fm, cells, expected_shards, algorithm, p, &centroid, &dm_parent, &bm_parent, &tempshards, &tempresults, override_count, fmd);
 
 	if (fm->last_shard_tree)
@@ -1151,20 +1180,28 @@ static void parse_cells(cell *cells, int expected_shards, ShardID parent_id, Fra
 
 		BLI_kdtree_balance(preselect_tree);
 
+		if (algorithm == MOD_FRACTURE_BOOLEAN_FRACTAL)
+		{
+			//attempt to have some variance atleast here too
+			BLI_srandom(fmd->point_seed);
+		}
+
 		if ((algorithm == MOD_FRACTURE_BOOLEAN) && !threaded)
 		{
 			#pragma omp parallel for
 			for (i = 0; i < expected_shards; i++)	{
 				handle_boolean_bisect(fm, obj, expected_shards, algorithm, parent_id, tempshards, dm_parent,
 										bm_parent, obmat, inner_material_index, num_cuts, num_levels, fractal,
-										&i, smooth, &tempresults, &dm_p, uv_layer, preselect_tree, solver, thresh, p);
+										&i, smooth, &tempresults, &dm_p, uv_layer, preselect_tree, solver, thresh, p,
+										fmd->orthogonality_factor);
 			}
 		}
 		else {
 			for (i = 0; i < expected_shards; i++)	{
 				handle_boolean_bisect(fm, obj, expected_shards, algorithm, parent_id, tempshards, dm_parent,
 										bm_parent, obmat, inner_material_index, num_cuts, num_levels, fractal,
-										&i, smooth, &tempresults, &dm_p, uv_layer, preselect_tree, solver, thresh, p);
+										&i, smooth, &tempresults, &dm_p, uv_layer, preselect_tree, solver, thresh, p,
+										fmd->orthogonality_factor);
 			}
 		}
 
@@ -1875,15 +1912,16 @@ static FractureData segment_cells(cell *voro_cells, int startcell, int totcells,
 
 void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *pointcloud, int algorithm, Object *obj, DerivedMesh *dm, short
                                   inner_material_index, float mat[4][4], int num_cuts, float fractal, bool smooth, int num_levels, int mode,
-                                  bool reset, int active_setting, int num_settings, char uv_layer[64], bool threaded, int solver, float thresh,
-                                  bool shards_to_islands, int override_count, float factor)
+                                  bool reset, int active_setting, int num_settings, char uv_layer[64], bool threaded, int solver,
+                                  float thresh, bool shards_to_islands, int override_count, float factor, int point_source,
+                                  int resolution[3], float spacing[3])
 {
 	int n_size = 8;
 	
 	Shard *shard;
 	
 	float min[3], max[3];
-	float theta = 0.1f; /* TODO, container enlargement, because boundbox exact container and boolean might create artifacts */
+	float theta = 0.001f; /* TODO, container enlargement, because boundbox exact container and boolean might create artifacts */
 	int p, i = 0, num = 0, totcell = 0, remainder_start = 0;
 	
 	container *voro_container;
@@ -1928,9 +1966,36 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	mul_m4_v3(mat, max);
 
 	
-	voro_container = container_new(min[0], max[0], min[1], max[1], min[2], max[2],
-	                               n_size, n_size, n_size, false, false, false,
-	                               pointcloud->totpoints);
+	if (point_source & MOD_FRACTURE_GRID)
+	{
+		float off[3] =  {0, 0, 0};
+		for (p = 0; p < pointcloud->totpoints; p++)
+		{
+			//find "max" offset (where atleast 1 axis is > 0)
+			if (pointcloud->points[p].offset[0] > 0 ||
+			    pointcloud->points[p].offset[1] > 0 ||
+			    pointcloud->points[p].offset[2] > 0)
+			{
+				copy_v3_v3(off, pointcloud->points[p].offset);
+				break;
+			}
+		}
+
+		if (off[0] > 0 || off[1] > 0 || off[2] > 0)
+		{
+			sub_v3_v3(min, off);
+		}
+
+		//special treatment for grid pointsource... with offsets
+		voro_container = container_new(min[0], max[0], min[1], max[1], min[2], max[2],
+										n_size, n_size, n_size, false, false, false,
+										pointcloud->totpoints);
+	}
+	else {
+		voro_container = container_new(min[0], max[0], min[1], max[1], min[2], max[2],
+									   n_size, n_size, n_size, false, false, false,
+									   pointcloud->totpoints);
+	}
 	
 	voro_particle_order = particle_order_new();
 	for (p = 0; p < pointcloud->totpoints; p++) {
@@ -1946,7 +2011,34 @@ void BKE_fracture_shard_by_points(FracMesh *fmesh, ShardID id, FracPointCloud *p
 	voro_cells = cells_new(pointcloud->totpoints);
 
 	/*Compute directly...*/
-	container_compute_cells(voro_container, voro_cells);
+	container_compute_cells(voro_container, voro_particle_order, voro_cells);
+
+	/*Apply offsets (if any, grid only */
+	if (point_source & MOD_FRACTURE_GRID)
+	{
+		int v = 0;
+		float fact[3] = {1 + spacing[0], 1 + spacing[1], 1 + spacing[2]};
+		for (p = 0; p < pointcloud->totpoints; p++)
+		{
+			//adjust centroid and...
+			float off[3], cent[3];
+
+			copy_v3_v3(off, pointcloud->points[p].offset);
+			add_v3_v3(voro_cells[p].centroid, off);
+			copy_v3_v3(cent, voro_cells[p].centroid);
+			mul_v3_v3(cent, fact);
+
+			//vertex coordinates
+			for (v = 0; v < voro_cells[p].totvert; v++)
+			{
+				add_v3_v3(voro_cells[p].verts[v], off);
+
+				//print_v3("Vert", voro_cells[p].verts[v]);
+				add_v3_v3(voro_cells[p].verts[v], cent);
+				sub_v3_v3(voro_cells[p].verts[v], voro_cells[p].centroid);
+			}
+		}
+	}
 
 	/*Disable for fast bisect/fill, dynamic and mousebased for now -> errors and crashes */
 	if (mode != MOD_FRACTURE_DYNAMIC && reset == true && algorithm != MOD_FRACTURE_BISECT_FAST && algorithm != MOD_FRACTURE_BISECT_FAST_FILL && threaded == true) {
@@ -2242,7 +2334,10 @@ static DerivedMesh *create_dm(FractureModifierData *fmd, bool doCustomData, bool
 		CDDM_calc_edges(result);
 	}
 
-	do_marking(fmd, result);
+	if (fmd->fracture_mode != MOD_FRACTURE_EXTERNAL)
+	{
+		do_marking(fmd, result);
+	}
 	
 	result->dirty |= DM_DIRTY_NORMALS;
 	CDDM_calc_normals_mapping(result);
@@ -2521,8 +2616,20 @@ void BKE_free_constraints(FractureModifierData *fmd)
 		}
 	}
 
+
+
 	for (mi = fmd->meshIslands.first; mi; mi = mi->next) {
 		if (mi->participating_constraints != NULL && mi->participating_constraint_count > 0) {
+			int i;
+			for (i = 0; i < mi->participating_constraint_count; i++)
+			{
+				RigidBodyShardCon *con = mi->participating_constraints[i];
+				if (con) {
+					con->mi1 = NULL;
+					con->mi2 = NULL;
+				}
+			}
+
 			MEM_freeN(mi->participating_constraints);
 			mi->participating_constraints = NULL;
 			mi->participating_constraint_count = 0;
@@ -2532,6 +2639,7 @@ void BKE_free_constraints(FractureModifierData *fmd)
 	while (fmd->meshConstraints.first) {
 		rbsc = fmd->meshConstraints.first;
 		BLI_remlink(&fmd->meshConstraints, rbsc);
+
 		if (fmd->fracture_mode == MOD_FRACTURE_DYNAMIC && fmd->modifier.scene)
 		{
 			BKE_rigidbody_remove_shard_con(fmd->modifier.scene, rbsc);
@@ -3120,12 +3228,13 @@ void pack_storage_add(FractureModifierData *fmd, Shard* s)
 
 void fracture_collect_layer(CustomData* src, CustomData *dst, int totelem, int cd_type, int dst_offset, int count)
 {
+	int layerstart = CustomData_get_layer_index(src, cd_type);
 	int totlayer = CustomData_number_of_layers(src, cd_type);
 	int j;
 
 	for (j = 0; j < totlayer; j++)
 	{
-		char *name = CustomData_get_layer_name(src, cd_type, j);
+		const char *name = CustomData_get_layer_name(src, cd_type, j);
 
 		//find index of named layer in dst mesh
 		int index = CustomData_get_named_layer_index(dst, cd_type, name);
@@ -3137,7 +3246,7 @@ void fracture_collect_layer(CustomData* src, CustomData *dst, int totelem, int c
 		}
 
 		index = CustomData_get_named_layer_index(dst, cd_type, name);
-		CustomData_copy_data_layer(src, dst, j, index, 0, dst_offset, count);
+		CustomData_copy_data_layer(src, dst, j+layerstart, index, 0, dst_offset, count);
 	}
 }
 
@@ -3154,6 +3263,7 @@ void fracture_collect_layers(Shard* s, DerivedMesh *dm, int vertstart, int polys
 	fracture_collect_layer(&s->edgeData, &dm->edgeData, totedge, CD_CREASE, edgestart, s->totedge);
 	fracture_collect_layer(&s->edgeData, &dm->edgeData, totedge, CD_BWEIGHT, edgestart, s->totedge);
 	//fracture_collect_layer(&s->edgeData, &dm->edgeData, totedge, CD_MEDGE, edgestart, s->totedge);
+	fracture_collect_layer(&s->vertData, &dm->vertData, totvert, CD_PROP_FLT, vertstart, s->totvert);
 }
 
 MeshIsland* BKE_fracture_mesh_island_add(FractureModifierData *fmd, Object* own, Object *target)
@@ -3274,6 +3384,16 @@ void BKE_fracture_free_mesh_island(FractureModifierData *rmd, MeshIsland *mi, bo
 	}
 
 	if (mi->participating_constraints != NULL) {
+		int i = 0;
+		for (i = 0; i < mi->participating_constraint_count; i++)
+		{
+			RigidBodyShardCon *con = mi->participating_constraints[i];
+			if (con) {
+				con->mi1 = NULL;
+				con->mi2 = NULL;
+			}
+		}
+
 		MEM_freeN(mi->participating_constraints);
 		mi->participating_constraints = NULL;
 		mi->participating_constraint_count = 0;
@@ -3292,6 +3412,12 @@ void BKE_fracture_free_mesh_island(FractureModifierData *rmd, MeshIsland *mi, bo
 	if (mi->locs) {
 		MEM_freeN(mi->locs);
 		mi->locs = NULL;
+	}
+
+	if (mi->acc_sequence)
+	{
+		MEM_freeN(mi->acc_sequence);
+		mi->acc_sequence = NULL;
 	}
 
 	mi->frame_count = 0;
@@ -3499,7 +3625,12 @@ static void remove_participants(RigidBodyShardCon* con, MeshIsland *mi)
 	RigidBodyShardCon **cons;
 	/* Probably wrong, would need to shrink array size... listbase would have been better here */
 	/* info not necessary so omit */
-	int count = mi->participating_constraint_count;
+	int count = 0;
+
+	if (!mi)
+		return;
+
+	count = mi->participating_constraint_count;
 
 	if (count > 1)
 	{
@@ -3625,20 +3756,498 @@ void BKE_meshisland_constraint_create(FractureModifierData* fmd, MeshIsland *mi1
 
 	BLI_addtail(&fmd->meshConstraints, rbsc);
 
-	/* store constraints per meshisland too, to allow breaking percentage */
-	if (mi1->participating_constraints == NULL) {
-		mi1->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon *), "part_constraints_mi1");
-		mi1->participating_constraint_count = 0;
-	}
-	mi1->participating_constraints = MEM_reallocN(mi1->participating_constraints, sizeof(RigidBodyShardCon *) * (mi1->participating_constraint_count + 1));
-	mi1->participating_constraints[mi1->participating_constraint_count] = rbsc;
-	mi1->participating_constraint_count++;
+	if ((mi1->object_index == -1) && (mi2->object_index == -1))
+	{
+		/* store constraints per meshisland too, to allow breaking percentage */
+		if (mi1->participating_constraints == NULL) {
+			mi1->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon *), "part_constraints_mi1");
+			mi1->participating_constraint_count = 0;
+		}
+		mi1->participating_constraints = MEM_reallocN(mi1->participating_constraints,
+		                                              sizeof(RigidBodyShardCon *) * (mi1->participating_constraint_count + 1));
+		mi1->participating_constraints[mi1->participating_constraint_count] = rbsc;
+		mi1->participating_constraint_count++;
 
-	if (mi2->participating_constraints == NULL) {
-		mi2->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon *), "part_constraints_mi2");
-		mi2->participating_constraint_count = 0;
+		if (mi2->participating_constraints == NULL) {
+			mi2->participating_constraints = MEM_callocN(sizeof(RigidBodyShardCon *), "part_constraints_mi2");
+			mi2->participating_constraint_count = 0;
+		}
+		mi2->participating_constraints = MEM_reallocN(mi2->participating_constraints,
+		                                              sizeof(RigidBodyShardCon *) * (mi2->participating_constraint_count + 1));
+		mi2->participating_constraints[mi2->participating_constraint_count] = rbsc;
+		mi2->participating_constraint_count++;
 	}
-	mi2->participating_constraints = MEM_reallocN(mi2->participating_constraints, sizeof(RigidBodyShardCon *) * (mi2->participating_constraint_count + 1));
-	mi2->participating_constraints[mi2->participating_constraint_count] = rbsc;
-	mi2->participating_constraint_count++;
+}
+
+void BKE_update_acceleration_map(FractureModifierData *fmd, MeshIsland* mi, Object* ob, int ctime, float acc, RigidBodyWorld *rbw)
+{
+	const int acc_defgrp_index = defgroup_name_index(ob, fmd->acceleration_defgrp_name);
+	DerivedMesh *dm = fmd->visible_mesh_cached;
+	MDeformVert *dvert = NULL, *dv = NULL;
+	MDeformWeight *dw = NULL;
+	float weight = 0.0f, denom;
+	int i = 0, w = 0;
+	int totvert = dm ? dm->getNumVerts(dm) : 0;
+
+	if (!dm)
+		return;
+
+	dvert = dm->getVertDataArray(dm, CD_MDEFORMVERT);
+
+	if (dvert == NULL)
+	{
+		dvert = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC,
+	                             NULL, totvert);
+	}
+
+	//calculate weight from force...
+	denom = fmd->max_acceleration - fmd->min_acceleration;
+
+	//sanity check
+	if (denom == 0.0f)
+		denom = 1.0f;
+
+	//if (mi->acc_sequence)
+	{
+		weight = (acc - fmd->min_acceleration) / denom;
+
+		for (i = 0; i < mi->vertex_count; i++)
+		{
+			dv = dvert + mi->vertex_indices[i];
+			if (dv) {
+				if (dv->dw == NULL && acc_defgrp_index >= 0) {
+					defvert_add_index_notest(dv, acc_defgrp_index, 0.0f);
+				}
+
+				for (dw = dv->dw, w = 0; w < dv->totweight; dw++, w++)
+				{
+					if (dw->def_nr == acc_defgrp_index) {
+
+						if (weight >= 0.0f && weight <= 1.0f) {
+							dw->weight = weight;
+						}
+						else if (ctime == rbw->pointcache->startframe) {
+							dw->weight = 0.0f;
+						}
+
+						if (ctime == rbw->ltime + 1)
+							dw->weight *= fmd->acceleration_fade;
+					}
+				}
+			}
+		}
+	}
+}
+
+void BKE_update_velocity_layer(FractureModifierData *fmd)
+{
+	DerivedMesh *dm = fmd->visible_mesh_cached;
+	float *velX=NULL, *velY=NULL, *velZ = NULL;
+	RigidBodyOb *rbo = NULL;
+	int i = 0;
+	MeshIsland *mi;
+	int totvert;
+
+	if (!dm)
+		return;
+
+	totvert = dm->getNumVerts(dm);
+
+	velX = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velX");
+	velY = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velY");
+	velZ = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "velZ");
+
+	if (!velX)
+		velX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, totvert, "velX");
+
+	if (!velY)
+		velY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, totvert, "velY");
+
+	if (!velZ)
+		velZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, totvert, "velZ");
+
+	for (mi = fmd->meshIslands.first; mi; mi = mi->next)
+	{
+		rbo = mi->rigidbody;
+
+		for (i = 0; i < mi->vertex_count; i++)
+		{
+			velX[mi->vertex_indices[i]] = rbo->lin_vel[0] + rbo->ang_vel[0];
+			velY[mi->vertex_indices[i]] = rbo->lin_vel[1] + rbo->ang_vel[1];
+			velZ[mi->vertex_indices[i]] = rbo->lin_vel[2] + rbo->ang_vel[2];
+		}
+	}
+}
+
+/* gah, it could be that simple, if each mod handled its stuff itself */
+static DerivedMesh *eval_mod_stack_simple(Object *ob)
+{
+	DerivedMesh *dm = NULL;
+	ModifierData *md;
+
+	if (ob->type != OB_MESH)
+		return NULL;
+
+	if (ob->data == NULL)
+		return NULL;
+
+	dm = CDDM_from_mesh(ob->data);
+
+	for (md = ob->modifiers.first; md; md = md->next)
+	{
+		const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+		if (mti->deformVerts && (md->mode & (eModifierMode_Realtime | eModifierMode_Render)))
+		{
+			float (*vertexCos)[3];
+			int totvert = dm->getNumVerts(dm);
+
+			vertexCos = MEM_callocN(sizeof(float) * 3 * totvert, "Vertex Cos");
+			dm->getVertCos(dm, vertexCos);
+			mti->deformVerts(md, ob, dm, vertexCos, totvert, 0);
+			CDDM_apply_vert_coords(dm, vertexCos);
+			MEM_freeN(vertexCos);
+			CDDM_calc_normals(dm);
+		}
+
+		if (mti->applyModifier && (md->mode & (eModifierMode_Realtime | eModifierMode_Render)))
+		{
+			DerivedMesh *ndm;
+
+			ndm = mti->applyModifier(md, ob, dm, 0);
+			if (ndm != dm)
+			{
+				dm->needsFree = 1;
+				dm->release(dm);
+			}
+			dm = ndm;
+			CDDM_calc_normals(dm);
+		}
+	}
+
+	return dm;
+}
+
+void activate(MeshIsland *mi, AnimBind *bind)
+{
+	bind->v = -1;
+	bind->v1 = -1;
+	bind->v2 = -1;
+	bind->mi = -1;
+	zero_v3(bind->no);
+	zero_v3(bind->offset);
+	unit_qt(bind->quat);
+
+	if (mi->rigidbody->type == RBO_TYPE_ACTIVE)
+	{
+		RigidBodyOb* rbo = mi->rigidbody;
+
+		rbo->flag &= ~RBO_FLAG_KINEMATIC;
+		rbo->flag &= ~RBO_FLAG_KINEMATIC_BOUND;
+		rbo->flag |= RBO_FLAG_NEEDS_VALIDATE;
+
+		if (rbo->physics_object)
+		{
+			RB_body_set_mass(rbo->physics_object, rbo->mass);
+			RB_body_set_kinematic_state(rbo->physics_object, false);
+			RB_body_activate(rbo->physics_object);
+		}
+	}
+}
+
+void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bind)
+{
+	//to be called after rigidbodies have been actually created... from MOD_fracture.c
+	//rotation is optional, remesher + particlesystem can provide it
+	float *quatX, *quatY, *quatZ, *quatW;
+	MVert *mvert = NULL;
+	MPoly *mpoly = NULL;
+	MLoop *mloop = NULL;
+	MeshIsland *mi;
+	DerivedMesh *dm = NULL;
+	int totvert, count = 0, i = 0, *orig_index = NULL, totpoly, items;
+	KDTree *tree = NULL;
+	float anim_imat[4][4], imat[4][4], ob_quat[4], anim_quat[4], ob_iquat[4];
+
+	if (!fmd->anim_mesh_ob)
+		return;
+
+	if (fmd->anim_mesh_ob == ob)
+		return;
+
+	dm = eval_mod_stack_simple(fmd->anim_mesh_ob);
+
+	if (!dm)
+		return;
+
+	totvert = dm->getNumVerts(dm);
+	totpoly = dm->getNumPolys(dm);
+
+	invert_m4_m4(anim_imat, fmd->anim_mesh_ob->obmat);
+	invert_m4_m4(imat, ob->obmat);
+
+	mat4_to_quat(ob_quat, ob->obmat);
+	mat4_to_quat(anim_quat, fmd->anim_mesh_ob->obmat);
+
+	invert_qt_qt(ob_iquat, ob_quat);
+
+	if (totvert == 0) {
+		dm->release(dm);
+		return;
+	}
+
+	if (do_bind) {
+
+		items = totpoly > 0 ? totpoly : totvert;
+
+		count = BLI_listbase_count(&fmd->meshIslands);
+		tree = BLI_kdtree_new(items);
+
+		fmd->anim_bind_len = count;
+		if (fmd->anim_bind) {
+			MEM_freeN(fmd->anim_bind);
+		}
+
+		//TODO, possibly a weak solution, but do we really want to store the length too ?
+		fmd->anim_bind = MEM_mallocN(sizeof(AnimBind) * fmd->anim_bind_len, "anim_bind");
+		for (i = 0; i < fmd->anim_bind_len; i++)
+		{
+			fmd->anim_bind[i].mi = -1;
+			fmd->anim_bind[i].v = -1;
+			fmd->anim_bind[i].v1 = -1;
+			fmd->anim_bind[i].v2 = -1;
+			zero_v3(fmd->anim_bind[i].offset);
+			zero_v3(fmd->anim_bind[i].no);
+			unit_qt(fmd->anim_bind[i].quat);
+		}
+	}
+
+	i = 0;
+	mvert = dm->getVertArray(dm);
+	mpoly = dm->getPolyArray(dm);
+	mloop = dm->getLoopArray(dm);
+	if (do_bind)
+	{
+		if (totpoly > 0)
+		{
+			//poly based bind
+			for (i = 0; i < totpoly; i++)
+			{
+				float co[3];
+				copy_v3_v3(co, mvert[mloop[mpoly[i].loopstart].v].co);
+				BLI_kdtree_insert(tree, i, co);
+			}
+		}
+		else
+		{
+			//no faces -> vertex based bind
+			for (i = 0; i < totvert; i++)
+			{
+				float co[3];
+				copy_v3_v3(co, mvert[i].co);
+				BLI_kdtree_insert(tree, i, co);
+			}
+		}
+
+		BLI_kdtree_balance(tree);
+	}
+
+
+	quatX = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "quatX");
+	quatY = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "quatY");
+	quatZ = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "quatZ");
+	quatW = CustomData_get_layer_named(&dm->vertData, CD_PROP_FLT, "quatW");
+	orig_index = CustomData_get_layer(&dm->vertData, CD_ORIGINDEX);
+
+	//check vertexcount and islandcount, TODO for splitshards... there it might differ, ignore then for now
+	//later do interpolation ? propagate to islands somehow then, not yet now...
+	//also maybe skip for dynamic for now, since this is totally different
+
+	//bind loop, bind the verts to the shards
+	if (do_bind)
+	{
+		i = 0;
+		for (mi = fmd->meshIslands.first; mi; mi = mi->next, i++)
+		{
+			KDTreeNearest n;
+			float co[3], diff[3] = {0, 0, 0}, f_no[3];
+			int j = 0;
+
+			copy_v3_v3(co, mi->rigidbody->pos);
+			mul_m4_v3(anim_imat, co);
+			BLI_kdtree_find_nearest(tree, co, &n);
+
+			if (n.dist <= fmd->anim_bind_limit || fmd->anim_bind_limit == 0)
+			{
+				if (totpoly > 0)
+				{
+					int v1, v2, v3;
+					float limit = 0.0001f;
+					MPoly *mp  = mpoly + n.index;
+					MLoop *ml = mloop + mp->loopstart;
+					BKE_mesh_calc_poly_normal(mp, ml, mvert, f_no);
+
+					v1 = ml->v;
+					v2 = (ml + 1)->v;
+					v3 = (ml + 2)->v;
+
+					if (mpoly[n.index].totloop < 3)
+					{
+						printf("Degenerate face, skipping\n");
+						activate(mi, &fmd->anim_bind[i]);
+						continue;
+					}
+
+					if (compare_v3v3(mvert[v1].co, mvert[v2].co, limit) ||
+					    compare_v3v3(mvert[v1].co, mvert[v3].co, limit) ||
+					    compare_v3v3(mvert[v2].co, mvert[v3].co, limit))
+					{
+						printf("Very close coordinates, skipping %d %d %d in %d\n", v1, v2, v3, mi->id);
+						activate(mi, &fmd->anim_bind[i]);
+						continue;
+					}
+
+					fmd->anim_bind[i].v = v1;
+					fmd->anim_bind[i].v1 = v2;
+					fmd->anim_bind[i].v2 = v3;
+					fmd->anim_bind[i].poly = n.index;
+					mi->rigidbody->flag |= RBO_FLAG_KINEMATIC_BOUND;
+				}
+				else {
+					fmd->anim_bind[i].v = n.index;
+					fmd->anim_bind[i].v1 = -1;
+					fmd->anim_bind[i].v2 = -1;
+					mi->rigidbody->flag |= RBO_FLAG_KINEMATIC_BOUND;
+				}
+
+				if (fmd->anim_bind[i].v != -1)
+				{
+					fmd->anim_bind[i].mi = i;
+					sub_v3_v3v3(diff, n.co, co);
+
+					copy_v3_v3(fmd->anim_bind[i].offset, diff);
+
+					if ((fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1)) {
+						//fallback if not enough verts around
+						normal_short_to_float_v3(fmd->anim_bind[i].no, mvert[n.index].no);
+						normalize_v3(fmd->anim_bind[i].no);
+					}
+					else if (totpoly > 0) {
+						tri_to_quat_ex(fmd->anim_bind[i].quat,
+								mvert[fmd->anim_bind[i].v].co,
+								mvert[fmd->anim_bind[i].v1].co,
+								mvert[fmd->anim_bind[i].v2].co, f_no);
+						copy_v3_v3(fmd->anim_bind[i].no, f_no);
+					}
+				}
+			}
+			else
+			{
+				activate(mi, &fmd->anim_bind[i]);
+			}
+		}
+
+		if (tree)
+			BLI_kdtree_free(tree);
+	}
+	else
+	{
+		mi = fmd->meshIslands.first;
+		for (i = 0; i < fmd->anim_bind_len; i++, mi = mi->next)
+		{
+			float co[3];
+			int index = -1;
+			int vindex = -1;
+
+			index = fmd->anim_bind[i].mi;
+			vindex = fmd->anim_bind[i].v;
+
+			if (index == -1 || vindex == -1)
+			{
+				activate(mi, &fmd->anim_bind[i]);
+				continue;
+			}
+
+			//only let kinematic rbs do this, active ones are being taken care of by bullet
+			if (mi && mi->rigidbody && (mi->rigidbody->flag & RBO_FLAG_KINEMATIC))
+			{
+				//the 4 rot layers *should* be aligned, caller needs to ensure !
+				bool quats = quatX && quatY && quatZ && quatW;
+				float quat[4], vec[3], no[3], off[3];
+				int v = fmd->anim_bind[i].v;
+				unit_qt(quat);
+
+				if (v >= totvert) {
+					activate(mi, &fmd->anim_bind[i]);
+					continue;
+				}
+
+				if ((orig_index && orig_index[v] != v && (fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1)))
+				{
+					activate(mi, &fmd->anim_bind[i]);
+					continue;
+				}
+
+				copy_v3_v3(co, mvert[v].co);
+				copy_v3_v3(off, fmd->anim_bind[i].offset);
+
+				if (fmd->anim_mesh_rot)
+				{
+					if (quats)
+					{
+						quat[0] = quatX[v];
+						quat[1] = quatY[v];
+						quat[2] = quatZ[v];
+						quat[3] = quatW[v];
+					}
+					else
+					{
+						copy_v3_v3(vec, fmd->anim_bind[i].no);
+						if (fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1) {
+							//fallback if not enough verts around;
+							normal_short_to_float_v3(no, mvert[v].no);
+							normalize_v3(no);
+							rotation_between_vecs_to_quat(quat, vec, no);
+						}
+						else {
+							float rot[4], iquat[4], fno[3];
+							MPoly *mp = mpoly + fmd->anim_bind[i].poly;
+							MLoop *ml = mloop + mp->loopstart;
+							BKE_mesh_calc_poly_normal(mp, ml, mvert, fno);
+
+							tri_to_quat_ex(rot, mvert[fmd->anim_bind[i].v].co,
+											  mvert[fmd->anim_bind[i].v1].co,
+											  mvert[fmd->anim_bind[i].v2].co,
+											  fno);
+							invert_qt_qt(iquat, fmd->anim_bind[i].quat);
+							mul_qt_qtqt(quat, rot, iquat);
+						}
+					}
+
+					//mul_qt_qtqt(quat, ob_quat, quat);
+				}
+
+				mul_qt_v3(quat, off);
+				sub_v3_v3(co, off);
+				mul_m4_v3(fmd->anim_mesh_ob->obmat, co);
+
+				copy_v3_v3(mi->rigidbody->pos, co);
+
+				if (fmd->anim_mesh_rot)
+				{
+					//mul_qt_qtqt(quat, ob_quat, quat);
+					mul_qt_qtqt(quat, anim_quat, quat);
+					copy_qt_qt(mi->rigidbody->orn, quat);
+				}
+
+				mi->rigidbody->flag |= RBO_FLAG_NEEDS_VALIDATE;
+				if (mi->rigidbody->physics_object)
+				{
+					RB_body_set_loc_rot(mi->rigidbody->physics_object, mi->rigidbody->pos, mi->rigidbody->orn);
+				}
+			}
+		}
+	}
+
+	if (dm)
+		dm->release(dm);
 }

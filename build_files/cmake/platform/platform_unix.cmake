@@ -23,6 +23,19 @@
 
 # Libraries configuration for any *nix system including Linux and Unix.
 
+# Detect precompiled library directory
+set(LIBDIR_NAME ${CMAKE_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR})
+string(TOLOWER ${LIBDIR_NAME} LIBDIR_NAME)
+set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/${LIBDIR_NAME})
+
+if(EXISTS ${LIBDIR})
+	file(GLOB LIB_SUBDIRS ${LIBDIR}/*)
+	set(CMAKE_PREFIX_PATH ${LIB_SUBDIRS})
+	set(WITH_STATIC_LIBS ON)
+	set(WITH_OPENMP_STATIC ON)
+endif()
+
+# Wrapper to prefer static libraries
 macro(find_package_wrapper)
 	if(WITH_STATIC_LIBS)
 		find_package_static(${ARGV})
@@ -31,10 +44,27 @@ macro(find_package_wrapper)
 	endif()
 endmacro()
 
-find_package_wrapper(JPEG REQUIRED)
+find_package_wrapper(JPG REQUIRED)
 find_package_wrapper(PNG REQUIRED)
 find_package_wrapper(ZLIB REQUIRED)
 find_package_wrapper(Freetype REQUIRED)
+
+if(WITH_CRASHPAD)
+	set(CRASHPAD_DIR ${LIBDIR}/breakpad)
+	find_library(CRASHPAD_LIB_CLIENT NAMES libbreakpad_client.a PATHS ${CRASHPAD_DIR}/lib)
+	find_library(CRASHPAD_LIB NAMES libbreakpad.a PATHS ${CRASHPAD_DIR}/lib)
+
+	list(APPEND CRASHPAD_LIBRARIES ${CRASHPAD_LIB_CLIENT} ${CRASHPAD_LIB})
+
+	find_path(CRASHPAD_INCLUDE_DIRS client/linux/handler/exception_handler.h PATHS ${CRASHPAD_DIR}/include)
+
+	if(CRASHPAD_INCLUDE_DIRS AND CRASHPAD_LIBRARIES)
+		set(WITH_CRASHPAD TRUE)
+	else()
+		message(STATUS "Crashpad not found")
+		set(WITH_CRASHPAD FALSE)
+	endif()
+endif()
 
 if(WITH_LZO AND WITH_SYSTEM_LZO)
 	find_package_wrapper(LZO)
@@ -141,8 +171,15 @@ if(WITH_CODEC_SNDFILE)
 endif()
 
 if(WITH_CODEC_FFMPEG)
-	set(FFMPEG /usr CACHE PATH "FFMPEG Directory")
-	set(FFMPEG_LIBRARIES avformat avcodec avutil avdevice swscale CACHE STRING "FFMPEG Libraries")
+	if(EXISTS ${LIBDIR})
+		# For precompiled lib directory, all ffmpeg dependencies are in the same folder
+		file(GLOB ffmpeg_libs ${LIBDIR}/ffmpeg/lib/*.a ${LIBDIR}/sndfile/lib/*.a)
+		set(FFMPEG ${LIBDIR}/ffmpeg CACHE PATH "FFMPEG Directory")
+		set(FFMPEG_LIBRARIES ${ffmpeg_libs} ${ffmpeg_libs} CACHE STRING "FFMPEG Libraries")
+	else()
+		set(FFMPEG /usr CACHE PATH "FFMPEG Directory")
+		set(FFMPEG_LIBRARIES avformat avcodec avutil avdevice swscale CACHE STRING "FFMPEG Libraries")
+	endif()
 
 	mark_as_advanced(FFMPEG)
 
@@ -217,10 +254,14 @@ endif()
 if(WITH_OPENVDB)
 	find_package_wrapper(OpenVDB)
 	find_package_wrapper(TBB)
+	find_package_wrapper(Blosc)
 	if(NOT OPENVDB_FOUND OR NOT TBB_FOUND)
 		set(WITH_OPENVDB OFF)
 		set(WITH_OPENVDB_BLOSC OFF)
 		message(STATUS "OpenVDB not found, disabling it")
+	elseif(NOT BLOSC_FOUND)
+		set(WITH_OPENVDB_BLOSC OFF)
+		message(STATUS "Blosc not found, disabling it")
 	endif()
 endif()
 
@@ -329,6 +370,14 @@ if(WITH_OPENCOLORIO)
 endif()
 
 if(WITH_LLVM)
+	# Symbol conflicts with same UTF library used by OpenCollada
+	if(EXISTS ${LIBDIR})
+		set(LLVM_STATIC ON)
+		if(WITH_OPENCOLLADA)
+			list(REMOVE_ITEM OPENCOLLADA_LIBRARIES ${OPENCOLLADA_UTF_LIBRARY})
+		endif()
+	endif()
+
 	find_package_wrapper(LLVM)
 
 	if(NOT LLVM_FOUND)
@@ -358,7 +407,11 @@ if(WITH_OPENSUBDIV OR WITH_CYCLES_OPENSUBDIV)
 endif()
 
 # OpenSuse needs lutil, ArchLinux not, for now keep, can avoid by using --as-needed
-list(APPEND PLATFORM_LINKLIBS -lutil -lc -lm)
+if(HAIKU)
+	list(APPEND PLATFORM_LINKLIBS -lnetwork)
+else()
+	list(APPEND PLATFORM_LINKLIBS -lutil -lc -lm)
+endif()
 
 find_package(Threads REQUIRED)
 list(APPEND PLATFORM_LINKLIBS ${CMAKE_THREAD_LIBS_INIT})
@@ -400,10 +453,6 @@ if(CMAKE_COMPILER_IS_GNUCC)
 # CLang is the same as GCC for now.
 elseif(CMAKE_C_COMPILER_ID MATCHES "Clang")
 	set(PLATFORM_CFLAGS "-pipe -fPIC -funsigned-char -fno-strict-aliasing")
-# Solaris CC
-elseif(CMAKE_C_COMPILER_ID MATCHES "SunPro")
-	set(PLATFORM_CFLAGS "-pipe -features=extensions -fPIC -D__FUNCTION__=__func__")
-
 # Intel C++ Compiler
 elseif(CMAKE_C_COMPILER_ID MATCHES "Intel")
 	# think these next two are broken

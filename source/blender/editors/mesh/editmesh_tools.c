@@ -2624,7 +2624,7 @@ static int edbm_solidify_exec(bContext *C, wmOperator *op)
 
 	const float thickness = RNA_float_get(op->ptr, "thickness");
 
-	if (!EDBM_op_init(em, &bmop, op, "solidify geom=%hf thickness=%f", BM_ELEM_SELECT, thickness)) {
+	if (!EDBM_op_init(em, &bmop, op, "solidify geom=%hf thickness=%f offset=%f", BM_ELEM_SELECT, thickness, -1.0f)) {
 		return OPERATOR_CANCELLED;
 	}
 

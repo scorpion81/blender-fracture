@@ -146,9 +146,10 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         layout.row().prop(md, "offset_type", expand=True)
 
     def BOOLEAN(self, layout, ob, md):
+        solver = md.solver
         if not bpy.app.build_options.mod_boolean:
-            layout.label("Built without Boolean modifier")
-            return
+            if solver == 'CARVE':
+                layout.label("Built without Carve solver")
 
         split = layout.split()
 
@@ -164,8 +165,12 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         split.column().label(text="Solver:")
         split.column().prop(md, "solver", text="")
 
-        if md.solver == 'BMESH':
+        if solver == 'BMESH':
             layout.prop(md, "double_threshold")
+
+            if bpy.app.debug:
+                layout.prop(md, "debug_options")
+
 
     def BUILD(self, layout, ob, md):
         split = layout.split()
@@ -917,12 +922,13 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
         row.prop(md, "material_offset_rim", text="Rim")
 
     def SUBSURF(self, layout, ob, md):
+        from bpy import context
         layout.row().prop(md, "subdivision_type", expand=True)
 
         split = layout.split()
         col = split.column()
 
-        scene = bpy.context.scene
+        scene = context.scene
         engine = scene.render.engine
         show_adaptive_options = (engine == "CYCLES" and md == ob.modifiers[-1] and
                                  scene.cycles.feature_set == "EXPERIMENTAL")
@@ -1119,18 +1125,39 @@ class DATA_PT_modifiers(ModifierButtonsPanel, Panel):
 
         layout.prop(md, "mode")
 
-        row = layout.row()
-        row.prop(md, "octree_depth")
-        row.prop(md, "scale")
 
-        if md.mode == 'SHARP':
-            layout.prop(md, "sharpness")
+        if md.mode == 'METABALL':
+            row = layout.row()
+            row.prop(md, "input")
+            if 'PARTICLES' in md.input:
+                row = layout.row()
+                row.prop(md, "psys")
+                row = layout.row()
+                row.prop(md, "filter")
+            row = layout.row()
+            col = row.column(align=True)
+            col.prop(md, "mball_size")
+            col = row.column(align=True)
+            col.label("Display Parameters:")
+            col.prop(md, "mball_threshold")
+            col.prop(md, "mball_resolution")
+            col.prop(md, "mball_render_resolution")
+            layout.prop_search(md, "size_vertex_group", ob, "vertex_groups", text = "Size Vertex Group")
+            layout.prop(md, "use_smooth_shade")
 
-        layout.prop(md, "use_smooth_shade")
-        layout.prop(md, "use_remove_disconnected")
-        row = layout.row()
-        row.active = md.use_remove_disconnected
-        row.prop(md, "threshold")
+        else:
+            row = layout.row()
+            row.prop(md, "octree_depth")
+            row.prop(md, "scale")
+
+            if md.mode == 'SHARP':
+                layout.prop(md, "sharpness")
+
+            layout.prop(md, "use_smooth_shade")
+            layout.prop(md, "use_remove_disconnected")
+            row = layout.row()
+            row.active = md.use_remove_disconnected
+            row.prop(md, "threshold")
 
     @staticmethod
     def vertex_weight_mask(layout, ob, md):

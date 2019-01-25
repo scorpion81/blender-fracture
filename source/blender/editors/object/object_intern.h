@@ -182,6 +182,7 @@ void OBJECT_OT_meshdeform_bind(struct wmOperatorType *ot);
 void OBJECT_OT_explode_refresh(struct wmOperatorType *ot);
 void OBJECT_OT_ocean_bake(struct wmOperatorType *ot);
 void OBJECT_OT_fracture_refresh(struct wmOperatorType *ot);
+void OBJECT_OT_fracture_anim_bind(struct wmOperatorType *ot);
 void OBJECT_OT_rigidbody_convert_to_objects(struct wmOperatorType *ot);
 void OBJECT_OT_rigidbody_convert_to_keyframes(struct wmOperatorType *ot);
 void OBJECT_OT_skin_root_mark(struct wmOperatorType *ot);

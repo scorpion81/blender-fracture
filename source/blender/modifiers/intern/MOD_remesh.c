@@ -17,6 +17,8 @@
  *
  * The Original Code is Copyright (C) 2011 by Nicholas Bishop.
  *
+ * Contributors: Martin Felke
+ *
  * ***** END GPL LICENSE BLOCK *****
  */
 
@@ -29,13 +31,18 @@
 #include "BLI_math_base.h"
 #include "BLI_math_vector.h"
 #include "BLI_utildefines.h"
+#include "BLI_listbase.h"
+#include "BLI_memarena.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_DerivedMesh.h"
+#include "BKE_mball_tessellate.h"
+#include "BKE_deform.h"
 
 #include "DNA_meshdata_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_object_types.h"
+#include "DNA_particle_types.h"
 
 #include "MOD_modifiertypes.h"
 
@@ -57,6 +64,15 @@ static void initData(ModifierData *md)
 	rmd->flag = MOD_REMESH_FLOOD_FILL;
 	rmd->mode = MOD_REMESH_SHARP_FEATURES;
 	rmd->threshold = 1;
+
+	rmd->basesize[0] = rmd->basesize[1] = rmd->basesize[2] = 1.0f;
+	rmd->thresh = 0.6f;
+	rmd->wiresize = 0.4f;
+	rmd->rendersize = 0.2f;
+
+	rmd->input = 0;
+	rmd->pflag = 1;
+	rmd->psys = 1;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -142,10 +158,273 @@ static void dualcon_add_quad(void *output_v, const int vert_indices[4])
 	output->curface++;
 }
 
+static int get_particle_data(RemeshModifierData *rmd, ParticleSystem *psys, Object *ob,
+                             float (**pos)[3], float **size, float (**vel)[3], float(**rot)[4],
+                             int **index, MemArena *pardata)
+{
+	//take alive, for now
+	ParticleData *pa;
+	int i = 0, j = 0;
+	float imat[4][4];
+	invert_m4_m4(imat, ob->obmat);
+
+	(*pos) = BLI_memarena_calloc(pardata, sizeof(float) * 3 * psys->totpart);
+	(*size) = BLI_memarena_calloc(pardata, sizeof(float) * psys->totpart);
+	(*vel) = BLI_memarena_calloc(pardata, sizeof(float) * 3 * psys->totpart);
+	(*rot) = BLI_memarena_calloc(pardata, sizeof(float) * 4 * psys->totpart);
+	(*index) = BLI_memarena_calloc(pardata, sizeof(int) * psys->totpart);
+
+	for (i = 0; i < psys->totpart; i++)
+	{
+		float co[3];
+		pa = psys->particles + i;
+		if (pa->alive == PARS_UNBORN && (rmd->pflag & eRemeshFlag_Unborn) == 0) continue;
+		if (pa->alive == PARS_ALIVE && (rmd->pflag & eRemeshFlag_Alive) == 0) continue;
+		if (pa->alive == PARS_DEAD && (rmd->pflag & eRemeshFlag_Dead) == 0) continue;
+
+		mul_v3_m4v3(co, imat, pa->state.co);
+		copy_v3_v3((*pos)[j], co);
+		(*size)[j] = pa->size;
+		copy_v3_v3((*vel)[j], pa->state.vel);
+		copy_qt_qt((*rot)[j], pa->state.rot);
+		(*index)[j] = i;
+		j++;
+	}
+
+	return j;
+}
+
+static ParticleSystem *get_psys(RemeshModifierData *rmd, Object *ob, bool render)
+{
+	ParticleSystem *psys;
+	ModifierData *ob_md = (ModifierData*)rmd;
+
+	psys = BLI_findlink(&ob->particlesystem, rmd->psys - 1);
+	if (psys == NULL)
+		return NULL;
+
+	/* If the psys modifier is disabled we cannot use its data.
+	 * First look up the psys modifier from the object, then check if it is enabled.
+	 */
+
+	for (ob_md = ob->modifiers.first; ob_md; ob_md = ob_md->next) {
+		if (ob_md->type == eModifierType_ParticleSystem) {
+			ParticleSystemModifierData *psmd = (ParticleSystemModifierData *)ob_md;
+			if (psmd->psys == psys) {
+				int required_mode;
+
+				if (render) required_mode = eModifierMode_Render;
+				else required_mode = eModifierMode_Realtime;
+
+				if (modifier_isEnabled(ob_md->scene, ob_md, required_mode))
+				{
+					return psys;
+				}
+
+				return NULL;
+			}
+		}
+	}
+
+	return NULL;
+}
+
+static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMesh* derived, ParticleSystem *psys, bool render)
+{
+	DerivedMesh *dm = NULL, *result = NULL;
+	MVert *mv = NULL, *mv2 = NULL;
+	float (*pos)[3] = NULL, (*vel)[3] = NULL, (*rot)[4] = NULL;
+	float *size = NULL, *psize = NULL, *velX = NULL, *velY = NULL, *velZ = NULL,
+	      *quatX = NULL, *quatY = NULL, *quatZ = NULL, *quatW = NULL;
+	int i = 0, n = 0, *index, *orig_index;
+	bool override_size = rmd->pflag & eRemeshFlag_Size;
+	bool verts_only = rmd->pflag & eRemeshFlag_Verts;
+	MDeformVert *dvert = NULL;
+	int defgrp_size = -1;
+
+	if (rmd->size_defgrp_name[0])
+	{
+		defgrp_size = defgroup_name_index(ob, rmd->size_defgrp_name);
+		dvert = CustomData_get_layer(&derived->vertData, CD_MDEFORMVERT);
+	}
+
+	if (((rmd->input & MOD_REMESH_VERTICES)==0) && (rmd->input & MOD_REMESH_PARTICLES))
+	{
+		//particles only
+		MemArena *pardata = NULL;
+		if (psys == NULL)
+			return derived;
+
+		pardata = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, "pardata");
+
+		n = get_particle_data(rmd, psys, ob, &pos, &size, &vel, &rot, &index, pardata);
+		dm = CDDM_new(n, 0, 0, 0, 0);
+		mv = dm->getVertArray(dm);
+		psize = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "psize");
+		velX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "velX");
+		velY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "velY");
+		velZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "velZ");
+
+		quatX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatX");
+		quatY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatY");
+		quatZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatZ");
+		quatW = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatW");
+
+		orig_index = CustomData_add_layer(&dm->vertData, CD_ORIGINDEX, CD_CALLOC, NULL, n);
+
+//#pragma omp parallel for
+		for (i = 0; i < n; i++)
+		{
+			copy_v3_v3(mv[i].co, pos[i]);
+			psize[i] = size[i];
+			velX[i] = vel[i][0];
+			velY[i] = vel[i][1];
+			velZ[i] = vel[i][2];
+
+			quatX[i] = rot[i][0];
+			quatY[i] = rot[i][1];
+			quatZ[i] = rot[i][2];
+			quatW[i] = rot[i][3];
+
+			orig_index[i] = index[i];
+		}
+
+		if (verts_only)
+		{
+			BLI_memarena_free(pardata);
+			return dm;
+		}
+		else {
+			BLI_memarena_free(pardata);
+//#pragma omp parallel num_threads(4)
+			result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render,
+			                             override_size, defgrp_size);
+			dm->release(dm);
+			return result;
+		}
+	}
+	else if ((rmd->input & MOD_REMESH_VERTICES) && ((rmd->input & MOD_REMESH_PARTICLES) == 0))
+	{
+		//verts only
+		DerivedMesh *result = NULL;
+//#pragma omp parallel
+		result = BKE_repolygonize_dm(derived, rmd->thresh, rmd->basesize, rmd->wiresize,
+		                             rmd->rendersize, render, override_size, defgrp_size);
+		return result;
+	}
+	else if ((rmd->input & MOD_REMESH_VERTICES) && (rmd->input & MOD_REMESH_PARTICLES))
+	{
+		//both, for simplicity only use vert data here
+		float* ovX, *ovY, *ovZ, *oqX, *oqY, *oqZ, *oqW;
+		n = 0;
+		MemArena *pardata = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, "pardata");
+		MDeformVert *dvert_new = NULL;
+
+		if (psys)
+			n = get_particle_data(rmd, psys, ob, &pos, &size, &vel, &rot, &index, pardata);
+
+		dm = CDDM_new(n + derived->numVertData, 0, 0, 0, 0);
+		psize = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "psize");
+		velX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "velX");
+		velY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "velY");
+		velZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "velZ");
+
+		quatX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "quatX");
+		quatY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "quatY");
+		quatZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "quatZ");
+		quatW = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "quatW");
+
+		orig_index = CustomData_add_layer(&dm->vertData, CD_ORIGINDEX, CD_CALLOC, NULL, n + derived->numVertData);
+
+		if (dvert && defgrp_size > -1) {
+			dvert_new = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC, NULL, n + derived->numVertData);
+		}
+
+		mv = dm->getVertArray(dm);
+		mv2 = derived->getVertArray(derived);
+
+		ovX = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "velX");
+		ovY = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "velY");
+		ovZ = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "velZ");
+
+		oqX = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "quatX");
+		oqY = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "quatY");
+		oqZ = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "quatZ");
+		oqW = CustomData_get_layer_named(&derived->vertData, CD_PROP_FLT, "quatW");
+
+
+//#pragma omp parallel for
+		for (i = 0; i < n; i++)
+		{
+			copy_v3_v3(mv[i].co, pos[i]);
+			psize[i] = size[i];
+			velX[i] = vel[i][0];
+			velY[i] = vel[i][1];
+			velZ[i] = vel[i][2];
+
+			quatX[i] = rot[i][0];
+			quatY[i] = rot[i][1];
+			quatZ[i] = rot[i][2];
+			quatW[i] = rot[i][3];
+
+			orig_index[i] = index[i];
+
+			if (dvert_new && dvert && defgrp_size > -1)
+			{
+				defvert_add_index_notest(dvert_new + i, defgrp_size, 1.0f);
+			}
+		}
+
+//#pragma omp parallel for
+		for (i = n; i < n + derived->numVertData; i++)
+		{
+			copy_v3_v3(mv[i].co, mv2[i-n].co);
+			psize[i] = -1.0f; //use mball sizep
+			velX[i] = ovX ? ovX[i-n] : 0.0f;
+			velY[i] = ovY ? ovY[i-n] : 0.0f;
+			velZ[i] = ovZ ? ovZ[i-n] : 0.0f;
+
+			quatX[i] = oqX ? oqX[i-n] : 1.0f;
+			quatZ[i] = oqY ? oqY[i-n] : 0.0f;
+			quatY[i] = oqZ ? oqZ[i-n] : 0.0f;
+			quatW[i] = oqW ? oqW[i-n] : 0.0f;
+
+			orig_index[i] = i;
+			if (dvert_new && dvert && defgrp_size > -1)
+			{
+				int ind = i-n;
+				MDeformWeight *dw = (dvert + ind)->dw;
+				float w = 1.0f;
+				if (dw)
+				{
+					w = dw[defgrp_size].weight;
+				}
+
+				defvert_add_index_notest(dvert_new + i, defgrp_size, w);
+			}
+		}
+
+		if (verts_only)
+		{
+			BLI_memarena_free(pardata);
+			return dm;
+		}
+		else {
+			BLI_memarena_free(pardata);
+//#pragma omp parallel
+			result = BKE_repolygonize_dm(dm, rmd->thresh, rmd->basesize, rmd->wiresize, rmd->rendersize, render, override_size, defgrp_size);
+			dm->release(dm);
+			return result;
+		}
+	}
+
+	return NULL;
+}
+
 static DerivedMesh *applyModifier(ModifierData *md,
-                                  Object *UNUSED(ob),
+                                  Object *ob,
                                   DerivedMesh *dm,
-                                  ModifierApplyFlag UNUSED(flag))
+                                  ModifierApplyFlag flag)
 {
 	RemeshModifierData *rmd;
 	DualConOutput *output;
@@ -155,49 +434,59 @@ static DerivedMesh *applyModifier(ModifierData *md,
 	DualConMode mode = 0;
 
 	rmd = (RemeshModifierData *)md;
-
-	init_dualcon_mesh(&input, dm);
-
-	if (rmd->flag & MOD_REMESH_FLOOD_FILL)
-		flags |= DUALCON_FLOOD_FILL;
-
-	switch (rmd->mode) {
-		case MOD_REMESH_CENTROID:
-			mode = DUALCON_CENTROID;
-			break;
-		case MOD_REMESH_MASS_POINT:
-			mode = DUALCON_MASS_POINT;
-			break;
-		case MOD_REMESH_SHARP_FEATURES:
-			mode = DUALCON_SHARP_FEATURES;
-			break;
-	}
 	
-	output = dualcon(&input,
-	                 dualcon_alloc_output,
-	                 dualcon_add_vert,
-	                 dualcon_add_quad,
-	                 flags,
-	                 mode,
-	                 rmd->threshold,
-	                 rmd->hermite_num,
-	                 rmd->scale,
-	                 rmd->depth);
-	result = output->dm;
-	MEM_freeN(output);
+	if (rmd->mode != MOD_REMESH_MBALL)
+	{
+		init_dualcon_mesh(&input, dm);
 
-	if (rmd->flag & MOD_REMESH_SMOOTH_SHADING) {
+		if (rmd->flag & MOD_REMESH_FLOOD_FILL)
+			flags |= DUALCON_FLOOD_FILL;
+
+		switch (rmd->mode) {
+			case MOD_REMESH_CENTROID:
+				mode = DUALCON_CENTROID;
+				break;
+			case MOD_REMESH_MASS_POINT:
+				mode = DUALCON_MASS_POINT;
+				break;
+			case MOD_REMESH_SHARP_FEATURES:
+				mode = DUALCON_SHARP_FEATURES;
+				break;
+		}
+
+		output = dualcon(&input,
+						 dualcon_alloc_output,
+						 dualcon_add_vert,
+						 dualcon_add_quad,
+						 flags,
+						 mode,
+						 rmd->threshold,
+						 rmd->hermite_num,
+						 rmd->scale,
+						 rmd->depth);
+		result = output->dm;
+		MEM_freeN(output);
+
+		CDDM_calc_edges(result);
+		result->dirty |= DM_DIRTY_NORMALS;
+	}
+	else {
+		ParticleSystem* psys = NULL;
+		bool render = flag & MOD_APPLY_RENDER;
+		psys = get_psys(rmd, ob, render);
+		result = repolygonize(rmd, ob, dm, psys, render);
+	}
+
+	if (result && (rmd->flag & MOD_REMESH_SMOOTH_SHADING)) {
 		MPoly *mpoly = CDDM_get_polys(result);
 		int i, totpoly = result->getNumPolys(result);
-		
+
 		/* Apply smooth shading to output faces */
 		for (i = 0; i < totpoly; i++) {
 			mpoly[i].flag |= ME_SMOOTH;
 		}
 	}
 
-	CDDM_calc_edges(result);
-	result->dirty |= DM_DIRTY_NORMALS;
 	return result;
 }
 
@@ -219,6 +508,7 @@ ModifierTypeInfo modifierType_Remesh = {
 	/* type */              eModifierTypeType_Nonconstructive,
 	/* flags */             eModifierTypeFlag_AcceptsMesh |
 	                        eModifierTypeFlag_AcceptsCVs |
+                            eModifierTypeFlag_SupportsMapping |
 	                        eModifierTypeFlag_SupportsEditmode,
 	/* copyData */          copyData,
 	/* deformVerts */       NULL,

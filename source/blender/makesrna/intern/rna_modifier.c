@@ -490,6 +490,7 @@ RNA_MOD_VGROUP_NAME_SET(Lattice, name);
 RNA_MOD_VGROUP_NAME_SET(Mask, vgroup);
 RNA_MOD_VGROUP_NAME_SET(MeshDeform, defgrp_name);
 RNA_MOD_VGROUP_NAME_SET(NormalEdit, defgrp_name);
+RNA_MOD_VGROUP_NAME_SET(Remesh, size_defgrp_name);
 RNA_MOD_VGROUP_NAME_SET(Shrinkwrap, vgroup_name);
 RNA_MOD_VGROUP_NAME_SET(SimpleDeform, vgroup_name);
 RNA_MOD_VGROUP_NAME_SET(Smooth, defgrp_name);
@@ -1977,8 +1978,25 @@ static void rna_def_modifier_boolean(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "double_threshold", PROP_FLOAT, PROP_DISTANCE);
 	RNA_def_property_float_sdna(prop, NULL, "double_threshold");
 	RNA_def_property_range(prop, 0, 1.0f);
-	RNA_def_property_ui_range(prop, 0, 1, 0.0001, 7);
+	RNA_def_property_ui_range(prop, 0, 1, 0.0001, 6);
 	RNA_def_property_ui_text(prop, "Overlap Threshold",  "Threshold for checking overlapping geometry");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	/* BMesh debugging options, only used when G_DEBUG is set */
+
+	/* BMesh intersection options */
+	static EnumPropertyItem debug_items[] = {
+		{eBooleanModifierBMeshFlag_BMesh_Separate, "SEPARATE", 0, "Separate", ""},
+		{eBooleanModifierBMeshFlag_BMesh_NoDissolve, "NO_DISSOLVE", 0, "NoDissolve", ""},
+		{eBooleanModifierBMeshFlag_BMesh_NoConnectRegions, "NO_CONNECT_REGIONS", 0, "NoConnectRegions", ""},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	prop = RNA_def_property(srna, "debug_options", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, debug_items);
+	RNA_def_property_enum_sdna(prop, NULL, "bm_flag");
+	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
+	RNA_def_property_ui_text(prop, "Debug", "Debugging options, only when started with '-d'");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
@@ -3850,7 +3868,24 @@ static void rna_def_modifier_remesh(BlenderRNA *brna)
 		{MOD_REMESH_MASS_POINT, "SMOOTH", 0, "Smooth", "Output a smooth surface with no sharp-features detection"},
 		{MOD_REMESH_SHARP_FEATURES, "SHARP", 0, "Sharp",
 		                            "Output a surface that reproduces sharp edges and corners from the input mesh"},
+		{MOD_REMESH_MBALL, "METABALL", 0, "Metaball",
+		                            "Output a surface that consists of metaballs based from the vertices of the input mesh"},
 		{0, NULL, 0, NULL, NULL}
+	};
+
+	static EnumPropertyItem mesh_items[] =  {
+	    {MOD_REMESH_VERTICES, "VERTICES", 0, "Vertices", "Output a metaball surface using vertex input data"},
+	    {MOD_REMESH_PARTICLES, "PARTICLES", 0, "Particles", "Output a metaball surface using particle input data"},
+	    {0, NULL, 0, NULL, NULL}
+	};
+
+	static EnumPropertyItem filter_items[] =  {
+	    {eRemeshFlag_Alive, "ALIVE", 0, "Alive", "Output a metaball surface using alive particle input data"},
+	    {eRemeshFlag_Dead, "DEAD", 0, "Dead", "Output a metaball surface using dead particle input data"},
+	    {eRemeshFlag_Unborn, "UNBORN", 0, "Unborn", "Output a metaball surface using unborn particle input data"},
+	    {eRemeshFlag_Size, "SIZE", 0, "Size", "Override metaball size by individual particle size"},
+	    {eRemeshFlag_Verts, "VERTS", 0, "Verts", "Only output a vertex per particle"},
+	    {0, NULL, 0, NULL, NULL}
 	};
 
 	StructRNA *srna;
@@ -3904,6 +3939,61 @@ static void rna_def_modifier_remesh(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "use_smooth_shade", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", MOD_REMESH_SMOOTH_SHADING);
 	RNA_def_property_ui_text(prop, "Smooth Shading", "Output faces with smooth shading rather than flat shaded");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	/*mball remesh related */
+	prop = RNA_def_property(srna, "mball_resolution", PROP_FLOAT, PROP_DISTANCE);
+	RNA_def_property_float_sdna(prop, NULL, "wiresize");
+	RNA_def_property_range(prop, 0.0001f, 10000.0f);
+	RNA_def_property_ui_range(prop, 0.05f, 1000.0f, 2.5f, 3);
+	RNA_def_property_ui_text(prop, "Wire Size", "Polygonization resolution in the 3D viewport");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "mball_render_resolution", PROP_FLOAT, PROP_DISTANCE);
+	RNA_def_property_float_sdna(prop, NULL, "rendersize");
+	RNA_def_property_range(prop, 0.0001f, 10000.0f);
+	RNA_def_property_ui_range(prop, 0.025f, 1000.0f, 2.5f, 3);
+	RNA_def_property_ui_text(prop, "Render Size", "Polygonization resolution in rendering");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "mball_threshold", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "thresh");
+	RNA_def_property_range(prop, 0.0f, 100.0f);
+	RNA_def_property_ui_text(prop, "Threshold", "Influence of meta elements");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "mball_size", PROP_FLOAT, PROP_XYZ);
+	RNA_def_property_float_sdna(prop, NULL, "basesize");
+	RNA_def_property_ui_range(prop, 0.0001f, 10.0f, 0.1f, 3);
+	RNA_def_property_range(prop, 0.001f, 100.0f);
+	RNA_def_property_array(prop, 3);
+	RNA_def_property_ui_text(prop, "Size",
+	                         "The base size of each metaball element");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "input", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_items(prop, mesh_items);
+	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
+	RNA_def_property_ui_text(prop, "Input", "Which input source to consider in remeshing");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "psys", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "psys");
+	RNA_def_property_range(prop, 1, INT_MAX);
+	RNA_def_property_ui_text(prop, "Particle System Index", "Index of the input particle system to use");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "filter", PROP_ENUM, PROP_NONE);
+	RNA_def_property_enum_sdna(prop, NULL, "pflag");
+	RNA_def_property_enum_items(prop, filter_items);
+	RNA_def_property_flag(prop, PROP_ENUM_FLAG);
+	RNA_def_property_ui_text(prop, "Filter", "Which particles to consider in remeshing");
+	RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+	prop = RNA_def_property(srna, "size_vertex_group", PROP_STRING, PROP_NONE);
+	RNA_def_property_string_sdna(prop, NULL, "size_defgrp_name");
+	RNA_def_property_ui_text(prop, "Size Vertex Group", "Vertex group name which optionally defines metaball size");
+	RNA_def_property_string_funcs(prop, NULL, NULL, "rna_RemeshModifier_size_defgrp_name_set");
 	RNA_def_property_update(prop, 0, "rna_Modifier_update");
 }
 
