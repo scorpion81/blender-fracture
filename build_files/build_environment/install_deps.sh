@@ -2793,15 +2793,16 @@ install_DEB() {
     fi
   fi
 
-  if $_do_compile_python; then
-    compile_Python
-    PRINT ""
-    if [ "$NUMPY_SKIP" = true ]; then
-      WARNING "Skipping NumPy installation, as requested..."
-    else
-      compile_Numpy
-    fi
-  fi
+## use system installed python by default on linux
+#  if $_do_compile_python; then
+#    compile_Python
+#    PRINT ""
+#    if [ "$NUMPY_SKIP" = true ]; then
+#      WARNING "Skipping NumPy installation, as requested..."
+#    else
+#      compile_Numpy
+#    fi
+#  fi
 
 
   PRINT ""
@@ -3190,7 +3191,7 @@ install_RPM() {
   OGG_DEV="libogg-devel"
   THEORA_DEV="libtheora-devel"
 
-  _packages="gcc gcc-c++ git make cmake tar bzip2 xz findutils flex bison \
+  _packages="python3-devel OpenEXR-devel OpenColorIO-devel gcc gcc-c++ git make cmake tar bzip2 xz findutils flex bison \
              libtiff-devel libjpeg-devel libpng-devel sqlite-devel fftw-devel SDL-devel \
              libX11-devel libXi-devel libXcursor-devel libXrandr-devel libXinerama-devel \
              wget ncurses-devel readline-devel $OPENJPEG_DEV openal-soft-devel \

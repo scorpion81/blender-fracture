@@ -197,6 +197,11 @@ endif()
 # First platform specific non-cached vars
 if(UNIX AND NOT APPLE)
 	set(WITH_X11 ON)
+	set(PYTHON_INCLUDE_DIR /usr/include/python3.6m)
+	set(PYTHON_LIBRARY libpython3.so)
+	set(PYTHON_LIBPATH /usr/lib64)
+	set(OPENIMAGEIO_LIBRARY /usr/lib64/libOpenColorIO.so)
+	set(OPENIMAGEIO_INCLUDE_DIR /usr/include/OpenColorIO)
 endif()
 
 # Blender internal features
