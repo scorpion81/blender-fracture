@@ -237,6 +237,7 @@ void RB_body_apply_central_force(rbRigidBody *body, const float v_in[3]);
 void RB_body_apply_central_impulse(rbRigidBody *body, const float v_in[3]);
 void RB_body_apply_impulse(rbRigidBody* object, const float impulse[3], const float pos[3]);
 void RB_body_apply_force(rbRigidBody* object, const float force[3], const float pos[3]);
+void RB_body_apply_torque(rbRigidBody* object, const float torque[3]);
 
 /* ********************************** */
 /* Collision Shape Methods */
