@@ -1890,9 +1890,12 @@ static void rna_def_rigidbody_object(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Rotation", "Quaternion rotation of the rigidbody object");
 
 	//directly apply linear force to body
-	prop = RNA_def_property(srna, "apply_force", PROP_FLOAT, PROP_TRANSLATION);
+	prop = RNA_def_property(srna, "linear_force", PROP_FLOAT, PROP_TRANSLATION);
 	RNA_def_property_float_sdna(prop, NULL, "apply_force");
 	RNA_def_property_ui_text(prop, "Linear Force", "linear force applied to the rigidbody object");
+	prop = RNA_def_property(srna, "angular_force", PROP_FLOAT, PROP_TRANSLATION);
+	RNA_def_property_float_sdna(prop, NULL, "apply_ang_force");
+	RNA_def_property_ui_text(prop, "Angular Force", "angular force applied to the rigidbody object");
 
 	prop = RNA_def_property(srna, "use_random_margin", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", RBO_FLAG_RANDOM_MARGIN);

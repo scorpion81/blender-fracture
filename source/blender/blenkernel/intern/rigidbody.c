@@ -1959,6 +1959,7 @@ static void rigidbody_update_sim_ob(Scene *scene, RigidBodyWorld *rbw, Object *o
 	// per-object constant linear force //
 	if (rbo->type == RBO_TYPE_ACTIVE){
 		RB_body_apply_central_force(rbo->physics_object, rbo->apply_force);
+		RB_body_apply_torque(rbo->physics_object, rbo->apply_ang_force);
 	}
 }
 
@@ -2530,6 +2531,53 @@ void BKE_rigidbody_do_simulation(Scene *scene, float ctime)
 	}
 }
 /* ************************************** */
+
+void BKE_rigidbody_force_simulation(Scene *scene, float timestep) {
+	RigidBodyWorld *rbw = scene->rigidbody_world;
+
+	/* don't try to run the simulation if we don't have a world yet but allow reading baked cache */
+	if (rbw->physics_world == NULL)
+		return;
+	else if (rbw->objects == NULL) {
+		BKE_rigidbody_update_ob_array(rbw, 0); //cache->flag & PTCACHE_BAKED);
+	}
+
+	if (timestep==0.0) {
+		/* rebuild constraints */
+		rbw->flag = RBW_FLAG_REBUILD_CONSTRAINTS & RBW_FLAG_REFRESH_MODIFIERS & RBW_FLAG_OBJECT_CHANGED;
+		rbw->ltime = 0;
+		BKE_restoreKinematic(rbw, false);
+		rigidbody_update_simulation(scene, rbw, true);
+	}
+
+	/* advance simulation, we can only step one frame forward */
+	else {
+		/* update and validate simulation */
+		rigidbody_update_simulation(scene, rbw, false);
+		/* step simulation by the requested timestep, steps per second are adjusted to take time scale into account */
+		RB_dworld_step_simulation(rbw->physics_world, timestep, INT_MAX, 0);
+		rigidbody_update_simulation_post_step(rbw);
+		rbw->ltime += timestep;
+		int i;
+		GroupObject* go;
+		for (go = rbw->group->gobject.first, i = 0; go; go = go->next, i++) {
+
+			if (go->ob->rigidbody_object) {
+				//rbw->objects[i] = go->ob;
+				float mat[4][4], size_mat[4][4], size[3];
+				normalize_qt(go->ob->rigidbody_object->orn); // RB_TODO investigate why quaternion isn't normalized at this point
+				quat_to_mat4(mat, go->ob->rigidbody_object->orn);
+				copy_v3_v3(mat[3], go->ob->rigidbody_object->pos);
+				mat4_to_size(size, go->ob->obmat);
+				size_to_mat4(size_mat, size);
+				mul_m4_m4m4(mat, mat, size_mat);
+				copy_m4_m4(go->ob->obmat, mat);
+
+			}
+		}
+	}
+}
+
 
 #else  /* WITH_BULLET */
 

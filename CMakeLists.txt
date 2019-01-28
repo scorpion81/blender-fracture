@@ -200,7 +200,7 @@ if(UNIX AND NOT APPLE)
 	set(WITH_QT ON)
 	set(PYTHON_INCLUDE_DIR /usr/include/python3.6m)
 	set(PYTHON_LIBRARY /usr/lib64/libpython3.6m.so)
-	set(PYTHON_LIBPATH /usr/lib64/python3.6)
+	set(PYTHON_LIBPATH /usr/lib64)
 	set(OPENIMAGEIO_LIBRARY /usr/lib64/libOpenImageIO.so)
 	set(OPENIMAGEIO_INCLUDE_DIR /usr/include)
 
