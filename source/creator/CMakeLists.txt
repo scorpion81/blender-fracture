@@ -115,12 +115,12 @@ if(WITH_FREESTYLE)
 endif()
 
 
-#add_definitions(-LQtGui)
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -LQtGui")
-set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -lQtGui")
+set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -lQtCore -lQtGui")
 
 blender_include_dirs("/usr/include/Qt")
+blender_include_dirs("/usr/include/QtCore")
 blender_include_dirs("/usr/include/QtGui")
+SET(CMAKE_AUTOMOC ON)
 
 # Setup the exe sources and buildinfo
 set(SRC

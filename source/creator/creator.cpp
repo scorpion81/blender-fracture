@@ -28,9 +28,10 @@
 /** \file creator/creator.c
  *  \ingroup creator
  */
-
+#include <QObject>
 #include <QApplication>
-//#include <QPushButton>
+#include <QPushButton>
+#include <QTimer>
 #undef emit
 
 #include <stdlib.h>
@@ -193,7 +194,33 @@ static void callback_main_atexit(void *user_data)
 }
 
 /** \} */
+class QtBlender: public QObject {
+	Q_OBJECT
+	// TODO enable Q_OBJECT macro, requires moc? otherwise throws this error:
+	// MakeFiles/blender.dir/creator.cpp.o:creator.cpp:function main: error: undefined reference to 'vtable for QtBlender' /usr/bin/ld.gold: the vtable symbol may be undefined because the class is missing its key function
+	public:
+		bContext* context;
+		QTimer* timer;
+		QtBlender(){};
+		QtBlender(bContext *c) {
+			this->context = c;
+			this->timer = new QTimer(this);
+			connect(
+				timer, SIGNAL(timeout()),
+				this, SLOT(update())
+			);
+			timer->start(30);
+		};
+		~QtBlender(){
+			timer->stop();
+		};
 
+	public slots:
+		inline void update() {
+			WM_main_iterate(this->context);
+		};
+};
+#include "creator.moc"
 
 
 /* -------------------------------------------------------------------- */
@@ -547,14 +574,8 @@ int main(
 	}
 	
 	//WM_main(C);
-	auto timer = new QTimer();
-	QObject::connect(
-		&renderTimer, 
-		&QTimer::timeout, 
-		[&](){WM_main_iterate(C);} 
-	);
-	timer->start(1000);
-	return app->exec();
+	auto qtb = new QtBlender(C);
+	return app.exec();
 	//return 0;
 } /* end of int main(argc, argv)	*/
 
