@@ -114,9 +114,17 @@ if(WITH_FREESTYLE)
 	blender_include_dirs(../blender/freestyle)
 endif()
 
+
+#add_definitions(-LQtGui)
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -LQtGui")
+set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -lQtGui")
+
+blender_include_dirs("/usr/include/Qt")
+blender_include_dirs("/usr/include/QtGui")
+
 # Setup the exe sources and buildinfo
 set(SRC
-	creator.c
+	creator.cpp
 	creator_args.c
 	creator_signals.c
 	${CRASHPAD_SRC}

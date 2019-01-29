@@ -29,6 +29,10 @@
  *  \ingroup creator
  */
 
+#include <QApplication>
+//#include <QPushButton>
+#undef emit
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -40,6 +44,7 @@
 #  include "utfconv.h"
 #endif
 
+extern "C" {
 #include "MEM_guardedalloc.h"
 
 #include "DNA_genfile.h"
@@ -82,6 +87,8 @@
 #  include "FRS_freestyle.h"
 #endif
 
+} // end extern C
+
 #if 0
 //moved to creator_intern.h, gave compiler error on windows with crashpad
 /* for passing information between creator and gameengine */
@@ -114,7 +121,9 @@
 #  include "sdlew.h"
 #endif
 
-#include "creator_intern.h"  /* own include */
+extern "C"{
+#include "creator_intern.h"  /* own include */	
+}
 
 
 /*	Local Function prototypes */
@@ -165,7 +174,7 @@ struct CreatorAtExitData {
 
 static void callback_main_atexit(void *user_data)
 {
-	struct CreatorAtExitData *app_init_data = user_data;
+	struct CreatorAtExitData *app_init_data = (struct CreatorAtExitData *)user_data;
 
 	if (app_init_data->ba) {
 		BLI_argsFree(app_init_data->ba);
@@ -233,6 +242,7 @@ int main(
 #endif
 
 	/* --- end declarations --- */
+	QApplication app(argc, (char**)argv);
 
 	/* ensure we free data on early-exit */
 	struct CreatorAtExitData app_init_data = {NULL};
@@ -429,6 +439,12 @@ int main(
 	
 	init_def_material();
 
+	// testing Qt4 //
+	QPushButton hello("Hello world!");
+	hello.resize(320, 240);
+	hello.show();
+
+
 	if (G.background == 0) {
 #ifndef WITH_PYTHON_MODULE
 		BLI_argsParse(ba, 2, NULL, NULL);
@@ -530,9 +546,16 @@ int main(
 		}
 	}
 	
-	WM_main(C);
-
-	return 0;
+	//WM_main(C);
+	auto timer = new QTimer();
+	QObject::connect(
+		&renderTimer, 
+		&QTimer::timeout, 
+		[&](){WM_main_iterate(C);} 
+	);
+	timer->start(1000);
+	return app->exec();
+	//return 0;
 } /* end of int main(argc, argv)	*/
 
 #ifdef WITH_PYTHON_MODULE

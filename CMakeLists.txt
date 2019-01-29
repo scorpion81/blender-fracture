@@ -215,6 +215,8 @@ if(UNIX AND NOT APPLE)
 	SET(QT_USE_QTXML 1)
 	SET(QT_USE_QTSCRIPT 1)
 	SET(QT_USE_QTDECLARATIVE 1)
+	#SET(QT_INCLUDE_DIR "/usr/include/Qt")
+	blender_include_dirs("/usr/include/Qt")
 
 endif()
 
