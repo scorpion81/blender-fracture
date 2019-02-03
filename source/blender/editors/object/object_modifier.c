@@ -3523,6 +3523,8 @@ static Object* do_convert_meshIsland(FractureModifierData* fmd, MeshIsland *mi, 
 		sub_v3_v3(ob_new->loc, obloc);
 		add_v3_v3(ob_new->loc, diff);
 
+		//init the quat ? old object might not be in quat rotation mode yet
+		eul_to_quat(ob->quat, ob->rot);
 		copy_qt_qt(ob_new->quat, ob->quat);
 
 		if (fmd->fracture_mode == MOD_FRACTURE_EXTERNAL) {
