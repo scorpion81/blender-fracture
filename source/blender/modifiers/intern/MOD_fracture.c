@@ -3749,9 +3749,6 @@ static DerivedMesh *do_autoHide(FractureModifierData *fmd, DerivedMesh *dm, Obje
 	int del_faces = 0;
 	bool do_merge = fmd->do_merge;
 
-	//just before we mess up the mesh, ensure velocity precalculation.
-	BKE_update_velocity_layer(fmd);
-
 	if (fmd->use_centroids && !fmd->use_vertices)
 	{
 		result = centroids_to_verts(fmd, bm, ob);
@@ -4300,6 +4297,9 @@ static DerivedMesh *output_dm(FractureModifierData* fmd, DerivedMesh *dm, Object
 				}
 			}
 		}
+
+		//just before we mess up the mesh, ensure velocity precalculation.
+		BKE_update_velocity_layer(fmd);
 
 		if (fmd->autohide_dist > 0 || fmd->automerge_dist > 0 || fmd->use_centroids || fmd->use_vertices)
 		{
