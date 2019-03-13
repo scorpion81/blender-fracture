@@ -6,7 +6,8 @@ untouched and intact.
 
 ## Support and builds
 [BlenderArtists.org support forum thread](http://blenderartists.org/forum/showthread.php?343637)<br>
-[DF-VFX Hosted Fracture Modifier Builds](http://df-vfx.de/fracturemodifier/)
+[BlenderPhysics Hosted Fracture Modifier Builds](http://blenderphysics.com/fracturemodifier/)
+[Kai Kostack Hosted Fracture Modifier Builds](http://kaikostack.com/fracture/)
 
 ## Main Documentation
 [BlenderWiki page about Fracture Modifier](https://wiki.blender.org/index.php/User:Scorpion81/Fracture_Documentation)
