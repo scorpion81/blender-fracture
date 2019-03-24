@@ -34,7 +34,8 @@ namespace KDL
     //Forward declaration
     class TreeElement;
     // Eigen allocator is needed for alignment of Eigen data types
-    typedef std::map<std::string,TreeElement, std::less<std::string>, Eigen::aligned_allocator<std::pair<std::string, TreeElement> > > SegmentMap;
+    // fixes fedora and new gcc note: https://developer.blender.org/rBee30a4381f8989ed9f39b4baae9f74e45c9dcdc9
+    typedef std::map<std::string,TreeElement, std::less<std::string>, Eigen::aligned_allocator<std::pair<const std::string, TreeElement> > > SegmentMap;
 
     class TreeElement
     {
