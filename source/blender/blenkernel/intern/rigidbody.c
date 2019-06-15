@@ -2181,13 +2181,13 @@ void BKE_rigidbody_sync_transforms(RigidBodyWorld *rbw, Object *ob, float ctime)
 	if (rbw == NULL)
 		return;
 
-	BLI_mutex_lock(&modifier_lock);
+	//BLI_mutex_lock(&modifier_lock);
 	for (md = ob->modifiers.first; md; md = md->next) {
 		modFound = do_sync_modifier(md, ob, rbw, ctime);
 		if (modFound)
 			break;
 	}
-	BLI_mutex_unlock(&modifier_lock);
+	//BLI_mutex_unlock(&modifier_lock);
 
 	if (!modFound)
 	{

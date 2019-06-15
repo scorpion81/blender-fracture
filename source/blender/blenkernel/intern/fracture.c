@@ -4234,7 +4234,11 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 
 				if (fmd->anim_mesh_rot)
 				{
-					//mul_qt_qtqt(quat, ob_quat, quat);
+					if (quats) {
+						//if rotations are changed, re-bind the object to fix
+						mul_qt_qtqt(quat, ob_quat, quat);
+					}
+					
 					mul_qt_qtqt(quat, anim_quat, quat);
 					copy_qt_qt(mi->rigidbody->orn, quat);
 				}
