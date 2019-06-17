@@ -4267,7 +4267,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 							float rot[4], iquat[4];
 							verts_to_quat(rot, mvert[fmd->anim_bind[i].v].co,
 										   mvert[fmd->anim_bind[i].v1].co,
-										   mvert[fmd->anim_bind[i].v2].co, true);
+										   mvert[fmd->anim_bind[i].v2].co, false);
 
 							invert_qt_qt(iquat, fmd->anim_bind[i].quat);
 							mul_qt_qtqt(quat, rot, iquat);
