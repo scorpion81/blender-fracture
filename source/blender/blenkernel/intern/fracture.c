@@ -4249,9 +4249,9 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 				copy_v3_v3(co, mvert[v].co);
 				copy_v3_v3(off, fmd->anim_bind[i].offset);
 
-				//if (fmd->anim_mesh_rot)
+				if (fmd->anim_mesh_rot)
 				{
-					if (quats && fmd->anim_mesh_rot)
+					if (quats)
 					{
 						quat[0] = quatX[v];
 						quat[1] = quatY[v];
@@ -4297,8 +4297,9 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 
 				copy_v3_v3(mi->rigidbody->pos, co);
 
+			    if (fmd->anim_mesh_rot)
 				{
-					if (quats && fmd->anim_mesh_rot) {
+					if (quats) {
 						//if rotations are changed, re-bind the object to fix
 						mul_qt_qtqt(quat, ob_quat, quat);
 					}

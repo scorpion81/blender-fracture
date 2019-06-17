@@ -265,10 +265,13 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		velY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "velY");
 		velZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "velZ");
 
-		quatX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatX");
-		quatY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatY");
-		quatZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatZ");
-		quatW = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatW");
+	    if (psys->part->flag & PART_ROTATIONS)
+	    {		
+			quatX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatX");
+			quatY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatY");
+			quatZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatZ");
+			quatW = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n, "quatW");
+	    }
 
 		orig_index = CustomData_add_layer(&dm->vertData, CD_ORIGINDEX, CD_CALLOC, NULL, n);
 
@@ -281,10 +284,13 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 			velY[i] = vel[i][1];
 			velZ[i] = vel[i][2];
 
-			quatX[i] = rot[i][0];
-			quatY[i] = rot[i][1];
-			quatZ[i] = rot[i][2];
-			quatW[i] = rot[i][3];
+			if (quatX)
+			{
+				quatX[i] = rot[i][0];
+				quatY[i] = rot[i][1];
+				quatZ[i] = rot[i][2];
+				quatW[i] = rot[i][3];
+			}
 
 			orig_index[i] = index[i];
 		}
@@ -328,11 +334,14 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 		velX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "velX");
 		velY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "velY");
 		velZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "velZ");
-
-		quatX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "quatX");
-		quatY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "quatY");
-		quatZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "quatZ");
-		quatW = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "quatW");
+		
+		if (psys->part->flag & PART_ROTATIONS)
+		{
+			quatX = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "quatX");
+			quatY = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "quatY");
+			quatZ = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "quatZ");
+			quatW = CustomData_add_layer_named(&dm->vertData, CD_PROP_FLT, CD_CALLOC, NULL, n + derived->numVertData, "quatW");
+		}
 
 		orig_index = CustomData_add_layer(&dm->vertData, CD_ORIGINDEX, CD_CALLOC, NULL, n + derived->numVertData);
 
@@ -362,10 +371,13 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 			velY[i] = vel[i][1];
 			velZ[i] = vel[i][2];
 
-			quatX[i] = rot[i][0];
-			quatY[i] = rot[i][1];
-			quatZ[i] = rot[i][2];
-			quatW[i] = rot[i][3];
+			if (quatX)
+			{
+				quatX[i] = rot[i][0];
+				quatY[i] = rot[i][1];
+				quatZ[i] = rot[i][2];
+				quatW[i] = rot[i][3];
+			}
 
 			orig_index[i] = index[i];
 
@@ -384,10 +396,13 @@ static DerivedMesh *repolygonize(RemeshModifierData *rmd, Object* ob, DerivedMes
 			velY[i] = ovY ? ovY[i-n] : 0.0f;
 			velZ[i] = ovZ ? ovZ[i-n] : 0.0f;
 
-			quatX[i] = oqX ? oqX[i-n] : 1.0f;
-			quatZ[i] = oqY ? oqY[i-n] : 0.0f;
-			quatY[i] = oqZ ? oqZ[i-n] : 0.0f;
-			quatW[i] = oqW ? oqW[i-n] : 0.0f;
+			if (quatX)
+			{
+				quatX[i] = oqX ? oqX[i-n] : 1.0f;
+				quatZ[i] = oqY ? oqY[i-n] : 0.0f;
+				quatY[i] = oqZ ? oqZ[i-n] : 0.0f;
+				quatW[i] = oqW ? oqW[i-n] : 0.0f;
+			}
 
 			orig_index[i] = i;
 			if (dvert_new && dvert && defgrp_size > -1)
