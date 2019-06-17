@@ -3953,6 +3953,35 @@ void activate(MeshIsland *mi, AnimBind *bind)
 		}
 	}
 }
+static float verts_to_quat(float quat[4], float v1[3], float v2[3], float v3[3], bool fallback)
+{
+	float l1, l2, l3, lmax, thresh, co1[3], co2[3], co3[3];
+
+	//hypotenuse... find it
+	l1 = len_v3v3(v1, v2);
+	l2 = len_v3v3(v2, v3);
+	l3 = len_v3v3(v1, v3);
+	lmax = MAX3(l1, l2, l3);
+	thresh = 2 * area_tri_v3(v1, v2, v3) / (lmax * lmax);
+
+	copy_v3_v3(co1, v1);
+	copy_v3_v3(co2, v2);
+	copy_v3_v3(co3, v3);
+
+	if ((thresh < 0.1f) && fallback)
+	{
+		float cor[3][3] = {{0.1f, 0.0f, 0.0f}, {0.0f, -0.15f, 0.0f}, {0.0f, 0.0f, 0.2f}} ;
+		//printf("Degenerate %f triangle, correcting %d %d %d in %d\n", thresh, v1, v2, v3, mi->id);
+		add_v3_v3(co1, cor[0]);
+		add_v3_v3(co2, cor[1]);
+		add_v3_v3(co3, cor[2]);
+	}
+
+	tri_to_quat(quat, co1, co2, co3);
+
+	return thresh;
+}
+
 
 void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bind)
 {
@@ -3974,7 +4003,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 	if (fmd->anim_mesh_ob == ob)
 		return;
 
-	dm = eval_mod_stack_simple(fmd->anim_mesh_ob);
+	dm = fmd->anim_mesh_ob->derivedFinal; //eval_mod_stack_simple(fmd->anim_mesh_ob);
 
 	if (!dm)
 		return;
@@ -4015,6 +4044,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 			fmd->anim_bind[i].v = -1;
 			fmd->anim_bind[i].v1 = -1;
 			fmd->anim_bind[i].v2 = -1;
+			fmd->anim_bind[i].poly = -1;
 			zero_v3(fmd->anim_bind[i].offset);
 			zero_v3(fmd->anim_bind[i].no);
 			unit_qt(fmd->anim_bind[i].quat);
@@ -4066,6 +4096,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 	if (do_bind)
 	{
 		i = 0;
+		float limit = 0.0001f;
 		for (mi = fmd->meshIslands.first; mi; mi = mi->next, i++)
 		{
 			KDTreeNearest n;
@@ -4081,7 +4112,7 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 				if (totpoly > 0)
 				{
 					int v1, v2, v3;
-					float limit = 0.0001f;
+					
 					MPoly *mp  = mpoly + n.index;
 					MLoop *ml = mloop + mp->loopstart;
 					BKE_mesh_calc_poly_normal(mp, ml, mvert, f_no);
@@ -4113,9 +4144,40 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 					mi->rigidbody->flag |= RBO_FLAG_KINEMATIC_BOUND;
 				}
 				else {
-					fmd->anim_bind[i].v = n.index;
-					fmd->anim_bind[i].v1 = -1;
-					fmd->anim_bind[i].v2 = -1;
+					int k = 0;
+					bool found = false;
+					KDTreeNearest n2[12];
+					BLI_kdtree_find_nearest_n(tree, co, &n2, 12);
+					fmd->anim_bind[i].v = n2[0].index;
+					fmd->anim_bind[i].v1 = n2[1].index;
+
+					for (k = 0; k < 10; k++)
+					{
+						float rot[4], thresh;
+						fmd->anim_bind[i].v2 = n2[k+2].index;
+						thresh = verts_to_quat(rot, mvert[fmd->anim_bind[i].v].co,
+										   mvert[fmd->anim_bind[i].v1].co,
+										   mvert[fmd->anim_bind[i].v2].co, false);
+						if (thresh > 0.1)
+						{
+							copy_qt_qt(fmd->anim_bind[i].quat, rot);
+							found = true;
+							break;
+						}
+					}
+					
+					if (!found)
+					{
+						//fallback if no suitable vert was found
+						float rot[4];
+						printf("BIND Fallback.../n");
+						fmd->anim_bind[i].v2 = n2[2].index;
+						verts_to_quat(rot, mvert[fmd->anim_bind[i].v].co,
+										   mvert[fmd->anim_bind[i].v1].co,
+										   mvert[fmd->anim_bind[i].v2].co, true);
+						copy_qt_qt(fmd->anim_bind[i].quat, rot);
+					}
+					
 					mi->rigidbody->flag |= RBO_FLAG_KINEMATIC_BOUND;
 				}
 
@@ -4126,16 +4188,12 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 
 					copy_v3_v3(fmd->anim_bind[i].offset, diff);
 
-					if ((fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1)) {
-						//fallback if not enough verts around
-						normal_short_to_float_v3(fmd->anim_bind[i].no, mvert[n.index].no);
-						normalize_v3(fmd->anim_bind[i].no);
-					}
-					else if (totpoly > 0) {
+					if (totpoly > 0)
+					{
 						tri_to_quat_ex(fmd->anim_bind[i].quat,
-								mvert[fmd->anim_bind[i].v].co,
-								mvert[fmd->anim_bind[i].v1].co,
-								mvert[fmd->anim_bind[i].v2].co, f_no);
+									mvert[fmd->anim_bind[i].v].co,
+									mvert[fmd->anim_bind[i].v1].co,
+									mvert[fmd->anim_bind[i].v2].co, f_no);
 						copy_v3_v3(fmd->anim_bind[i].no, f_no);
 					}
 				}
@@ -4168,7 +4226,8 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 			}
 
 			//only let kinematic rbs do this, active ones are being taken care of by bullet
-			if (mi && mi->rigidbody && (mi->rigidbody->flag & RBO_FLAG_KINEMATIC))
+			if (mi && mi->rigidbody && (mi->rigidbody->flag & RBO_FLAG_KINEMATIC) && 
+										(mi->rigidbody->flag & RBO_FLAG_KINEMATIC_BOUND))
 			{
 				//the 4 rot layers *should* be aligned, caller needs to ensure !
 				bool quats = quatX && quatY && quatZ && quatW;
@@ -4190,9 +4249,9 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 				copy_v3_v3(co, mvert[v].co);
 				copy_v3_v3(off, fmd->anim_bind[i].offset);
 
-				if (fmd->anim_mesh_rot)
+				//if (fmd->anim_mesh_rot)
 				{
-					if (quats)
+					if (quats && fmd->anim_mesh_rot)
 					{
 						quat[0] = quatX[v];
 						quat[1] = quatY[v];
@@ -4201,14 +4260,20 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 					}
 					else
 					{
-						copy_v3_v3(vec, fmd->anim_bind[i].no);
-						if (fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1) {
-							//fallback if not enough verts around;
-							normal_short_to_float_v3(no, mvert[v].no);
-							normalize_v3(no);
-							rotation_between_vecs_to_quat(quat, vec, no);
+						//copy_v3_v3(vec, fmd->anim_bind[i].no);
+						//if (fmd->anim_bind[i].v1 == -1 || fmd->anim_bind[i].v2 == -1) {
+						if (fmd->anim_bind[i].poly == -1) 
+						{
+							float rot[4], iquat[4];
+							verts_to_quat(rot, mvert[fmd->anim_bind[i].v].co,
+										   mvert[fmd->anim_bind[i].v1].co,
+										   mvert[fmd->anim_bind[i].v2].co, true);
+
+							invert_qt_qt(iquat, fmd->anim_bind[i].quat);
+							mul_qt_qtqt(quat, rot, iquat);
 						}
-						else {
+						else 
+						{
 							float rot[4], iquat[4], fno[3];
 							MPoly *mp = mpoly + fmd->anim_bind[i].poly;
 							MLoop *ml = mloop + mp->loopstart;
@@ -4232,14 +4297,19 @@ void BKE_read_animated_loc_rot(FractureModifierData *fmd, Object *ob, bool do_bi
 
 				copy_v3_v3(mi->rigidbody->pos, co);
 
-				if (fmd->anim_mesh_rot)
 				{
-					if (quats) {
+					if (quats && fmd->anim_mesh_rot) {
 						//if rotations are changed, re-bind the object to fix
 						mul_qt_qtqt(quat, ob_quat, quat);
 					}
 					
 					mul_qt_qtqt(quat, anim_quat, quat);
+
+					//attempt to avoid sudden flipping of shards
+					if (dot_qtqt(mi->rigidbody->orn, quat) < 0.0) {
+						negate_v4(quat);
+					}
+					
 					copy_qt_qt(mi->rigidbody->orn, quat);
 				}
 
