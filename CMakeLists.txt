@@ -197,6 +197,27 @@ endif()
 # First platform specific non-cached vars
 if(UNIX AND NOT APPLE)
 	set(WITH_X11 ON)
+	set(WITH_QT ON)
+	set(PYTHON_INCLUDE_DIR /usr/include/python3.6m)
+	set(PYTHON_LIBRARY /usr/lib64/libpython3.6m.so)
+	set(PYTHON_LIBPATH /usr/lib64)
+	set(OPENIMAGEIO_LIBRARY /usr/lib64/libOpenImageIO.so)
+	set(OPENIMAGEIO_INCLUDE_DIR /usr/include)
+
+	SET(QT_MIN_VERSION "4.6.0" COMPONENTS QtCore QtGui QtXml QtScript)
+	FIND_PACKAGE(Qt4 REQUIRED)
+	#SET(QT_LIBRARIES
+	#	Qt4::QtScript
+	#)
+	#LIST(APPEND QT_LIBRARIES Qt4::QtScript Qt4::QtDeclarative ${X11_LIBRARIES})
+	MESSAGE("${QT_LIBRARIES}")
+
+	SET(QT_USE_QTXML 1)
+	SET(QT_USE_QTSCRIPT 1)
+	SET(QT_USE_QTDECLARATIVE 1)
+	#SET(QT_INCLUDE_DIR "/usr/include/Qt")
+	blender_include_dirs("/usr/include/Qt")
+
 endif()
 
 # Blender internal features
@@ -230,7 +251,9 @@ mark_as_advanced(BUILDINFO_OVERRIDE_DATE)
 mark_as_advanced(BUILDINFO_OVERRIDE_TIME)
 
 option(WITH_IK_ITASC      "Enable ITASC IK solver (only disable for development & for incompatible C++ compilers)" ON)
+set(WITH_IK_ITASC ON)
 option(WITH_IK_SOLVER     "Enable Legacy IK solver (only disable for development)" ON)
+
 option(WITH_FFTW3         "Enable FFTW3 support (Used for smoke, ocean sim, and audio effects)" ${_init_FFTW3})
 option(WITH_BULLET        "Enable Bullet (Physics Engine)" ON)
 option(WITH_SYSTEM_BULLET "Use the systems bullet library (currently unsupported due to missing features in upstream!)" )

@@ -1607,6 +1607,11 @@ void RB_body_apply_impulse(rbRigidBody* object, const float impulse[3], const fl
 	body->applyImpulse(btVector3(impulse[0], impulse[1], impulse[2]), btVector3(pos[0], pos[1], pos[2]));
 }
 
+void RB_body_apply_central_impulse(rbRigidBody* object, const float impulse[3]) {
+	btRigidBody *body = object->body;
+	body->applyImpulse(btVector3(impulse[0], impulse[1], impulse[2]), btVector3(0.0, 0.0, 0.0));
+}
+
 void RB_body_apply_force(rbRigidBody* object, const float force[3], const float pos[3])
 {
 	btRigidBody *body = object->body;

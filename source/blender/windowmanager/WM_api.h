@@ -83,6 +83,7 @@ void		WM_exit_ext			(struct bContext *C, const bool do_python);
 void		WM_exit				(struct bContext *C) ATTR_NORETURN;
 
 void		WM_main				(struct bContext *C) ATTR_NORETURN;
+void		WM_main_iterate		(struct bContext *C);
 
 bool 		WM_init_game		(struct bContext *C);
 void		WM_init_splash		(struct bContext *C);

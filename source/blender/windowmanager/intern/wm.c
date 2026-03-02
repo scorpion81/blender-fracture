@@ -512,3 +512,13 @@ void WM_main(bContext *C)
 }
 
 
+void WM_main_iterate(bContext *C) {
+	/* get events from ghost, handle window events, add to window queues */
+	wm_window_process_events(C);		
+	/* per window, all events to the window, screen, area and region handlers */
+	wm_event_do_handlers(C);
+	/* events have left notes about changes, we handle and cache it */
+	wm_event_do_notifiers(C);		
+	/* execute cached changes draw */
+	wm_draw_update(C);
+}

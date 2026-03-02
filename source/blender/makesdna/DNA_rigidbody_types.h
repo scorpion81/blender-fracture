@@ -141,7 +141,8 @@ typedef struct RigidBodyOb {
 	float pos[3];			/* rigid body position */
 	float lin_vel[3];		/* rigid body linear velocity, important for dynamic fracture*/
 	float ang_vel[3];		/* rigid body angular velocity, important for dynamic fracture*/
-	//float pad1;
+	float apply_force[3];	/* rigid body aux linear velocity*/
+	float apply_ang_force[3];/* rigid body aux angular velocity*/
 } RigidBodyOb;
 
 

@@ -471,6 +471,7 @@ static EnumPropertyItem rna_enum_gpencil_interpolation_mode_items[] = {
 #include "BKE_animsys.h"
 #include "BKE_freestyle.h"
 #include "BKE_gpencil.h"
+#include "BKE_rigidbody.h"
 
 #include "ED_info.h"
 #include "ED_node.h"
@@ -482,6 +483,11 @@ static EnumPropertyItem rna_enum_gpencil_interpolation_mode_items[] = {
 #ifdef WITH_FREESTYLE
 #include "FRS_freestyle.h"
 #endif
+
+static void rna_Scene_update_sim(Scene* scene, float timestep) {
+	BKE_rigidbody_force_simulation(scene, timestep);
+}
+
 
 /* Grease Pencil Interpolation settings */
 static char *rna_GPencilInterpolateSettings_path(PointerRNA *UNUSED(ptr))
@@ -7308,6 +7314,10 @@ void RNA_def_scene(BlenderRNA *brna)
 	RNA_def_property_struct_type(prop, "RigidBodyWorld");
 	RNA_def_property_ui_text(prop, "Rigid Body World", "");
 	RNA_def_property_update(prop, NC_SCENE, NULL);
+
+	func = RNA_def_function(srna, "update_sim", "rna_Scene_update_sim");
+	parm = RNA_def_float(func, "timestep", 0, -FLT_MAX, FLT_MAX, "time step", "update sim by time step", -FLT_MAX, FLT_MAX);
+
 	
 	/* Tool Settings */
 	prop = RNA_def_property(srna, "tool_settings", PROP_POINTER, PROP_NONE);
